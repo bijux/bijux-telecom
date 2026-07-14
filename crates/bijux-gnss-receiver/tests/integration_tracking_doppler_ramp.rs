@@ -463,6 +463,11 @@ fn adaptive_tracking_shortens_coherent_integration_under_strong_doppler_ramp() {
                 .unwrap_or(1)
         })
         .collect::<Vec<_>>();
+    let dynamic_profile_assumptions = adaptive_epochs
+        .iter()
+        .filter_map(|epoch| epoch.tracking_assumptions.as_ref())
+        .find(|assumptions| assumptions.integration_ms == 1)
+        .expect("adaptive dynamic profile assumptions");
 
     assert!(
         adaptive_integration_ms_values.iter().any(|integration_ms| *integration_ms == 1),
@@ -478,4 +483,7 @@ fn adaptive_tracking_shortens_coherent_integration_under_strong_doppler_ramp() {
         adaptive_epochs_within_shared_window.len(),
         fixed_epochs.len()
     );
+    assert_eq!(dynamic_profile_assumptions.dll_bw_hz, adaptive_config.dll_bw_hz * 2.0);
+    assert_eq!(dynamic_profile_assumptions.pll_bw_hz, adaptive_config.pll_bw_hz * 3.5);
+    assert_eq!(dynamic_profile_assumptions.fll_bw_hz, adaptive_config.fll_bw_hz * 4.0);
 }
