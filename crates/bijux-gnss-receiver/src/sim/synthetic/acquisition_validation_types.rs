@@ -362,6 +362,50 @@ pub struct SyntheticCommonOscillatorBiasFollowUpReport {
     pub satellites: Vec<SyntheticCommonOscillatorBiasFollowUpSatellite>,
 }
 
+/// Per-satellite result row for truth-guided assisted acquisition bounds.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticAssistedAcquisitionBoundsSatellite {
+    /// Satellite identifier.
+    pub sat: SatId,
+    /// Requested half-search width in Hz before assistance-derived narrowing.
+    pub requested_doppler_search_hz: i32,
+    /// Assisted half-search width derived from uncertainty bounds, in Hz.
+    pub bounded_doppler_search_hz: Option<i32>,
+    /// Assisted code-phase search bins derived from uncertainty bounds.
+    pub bounded_code_phase_search_bins: Option<usize>,
+    /// Assisted code-phase search mode derived from uncertainty bounds.
+    pub bounded_code_phase_search_mode: Option<String>,
+    /// Final executed half-search width reported by acquisition, in Hz.
+    pub final_doppler_search_hz: Option<i32>,
+    /// Final executed code-phase search bins reported by acquisition.
+    pub final_code_phase_search_bins: Option<usize>,
+    /// Final executed code-phase search mode reported by acquisition.
+    pub final_code_phase_search_mode: Option<String>,
+    /// Final acquisition hypothesis after any safety fallback.
+    pub final_hypothesis: String,
+    /// Whether the result widened back to the full request after assisted bounds proved unsafe.
+    pub assistance_fallback_triggered: bool,
+    /// Whether the assistance math reduced the initial search domain.
+    pub search_domain_reduced: bool,
+    /// Whether the assisted or widened search still produced a trackable result.
+    pub pass: bool,
+}
+
+/// Truth-guided report for assisted acquisition bounds and safety fallback behavior.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticAssistedAcquisitionBoundsReport {
+    /// Stable scenario identifier for this capture.
+    pub scenario_id: String,
+    /// Capture sample rate in Hz.
+    pub sample_rate_hz: f64,
+    /// Effective acquisition Doppler bin width in Hz.
+    pub doppler_step_hz: i32,
+    /// Whether every assisted request reduced its intended search domain and still ended trackable.
+    pub pass: bool,
+    /// Per-satellite validation rows.
+    pub satellites: Vec<SyntheticAssistedAcquisitionBoundsSatellite>,
+}
+
 /// Per-satellite acquisition validation row for a specific coherent integration profile.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SyntheticAcquisitionCoherentIntegrationSatellite {

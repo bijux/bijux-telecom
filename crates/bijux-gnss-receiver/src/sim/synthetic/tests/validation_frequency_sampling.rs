@@ -20,7 +20,7 @@
                     sat: SatId { constellation: Constellation::Gps, prn: 3 },
                     glonass_frequency_channel: None,
                     signal_band: bijux_gnss_core::api::SignalBand::L1,
- signal_code: bijux_gnss_core::api::SignalCode::Unknown,
+                    signal_code: bijux_gnss_core::api::SignalCode::Unknown,
                     doppler_hz: 750.0,
                     code_phase_chips: 200.25,
                     carrier_phase_rad: 0.0,
@@ -31,7 +31,7 @@
                     sat: SatId { constellation: Constellation::Gps, prn: 7 },
                     glonass_frequency_channel: None,
                     signal_band: bijux_gnss_core::api::SignalBand::L1,
- signal_code: bijux_gnss_core::api::SignalCode::Unknown,
+                    signal_code: bijux_gnss_core::api::SignalCode::Unknown,
                     doppler_hz: -1_000.0,
                     code_phase_chips: 321.5,
                     carrier_phase_rad: 0.2,
@@ -92,7 +92,7 @@
                     sat: SatId { constellation: Constellation::Gps, prn: 3 },
                     glonass_frequency_channel: None,
                     signal_band: bijux_gnss_core::api::SignalBand::L1,
- signal_code: bijux_gnss_core::api::SignalCode::Unknown,
+                    signal_code: bijux_gnss_core::api::SignalCode::Unknown,
                     doppler_hz: 750.0,
                     code_phase_chips: 200.25,
                     carrier_phase_rad: 0.0,
@@ -103,7 +103,7 @@
                     sat: SatId { constellation: Constellation::Gps, prn: 7 },
                     glonass_frequency_channel: None,
                     signal_band: bijux_gnss_core::api::SignalBand::L1,
- signal_code: bijux_gnss_core::api::SignalCode::Unknown,
+                    signal_code: bijux_gnss_core::api::SignalCode::Unknown,
                     doppler_hz: -1_000.0,
                     code_phase_chips: 321.5,
                     carrier_phase_rad: 0.2,
@@ -175,7 +175,7 @@
                     sat: SatId { constellation: Constellation::Gps, prn: 11 },
                     glonass_frequency_channel: None,
                     signal_band: bijux_gnss_core::api::SignalBand::L1,
- signal_code: bijux_gnss_core::api::SignalCode::Unknown,
+                    signal_code: bijux_gnss_core::api::SignalCode::Unknown,
                     doppler_hz: 1_250.0,
                     code_phase_chips: 150.25,
                     carrier_phase_rad: 0.0,
@@ -186,7 +186,7 @@
                     sat: SatId { constellation: Constellation::Gps, prn: 19 },
                     glonass_frequency_channel: None,
                     signal_band: bijux_gnss_core::api::SignalBand::L1,
- signal_code: bijux_gnss_core::api::SignalCode::Unknown,
+                    signal_code: bijux_gnss_core::api::SignalCode::Unknown,
                     doppler_hz: -750.0,
                     code_phase_chips: 420.5,
                     carrier_phase_rad: 0.3,
@@ -383,6 +383,127 @@
     }
 
     #[test]
+    fn truth_guided_assisted_acquisition_bounds_reduce_search_and_recover_wrong_code_phase() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 4_092_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 1023,
+            acquisition_doppler_search_hz: 2_000,
+            acquisition_doppler_step_hz: 250,
+            ..ReceiverPipelineConfig::default()
+        };
+        let scenario = SyntheticScenario {
+            sample_rate_hz: config.sampling_freq_hz,
+            intermediate_freq_hz: config.intermediate_freq_hz,
+            receiver_clock_frequency_bias_hz: 0.0,
+            duration_s: 0.04,
+            seed: 0xA551_57ED,
+            satellites: vec![
+                SyntheticSignalParams {
+                    sat: SatId { constellation: Constellation::Gps, prn: 3 },
+                    glonass_frequency_channel: None,
+                    signal_band: bijux_gnss_core::api::SignalBand::L1,
+                    signal_code: bijux_gnss_core::api::SignalCode::Unknown,
+                    doppler_hz: 0.0,
+                    code_phase_chips: 200.25,
+                    carrier_phase_rad: 0.0,
+                    cn0_db_hz: 58.0,
+                    navigation_data: false.into(),
+                },
+                SyntheticSignalParams {
+                    sat: SatId { constellation: Constellation::Gps, prn: 7 },
+                    glonass_frequency_channel: None,
+                    signal_band: bijux_gnss_core::api::SignalBand::L1,
+                    signal_code: bijux_gnss_core::api::SignalCode::Unknown,
+                    doppler_hz: 0.0,
+                    code_phase_chips: 321.5,
+                    carrier_phase_rad: 0.2,
+                    cn0_db_hz: 56.0,
+                    navigation_data: false.into(),
+                },
+            ],
+            ephemerides: Vec::new(),
+            id: "assisted-acquisition-bounds-validation".to_string(),
+        };
+        let frame = generate_l1_ca_multi(&config, &scenario);
+        let bundle = build_iq16_capture_bundle(
+            &scenario.id,
+            &scenario,
+            &frame,
+            "2026-07-14T00:00:00Z",
+            Some("synthetic assisted acquisition bounds validation".to_string()),
+        );
+        let scaled_frame = SamplesFrame::new(
+            frame.t0,
+            frame.dt_s,
+            frame.iq.iter().map(|sample| *sample * bundle.truth.output_scale_applied).collect(),
+        );
+        let requests = bundle
+            .truth
+            .satellites
+            .iter()
+            .enumerate()
+            .map(|(index, sat_truth)| bijux_gnss_core::api::AcqRequest {
+                sat: sat_truth.sat,
+                glonass_frequency_channel: sat_truth.glonass_frequency_channel,
+                signal_band: sat_truth.signal_band,
+                signal_code: sat_truth.signal_code,
+                doppler_center_hz: sat_truth.doppler_hz,
+                expected_line_of_sight_doppler_hz: Some(sat_truth.doppler_hz),
+                assistance_bounds: Some(if index == 0 {
+                    let expected_code_phase_samples =
+                        expected_acquisition_code_phase_samples_f64(
+                            &config,
+                            &scaled_frame,
+                            sat_truth.code_phase_chips,
+                        ) + bundle.truth.source_front_end_sample_delay_samples as f64;
+                    bijux_gnss_core::api::AcqAssistanceBounds {
+                        expected_code_phase_samples,
+                        time_uncertainty_s: 0.5e-6,
+                        position_uncertainty_m: 75.0,
+                        oscillator_uncertainty_hz: 120.0,
+                        approximate_velocity_uncertainty_mps: 6.0,
+                    }
+                } else {
+                    bijux_gnss_core::api::AcqAssistanceBounds {
+                        expected_code_phase_samples: 32.0,
+                        time_uncertainty_s: 0.0,
+                        position_uncertainty_m: 0.0,
+                        oscillator_uncertainty_hz: 120.0,
+                        approximate_velocity_uncertainty_mps: 6.0,
+                    }
+                }),
+                doppler_search_hz: 2_000,
+                doppler_step_hz: 250,
+                coherent_ms: 1,
+                noncoherent: 1,
+            })
+            .collect::<Vec<_>>();
+
+        let report = validate_truth_guided_assisted_acquisition_bounds(
+            &config,
+            &scaled_frame,
+            &bundle.truth,
+            &requests,
+        );
+
+        assert!(report.pass, "{report:#?}");
+        assert_eq!(report.satellites.len(), 2);
+
+        let reduced_satellite = &report.satellites[0];
+        assert!(reduced_satellite.search_domain_reduced, "{reduced_satellite:#?}");
+        assert!(!reduced_satellite.assistance_fallback_triggered, "{reduced_satellite:#?}");
+        assert_eq!(reduced_satellite.final_code_phase_search_mode.as_deref(), Some("assisted_bounds"));
+
+        let recovered_satellite = &report.satellites[1];
+        assert!(recovered_satellite.search_domain_reduced, "{recovered_satellite:#?}");
+        assert!(recovered_satellite.assistance_fallback_triggered, "{recovered_satellite:#?}");
+        assert_eq!(recovered_satellite.final_code_phase_search_mode.as_deref(), Some("full_code"));
+        assert!(recovered_satellite.pass, "{recovered_satellite:#?}");
+    }
+
+    #[test]
     fn acquisition_sample_rate_validation_passes_with_distinct_low_and_high_rate_profiles() {
         let low_rate = synthetic_acquisition_sample_rate_case_fixture(
             2_046_000.0,
@@ -503,7 +624,7 @@
                     sat: SatId { constellation: Constellation::Gps, prn: 3 },
                     glonass_frequency_channel: None,
                     signal_band: bijux_gnss_core::api::SignalBand::L1,
- signal_code: bijux_gnss_core::api::SignalCode::Unknown,
+                    signal_code: bijux_gnss_core::api::SignalCode::Unknown,
                     doppler_hz: 750.0,
                     code_phase_chips: 200.25,
                     carrier_phase_rad: 0.0,
@@ -514,7 +635,7 @@
                     sat: SatId { constellation: Constellation::Gps, prn: 7 },
                     glonass_frequency_channel: None,
                     signal_band: bijux_gnss_core::api::SignalBand::L1,
- signal_code: bijux_gnss_core::api::SignalCode::Unknown,
+                    signal_code: bijux_gnss_core::api::SignalCode::Unknown,
                     doppler_hz: -1_000.0,
                     code_phase_chips: 321.5,
                     carrier_phase_rad: 0.2,
@@ -566,7 +687,7 @@
                     sat: SatId { constellation: Constellation::Gps, prn: 3 },
                     glonass_frequency_channel: None,
                     signal_band: bijux_gnss_core::api::SignalBand::L1,
- signal_code: bijux_gnss_core::api::SignalCode::Unknown,
+                    signal_code: bijux_gnss_core::api::SignalCode::Unknown,
                     doppler_hz: -120.0,
                     code_phase_chips: 64.0,
                     carrier_phase_rad: 0.25,
@@ -577,7 +698,7 @@
                     sat: SatId { constellation: Constellation::Gps, prn: 11 },
                     glonass_frequency_channel: None,
                     signal_band: bijux_gnss_core::api::SignalBand::L1,
- signal_code: bijux_gnss_core::api::SignalCode::Unknown,
+                    signal_code: bijux_gnss_core::api::SignalCode::Unknown,
                     doppler_hz: 180.0,
                     code_phase_chips: 288.5,
                     carrier_phase_rad: 0.75,

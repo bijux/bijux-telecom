@@ -707,6 +707,99 @@ pub fn validate_truth_guided_common_oscillator_bias_follow_up(
     }
 }
 
+/// Validate assisted acquisition bounds reduction and safety fallback behavior from one capture.
+pub fn validate_truth_guided_assisted_acquisition_bounds(
+    config: &ReceiverPipelineConfig,
+    frame: &SamplesFrame,
+    truth: &SyntheticIqTruthBundle,
+    requests: &[crate::api::core::AcqRequest],
+) -> SyntheticAssistedAcquisitionBoundsReport {
+    let acquisition = crate::pipeline::acquisition::Acquisition::new(
+        config.clone(),
+        crate::engine::runtime::ReceiverRuntime::default(),
+    );
+    let results = acquisition.run_fft_for_requests(frame, requests);
+    let satellites = requests
+        .iter()
+        .copied()
+        .zip(results.into_iter())
+        .map(|(request, result)| {
+            let signal_code = if request.signal_code != crate::api::core::SignalCode::Unknown {
+                request.signal_code
+            } else {
+                crate::engine::signal_selection::default_signal_code_for_band(
+                    request.sat.constellation,
+                    request.signal_band,
+                )
+            };
+            let resolved_bounds = bijux_gnss_signal::api::AcquisitionSignalModel::for_sat_signal(
+                request.sat,
+                Some(request.signal_band),
+                signal_code,
+                request.glonass_frequency_channel,
+            )
+            .ok()
+            .flatten()
+            .map(|signal_model| {
+                crate::pipeline::acquisition_assistance::resolve_acquisition_search_bounds(
+                    config,
+                    &signal_model,
+                    request,
+                )
+            });
+            let final_assumptions = result.assumptions.as_ref();
+            let search_domain_reduced =
+                resolved_bounds.as_ref().is_some_and(|bounds| bounds.search_domain_reduced);
+            let final_code_phase_search_mode =
+                final_assumptions.map(|assumptions| assumptions.code_phase_search_mode.clone());
+            let assistance_fallback_triggered = request.assistance_bounds.is_some()
+                && search_domain_reduced
+                && final_assumptions.is_some_and(|assumptions| {
+                    assumptions.assistance_bounds.is_none()
+                        && assumptions.code_phase_search_mode == "full_code"
+                });
+            let pass = search_domain_reduced
+                && matches!(
+                    result.hypothesis,
+                    crate::api::core::AcqHypothesis::Accepted
+                        | crate::api::core::AcqHypothesis::Ambiguous
+                );
+
+            SyntheticAssistedAcquisitionBoundsSatellite {
+                sat: request.sat,
+                requested_doppler_search_hz: request.doppler_search_hz,
+                bounded_doppler_search_hz: resolved_bounds
+                    .as_ref()
+                    .map(|bounds| bounds.doppler_search_hz),
+                bounded_code_phase_search_bins: resolved_bounds
+                    .as_ref()
+                    .map(|bounds| bounds.code_phase_search_bins),
+                bounded_code_phase_search_mode: resolved_bounds
+                    .as_ref()
+                    .map(|bounds| bounds.code_phase_search_mode.clone()),
+                final_doppler_search_hz: final_assumptions
+                    .map(|assumptions| assumptions.doppler_search_hz),
+                final_code_phase_search_bins: final_assumptions
+                    .map(|assumptions| assumptions.code_phase_search_bins),
+                final_code_phase_search_mode,
+                final_hypothesis: result.hypothesis.to_string(),
+                assistance_fallback_triggered,
+                search_domain_reduced,
+                pass,
+            }
+        })
+        .collect::<Vec<_>>();
+    let pass = !satellites.is_empty() && satellites.iter().all(|satellite| satellite.pass);
+
+    SyntheticAssistedAcquisitionBoundsReport {
+        scenario_id: truth.scenario_id.clone(),
+        sample_rate_hz: config.sampling_freq_hz,
+        doppler_step_hz: config.acquisition_doppler_step_hz.max(1),
+        pass,
+        satellites,
+    }
+}
+
 /// Validate acquisition code phase and Doppler for a coherent integration profile.
 pub fn validate_truth_guided_acquisition_coherent_integration(
     config: &ReceiverPipelineConfig,

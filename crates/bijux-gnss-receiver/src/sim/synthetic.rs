@@ -79,6 +79,7 @@ mod tests {
         validate_acquisition_accuracy_budget, validate_pvt_accuracy_budget,
         validate_truth_guided_acquisition_code_phase,
         validate_truth_guided_acquisition_code_phase_refinement,
+        validate_truth_guided_assisted_acquisition_bounds,
         validate_truth_guided_acquisition_coherent_integration,
         validate_truth_guided_acquisition_doppler,
         validate_truth_guided_acquisition_receiver_clock_offset,
