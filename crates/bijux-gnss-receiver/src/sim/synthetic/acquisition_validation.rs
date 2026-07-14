@@ -1375,8 +1375,12 @@ pub fn measure_synthetic_acquisition_uncertainty_coverage(
                             )
                         },
                     );
-                    let result =
-                        acquisition_result_for_target_signal(&case_config, &frame, &case.signal);
+                    let scaled_frame = scale_synthetic_capture_frame(&frame);
+                    let result = acquisition_result_for_target_signal(
+                        &case_config,
+                        &scaled_frame,
+                        &case.signal,
+                    );
                     let uncertainty = result.uncertainty.as_ref();
                     let measured_doppler_hz = synthetic_measured_doppler_hz_from_carrier_hz(
                         case_config.intermediate_freq_hz,
@@ -1390,7 +1394,7 @@ pub fn measure_synthetic_acquisition_uncertainty_coverage(
                     let doppler_error_hz = (measured_doppler_hz - expected_doppler_hz).abs();
                     let expected_code_phase_samples = expected_acquisition_code_phase_samples_f64(
                         &case_config,
-                        &frame,
+                        &scaled_frame,
                         case.signal.code_phase_chips,
                     );
                     let measured_code_phase_samples = result.resolved_code_phase_samples();
@@ -1521,6 +1525,20 @@ fn acquisition_request_for_signal(
         coherent_ms: config.acquisition_integration_ms,
         noncoherent: config.acquisition_noncoherent,
     }
+}
+
+fn scale_synthetic_capture_frame(frame: &SamplesFrame) -> SamplesFrame {
+    let peak_component_before_scaling = peak_component(&frame.iq);
+    let output_scale_applied = if peak_component_before_scaling <= 0.999 {
+        1.0
+    } else {
+        0.999 / peak_component_before_scaling
+    };
+    SamplesFrame::new(
+        frame.t0,
+        frame.dt_s,
+        frame.iq.iter().map(|sample| *sample * output_scale_applied).collect(),
+    )
 }
 
 fn scaled_synthetic_acquisition_frame(
