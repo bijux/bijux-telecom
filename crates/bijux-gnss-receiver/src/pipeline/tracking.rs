@@ -4297,9 +4297,9 @@ mod tests {
     use bijux_gnss_signal::api::TrackingLoopProfile as SignalTrackingLoopProfile;
     use bijux_gnss_signal::api::{
         advance_code_phase_seconds, delay_lock_loop_coefficients, discriminators,
-        first_order_angular_loop_coefficients, phase_lock_loop_coefficients, sample_ca_code,
-        sample_galileo_e1_cboc, samples_per_code, shared_path_code_rate_hz, signal_spec_gps_l5_i,
-        LocalCodeModel, Prn,
+        first_order_angular_loop_coefficients, normalize_dll_discriminator,
+        phase_lock_loop_coefficients, sample_ca_code, sample_galileo_e1_cboc, samples_per_code,
+        shared_path_code_rate_hz, signal_spec_gps_l5_i, LocalCodeModel, Prn,
     };
     use num_complex::Complex;
     use serde::Deserialize;
@@ -4328,6 +4328,166 @@ mod tests {
             pll_locked: true,
             fll_locked: true,
             channel_state: ChannelState::Tracking,
+        }
+    }
+
+    #[derive(Debug, Clone, Copy)]
+    struct DelayedPathProfile {
+        delay_chips: f64,
+        relative_amplitude: f32,
+    }
+
+    fn multipath_tracking_config() -> ReceiverPipelineConfig {
+        ReceiverPipelineConfig {
+            sampling_freq_hz: 4_092_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 1023,
+            tracking_budget_ms: 100.0,
+            tracking_over_budget_action: "continue".to_string(),
+            ..ReceiverPipelineConfig::default()
+        }
+    }
+
+    fn multipath_bias_frame(
+        config: &ReceiverPipelineConfig,
+        sat: SatId,
+        direct_code_phase_chips: f64,
+        delayed_path: DelayedPathProfile,
+    ) -> SamplesFrame {
+        let sample_count = samples_per_code(
+            config.sampling_freq_hz,
+            config.code_freq_basis_hz,
+            config.code_length,
+        );
+        let direct = sample_ca_code(
+            Prn(sat.prn),
+            config.sampling_freq_hz,
+            config.code_freq_basis_hz,
+            direct_code_phase_chips,
+            sample_count,
+        )
+        .expect("direct path code");
+        let reflected = sample_ca_code(
+            Prn(sat.prn),
+            config.sampling_freq_hz,
+            config.code_freq_basis_hz,
+            direct_code_phase_chips - delayed_path.delay_chips,
+            sample_count,
+        )
+        .expect("delayed path code");
+        let iq = direct
+            .into_iter()
+            .zip(reflected)
+            .map(|(direct, reflected)| {
+                Complex::new(direct + delayed_path.relative_amplitude * reflected, 0.0)
+            })
+            .collect();
+        SamplesFrame::new(
+            SampleTime { sample_index: 0, sample_rate_hz: config.sampling_freq_hz },
+            Seconds(1.0 / config.sampling_freq_hz),
+            iq,
+        )
+    }
+
+    fn measured_code_zero_crossing_chips(
+        config: &ReceiverPipelineConfig,
+        tracking: &Tracking,
+        frame: &SamplesFrame,
+        sat: SatId,
+        direct_code_phase_chips: f64,
+        early_late_spacing_chips: f64,
+    ) -> f64 {
+        let samples_per_chip = config.sampling_freq_hz / config.code_freq_basis_hz;
+        let direct_code_phase_samples =
+            crate::sim::synthetic::expected_acquisition_code_phase_samples_f64(
+                config,
+                frame,
+                direct_code_phase_chips,
+            );
+        let mut best_abs_discriminator = f32::INFINITY;
+        let mut best_offset_chips = 0.0;
+        for offset_index in -100..=100 {
+            let offset_chips = offset_index as f64 * 0.005;
+            let correlator = tracking.correlate_epoch(
+                frame,
+                sat,
+                0.0,
+                0.0,
+                config.code_freq_basis_hz,
+                direct_code_phase_samples + offset_chips * samples_per_chip,
+                early_late_spacing_chips,
+            );
+            let (dll_err, _, _, _) =
+                discriminators(correlator.early, correlator.prompt, correlator.late, None);
+            let dll_err = normalize_dll_discriminator(dll_err, early_late_spacing_chips);
+            let abs_discriminator = dll_err.abs();
+            if abs_discriminator < best_abs_discriminator {
+                best_abs_discriminator = abs_discriminator;
+                best_offset_chips = offset_chips;
+            }
+        }
+        best_offset_chips
+    }
+
+    #[test]
+    fn narrow_correlator_reduces_delayed_path_code_bias() {
+        let config = multipath_tracking_config();
+        let sat = SatId { constellation: Constellation::Gps, prn: 7 };
+        let tracking = Tracking::new(config.clone(), ReceiverRuntime::default());
+        let direct_code_phase_chips = 245.25;
+        let clean_frame = multipath_bias_frame(
+            &config,
+            sat,
+            direct_code_phase_chips,
+            DelayedPathProfile { delay_chips: 0.0, relative_amplitude: 0.0 },
+        );
+        let clean_standard_zero = measured_code_zero_crossing_chips(
+            &config,
+            &tracking,
+            &clean_frame,
+            sat,
+            direct_code_phase_chips,
+            0.5,
+        );
+        let clean_narrow_zero = measured_code_zero_crossing_chips(
+            &config,
+            &tracking,
+            &clean_frame,
+            sat,
+            direct_code_phase_chips,
+            0.25,
+        );
+        let delayed_paths = [
+            DelayedPathProfile { delay_chips: 0.45, relative_amplitude: 0.35 },
+            DelayedPathProfile { delay_chips: 0.65, relative_amplitude: 0.35 },
+        ];
+
+        for delayed_path in delayed_paths {
+            let frame = multipath_bias_frame(&config, sat, direct_code_phase_chips, delayed_path);
+            let standard_zero_chips = measured_code_zero_crossing_chips(
+                &config,
+                &tracking,
+                &frame,
+                sat,
+                direct_code_phase_chips,
+                0.5,
+            );
+            let narrow_zero_chips = measured_code_zero_crossing_chips(
+                &config,
+                &tracking,
+                &frame,
+                sat,
+                direct_code_phase_chips,
+                0.25,
+            );
+            let standard_bias_chips = (standard_zero_chips - clean_standard_zero).abs();
+            let narrow_bias_chips = (narrow_zero_chips - clean_narrow_zero).abs();
+
+            assert!(
+                standard_bias_chips > 0.0 && narrow_bias_chips < standard_bias_chips,
+                "narrow correlator must reduce delayed-path code bias: delayed_path={delayed_path:?} standard_bias_chips={standard_bias_chips:.6} narrow_bias_chips={narrow_bias_chips:.6}",
+            );
         }
     }
 
