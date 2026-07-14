@@ -5,6 +5,10 @@ pub struct SyntheticAcquisitionAccuracyBudget {
     pub max_doppler_error_hz: f64,
     /// Maximum wrapped code-phase error in samples.
     pub max_code_phase_error_samples: usize,
+    /// Fallback maximum Doppler error in acquisition bins when no signal-specific rule exists.
+    pub max_doppler_error_bins: f64,
+    /// Fallback maximum wrapped code-phase error in chips when no signal-specific rule exists.
+    pub max_code_phase_error_chips: f64,
 }
 
 /// Hard accuracy threshold for truth-guided tracking validation.
@@ -75,10 +79,24 @@ pub struct SyntheticTruthCoverageIssue {
 pub struct SyntheticAcquisitionAccuracySatellite {
     /// Satellite identifier.
     pub sat: SatId,
+    /// GLONASS FDMA channel when the tested signal uses GLONASS L1.
+    pub glonass_frequency_channel: Option<GlonassFrequencyChannel>,
+    /// Explicit signal band validated for this satellite.
+    pub signal_band: SignalBand,
+    /// Explicit signal code validated for this satellite.
+    pub signal_code: SignalCode,
     /// Measured absolute Doppler error in Hz.
     pub doppler_error_hz: f64,
     /// Measured wrapped code-phase error in samples.
     pub code_phase_error_samples: usize,
+    /// Maximum absolute Doppler error allowed for this signal, in Hz.
+    pub max_doppler_error_hz: f64,
+    /// Maximum absolute Doppler error allowed for this signal, in acquisition bins.
+    pub max_doppler_error_bins: f64,
+    /// Maximum wrapped code-phase error allowed for this signal, in samples.
+    pub max_code_phase_error_samples: usize,
+    /// Maximum wrapped code-phase error allowed for this signal, in chips.
+    pub max_code_phase_error_chips: f64,
     /// Whether this satellite stayed within the configured hard budget.
     pub pass: bool,
 }
@@ -239,4 +257,3 @@ pub struct SyntheticPvtAccuracyReport {
     /// Per-epoch budget outcomes.
     pub epochs: Vec<SyntheticPvtAccuracyEpoch>,
 }
-

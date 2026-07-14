@@ -462,6 +462,8 @@ pub fn truth_guided_receiver_accuracy_budgets() -> SyntheticReceiverAccuracyBudg
         acquisition: SyntheticAcquisitionAccuracyBudget {
             max_doppler_error_hz: 500.0,
             max_code_phase_error_samples: 2,
+            max_doppler_error_bins: 1.0,
+            max_code_phase_error_chips: 1.0,
         },
         tracking: SyntheticTrackingAccuracyBudget {
             max_carrier_error_hz: 30.0,
@@ -484,6 +486,97 @@ pub fn truth_guided_receiver_accuracy_budgets() -> SyntheticReceiverAccuracyBudg
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+struct ResolvedSyntheticAcquisitionAccuracyBudget {
+    max_doppler_error_hz: f64,
+    max_doppler_error_bins: f64,
+    max_code_phase_error_samples: usize,
+    max_code_phase_error_chips: f64,
+}
+
+fn resolve_acquisition_accuracy_budget(
+    report: &SyntheticAcquisitionTruthTableReport,
+    satellite: &SyntheticAcquisitionTruthTableSatellite,
+    budget: SyntheticAcquisitionAccuracyBudget,
+) -> ResolvedSyntheticAcquisitionAccuracyBudget {
+    let max_doppler_error_hz = if report.doppler_step_hz > 0 {
+        budget.max_doppler_error_bins * f64::from(report.doppler_step_hz)
+    } else {
+        budget.max_doppler_error_hz
+    };
+    let max_code_phase_error_chips = bijux_gnss_signal::api::signal_registry(
+        satellite.sat.constellation,
+        satellite.signal_band,
+        satellite.signal_code,
+    )
+    .map(|entry| acquisition_code_phase_budget_chips_for_signal(&entry))
+    .unwrap_or(budget.max_code_phase_error_chips);
+    let max_code_phase_error_samples =
+        resolve_code_phase_budget_samples(report.sample_rate_hz, satellite, max_code_phase_error_chips)
+            .unwrap_or(budget.max_code_phase_error_samples);
+
+    ResolvedSyntheticAcquisitionAccuracyBudget {
+        max_doppler_error_hz,
+        max_doppler_error_bins: budget.max_doppler_error_bins,
+        max_code_phase_error_samples,
+        max_code_phase_error_chips,
+    }
+}
+
+fn acquisition_code_phase_budget_chips_for_signal(
+    entry: &bijux_gnss_core::api::SignalRegistryEntry,
+) -> f64 {
+    if entry
+        .components
+        .iter()
+        .any(|component| {
+            matches!(
+                component.subcarrier,
+                bijux_gnss_core::api::SignalSubcarrierSpec::Cboc { .. }
+            )
+        })
+    {
+        0.25
+    } else if entry
+        .components
+        .iter()
+        .any(|component| {
+            matches!(
+                component.subcarrier,
+                bijux_gnss_core::api::SignalSubcarrierSpec::Boc { .. }
+            )
+        })
+    {
+        0.5
+    } else {
+        1.0
+    }
+}
+
+fn resolve_code_phase_budget_samples(
+    sample_rate_hz: f64,
+    satellite: &SyntheticAcquisitionTruthTableSatellite,
+    max_code_phase_error_chips: f64,
+) -> Option<usize> {
+    let signal = bijux_gnss_signal::api::signal_registry(
+        satellite.sat.constellation,
+        satellite.signal_band,
+        satellite.signal_code,
+    )?
+    .spec;
+    if !sample_rate_hz.is_finite()
+        || sample_rate_hz <= 0.0
+        || !signal.code_rate_hz.is_finite()
+        || signal.code_rate_hz <= 0.0
+        || !max_code_phase_error_chips.is_finite()
+        || max_code_phase_error_chips <= 0.0
+    {
+        return None;
+    }
+
+    Some(((sample_rate_hz / signal.code_rate_hz) * max_code_phase_error_chips).ceil() as usize)
+}
+
 /// Evaluate whether a truth-guided acquisition report satisfies a hard accuracy budget.
 pub fn validate_acquisition_accuracy_budget(
     report: &SyntheticAcquisitionTruthTableReport,
@@ -495,23 +588,41 @@ pub fn validate_acquisition_accuracy_budget(
         .satellites
         .iter()
         .map(|satellite| {
+            let resolved_budget = resolve_acquisition_accuracy_budget(report, satellite, budget);
             let pass = satellite.doppler_error_hz.is_finite()
-                && satellite.code_phase_error_samples <= budget.max_code_phase_error_samples
-                && satellite.doppler_error_hz <= budget.max_doppler_error_hz + f64::EPSILON;
+                && satellite.code_phase_error_samples <= resolved_budget.max_code_phase_error_samples
+                && satellite.doppler_error_hz <= resolved_budget.max_doppler_error_hz + f64::EPSILON;
             SyntheticAcquisitionAccuracySatellite {
                 sat: satellite.sat,
+                glonass_frequency_channel: satellite.glonass_frequency_channel,
+                signal_band: satellite.signal_band,
+                signal_code: satellite.signal_code,
                 doppler_error_hz: satellite.doppler_error_hz,
                 code_phase_error_samples: satellite.code_phase_error_samples,
+                max_doppler_error_hz: resolved_budget.max_doppler_error_hz,
+                max_doppler_error_bins: resolved_budget.max_doppler_error_bins,
+                max_code_phase_error_samples: resolved_budget.max_code_phase_error_samples,
+                max_code_phase_error_chips: resolved_budget.max_code_phase_error_chips,
                 pass,
             }
         })
         .collect::<Vec<_>>();
     let passing_satellite_count = satellites.iter().filter(|satellite| satellite.pass).count();
+    let max_doppler_error_hz = satellites
+        .iter()
+        .map(|satellite| satellite.max_doppler_error_hz)
+        .max_by(f64::total_cmp)
+        .unwrap_or(budget.max_doppler_error_hz);
+    let max_code_phase_error_samples = satellites
+        .iter()
+        .map(|satellite| satellite.max_code_phase_error_samples)
+        .max()
+        .unwrap_or(budget.max_code_phase_error_samples);
 
     SyntheticAcquisitionAccuracyReport {
         scenario_id: report.scenario_id.clone(),
-        max_doppler_error_hz: budget.max_doppler_error_hz,
-        max_code_phase_error_samples: budget.max_code_phase_error_samples,
+        max_doppler_error_hz,
+        max_code_phase_error_samples,
         satellite_count: satellites.len(),
         passing_satellite_count,
         truth_coverage_ready,

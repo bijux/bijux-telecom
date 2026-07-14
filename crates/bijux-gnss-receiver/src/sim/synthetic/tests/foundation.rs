@@ -467,6 +467,8 @@ fn truth_guided_receiver_accuracy_budgets_are_hard_and_positive() {
 
     assert!(budgets.acquisition.max_doppler_error_hz > 0.0);
     assert!(budgets.acquisition.max_code_phase_error_samples > 0);
+    assert!(budgets.acquisition.max_doppler_error_bins > 0.0);
+    assert!(budgets.acquisition.max_code_phase_error_chips > 0.0);
     assert!(budgets.tracking.max_carrier_error_hz > 0.0);
     assert!(budgets.tracking.max_doppler_error_hz > 0.0);
     assert!(budgets.tracking.max_code_phase_error_samples > 0.0);
@@ -494,6 +496,9 @@ fn acquisition_accuracy_budget_fails_when_truth_error_exceeds_threshold() {
         pass: true,
         satellites: vec![SyntheticAcquisitionTruthTableSatellite {
             sat: SatId { constellation: Constellation::Gps, prn: 3 },
+            glonass_frequency_channel: None,
+            signal_band: SignalBand::L1,
+            signal_code: SignalCode::Ca,
             injected_doppler_hz: 750.0,
             expected_measured_doppler_hz: 750.0,
             measured_doppler_hz: 1_500.0,
@@ -520,6 +525,8 @@ fn acquisition_accuracy_budget_fails_when_truth_error_exceeds_threshold() {
     assert!(!accuracy.pass);
     assert_eq!(accuracy.passing_satellite_count, 0);
     assert!(!satellite.pass);
+    assert_eq!(satellite.signal_band, SignalBand::L1);
+    assert_eq!(satellite.signal_code, SignalCode::Ca);
 }
 
 #[test]
