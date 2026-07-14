@@ -879,80 +879,15 @@ pub fn measure_truth_guided_acquisition_detection_probability(
     profile_config.acquisition_integration_ms = coherent_ms;
     profile_config.acquisition_noncoherent = noncoherent;
     let doppler_step_hz = profile_config.acquisition_doppler_step_hz.max(1);
-    let duration_s = (coherent_ms.saturating_mul(noncoherent).max(1) as f64) / 1000.0;
-
-    let trials = trial_seeds
-        .iter()
-        .enumerate()
-        .map(|(trial_index, seed)| {
-            let scenario_id = format!("{scenario_id_prefix}_trial_{trial_index}");
-            let scenario = SyntheticScenario {
-                sample_rate_hz: profile_config.sampling_freq_hz,
-                intermediate_freq_hz: profile_config.intermediate_freq_hz,
-                receiver_clock_frequency_bias_hz: 0.0,
-                duration_s,
-                seed: *seed,
-                satellites: vec![signal.clone()],
-                ephemerides: Vec::new(),
-                id: scenario_id.clone(),
-            };
-            let frame = generate_l1_ca_multi(&profile_config, &scenario);
-            let bundle = build_iq16_capture_bundle(
-                &scenario.id,
-                &scenario,
-                &frame,
-                "2026-07-09T00:00:00Z",
-                Some("synthetic acquisition sensitivity trial".to_string()),
-            );
-            let scaled_frame = SamplesFrame::new(
-                frame.t0,
-                frame.dt_s,
-                frame.iq.iter().map(|sample| *sample * bundle.truth.output_scale_applied).collect(),
-            );
-            let acquisition = crate::pipeline::acquisition::Acquisition::new(
-                profile_config.clone(),
-                crate::engine::runtime::ReceiverRuntime::default(),
-            );
-            let result = acquisition.run_fft(&scaled_frame, &[signal.sat]).remove(0);
-            let expected_code_phase_samples = expected_acquisition_code_phase_samples(
-                &profile_config,
-                &scaled_frame,
-                signal.code_phase_chips,
-            );
-            let period_samples = samples_per_code(
-                profile_config.sampling_freq_hz,
-                profile_config.code_freq_basis_hz,
-                profile_config.code_length,
-            );
-            let code_phase_error_samples = wrapped_code_phase_error_samples(
-                result.code_phase_samples,
-                expected_code_phase_samples,
-                period_samples,
-            );
-            let measured_doppler_hz = crate::pipeline::doppler::doppler_hz_from_carrier_hz(
-                profile_config.intermediate_freq_hz,
-                result.carrier_hz.0,
-            );
-            let doppler_error_bins =
-                ((measured_doppler_hz - signal.doppler_hz).abs()) / doppler_step_hz as f64;
-            let accepted = matches!(result.hypothesis, crate::api::core::AcqHypothesis::Accepted);
-            let detected = !matches!(result.hypothesis, crate::api::core::AcqHypothesis::Rejected)
-                && code_phase_error_samples <= code_phase_tolerance_samples
-                && doppler_error_bins <= doppler_tolerance_bins as f64 + f64::EPSILON;
-
-            SyntheticAcquisitionSensitivityTrial {
-                scenario_id,
-                seed: *seed,
-                sat: signal.sat,
-                hypothesis: result.hypothesis.to_string(),
-                accepted,
-                detected,
-                code_phase_error_samples: Some(code_phase_error_samples),
-                doppler_error_bins: Some(doppler_error_bins),
-                peak_mean_ratio: result.peak_mean_ratio,
-            }
-        })
-        .collect::<Vec<_>>();
+    let trials = measure_truth_guided_acquisition_sensitivity_trials(
+        &profile_config,
+        &signal,
+        0.0,
+        trial_seeds,
+        scenario_id_prefix,
+        code_phase_tolerance_samples,
+        doppler_tolerance_bins,
+    );
 
     synthetic_acquisition_sensitivity_report(
         scenario_id_prefix,
@@ -1014,6 +949,71 @@ pub fn measure_truth_guided_acquisition_detection_rate(
         doppler_step_hz,
         points,
     }
+}
+
+fn measure_truth_guided_acquisition_sensitivity_trials(
+    config: &ReceiverPipelineConfig,
+    signal: &SyntheticSignalParams,
+    receiver_clock_frequency_bias_hz: f64,
+    trial_seeds: &[u64],
+    scenario_id_prefix: &str,
+    code_phase_tolerance_samples: usize,
+    doppler_tolerance_bins: usize,
+) -> Vec<SyntheticAcquisitionSensitivityTrial> {
+    let duration_s = (config
+        .acquisition_integration_ms
+        .saturating_mul(config.acquisition_noncoherent)
+        .max(1) as f64)
+        / 1000.0;
+
+    trial_seeds
+        .iter()
+        .enumerate()
+        .map(|(trial_index, seed)| {
+            let scenario_id = format!("{scenario_id_prefix}_trial_{trial_index}");
+            let scenario = SyntheticScenario {
+                sample_rate_hz: config.sampling_freq_hz,
+                intermediate_freq_hz: config.intermediate_freq_hz,
+                receiver_clock_frequency_bias_hz,
+                duration_s,
+                seed: *seed,
+                satellites: vec![signal.clone()],
+                ephemerides: Vec::new(),
+                id: scenario_id.clone(),
+            };
+            let scaled_frame = scaled_synthetic_acquisition_frame(
+                config,
+                &scenario,
+                "synthetic acquisition sensitivity trial",
+            );
+            let acquisition = crate::pipeline::acquisition::Acquisition::new(
+                config.clone(),
+                crate::engine::runtime::ReceiverRuntime::default(),
+            );
+            let result = acquisition.run_fft(&scaled_frame, &[signal.sat]).remove(0);
+            let trial = acquisition_trial_measurement_from_result(
+                config,
+                &scaled_frame,
+                signal,
+                result,
+                signal.doppler_hz + receiver_clock_frequency_bias_hz,
+                code_phase_tolerance_samples,
+                doppler_tolerance_bins,
+            );
+
+            SyntheticAcquisitionSensitivityTrial {
+                scenario_id,
+                seed: *seed,
+                sat: signal.sat,
+                hypothesis: trial.hypothesis,
+                accepted: trial.accepted,
+                detected: trial.detected,
+                code_phase_error_samples: trial.code_phase_error_samples,
+                doppler_error_bins: trial.doppler_error_bins,
+                peak_mean_ratio: trial.peak_mean_ratio,
+            }
+        })
+        .collect()
 }
 
 #[derive(Debug, Clone)]
@@ -1281,7 +1281,45 @@ fn measure_truth_guided_acquisition_trial(
     code_phase_tolerance_samples: usize,
     doppler_tolerance_bins: usize,
 ) -> SyntheticAcquisitionTrialMeasurement {
+    measure_truth_guided_acquisition_trial_with_expected_measured_doppler_hz(
+        config,
+        frame,
+        signal,
+        signal.doppler_hz,
+        code_phase_tolerance_samples,
+        doppler_tolerance_bins,
+    )
+}
+
+fn measure_truth_guided_acquisition_trial_with_expected_measured_doppler_hz(
+    config: &ReceiverPipelineConfig,
+    frame: &SamplesFrame,
+    signal: &SyntheticSignalParams,
+    expected_measured_doppler_hz: f64,
+    code_phase_tolerance_samples: usize,
+    doppler_tolerance_bins: usize,
+) -> SyntheticAcquisitionTrialMeasurement {
     let result = acquisition_result_for_target_signal(config, frame, signal);
+    acquisition_trial_measurement_from_result(
+        config,
+        frame,
+        signal,
+        result,
+        expected_measured_doppler_hz,
+        code_phase_tolerance_samples,
+        doppler_tolerance_bins,
+    )
+}
+
+fn acquisition_trial_measurement_from_result(
+    config: &ReceiverPipelineConfig,
+    frame: &SamplesFrame,
+    signal: &SyntheticSignalParams,
+    result: crate::api::core::AcqResult,
+    expected_measured_doppler_hz: f64,
+    code_phase_tolerance_samples: usize,
+    doppler_tolerance_bins: usize,
+) -> SyntheticAcquisitionTrialMeasurement {
     let period_samples =
         samples_per_code(config.sampling_freq_hz, config.code_freq_basis_hz, config.code_length);
     let expected_code_phase_samples =
@@ -1300,7 +1338,8 @@ fn measure_truth_guided_acquisition_trial(
         result.carrier_hz.0,
     );
     let doppler_step_hz = config.acquisition_doppler_step_hz.max(1) as f64;
-    let doppler_error_bins = (measured_doppler_hz - signal.doppler_hz).abs() / doppler_step_hz;
+    let doppler_error_bins =
+        (measured_doppler_hz - expected_measured_doppler_hz).abs() / doppler_step_hz;
     let accepted = matches!(result.hypothesis, crate::api::core::AcqHypothesis::Accepted);
     let detected = !matches!(result.hypothesis, crate::api::core::AcqHypothesis::Rejected)
         && code_phase_error_samples <= code_phase_tolerance_samples
