@@ -467,7 +467,7 @@ tracking_mode_vector_weight = 1.2
     assert_eq!(artifact_row["payload"]["source_time"]["sample_index"], 0, "{artifact_row}");
     assert_eq!(artifact_doppler_hz, reported_doppler_hz);
     assert_eq!(
-        artifact_row["payload"]["doppler_refinement"]["method"], "parabolic_peak",
+        artifact_row["payload"]["doppler_refinement"]["method"], "quadratic_likelihood_surface",
         "acquisition artifact should expose doppler refinement provenance: {artifact_row}"
     );
 
@@ -584,7 +584,7 @@ navigation_data = "constant_positive"
         serde_json::from_str(acq_artifact.lines().next().expect("artifact row"))
             .expect("parse acquisition artifact row");
     assert_eq!(
-        artifact_row["payload"]["code_phase_refinement"]["method"], "parabolic_code_peak",
+        artifact_row["payload"]["code_phase_refinement"]["method"], "quadratic_likelihood_surface",
         "acquisition artifact should expose code-phase refinement provenance: {artifact_row}"
     );
 
