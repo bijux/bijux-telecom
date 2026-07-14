@@ -4,7 +4,7 @@ mod support;
 
 use bijux_gnss_core::api::{
     AcqHypothesis, AcqResult, Constellation, Hertz, ReceiverSampleTrace, SatId, SignalBand,
-    SignalCode, GPS_L1_CA_CARRIER_HZ, GPS_L5_CARRIER_HZ,
+    SignalCode, BEIDOU_B1_CARRIER_HZ, GPS_L1_CA_CARRIER_HZ, GPS_L5_CARRIER_HZ,
 };
 use bijux_gnss_receiver::api::{
     sim::{
@@ -14,7 +14,9 @@ use bijux_gnss_receiver::api::{
     },
     ReceiverPipelineConfig, ReceiverRuntime, TrackingEngine,
 };
-use bijux_gnss_signal::api::{shared_path_code_rate_hz, signal_spec_gps_l5_i};
+use bijux_gnss_signal::api::{
+    shared_path_code_rate_hz, signal_spec_beidou_b1i, signal_spec_gps_l5_i,
+};
 
 use support::tracking_truth::{post_lock_code_phase_errors_samples, stable_tracking_window};
 
@@ -69,6 +71,21 @@ fn gps_l5_tracking_config() -> ReceiverPipelineConfig {
         intermediate_freq_hz: GPS_L1_CA_CARRIER_HZ.value() - GPS_L5_CARRIER_HZ.value(),
         code_freq_basis_hz: 10_230_000.0,
         code_length: 10_230,
+        channels: 4,
+        early_late_spacing_chips: 0.5,
+        dll_bw_hz: 2.0,
+        pll_bw_hz: 15.0,
+        fll_bw_hz: 10.0,
+        ..ReceiverPipelineConfig::default()
+    }
+}
+
+fn beidou_b1_tracking_config() -> ReceiverPipelineConfig {
+    ReceiverPipelineConfig {
+        sampling_freq_hz: 4_092_000.0,
+        intermediate_freq_hz: GPS_L1_CA_CARRIER_HZ.value() - BEIDOU_B1_CARRIER_HZ.value(),
+        code_freq_basis_hz: 2_046_000.0,
+        code_length: 2_046,
         channels: 4,
         early_late_spacing_chips: 0.5,
         dll_bw_hz: 2.0,
@@ -173,5 +190,82 @@ fn tracking_holds_gps_l5_code_lock_with_carrier_aided_code_rate() {
             .iter()
             .all(|error_hz| *error_hz <= CARRIER_AID_CODE_RATE_ERROR_MAX_HZ),
         "GPS L5 code rate did not follow carrier-aided expectation {expected_code_rate_hz}: errors={stable_code_rate_errors_hz:?} epochs={stable_epochs:?}",
+    );
+}
+
+#[test]
+fn tracking_holds_beidou_b1i_code_lock_with_carrier_aided_code_rate() {
+    let config = beidou_b1_tracking_config();
+    let sat = SatId { constellation: Constellation::Beidou, prn: 11 };
+    let signal = signal_spec_beidou_b1i();
+    let carrier_doppler_hz = 1_250.0;
+    let code_phase_chips = 768.5;
+    let receiver_oscillator = SyntheticReceiverOscillatorModel {
+        carrier_frequency_bias_hz: carrier_doppler_hz,
+        carrier_frequency_drift_hz_per_s: 0.0,
+        sampling_clock_fractional_error: carrier_doppler_hz / signal.carrier_hz.value(),
+        ..SyntheticReceiverOscillatorModel::default()
+    };
+    let frame = synthetic_signal_with_carrier_aided_code_rate(
+        &config,
+        SyntheticSignalParams {
+            sat,
+            glonass_frequency_channel: None,
+            signal_band: SignalBand::B1,
+            signal_code: SignalCode::B1I,
+            doppler_hz: 0.0,
+            code_phase_chips,
+            carrier_phase_rad: 0.0,
+            cn0_db_hz: CARRIER_AID_CN0_DB_HZ,
+            navigation_data: SyntheticNavigationData::from(false),
+        },
+        &receiver_oscillator,
+    );
+    let seeded_code_phase_samples =
+        expected_acquisition_code_phase_samples(&config, &frame, code_phase_chips);
+    let tracking = TrackingEngine::new(config.clone(), ReceiverRuntime::default());
+    let tracks = tracking.track_from_acquisition(
+        &frame,
+        &[accepted_acquisition(
+            sat,
+            SignalBand::B1,
+            SignalCode::B1I,
+            carrier_doppler_hz,
+            carrier_doppler_hz,
+            seeded_code_phase_samples,
+        )],
+    );
+    let epochs = &tracks.first().expect("track").epochs;
+    let stable_epochs = stable_tracking_window(epochs, CARRIER_AID_MIN_STABLE_EPOCHS);
+    let expected_code_rate_hz = shared_path_code_rate_hz(carrier_doppler_hz, signal, signal)
+        .expect("carrier-aided code rate");
+    let post_lock_errors_samples =
+        post_lock_code_phase_errors_samples(&config, epochs, seeded_code_phase_samples as f64);
+    let stable_code_rate_errors_hz = stable_epochs
+        .iter()
+        .map(|epoch| (epoch.code_rate_hz.0 - expected_code_rate_hz).abs())
+        .collect::<Vec<_>>();
+
+    assert!(
+        stable_epochs.len() >= CARRIER_AID_MIN_STABLE_EPOCHS,
+        "tracking did not sustain enough BeiDou B1I lock epochs: epochs={epochs:?}",
+    );
+    assert!(
+        stable_epochs
+            .iter()
+            .all(|epoch| epoch.lock && epoch.dll_lock && epoch.pll_lock && epoch.fll_lock),
+        "BeiDou B1I stable tracking window lost lock flags: epochs={epochs:?}",
+    );
+    assert!(
+        post_lock_errors_samples
+            .iter()
+            .all(|error_samples| *error_samples <= CARRIER_AID_CODE_PHASE_ERROR_MAX_SAMPLES),
+        "BeiDou B1I code phase drifted under carrier-aided code tracking: errors={post_lock_errors_samples:?} epochs={epochs:?}",
+    );
+    assert!(
+        stable_code_rate_errors_hz
+            .iter()
+            .all(|error_hz| *error_hz <= CARRIER_AID_CODE_RATE_ERROR_MAX_HZ),
+        "BeiDou B1I code rate did not follow carrier-aided expectation {expected_code_rate_hz}: errors={stable_code_rate_errors_hz:?} epochs={stable_epochs:?}",
     );
 }
