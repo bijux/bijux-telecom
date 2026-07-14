@@ -1647,6 +1647,7 @@ impl Tracking {
                     &mut channel.epochs,
                 );
                 annotate_navigation_bit_signs(&channel.signal_model, &mut channel.epochs);
+                stabilize_joint_navigation_bit_signs(&channel.signal_model, &mut channel.epochs);
                 let stability_signature = tracking_stability_signature(&channel.epochs);
                 let outcome = if channel.epochs.is_empty() { "not_tracked" } else { "tracked" };
                 self.runtime.trace.record(TraceRecord {
@@ -2031,7 +2032,7 @@ impl Tracking {
             carrier_prompt,
             correlation.carrier_prompt_source,
             phase_decision.nav_bit_phase_offset_cycles,
-            tracking_state_locked && pll_lock,
+            tracking_state_locked && dll_lock && (pll_lock || fll_lock),
         );
         let nav_bit_lock = navigation_bit_sign.is_some()
             || (signal_model.phase_transition_source.reports_navigation_bit_lock()
@@ -2180,6 +2181,52 @@ fn annotate_navigation_bit_signs(signal_model: &TrackingSignalModel, epochs: &mu
 
 #[cfg(not(feature = "nav"))]
 fn annotate_navigation_bit_signs(_signal_model: &TrackingSignalModel, _epochs: &mut [TrackEpoch]) {}
+
+fn stabilize_joint_navigation_bit_signs(signal_model: &TrackingSignalModel, epochs: &mut [TrackEpoch]) {
+    if signal_model.aiding_mode != TrackingAidingMode::PilotCarrier
+        || !signal_model.supports_epoch_data_symbol_sign_recovery()
+        || epochs.len() < 3
+    {
+        return;
+    }
+
+    let stable_tracking_epoch = |epoch: &TrackEpoch| {
+        epoch.lock_state == "tracking" && epoch.pll_lock && epoch.dll_lock && !epoch.cycle_slip
+    };
+    let mut smoothed_signs = Vec::new();
+    for index in 1..epochs.len() - 1 {
+        let previous = &epochs[index - 1];
+        let current = &epochs[index];
+        let next = &epochs[index + 1];
+        if !stable_tracking_epoch(previous)
+            || !stable_tracking_epoch(current)
+            || !stable_tracking_epoch(next)
+        {
+            continue;
+        }
+        let Some(previous_sign) = previous.navigation_bit_sign else {
+            continue;
+        };
+        let Some(next_sign) = next.navigation_bit_sign else {
+            continue;
+        };
+        if previous_sign != next_sign {
+            continue;
+        }
+        match current.navigation_bit_sign {
+            None => smoothed_signs.push((index, previous_sign)),
+            Some(current_sign) if current_sign != previous_sign => {
+                smoothed_signs.push((index, previous_sign));
+            }
+            _ => {}
+        }
+    }
+
+    for (index, sign) in smoothed_signs {
+        epochs[index].navigation_bit_sign = Some(sign);
+        epochs[index].nav_bit_lock = true;
+    }
+}
 
 fn acq_to_track_state(hypothesis: &AcqHypothesis) -> &'static str {
     match hypothesis {
