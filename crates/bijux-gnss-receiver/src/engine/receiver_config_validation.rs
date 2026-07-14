@@ -315,6 +315,7 @@ impl ReceiverConfig {
             pll_bw_hz: self.tracking.pll_bw_hz,
             fll_bw_hz: self.tracking.fll_bw_hz,
             adaptive_tracking_enabled: self.tracking.adaptive_tracking_enabled,
+            vector_tracking_enabled: self.tracking.vector_tracking_enabled,
             tracking_per_band: self
                 .tracking
                 .per_band
@@ -489,6 +490,20 @@ mod tests {
 
         assert!(!reparsed.tracking.adaptive_tracking_enabled);
         assert!(raw.contains("adaptive_tracking_enabled = false"));
+    }
+
+    #[test]
+    fn vector_tracking_toggle_round_trips_through_toml() {
+        let mut config = ReceiverConfig::default();
+        config.tracking.vector_tracking_enabled = false;
+
+        let raw = toml::to_string(&config).expect("serialize receiver config");
+        let reparsed: ReceiverConfig = toml::from_str(&raw).expect("parse receiver config");
+        let pipeline = reparsed.to_pipeline_config();
+
+        assert!(!reparsed.tracking.vector_tracking_enabled);
+        assert!(!pipeline.vector_tracking_enabled);
+        assert!(raw.contains("vector_tracking_enabled = false"));
     }
 
     #[test]

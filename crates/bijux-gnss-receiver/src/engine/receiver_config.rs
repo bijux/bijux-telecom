@@ -84,6 +84,8 @@ pub struct ReceiverPipelineConfig {
     pub fll_bw_hz: f64,
     /// Whether tracking loop and coherent integration adaptation are enabled.
     pub adaptive_tracking_enabled: bool,
+    /// Whether receiver-wide vector tracking aid is enabled.
+    pub vector_tracking_enabled: bool,
     /// Integration time for tracking, in milliseconds.
     pub tracking_integration_ms: u32,
     /// Target per-epoch budget, in milliseconds.
@@ -144,6 +146,7 @@ impl Default for ReceiverPipelineConfig {
             pll_bw_hz: 15.0,
             fll_bw_hz: 10.0,
             adaptive_tracking_enabled: default_adaptive_tracking_enabled(),
+            vector_tracking_enabled: default_vector_tracking_enabled(),
             tracking_integration_ms: 1,
             tracking_budget_ms: 1.0,
             tracking_over_budget_action: "drop_epochs".to_string(),
@@ -424,6 +427,9 @@ pub struct TrackingConfig {
     /// Whether tracking loop and coherent integration adaptation are enabled.
     #[serde(default = "default_adaptive_tracking_enabled")]
     pub adaptive_tracking_enabled: bool,
+    /// Whether receiver-wide vector tracking aid is enabled.
+    #[serde(default = "default_vector_tracking_enabled")]
+    pub vector_tracking_enabled: bool,
     /// Maximum tracking channels.
     pub max_channels: usize,
     /// Per-epoch CPU budget, in milliseconds.
@@ -462,6 +468,10 @@ pub fn default_tracking_integration_ms() -> u32 {
 }
 
 pub fn default_adaptive_tracking_enabled() -> bool {
+    true
+}
+
+pub fn default_vector_tracking_enabled() -> bool {
     true
 }
 
