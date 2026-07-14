@@ -151,6 +151,16 @@ pub fn galileo_e1_cboc_value(
             - (pilot * ((GALILEO_E1_CBOC_ALPHA * boc11) - (GALILEO_E1_CBOC_BETA * boc61)))))
 }
 
+pub fn galileo_e1_pilot_cboc_value(e1c_code: &[i8], chip_phase: f64) -> Result<f32, SignalError> {
+    let pilot = code_value_at_phase(e1c_code, chip_phase)?;
+    let boc11 = boc_subcarrier_value(chip_phase, 1)?;
+    let boc61 = boc_subcarrier_value(chip_phase, 6)?;
+
+    Ok(std::f32::consts::FRAC_1_SQRT_2
+        * pilot
+        * ((GALILEO_E1_CBOC_ALPHA * boc11) - (GALILEO_E1_CBOC_BETA * boc61)))
+}
+
 pub fn sample_galileo_e1_cboc(
     prn: u8,
     sample_rate_hz: f64,
@@ -179,6 +189,29 @@ pub fn sample_galileo_e1_cboc(
             primary_code_period_index,
             data_bit,
         )?);
+    }
+    Ok(samples)
+}
+
+pub fn sample_galileo_e1_pilot_cboc_code(
+    prn: u8,
+    sample_rate_hz: f64,
+    start_chip_phase: f64,
+    sample_count: usize,
+) -> Result<Vec<f32>, SignalError> {
+    if !sample_rate_hz.is_finite() || sample_rate_hz <= 0.0 {
+        return Err(SignalError::InvalidSampleRate);
+    }
+    if !start_chip_phase.is_finite() {
+        return Err(SignalError::InvalidCodePhase);
+    }
+
+    let e1c = generate_galileo_e1c_code(prn)?;
+    let chips_per_sample = GALILEO_E1_CODE_RATE_HZ / sample_rate_hz;
+    let mut samples = Vec::with_capacity(sample_count);
+    for sample_index in 0..sample_count {
+        let chip_phase = start_chip_phase + sample_index as f64 * chips_per_sample;
+        samples.push(galileo_e1_pilot_cboc_value(&e1c, chip_phase)?);
     }
     Ok(samples)
 }
@@ -235,5 +268,17 @@ mod tests {
             galileo_e1c_secondary_chip(GALILEO_E1_SECONDARY_CODE_CHIPS),
             galileo_e1c_secondary_chip(0)
         );
+    }
+
+    #[test]
+    fn pilot_cboc_sampling_matches_pointwise_value() {
+        let e1c = generate_galileo_e1c_code(11).expect("valid Galileo E1-C PRN");
+        let chip_phase = 17.25;
+        let sample = galileo_e1_pilot_cboc_value(&e1c, chip_phase).expect("pilot CBOC sample");
+        let sampled_period =
+            sample_galileo_e1_pilot_cboc_code(11, GALILEO_E1_CODE_RATE_HZ, chip_phase, 1)
+                .expect("pilot CBOC code");
+
+        assert!((sample - sampled_period[0]).abs() <= 1.0e-6);
     }
 }
