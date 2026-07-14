@@ -278,6 +278,12 @@ fn tracking_holds_gps_l5_code_lock_with_carrier_aided_code_rate() {
             .all(|error_hz| *error_hz <= CARRIER_AID_CODE_RATE_ERROR_MAX_HZ),
         "GPS L5 code rate did not follow carrier-aided expectation {expected_code_rate_hz}: errors={stable_code_rate_errors_hz:?} epochs={stable_epochs:?}",
     );
+    assert!(
+        stable_epochs.iter().all(|epoch| epoch
+            .tracking_provenance
+            .contains("code_rate_reference=carrier_doppler")),
+        "GPS L5 tracking provenance must expose carrier-Doppler code-rate aiding: epochs={stable_epochs:?}",
+    );
 }
 
 #[test]

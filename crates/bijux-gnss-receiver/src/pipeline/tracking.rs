@@ -1664,6 +1664,10 @@ impl Tracking {
                         channel.signal_model.pilot_component.is_some(),
                         channel.signal_model.data_symbol_component.is_some(),
                     );
+                    epoch.tracking_provenance.push_str(&format!(
+                        " code_rate_reference=carrier_doppler carrier_aiding_doppler_window_hz={:.3}",
+                        carrier_aiding_doppler_window_hz(&self.config),
+                    ));
                 }
                 self.apply_sample_rate_mismatch_diagnostic(
                     channel.sat,
