@@ -1,3 +1,7 @@
+const TRACKING_LOCK_DETECTOR_FALSE_UNLOCK_TARGET: f64 = 1.0e-6;
+const TRACKING_LOCK_DETECTOR_UNLOCKED_DLL_HALF_WIDTH: f64 = 1.0;
+const TRACKING_LOCK_DETECTOR_UNLOCKED_PLL_HALF_WIDTH_RAD: f64 = std::f64::consts::PI;
+
 /// Measure stable tracking lock probability for one synthetic signal profile.
 pub fn measure_truth_guided_tracking_lock_probability(
     config: &ReceiverPipelineConfig,
@@ -129,6 +133,93 @@ pub fn measure_truth_guided_tracking_lock_rate(
         .collect::<Vec<_>>();
 
     SyntheticTrackingLockRateReport { scenario_id_prefix: scenario_id_prefix.to_string(), points }
+}
+
+/// Report calibrated lock-detector probabilities across C/N0 and dynamics operating points.
+pub fn measure_tracking_lock_detector_calibration(
+    config: &ReceiverPipelineConfig,
+    cases: &[SyntheticTrackingLockDetectorCalibrationCase],
+    scenario_id_prefix: &str,
+) -> SyntheticTrackingLockDetectorCalibrationReport {
+    let samples_per_chip = config.sampling_freq_hz / config.code_freq_basis_hz;
+    let points = cases
+        .iter()
+        .map(|case| {
+            let thresholds = calibrated_lock_detector_thresholds(LockDetectorCalibrationInput {
+                cn0_dbhz: case.cn0_db_hz,
+                coherent_integration_s: case.coherent_ms.max(1) as f64 / 1000.0,
+                samples_per_chip,
+                early_late_spacing_chips: case.early_late_spacing_chips,
+                dll_false_unlock_probability: TRACKING_LOCK_DETECTOR_FALSE_UNLOCK_TARGET,
+                pll_false_unlock_probability: TRACKING_LOCK_DETECTOR_FALSE_UNLOCK_TARGET,
+                fll_false_unlock_probability: TRACKING_LOCK_DETECTOR_FALSE_UNLOCK_TARGET,
+                dynamic_stress_hz: case.dynamic_stress_hz,
+            });
+            let probabilities = lock_detector_probability_summary(LockDetectorProbabilityInput {
+                thresholds,
+                unlocked_dll_half_width: TRACKING_LOCK_DETECTOR_UNLOCKED_DLL_HALF_WIDTH,
+                unlocked_pll_half_width_rad: TRACKING_LOCK_DETECTOR_UNLOCKED_PLL_HALF_WIDTH_RAD,
+                unlocked_fll_half_width_hz: case.unlocked_fll_half_width_hz,
+                missed_unlock_bias_sigma: case.missed_unlock_bias_sigma,
+            });
+
+            SyntheticTrackingLockDetectorCalibrationPoint {
+                cn0_db_hz: case.cn0_db_hz,
+                coherent_ms: case.coherent_ms,
+                early_late_spacing_chips: case.early_late_spacing_chips,
+                dynamic_stress_hz: case.dynamic_stress_hz,
+                coherent_snr_linear: thresholds.distributions.coherent_snr_linear,
+                dll_lock_threshold: thresholds.dll_lock as f64,
+                pll_lock_threshold_rad: thresholds.pll_lock_rad as f64,
+                fll_lock_threshold_hz: thresholds.fll_lock_hz,
+                false_unlock_probability: probabilities.false_unlock_probability,
+                false_lock_probability: probabilities.false_lock_probability,
+                missed_unlock_probability: probabilities.missed_unlock_probability,
+                dll_false_unlock_probability: probabilities.dll_false_unlock_probability,
+                pll_false_unlock_probability: probabilities.pll_false_unlock_probability,
+                fll_false_unlock_probability: probabilities.fll_false_unlock_probability,
+                dll_false_lock_probability: probabilities.dll_false_lock_probability,
+                pll_false_lock_probability: probabilities.pll_false_lock_probability,
+                fll_false_lock_probability: probabilities.fll_false_lock_probability,
+            }
+        })
+        .collect::<Vec<_>>();
+
+    SyntheticTrackingLockDetectorCalibrationReport {
+        scenario_id_prefix: scenario_id_prefix.to_string(),
+        dll_false_unlock_target: TRACKING_LOCK_DETECTOR_FALSE_UNLOCK_TARGET,
+        pll_false_unlock_target: TRACKING_LOCK_DETECTOR_FALSE_UNLOCK_TARGET,
+        fll_false_unlock_target: TRACKING_LOCK_DETECTOR_FALSE_UNLOCK_TARGET,
+        point_count: points.len(),
+        pass: points.iter().all(tracking_lock_detector_calibration_point_is_finite),
+        points,
+    }
+}
+
+fn tracking_lock_detector_calibration_point_is_finite(
+    point: &SyntheticTrackingLockDetectorCalibrationPoint,
+) -> bool {
+    point.coherent_snr_linear.is_finite()
+        && point.coherent_snr_linear > 0.0
+        && point.dll_lock_threshold.is_finite()
+        && point.dll_lock_threshold > 0.0
+        && point.pll_lock_threshold_rad.is_finite()
+        && point.pll_lock_threshold_rad > 0.0
+        && point.fll_lock_threshold_hz.is_finite()
+        && point.fll_lock_threshold_hz > 0.0
+        && probability_is_valid(point.false_unlock_probability)
+        && probability_is_valid(point.false_lock_probability)
+        && probability_is_valid(point.missed_unlock_probability)
+        && probability_is_valid(point.dll_false_unlock_probability)
+        && probability_is_valid(point.pll_false_unlock_probability)
+        && probability_is_valid(point.fll_false_unlock_probability)
+        && probability_is_valid(point.dll_false_lock_probability)
+        && probability_is_valid(point.pll_false_lock_probability)
+        && probability_is_valid(point.fll_false_lock_probability)
+}
+
+fn probability_is_valid(probability: f64) -> bool {
+    probability.is_finite() && (0.0..=1.0).contains(&probability)
 }
 
 /// Measure noise-only false-alarm rate for an acquisition integration profile.

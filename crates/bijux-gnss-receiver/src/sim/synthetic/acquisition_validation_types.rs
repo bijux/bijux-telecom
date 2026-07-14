@@ -1030,3 +1030,78 @@ pub struct SyntheticTrackingLockRateReport {
     /// Measurement points captured in the report.
     pub points: Vec<SyntheticTrackingLockRatePoint>,
 }
+
+/// Lock-detector calibration input for one synthetic operating point.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticTrackingLockDetectorCalibrationCase {
+    /// Injected carrier-to-noise density ratio in dB-Hz.
+    pub cn0_db_hz: f64,
+    /// Coherent integration interval in milliseconds.
+    pub coherent_ms: u32,
+    /// Early-late correlator spacing in chips.
+    pub early_late_spacing_chips: f64,
+    /// Residual dynamic stress applied to the FLL detector in Hz.
+    pub dynamic_stress_hz: f64,
+    /// Half-width of the unlocked FLL search region in Hz.
+    pub unlocked_fll_half_width_hz: f64,
+    /// Unlocked discriminator bias expressed in calibrated sigma units.
+    pub missed_unlock_bias_sigma: f64,
+}
+
+/// Calibrated lock-detector probabilities for one synthetic operating point.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticTrackingLockDetectorCalibrationPoint {
+    /// Injected carrier-to-noise density ratio in dB-Hz.
+    pub cn0_db_hz: f64,
+    /// Coherent integration interval in milliseconds.
+    pub coherent_ms: u32,
+    /// Early-late correlator spacing in chips.
+    pub early_late_spacing_chips: f64,
+    /// Residual dynamic stress applied to the FLL detector in Hz.
+    pub dynamic_stress_hz: f64,
+    /// Coherent signal-to-noise ratio used by the detector model.
+    pub coherent_snr_linear: f64,
+    /// DLL normalized-envelope lock threshold.
+    pub dll_lock_threshold: f64,
+    /// PLL phase-error lock threshold in radians.
+    pub pll_lock_threshold_rad: f64,
+    /// FLL frequency-error lock threshold in Hz.
+    pub fll_lock_threshold_hz: f64,
+    /// Probability that any locked detector unlocks falsely at this point.
+    pub false_unlock_probability: f64,
+    /// Probability that all unlocked detector gates accept noise at this point.
+    pub false_lock_probability: f64,
+    /// Probability that all biased unlocked detector gates still accept at this point.
+    pub missed_unlock_probability: f64,
+    /// Locked DLL false-unlock probability.
+    pub dll_false_unlock_probability: f64,
+    /// Locked PLL false-unlock probability.
+    pub pll_false_unlock_probability: f64,
+    /// Locked FLL false-unlock probability.
+    pub fll_false_unlock_probability: f64,
+    /// Unlocked DLL false-lock probability.
+    pub dll_false_lock_probability: f64,
+    /// Unlocked PLL false-lock probability.
+    pub pll_false_lock_probability: f64,
+    /// Unlocked FLL false-lock probability.
+    pub fll_false_lock_probability: f64,
+}
+
+/// Lock-detector calibration report across C/N0 and dynamics operating points.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticTrackingLockDetectorCalibrationReport {
+    /// Scenario identifier prefix shared across the measurement points.
+    pub scenario_id_prefix: String,
+    /// Target locked DLL false-unlock probability used to calibrate thresholds.
+    pub dll_false_unlock_target: f64,
+    /// Target locked PLL false-unlock probability used to calibrate thresholds.
+    pub pll_false_unlock_target: f64,
+    /// Target locked FLL false-unlock probability used to calibrate thresholds.
+    pub fll_false_unlock_target: f64,
+    /// Number of operating points captured in the report.
+    pub point_count: usize,
+    /// Whether every reported point has finite thresholds and probabilities.
+    pub pass: bool,
+    /// Measurement points captured in the report.
+    pub points: Vec<SyntheticTrackingLockDetectorCalibrationPoint>,
+}

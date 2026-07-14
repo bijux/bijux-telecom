@@ -20,8 +20,10 @@ use crate::io::data::SampleSourceError;
 use crate::pipeline::doppler::carrier_hz_from_doppler_hz;
 use bijux_gnss_nav::api::{sat_state_gps_l1ca, GpsEphemeris};
 use bijux_gnss_signal::api::{
-    encode_quantized_samples, first_order_ionosphere_code_delay_m, quantize_samples_for_storage,
-    receiver_search_code_phase_samples, samples_per_code, IqQuantization, IqSampleFormat,
+    calibrated_lock_detector_thresholds, encode_quantized_samples,
+    first_order_ionosphere_code_delay_m, lock_detector_probability_summary,
+    quantize_samples_for_storage, receiver_search_code_phase_samples, samples_per_code,
+    IqQuantization, IqSampleFormat, LockDetectorCalibrationInput, LockDetectorProbabilityInput,
     RawIqMetadata,
 };
 use serde::{Deserialize, Serialize};
