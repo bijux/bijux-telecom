@@ -62,6 +62,7 @@ const ACQUISITION_CACHE_MODEL_VERSION: u32 = 1;
 const ACQUISITION_CACHE_POLICY_VERSION: u32 = 1;
 const SEARCH_EDGE_HINT_PEAK_MEAN_RATIO_FRACTION: f32 = 0.9;
 const SEARCH_EDGE_RISE_RATIO_EPSILON: f32 = 0.05;
+const JOINT_ACQUISITION_REFINEMENT_METHOD: &str = "quadratic_likelihood_surface";
 const SUB_BIN_DOPPLER_REFINEMENT_METHOD: &str = "parabolic_peak";
 const SUB_BIN_DOPPLER_REFINEMENT_MAX_OFFSET_BINS: f64 = 0.5;
 const SUB_BIN_DOPPLER_REFINEMENT_EPSILON: f64 = 1e-12;
@@ -275,6 +276,22 @@ struct CorrelationMetrics {
     second_idx: usize,
     second: f32,
     mean: f32,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct JointAcquisitionRefinement {
+    doppler_offset_bins: f64,
+    code_phase_offset_samples: f64,
+    refined_code_phase_samples: f64,
+    doppler_cross_section: [f32; 3],
+    code_phase_cross_section: [f32; 3],
+}
+
+#[derive(Debug, Clone, Copy)]
+struct LocalAcquisitionLikelihoodSurface {
+    doppler_cross_section: [f32; 3],
+    code_phase_cross_section: [f32; 3],
+    values: [[f32; 3]; 3],
 }
 
 fn unique_strategy_components(
@@ -1299,6 +1316,61 @@ impl Acquisition {
         code_fft
     }
 
+    fn estimate_joint_acquisition_refinement(
+        &self,
+        frame: &SamplesFrame,
+        signal_model: &AcquisitionSignalModel,
+        sat: SatId,
+        coarse_carrier_hz: f64,
+        coarse_code_phase_samples: usize,
+        doppler_step_hz: i32,
+        coherent_ms: u32,
+        noncoherent: u32,
+    ) -> Option<JointAcquisitionRefinement> {
+        if doppler_step_hz <= 0 {
+            return None;
+        }
+        let samples_per_code = signal_model.samples_per_code(self.config.sampling_freq_hz);
+        let coherent_periods = signal_model.coherent_periods(coherent_ms)?;
+        if samples_per_code == 0
+            || frame.len()
+                < samples_per_code * coherent_periods.max(1) as usize * noncoherent.max(1) as usize
+        {
+            return None;
+        }
+
+        let surface = measure_local_acquisition_likelihood_surface(
+            &self.config,
+            signal_model,
+            frame,
+            sat,
+            coarse_carrier_hz,
+            coarse_code_phase_samples,
+            doppler_step_hz as f64,
+            coherent_ms,
+            noncoherent,
+        )?;
+        let (doppler_offset_bins, code_phase_offset_samples) =
+            estimate_quadratic_surface_peak_offsets(&surface)?;
+        if doppler_offset_bins.abs() < f64::EPSILON
+            && code_phase_offset_samples.abs()
+                < SUB_SAMPLE_CODE_PHASE_REFINEMENT_MIN_ABS_OFFSET_SAMPLES
+        {
+            return None;
+        }
+
+        Some(JointAcquisitionRefinement {
+            doppler_offset_bins,
+            code_phase_offset_samples,
+            refined_code_phase_samples: wrap_acquisition_code_phase_samples(
+                coarse_code_phase_samples as f64 + code_phase_offset_samples,
+                samples_per_code,
+            ),
+            doppler_cross_section: surface.doppler_cross_section,
+            code_phase_cross_section: surface.code_phase_cross_section,
+        })
+    }
+
     fn estimate_acquisition_code_phase_refinement(
         &self,
         frame: &SamplesFrame,
@@ -2270,6 +2342,38 @@ fn refine_acquisition_candidates(
 ) {
     for candidate in candidates {
         let coarse_carrier_hz = candidate.carrier_hz.0;
+        if let Some(refinement) = acquisition.estimate_joint_acquisition_refinement(
+            frame,
+            signal_model,
+            sat,
+            coarse_carrier_hz,
+            candidate.code_phase_samples,
+            doppler_step_hz,
+            coherent_ms,
+            noncoherent,
+        ) {
+            candidate.carrier_hz = Hertz(
+                coarse_carrier_hz + (refinement.doppler_offset_bins * doppler_step_hz as f64),
+            );
+            candidate.doppler_refinement = Some(AcqDopplerRefinement {
+                method: JOINT_ACQUISITION_REFINEMENT_METHOD.to_string(),
+                coarse_carrier_hz: Hertz(coarse_carrier_hz),
+                offset_hz: refinement.doppler_offset_bins * doppler_step_hz as f64,
+                offset_bins: refinement.doppler_offset_bins,
+                left_peak_mean_ratio: refinement.doppler_cross_section[0],
+                center_peak_mean_ratio: refinement.doppler_cross_section[1],
+                right_peak_mean_ratio: refinement.doppler_cross_section[2],
+            });
+            candidate.code_phase_refinement = Some(AcqCodePhaseRefinement {
+                method: JOINT_ACQUISITION_REFINEMENT_METHOD.to_string(),
+                offset_samples: refinement.code_phase_offset_samples,
+                refined_code_phase_samples: refinement.refined_code_phase_samples,
+                left_correlation_norm: refinement.code_phase_cross_section[0],
+                center_correlation_norm: refinement.code_phase_cross_section[1],
+                right_correlation_norm: refinement.code_phase_cross_section[2],
+            });
+            continue;
+        }
         if let Some(refinement) = estimate_acquisition_doppler_refinement(
             coarse_carrier_hz,
             grid_candidates,
@@ -2413,6 +2517,121 @@ fn estimate_acquisition_doppler_refinement(
         center_peak_mean_ratio: center.peak_mean_ratio,
         right_peak_mean_ratio: right.peak_mean_ratio,
     })
+}
+
+fn measure_local_acquisition_likelihood_surface(
+    config: &ReceiverPipelineConfig,
+    signal_model: &AcquisitionSignalModel,
+    frame: &SamplesFrame,
+    sat: SatId,
+    coarse_carrier_hz: f64,
+    coarse_code_phase_samples: usize,
+    doppler_step_hz: f64,
+    coherent_ms: u32,
+    noncoherent: u32,
+) -> Option<LocalAcquisitionLikelihoodSurface> {
+    if !doppler_step_hz.is_finite() || doppler_step_hz <= f64::EPSILON {
+        return None;
+    }
+    let samples_per_code = signal_model.samples_per_code(config.sampling_freq_hz);
+    if samples_per_code < 3 {
+        return None;
+    }
+
+    let center_index = coarse_code_phase_samples % samples_per_code;
+    let left_index = (center_index + samples_per_code - 1) % samples_per_code;
+    let right_index = (center_index + 1) % samples_per_code;
+    let mut values = [[0.0f32; 3]; 3];
+
+    for (doppler_index, carrier_hz) in [
+        coarse_carrier_hz - doppler_step_hz,
+        coarse_carrier_hz,
+        coarse_carrier_hz + doppler_step_hz,
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let profile = measure_code_phase_profile(
+            config,
+            signal_model,
+            frame,
+            sat,
+            carrier_hz,
+            coherent_ms,
+            noncoherent,
+        )?;
+        values[doppler_index] = [profile[left_index], profile[center_index], profile[right_index]];
+    }
+
+    let center = values[1][1];
+    if center < values[0][1]
+        || center < values[2][1]
+        || center < values[1][0]
+        || center < values[1][2]
+    {
+        return None;
+    }
+
+    Some(LocalAcquisitionLikelihoodSurface {
+        doppler_cross_section: [values[0][1], values[1][1], values[2][1]],
+        code_phase_cross_section: values[1],
+        values,
+    })
+}
+
+fn estimate_quadratic_surface_peak_offsets(
+    surface: &LocalAcquisitionLikelihoodSurface,
+) -> Option<(f64, f64)> {
+    let values = &surface.values;
+    if values[1][1] < values[0][1]
+        || values[1][1] < values[2][1]
+        || values[1][1] < values[1][0]
+        || values[1][1] < values[1][2]
+    {
+        return None;
+    }
+    let center = values[1][1] as f64;
+    let doppler_curvature = 0.5 * (values[2][1] as f64 + values[0][1] as f64 - (2.0 * center));
+    let code_curvature = 0.5 * (values[1][2] as f64 + values[1][0] as f64 - (2.0 * center));
+    let cross_curvature = 0.25
+        * (values[2][2] as f64 - values[2][0] as f64 - values[0][2] as f64 + values[0][0] as f64);
+    let doppler_slope = 0.5 * (values[2][1] as f64 - values[0][1] as f64);
+    let code_slope = 0.5 * (values[1][2] as f64 - values[1][0] as f64);
+
+    if !doppler_curvature.is_finite()
+        || !code_curvature.is_finite()
+        || !cross_curvature.is_finite()
+        || !doppler_slope.is_finite()
+        || !code_slope.is_finite()
+        || doppler_curvature >= -SUB_BIN_DOPPLER_REFINEMENT_EPSILON
+        || code_curvature >= -SUB_SAMPLE_CODE_PHASE_REFINEMENT_EPSILON
+    {
+        return None;
+    }
+
+    let determinant = (4.0 * doppler_curvature * code_curvature) - cross_curvature.powi(2);
+    if !determinant.is_finite() || determinant <= SUB_BIN_DOPPLER_REFINEMENT_EPSILON {
+        return None;
+    }
+
+    let doppler_offset_bins =
+        ((cross_curvature * code_slope) - (2.0 * code_curvature * doppler_slope)) / determinant;
+    let code_phase_offset_samples =
+        ((cross_curvature * doppler_slope) - (2.0 * doppler_curvature * code_slope)) / determinant;
+    if !doppler_offset_bins.is_finite() || !code_phase_offset_samples.is_finite() {
+        return None;
+    }
+
+    Some((
+        doppler_offset_bins.clamp(
+            -SUB_BIN_DOPPLER_REFINEMENT_MAX_OFFSET_BINS,
+            SUB_BIN_DOPPLER_REFINEMENT_MAX_OFFSET_BINS,
+        ),
+        code_phase_offset_samples.clamp(
+            -SUB_SAMPLE_CODE_PHASE_REFINEMENT_MAX_OFFSET_SAMPLES,
+            SUB_SAMPLE_CODE_PHASE_REFINEMENT_MAX_OFFSET_SAMPLES,
+        ),
+    ))
 }
 
 fn measure_code_phase_profile(
@@ -3128,6 +3347,32 @@ mod tests {
         let refinement = estimate_acquisition_doppler_refinement(0.0, &candidates, 250);
 
         assert!(refinement.is_none());
+    }
+
+    #[test]
+    fn quadratic_surface_refinement_estimates_joint_peak_offsets() {
+        let surface = LocalAcquisitionLikelihoodSurface {
+            doppler_cross_section: [7.84, 10.0, 9.16],
+            code_phase_cross_section: [9.38, 10.0, 8.62],
+            values: [[7.62, 7.84, 6.06], [9.38, 10.0, 8.62], [8.14, 9.16, 8.18]],
+        };
+
+        let (doppler_offset_bins, code_phase_offset_samples) =
+            estimate_quadratic_surface_peak_offsets(&surface).expect("joint refinement");
+
+        assert!((doppler_offset_bins - 0.2).abs() < 1.0e-6);
+        assert!((code_phase_offset_samples + 0.15).abs() < 1.0e-6);
+    }
+
+    #[test]
+    fn quadratic_surface_refinement_rejects_non_maximum_center() {
+        let surface = LocalAcquisitionLikelihoodSurface {
+            doppler_cross_section: [11.0, 10.0, 8.0],
+            code_phase_cross_section: [8.0, 10.0, 7.0],
+            values: [[7.0, 11.0, 6.5], [8.0, 10.0, 7.0], [6.0, 8.0, 5.5]],
+        };
+
+        assert!(estimate_quadratic_surface_peak_offsets(&surface).is_none());
     }
 
     #[test]
