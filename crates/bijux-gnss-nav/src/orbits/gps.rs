@@ -515,6 +515,7 @@ mod tests {
         prompt.extend(std::iter::repeat_n(1.0_f32, 20));
         let result = bit_sync_from_prompt(&prompt);
         assert_eq!(result.bit_start_ms, 5);
+        assert!(result.sync_confidence > 0.0, "{result:?}");
         assert_eq!(result.bits.len(), 2);
         assert_eq!(result.bits[0], -1);
         assert_eq!(result.bits[1], 1);
@@ -529,16 +530,20 @@ mod tests {
         let demodulation = demodulate_gps_l1ca_navigation_bits(&prompt);
 
         assert_eq!(demodulation.bit_start_ms, 3);
+        assert!(demodulation.sync_confidence > 0.0, "{demodulation:?}");
+        assert_eq!(demodulation.complete_window_count, 2);
         assert_eq!(demodulation.bits.len(), 2);
         assert_eq!(demodulation.bits[0].bit_index, 0);
         assert_eq!(demodulation.bits[0].start_prompt_index, 3);
         assert_eq!(demodulation.bits[0].end_prompt_index_exclusive, 23);
         assert_eq!(demodulation.bits[0].sign, 1);
+        assert!(demodulation.bits[0].confidence > 0.9, "{demodulation:?}");
         assert!((demodulation.bits[0].prompt_sum - 30.0).abs() <= f32::EPSILON);
         assert_eq!(demodulation.bits[1].bit_index, 1);
         assert_eq!(demodulation.bits[1].start_prompt_index, 23);
         assert_eq!(demodulation.bits[1].end_prompt_index_exclusive, 43);
         assert_eq!(demodulation.bits[1].sign, -1);
+        assert!(demodulation.bits[1].confidence > 0.9, "{demodulation:?}");
         assert!((demodulation.bits[1].prompt_sum + 10.0).abs() <= f32::EPSILON);
     }
 

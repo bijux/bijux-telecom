@@ -19,6 +19,7 @@ const GPS_L1CA_LNAV_SUBFRAME_LENGTH_BITS: usize = 300;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BitSyncResult {
     pub bit_start_ms: usize,
+    pub sync_confidence: f64,
     pub bits: Vec<i8>,
 }
 
@@ -29,12 +30,24 @@ pub struct GpsL1CaNavigationBit {
     pub end_prompt_index_exclusive: usize,
     pub sign: i8,
     pub prompt_sum: f32,
+    pub confidence: f64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct GpsL1CaNavigationBits {
     pub bit_start_ms: usize,
+    pub sync_confidence: f64,
+    pub best_offset_metric: f64,
+    pub next_best_offset_metric: f64,
+    pub complete_window_count: usize,
     pub bits: Vec<GpsL1CaNavigationBit>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct GpsL1CaSymbolOffsetScore {
+    offset: usize,
+    metric: f64,
+    complete_window_count: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -98,49 +111,113 @@ pub struct GpsL1CaLnavDecodedStream {
 }
 
 pub fn demodulate_gps_l1ca_navigation_bits(prompt_i: &[f32]) -> GpsL1CaNavigationBits {
-    let mut best_offset = 0;
-    let mut best_metric = f64::MIN;
-    for offset in 0..GPS_L1CA_NAV_BIT_LENGTH_MS {
-        let mut metric = 0.0_f64;
-        let mut idx = offset;
-        while idx + GPS_L1CA_NAV_BIT_LENGTH_MS <= prompt_i.len() {
-            let sum: f64 =
-                prompt_i[idx..idx + GPS_L1CA_NAV_BIT_LENGTH_MS].iter().map(|v| *v as f64).sum();
-            metric += sum.abs();
-            idx += GPS_L1CA_NAV_BIT_LENGTH_MS;
-        }
-        if metric > best_metric {
-            best_metric = metric;
-            best_offset = offset;
-        }
-    }
+    let (best_score, next_best_score) = gps_l1ca_symbol_offset_scores(prompt_i);
+    let sync_confidence =
+        gps_l1ca_symbol_sync_confidence(best_score.metric, next_best_score.metric);
 
     let mut bits = Vec::new();
-    let mut idx = best_offset;
+    let mut idx = best_score.offset;
     let mut bit_index = 0;
     while idx + GPS_L1CA_NAV_BIT_LENGTH_MS <= prompt_i.len() {
         let end_prompt_index_exclusive = idx + GPS_L1CA_NAV_BIT_LENGTH_MS;
         let prompt_sum: f32 = prompt_i[idx..end_prompt_index_exclusive].iter().sum();
+        let prompt_energy: f64 = prompt_i[idx..end_prompt_index_exclusive]
+            .iter()
+            .map(|sample| sample.abs() as f64)
+            .sum();
+        let confidence = if prompt_energy > f64::EPSILON {
+            (prompt_sum.abs() as f64 / prompt_energy).clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
         bits.push(GpsL1CaNavigationBit {
             bit_index,
             start_prompt_index: idx,
             end_prompt_index_exclusive,
             sign: if prompt_sum >= 0.0 { 1 } else { -1 },
             prompt_sum,
+            confidence,
         });
         idx = end_prompt_index_exclusive;
         bit_index += 1;
     }
 
-    GpsL1CaNavigationBits { bit_start_ms: best_offset, bits }
+    GpsL1CaNavigationBits {
+        bit_start_ms: best_score.offset,
+        sync_confidence,
+        best_offset_metric: best_score.metric,
+        next_best_offset_metric: next_best_score.metric,
+        complete_window_count: best_score.complete_window_count,
+        bits,
+    }
 }
 
 pub fn bit_sync_from_prompt(prompt_i: &[f32]) -> BitSyncResult {
     let demodulation = demodulate_gps_l1ca_navigation_bits(prompt_i);
     BitSyncResult {
         bit_start_ms: demodulation.bit_start_ms,
+        sync_confidence: demodulation.sync_confidence,
         bits: demodulation.bits.into_iter().map(|bit| bit.sign).collect(),
     }
+}
+
+fn gps_l1ca_symbol_offset_scores(
+    prompt_i: &[f32],
+) -> (GpsL1CaSymbolOffsetScore, GpsL1CaSymbolOffsetScore) {
+    let mut scores = (0..GPS_L1CA_NAV_BIT_LENGTH_MS)
+        .map(|offset| gps_l1ca_symbol_offset_score(prompt_i, offset))
+        .collect::<Vec<_>>();
+    scores.sort_by(|left, right| {
+        right
+            .metric
+            .partial_cmp(&left.metric)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| left.offset.cmp(&right.offset))
+    });
+    let best = scores.first().copied().unwrap_or(GpsL1CaSymbolOffsetScore {
+        offset: 0,
+        metric: 0.0,
+        complete_window_count: 0,
+    });
+    let next_best = scores.get(1).copied().unwrap_or(GpsL1CaSymbolOffsetScore {
+        offset: best.offset,
+        metric: 0.0,
+        complete_window_count: 0,
+    });
+    (best, next_best)
+}
+
+fn gps_l1ca_symbol_offset_score(prompt_i: &[f32], offset: usize) -> GpsL1CaSymbolOffsetScore {
+    let mut summed_coherent_energy = 0.0_f64;
+    let mut complete_window_count = 0usize;
+    let mut sampled_window_count = 0.0_f64;
+    let mut idx = offset;
+    while idx + GPS_L1CA_NAV_BIT_LENGTH_MS <= prompt_i.len() {
+        let sum: f64 =
+            prompt_i[idx..idx + GPS_L1CA_NAV_BIT_LENGTH_MS].iter().map(|v| *v as f64).sum();
+        summed_coherent_energy += sum.abs();
+        complete_window_count += 1;
+        sampled_window_count += 1.0;
+        idx += GPS_L1CA_NAV_BIT_LENGTH_MS;
+    }
+    if idx < prompt_i.len() {
+        let partial_sum: f64 = prompt_i[idx..].iter().map(|v| *v as f64).sum();
+        summed_coherent_energy += partial_sum.abs();
+        sampled_window_count += (prompt_i.len() - idx) as f64 / GPS_L1CA_NAV_BIT_LENGTH_MS as f64;
+    }
+    let metric = if sampled_window_count > f64::EPSILON {
+        summed_coherent_energy / sampled_window_count
+    } else {
+        0.0
+    };
+    GpsL1CaSymbolOffsetScore { offset, metric, complete_window_count }
+}
+
+fn gps_l1ca_symbol_sync_confidence(best_metric: f64, next_best_metric: f64) -> f64 {
+    if best_metric <= f64::EPSILON {
+        return 0.0;
+    }
+    ((best_metric - next_best_metric.max(0.0)) / best_metric).clamp(0.0, 1.0)
 }
 
 pub fn align_gps_l1ca_lnav_from_prompt(prompt_i: &[f32]) -> GpsL1CaLnavAlignment {
@@ -849,6 +926,41 @@ mod tests {
             parity: summarize_word_parity(&words),
             word_parity_ok: vec![true; words.len()],
         }
+    }
+
+    #[test]
+    fn navigation_symbol_sync_confidence_prefers_coherent_boundaries() {
+        let mut prompt = vec![0.2_f32; 6];
+        prompt.extend(std::iter::repeat_n(1.0_f32, GPS_L1CA_NAV_BIT_LENGTH_MS));
+        prompt.extend(std::iter::repeat_n(-1.0_f32, GPS_L1CA_NAV_BIT_LENGTH_MS));
+        prompt.extend(std::iter::repeat_n(1.0_f32, GPS_L1CA_NAV_BIT_LENGTH_MS));
+
+        let demodulation = demodulate_gps_l1ca_navigation_bits(&prompt);
+
+        assert_eq!(demodulation.bit_start_ms, 6);
+        assert_eq!(demodulation.complete_window_count, 3);
+        assert!(
+            demodulation.sync_confidence > 0.05,
+            "expected a measurable boundary margin: {demodulation:?}"
+        );
+        assert!(
+            demodulation.bits.iter().all(|bit| bit.confidence >= 0.99),
+            "clean bits should have high polarity confidence: {demodulation:?}"
+        );
+    }
+
+    #[test]
+    fn navigation_symbol_sync_confidence_rejects_ambiguous_constant_prompt_history() {
+        let prompt = vec![1.0_f32; GPS_L1CA_NAV_BIT_LENGTH_MS * 3];
+
+        let demodulation = demodulate_gps_l1ca_navigation_bits(&prompt);
+
+        assert_eq!(demodulation.sync_confidence, 0.0);
+        assert_eq!(demodulation.best_offset_metric, demodulation.next_best_offset_metric);
+        assert!(
+            demodulation.bits.iter().all(|bit| bit.confidence >= 0.99),
+            "constant prompt history has confident signs but ambiguous boundaries: {demodulation:?}"
+        );
     }
 
     #[test]
