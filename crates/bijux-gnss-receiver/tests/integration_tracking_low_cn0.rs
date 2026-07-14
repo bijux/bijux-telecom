@@ -212,6 +212,9 @@ fn adaptive_tracking_lengthens_integration_after_weak_signal_lock() {
     let fixed_epochs = track_weak_signal_case(false);
     let adaptive_integration_ms = tracking_integration_ms_values(&adaptive_epochs);
     let fixed_integration_ms = tracking_integration_ms_values(&fixed_epochs);
+    let adaptive_code_uncertainty_samples =
+        mean_adapted_code_phase_uncertainty_samples(&adaptive_epochs);
+    let fixed_code_uncertainty_samples = mean_code_phase_uncertainty_samples(&fixed_epochs);
 
     assert!(
         adaptive_epochs
@@ -226,6 +229,10 @@ fn adaptive_tracking_lengthens_integration_after_weak_signal_lock() {
     assert!(
         fixed_integration_ms.iter().all(|integration_ms| *integration_ms == 1),
         "fixed_integration_ms={fixed_integration_ms:?} fixed_epochs={fixed_epochs:?}"
+    );
+    assert!(
+        adaptive_code_uncertainty_samples < fixed_code_uncertainty_samples,
+        "adaptive_code_uncertainty_samples={adaptive_code_uncertainty_samples} fixed_code_uncertainty_samples={fixed_code_uncertainty_samples} adaptive_epochs={adaptive_epochs:?} fixed_epochs={fixed_epochs:?}"
     );
 }
 
@@ -258,4 +265,38 @@ fn tracking_integration_ms_values(epochs: &[TrackEpoch]) -> Vec<u32> {
             epoch.tracking_assumptions.as_ref().map(|assumptions| assumptions.integration_ms.max(1))
         })
         .collect()
+}
+
+fn mean_adapted_code_phase_uncertainty_samples(epochs: &[TrackEpoch]) -> f64 {
+    mean_uncertainty(
+        epochs
+            .iter()
+            .filter(|epoch| {
+                epoch
+                    .tracking_assumptions
+                    .as_ref()
+                    .is_some_and(|assumptions| assumptions.integration_ms == 5)
+            })
+            .filter_map(|epoch| {
+                epoch
+                    .tracking_uncertainty
+                    .as_ref()
+                    .map(|uncertainty| uncertainty.code_phase_samples)
+            }),
+    )
+}
+
+fn mean_code_phase_uncertainty_samples(epochs: &[TrackEpoch]) -> f64 {
+    mean_uncertainty(epochs.iter().filter_map(|epoch| {
+        epoch
+            .tracking_uncertainty
+            .as_ref()
+            .map(|uncertainty| uncertainty.code_phase_samples)
+    }))
+}
+
+fn mean_uncertainty(values: impl Iterator<Item = f64>) -> f64 {
+    let values = values.collect::<Vec<_>>();
+    assert!(!values.is_empty(), "missing tracking uncertainty samples");
+    values.iter().sum::<f64>() / values.len() as f64
 }
