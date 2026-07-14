@@ -75,6 +75,7 @@ const SUB_SAMPLE_CODE_PHASE_REFINEMENT_MIN_ABS_OFFSET_SAMPLES: f64 = 0.05;
 const ACQUISITION_UNCERTAINTY_MIN_RESOLUTION_FRACTION: f64 = 0.05;
 const ACQUISITION_UNCERTAINTY_REFERENCE_RESOLUTION_FRACTION: f64 = 0.25;
 const ACQUISITION_UNCERTAINTY_MAX_RESOLUTION_FRACTION: f64 = 0.5;
+const FALSE_ALARM_CALIBRATION_SEARCH_ITERATIONS: usize = 7;
 const MULTIPATH_SECONDARY_GUARD_CHIPS: usize = 2;
 const WRONG_PRN_DOMINANCE_RATIO_MIN: f32 = 4.0;
 const WRONG_PRN_PEAK_SECOND_RATIO_MAX: f32 = 1.1;
@@ -721,7 +722,7 @@ impl Acquisition {
             );
         }
 
-        for _ in 0..10 {
+        for _ in 0..FALSE_ALARM_CALIBRATION_SEARCH_ITERATIONS {
             let midpoint = (lower + upper) * 0.5;
             let midpoint_measurement = self.measure_noise_only_false_alarm_rate(
                 request,
