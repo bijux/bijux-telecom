@@ -797,6 +797,7 @@ fn select_carrier_prompt(
     primary_prompt: Complex<f32>,
     pilot_prompt: Option<Complex<f32>>,
     aiding_mode: TrackingAidingMode,
+    require_pilot: bool,
 ) -> (Complex<f32>, CarrierPromptSource) {
     if aiding_mode != TrackingAidingMode::PilotCarrier {
         return (primary_prompt, CarrierPromptSource::Primary);
@@ -806,6 +807,9 @@ fn select_carrier_prompt(
     };
     let primary_norm = primary_prompt.norm();
     let pilot_norm = pilot_prompt.norm();
+    if require_pilot && pilot_norm > f32::EPSILON {
+        return (pilot_prompt, CarrierPromptSource::Pilot);
+    }
     if primary_norm <= f32::EPSILON {
         return (pilot_prompt, CarrierPromptSource::Pilot);
     }
@@ -987,7 +991,7 @@ impl Tracking {
             carrier_aided_code_rate_hz(&self.config, signal_model, carrier_hz);
         LoopState {
             carrier_hz,
-            carrier_phase_cycles: 0.0,
+            carrier_phase_cycles: pilot_carrier_phase_offset_cycles(signal_model),
             carrier_rate_hz_per_s: 0.0,
             code_rate_hz: code_rate_reference_hz,
             code_rate_reference_hz,
@@ -1182,8 +1186,12 @@ impl Tracking {
                 .prompt
             }
         });
-        let (carrier_prompt, carrier_prompt_source) =
-            select_carrier_prompt(primary.prompt, pilot_prompt, signal_model.aiding_mode);
+        let (carrier_prompt, carrier_prompt_source) = select_carrier_prompt(
+            primary.prompt,
+            pilot_prompt,
+            signal_model.aiding_mode,
+            requires_dedicated_pilot_carrier(signal_model),
+        );
         TrackingEpochCorrelation { primary, carrier_prompt, carrier_prompt_source, data_prompt }
     }
 
@@ -2862,6 +2870,14 @@ fn carrier_to_data_phase_offset_cycles(
     if carrier_prompt_source != CarrierPromptSource::Pilot {
         return 0.0;
     }
+    pilot_carrier_phase_offset_cycles(signal_model)
+}
+
+fn requires_dedicated_pilot_carrier(signal_model: &TrackingSignalModel) -> bool {
+    pilot_carrier_phase_offset_cycles(signal_model).abs() > f64::EPSILON
+}
+
+fn pilot_carrier_phase_offset_cycles(signal_model: &TrackingSignalModel) -> f64 {
     match signal_model.pilot_component.as_ref().map(|component| &component.local_code_model) {
         Some(
             TrackingComponentLocalCodeModel::GalileoE5aQ { .. }
@@ -5632,6 +5648,7 @@ mod tests {
             Complex::new(0.25, 0.05),
             Some(Complex::new(0.60, -0.10)),
             super::TrackingAidingMode::PilotCarrier,
+            false,
         );
 
         assert_eq!(selected, Complex::new(0.60, -0.10));
@@ -5676,6 +5693,19 @@ mod tests {
             ),
             Some(-1)
         );
+    }
+
+    #[test]
+    fn select_carrier_prompt_keeps_dedicated_galileo_pilot_even_when_primary_is_stronger() {
+        let (selected, source) = super::select_carrier_prompt(
+            Complex::new(0.90, 0.05),
+            Some(Complex::new(0.20, 0.70)),
+            super::TrackingAidingMode::PilotCarrier,
+            true,
+        );
+
+        assert_eq!(selected, Complex::new(0.20, 0.70));
+        assert_eq!(source, super::CarrierPromptSource::Pilot);
     }
 
     #[test]
