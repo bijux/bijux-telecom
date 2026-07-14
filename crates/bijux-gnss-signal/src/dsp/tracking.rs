@@ -247,6 +247,44 @@ pub struct LockDetectorThresholds {
     pub distributions: LockDetectorDistributions,
 }
 
+/// Distribution assumptions used to estimate lock-detector error probabilities.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct LockDetectorProbabilityInput {
+    /// Calibrated lock-detector thresholds and locked-state discriminator spreads.
+    pub thresholds: LockDetectorThresholds,
+    /// Half-width of the unlocked DLL discriminator support.
+    pub unlocked_dll_half_width: f64,
+    /// Half-width of the unlocked PLL phase support in radians.
+    pub unlocked_pll_half_width_rad: f64,
+    /// Half-width of the unlocked FLL frequency support in Hz.
+    pub unlocked_fll_half_width_hz: f64,
+    /// Lost-lock discriminator bias in one-sigma units used for missed-unlock estimation.
+    pub missed_unlock_bias_sigma: f64,
+}
+
+/// Estimated lock-detector error probabilities for one operating point.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct LockDetectorProbabilitySummary {
+    /// Probability that DLL noise rejects a genuinely locked epoch.
+    pub dll_false_unlock_probability: f64,
+    /// Probability that PLL noise rejects a genuinely locked epoch.
+    pub pll_false_unlock_probability: f64,
+    /// Probability that FLL noise rejects a genuinely locked epoch.
+    pub fll_false_unlock_probability: f64,
+    /// Probability that any detector rejects a genuinely locked epoch.
+    pub false_unlock_probability: f64,
+    /// Probability that an unlocked DLL residual falls inside the lock gate.
+    pub dll_false_lock_probability: f64,
+    /// Probability that an unlocked PLL residual falls inside the lock gate.
+    pub pll_false_lock_probability: f64,
+    /// Probability that an unlocked FLL residual falls inside the lock gate.
+    pub fll_false_lock_probability: f64,
+    /// Probability that all detector gates accept an unlocked epoch.
+    pub false_lock_probability: f64,
+    /// Probability that a biased lost-lock residual still passes all detector gates.
+    pub missed_unlock_probability: f64,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum LoopFilterOrder {
     First,
@@ -1099,6 +1137,64 @@ pub fn calibrated_lock_detector_thresholds(
     }
 }
 
+/// Estimate false-lock, false-unlock, and missed-unlock rates for calibrated lock gates.
+pub fn lock_detector_probability_summary(
+    input: LockDetectorProbabilityInput,
+) -> LockDetectorProbabilitySummary {
+    let thresholds = input.thresholds;
+    let dll_false_unlock_probability = two_sided_gaussian_tail_probability(
+        thresholds.dll_lock as f64,
+        thresholds.distributions.dll_sigma,
+    );
+    let pll_false_unlock_probability = two_sided_gaussian_tail_probability(
+        thresholds.pll_lock_rad as f64,
+        thresholds.distributions.pll_sigma_rad,
+    );
+    let fll_false_unlock_probability = two_sided_gaussian_tail_probability(
+        thresholds.fll_lock_hz,
+        thresholds.distributions.fll_sigma_hz,
+    );
+    let false_unlock_probability = union_probability([
+        dll_false_unlock_probability,
+        pll_false_unlock_probability,
+        fll_false_unlock_probability,
+    ]);
+    let dll_false_lock_probability =
+        uniform_gate_probability(thresholds.dll_lock as f64, input.unlocked_dll_half_width);
+    let pll_false_lock_probability =
+        uniform_gate_probability(thresholds.pll_lock_rad as f64, input.unlocked_pll_half_width_rad);
+    let fll_false_lock_probability =
+        uniform_gate_probability(thresholds.fll_lock_hz, input.unlocked_fll_half_width_hz);
+    let false_lock_probability =
+        dll_false_lock_probability * pll_false_lock_probability * fll_false_lock_probability;
+    let missed_unlock_bias_sigma = input.missed_unlock_bias_sigma.max(0.0);
+    let missed_unlock_probability = biased_gaussian_gate_probability(
+        thresholds.dll_lock as f64,
+        thresholds.distributions.dll_sigma,
+        missed_unlock_bias_sigma,
+    ) * biased_gaussian_gate_probability(
+        thresholds.pll_lock_rad as f64,
+        thresholds.distributions.pll_sigma_rad,
+        missed_unlock_bias_sigma,
+    ) * biased_gaussian_gate_probability(
+        thresholds.fll_lock_hz,
+        thresholds.distributions.fll_sigma_hz,
+        missed_unlock_bias_sigma,
+    );
+
+    LockDetectorProbabilitySummary {
+        dll_false_unlock_probability,
+        pll_false_unlock_probability,
+        fll_false_unlock_probability,
+        false_unlock_probability,
+        dll_false_lock_probability,
+        pll_false_lock_probability,
+        fll_false_lock_probability,
+        false_lock_probability,
+        missed_unlock_probability,
+    }
+}
+
 /// Threshold for treating DLL error as locked.
 pub fn dll_lock_threshold(samples_per_chip: f64, early_late_spacing_chips: f64) -> f32 {
     let effective_sample_separation = samples_per_chip * early_late_spacing_chips.abs();
@@ -1126,6 +1222,53 @@ fn two_sided_normal_quantile(tail_probability: f64) -> f64 {
     let bounded_tail =
         if tail_probability.is_finite() { tail_probability.clamp(1.0e-12, 0.5) } else { 1.0e-6 };
     inverse_standard_normal_cdf(1.0 - bounded_tail / 2.0)
+}
+
+fn two_sided_gaussian_tail_probability(threshold: f64, sigma: f64) -> f64 {
+    if !threshold.is_finite() || !sigma.is_finite() || sigma <= 0.0 {
+        return 1.0;
+    }
+    (2.0 * (1.0 - standard_normal_cdf((threshold / sigma).max(0.0)))).clamp(0.0, 1.0)
+}
+
+fn biased_gaussian_gate_probability(threshold: f64, sigma: f64, bias_sigma: f64) -> f64 {
+    if !threshold.is_finite() || !sigma.is_finite() || sigma <= 0.0 {
+        return 0.0;
+    }
+    let bias = bias_sigma.max(0.0) * sigma;
+    let high = (threshold - bias) / sigma;
+    let low = (-threshold - bias) / sigma;
+    (standard_normal_cdf(high) - standard_normal_cdf(low)).clamp(0.0, 1.0)
+}
+
+fn uniform_gate_probability(threshold: f64, half_width: f64) -> f64 {
+    if !threshold.is_finite() || !half_width.is_finite() || half_width <= 0.0 {
+        return 0.0;
+    }
+    (threshold.abs() / half_width).clamp(0.0, 1.0)
+}
+
+fn union_probability<const N: usize>(probabilities: [f64; N]) -> f64 {
+    let survival = probabilities
+        .into_iter()
+        .map(|probability| 1.0 - probability.clamp(0.0, 1.0))
+        .product::<f64>();
+    (1.0 - survival).clamp(0.0, 1.0)
+}
+
+fn standard_normal_cdf(value: f64) -> f64 {
+    if !value.is_finite() {
+        return if value.is_sign_positive() { 1.0 } else { 0.0 };
+    }
+    let sign = if value < 0.0 { -1.0 } else { 1.0 };
+    let x = value.abs() / std::f64::consts::SQRT_2;
+    let t = 1.0 / (1.0 + 0.327_591_1 * x);
+    let erf = 1.0
+        - (((((1.061_405_429 * t - 1.453_152_027) * t) + 1.421_413_741) * t - 0.284_496_736) * t
+            + 0.254_829_592)
+            * t
+            * (-x * x).exp();
+    0.5 * (1.0 + sign * erf)
 }
 
 fn inverse_standard_normal_cdf(probability: f64) -> f64 {
@@ -1482,9 +1625,10 @@ mod tests {
         coherent_integration_seconds, correlate_early_prompt_late, delay_lock_loop_coefficients,
         discriminators, dll_lock_threshold, estimate_cn0_dbhz, estimate_tracking_uncertainty,
         first_order_angular_loop_coefficients, first_order_loop_coefficients,
-        lock_detector_distributions, phase_lock_loop_coefficients, predict_code_phase_samples,
-        wrap_phase_cycles_signed, wrap_phase_radians_positive, wrapped_phase_delta_cycles,
-        CarrierTrackingLoopInput, CodeLoopInput, LockDetectorCalibrationInput,
+        lock_detector_distributions, lock_detector_probability_summary,
+        phase_lock_loop_coefficients, predict_code_phase_samples, wrap_phase_cycles_signed,
+        wrap_phase_radians_positive, wrapped_phase_delta_cycles, CarrierTrackingLoopInput,
+        CodeLoopInput, LockDetectorCalibrationInput, LockDetectorProbabilityInput,
         TrackingAdaptationInput, TrackingAdaptationState, TrackingLoopProfile,
         TrackingLoopProfileKind, TrackingQualityClass, TrackingUncertaintyInputs,
         DYNAMIC_STRESS_INTEGRATION_MS, MAX_TRACKING_ADAPTATION_PENDING_EPOCHS,
@@ -2031,6 +2175,75 @@ mod tests {
         assert!((dynamic.fll_lock_hz - calm.fll_lock_hz - 35.0).abs() <= 1.0e-9);
         assert_eq!(dynamic.dll_lock, calm.dll_lock);
         assert_eq!(dynamic.pll_lock_rad, calm.pll_lock_rad);
+    }
+
+    #[test]
+    fn lock_detector_probability_summary_reports_calibrated_false_unlock_rate() {
+        let target = 1.0e-6;
+        let thresholds = calibrated_lock_detector_thresholds(LockDetectorCalibrationInput {
+            cn0_dbhz: 45.0,
+            coherent_integration_s: 0.001,
+            samples_per_chip: 4.0,
+            early_late_spacing_chips: 0.5,
+            dll_false_unlock_probability: target,
+            pll_false_unlock_probability: target,
+            fll_false_unlock_probability: target,
+            dynamic_stress_hz: 0.0,
+        });
+
+        let summary = lock_detector_probability_summary(LockDetectorProbabilityInput {
+            thresholds,
+            unlocked_dll_half_width: 1.0,
+            unlocked_pll_half_width_rad: std::f64::consts::PI,
+            unlocked_fll_half_width_hz: 500.0,
+            missed_unlock_bias_sigma: 4.0,
+        });
+
+        assert!((summary.dll_false_unlock_probability - target).abs() < 2.0e-9, "{summary:?}");
+        assert!((summary.pll_false_unlock_probability - target).abs() < 2.0e-9, "{summary:?}");
+        assert!((summary.fll_false_unlock_probability - target).abs() < 2.0e-9, "{summary:?}");
+        assert!(summary.false_unlock_probability > target);
+        assert!(summary.false_unlock_probability < target * 4.0);
+    }
+
+    #[test]
+    fn lock_detector_probability_summary_quantifies_false_lock_and_missed_unlock_regions() {
+        let thresholds = calibrated_lock_detector_thresholds(LockDetectorCalibrationInput {
+            cn0_dbhz: 45.0,
+            coherent_integration_s: 0.001,
+            samples_per_chip: 4.0,
+            early_late_spacing_chips: 0.5,
+            dll_false_unlock_probability: 1.0e-6,
+            pll_false_unlock_probability: 1.0e-6,
+            fll_false_unlock_probability: 1.0e-6,
+            dynamic_stress_hz: 0.0,
+        });
+        let wide_unlocked = lock_detector_probability_summary(LockDetectorProbabilityInput {
+            thresholds,
+            unlocked_dll_half_width: 1.0,
+            unlocked_pll_half_width_rad: std::f64::consts::PI,
+            unlocked_fll_half_width_hz: 1_000.0,
+            missed_unlock_bias_sigma: 3.0,
+        });
+        let narrow_unlocked = lock_detector_probability_summary(LockDetectorProbabilityInput {
+            thresholds,
+            unlocked_dll_half_width: 0.5,
+            unlocked_pll_half_width_rad: std::f64::consts::FRAC_PI_2,
+            unlocked_fll_half_width_hz: 500.0,
+            missed_unlock_bias_sigma: 3.0,
+        });
+        let severe_loss = lock_detector_probability_summary(LockDetectorProbabilityInput {
+            thresholds,
+            unlocked_dll_half_width: 1.0,
+            unlocked_pll_half_width_rad: std::f64::consts::PI,
+            unlocked_fll_half_width_hz: 1_000.0,
+            missed_unlock_bias_sigma: 6.0,
+        });
+
+        assert!(narrow_unlocked.false_lock_probability > wide_unlocked.false_lock_probability);
+        assert!(severe_loss.missed_unlock_probability < wide_unlocked.missed_unlock_probability);
+        assert!(wide_unlocked.false_lock_probability.is_finite());
+        assert!(wide_unlocked.missed_unlock_probability.is_finite());
     }
 
     #[test]

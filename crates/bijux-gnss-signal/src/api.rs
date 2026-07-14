@@ -161,16 +161,17 @@ pub use crate::dsp::tracking::{
     discriminators, dll_discriminator_from_early_late, dll_hold_threshold, dll_lock_threshold,
     double_delta_dll_discriminator, estimate_cn0_dbhz, estimate_tracking_uncertainty,
     first_order_angular_loop_coefficients, first_order_loop_coefficients, fll_lock_threshold_hz,
-    lock_detector_distributions, normalize_dll_discriminator, phase_lock_loop_coefficients,
-    prompt_power_ratio, push_tracking_uncertainty_sample, refresh_lock_reference_cn0_dbhz,
-    refresh_prompt_power_reference, update_prompt_power_reference,
+    lock_detector_distributions, lock_detector_probability_summary, normalize_dll_discriminator,
+    phase_lock_loop_coefficients, prompt_power_ratio, push_tracking_uncertainty_sample,
+    refresh_lock_reference_cn0_dbhz, refresh_prompt_power_reference, update_prompt_power_reference,
     update_windowed_tracking_cn0_estimate, wrap_phase_cycles_signed, wrap_phase_radians_positive,
     wrapped_phase_delta_cycles, CarrierTrackingLoopInput, CarrierTrackingLoopUpdate, CodeLoopInput,
     CodeLoopUpdate, DelayLockLoopCoefficients, EarlyPromptLateCorrelation,
     FirstOrderLoopCoefficients, LockDetectorCalibrationInput, LockDetectorDistributions,
-    LockDetectorThresholds, PhaseLockLoopCoefficients, TrackingAdaptationDecision,
-    TrackingAdaptationInput, TrackingAdaptationState, TrackingLoopProfile, TrackingLoopProfileKind,
-    TrackingQualityClass, TrackingUncertaintyInputs,
+    LockDetectorProbabilityInput, LockDetectorProbabilitySummary, LockDetectorThresholds,
+    PhaseLockLoopCoefficients, TrackingAdaptationDecision, TrackingAdaptationInput,
+    TrackingAdaptationState, TrackingLoopProfile, TrackingLoopProfileKind, TrackingQualityClass,
+    TrackingUncertaintyInputs,
 };
 /// Error types.
 pub use crate::error::SignalError;
