@@ -671,6 +671,113 @@
     }
 
     #[test]
+    fn acquisition_uncertainty_coverage_report_keeps_stationary_axes() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 4_000_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 1023,
+            acquisition_doppler_search_hz: 1_500,
+            acquisition_doppler_step_hz: 250,
+            acquisition_peak_second_threshold: 1.01,
+            ..ReceiverPipelineConfig::default()
+        };
+        let report = measure_synthetic_acquisition_uncertainty_coverage(
+            &config,
+            &[SyntheticAcquisitionUncertaintyCoverageCase {
+                signal: SyntheticSignalParams {
+                    sat: SatId { constellation: Constellation::Gps, prn: 3 },
+                    glonass_frequency_channel: None,
+                    signal_band: bijux_gnss_core::api::SignalBand::L1,
+                    signal_code: bijux_gnss_core::api::SignalCode::Ca,
+                    doppler_hz: 375.0,
+                    code_phase_chips: 200.375,
+                    carrier_phase_rad: 0.0,
+                    cn0_db_hz: 65.0,
+                    navigation_data: false.into(),
+                },
+                coherent_ms: 1,
+                noncoherent: 1,
+                duration_s: 0.001,
+                doppler_rate_hz_per_s: None,
+            }],
+            2,
+        );
+
+        assert_eq!(report.doppler_step_hz, 250);
+        assert_eq!(report.points.len(), 1);
+        let point = &report.points[0];
+        assert_eq!(point.case.signal.sat.prn, 3);
+        assert_eq!(point.trial_count, 2);
+        assert!(point.successful_trial_count > 0, "{report:?}");
+        assert_eq!(point.trials.len(), 2);
+        assert_eq!(point.doppler_rate_within_one_sigma_count, None);
+        assert_eq!(point.doppler_rate_within_one_sigma_rate, None);
+        assert!(point.doppler_within_one_sigma_rate.is_finite());
+        assert!(point.code_phase_within_one_sigma_rate.is_finite());
+        assert!(point.trials.iter().any(|trial| {
+            trial.reported_doppler_sigma_hz.is_some_and(|sigma| sigma > 0.0)
+                && trial
+                    .reported_code_phase_sigma_samples
+                    .is_some_and(|sigma| sigma > 0.0)
+                && trial.reported_doppler_rate_sigma_hz_per_s.is_none()
+        }));
+    }
+
+    #[test]
+    fn acquisition_uncertainty_coverage_report_keeps_rate_axis_when_present() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 4_092_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 1023,
+            acquisition_doppler_search_hz: 500,
+            acquisition_doppler_step_hz: 250,
+            acquisition_doppler_rate_search_hz_per_s: 25_000,
+            acquisition_doppler_rate_step_hz_per_s: 5_000,
+            acquisition_integration_ms: 20,
+            acquisition_noncoherent: 1,
+            acquisition_peak_mean_threshold: 8.0,
+            acquisition_peak_second_threshold: 1.01,
+            ..ReceiverPipelineConfig::default()
+        };
+        let report = measure_synthetic_acquisition_uncertainty_coverage(
+            &config,
+            &[SyntheticAcquisitionUncertaintyCoverageCase {
+                signal: SyntheticSignalParams {
+                    sat: SatId { constellation: Constellation::Gps, prn: 16 },
+                    glonass_frequency_channel: None,
+                    signal_band: bijux_gnss_core::api::SignalBand::L1,
+                    signal_code: bijux_gnss_core::api::SignalCode::Ca,
+                    doppler_hz: 250.0,
+                    code_phase_chips: 211.25,
+                    carrier_phase_rad: 0.40,
+                    cn0_db_hz: 75.0,
+                    navigation_data: false.into(),
+                },
+                coherent_ms: 20,
+                noncoherent: 1,
+                duration_s: 0.020,
+                doppler_rate_hz_per_s: Some(20_000.0),
+            }],
+            1,
+        );
+
+        assert_eq!(report.doppler_rate_step_hz_per_s, 5_000);
+        assert_eq!(report.points.len(), 1);
+        let point = &report.points[0];
+        assert_eq!(point.successful_trial_count, 1, "{report:?}");
+        assert_eq!(point.doppler_rate_within_one_sigma_count, Some(1));
+        assert!(point.doppler_rate_within_one_sigma_rate.is_some());
+        assert!(point.trials.iter().all(|trial| {
+            trial
+                .reported_doppler_rate_sigma_hz_per_s
+                .is_some_and(|sigma| sigma > 0.0)
+                && trial.doppler_rate_within_one_sigma.is_some()
+        }));
+    }
+
+    #[test]
     fn observation_error_summary_tracks_bias_and_absolute_magnitude() {
         let summary =
             summarize_observation_errors(&[-2.0, 1.0, 3.0]).expect("error summary must exist");
