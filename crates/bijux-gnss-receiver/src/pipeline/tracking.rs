@@ -6,10 +6,10 @@ use num_complex::Complex;
 use serde::{Deserialize, Serialize};
 
 use bijux_gnss_core::api::{
-    AcqHypothesis, AcqTrackingSeed, AcqUncertainty, Chips, Constellation, Cycles, Hertz,
+    AcqHypothesis, AcqTrackingSeed, AcqUncertainty, Chips, Constellation, Cycles, FreqHz, Hertz,
     ReceiverSampleTrace, SampleClock, SampleTime, SamplesFrame, SatId, Seconds, SignalBand,
-    SignalCode, SignalDelayAlignment, TrackEpoch, TrackTransition, TrackingAssumptions,
-    TrackingUncertainty,
+    SignalCode, SignalComponentRole, SignalDelayAlignment, SignalSecondaryCodeSpec, SignalSpec,
+    SignalSubcarrierSpec, TrackEpoch, TrackTransition, TrackingAssumptions, TrackingUncertainty,
 };
 
 use crate::engine::receiver_config::{ReceiverPipelineConfig, TrackingParams};
@@ -272,9 +272,56 @@ struct TrackingSignalModel {
     signal_band: SignalBand,
     signal_code: SignalCode,
     glonass_frequency_channel: Option<bijux_gnss_core::api::GlonassFrequencyChannel>,
+    signal_spec: SignalSpec,
+    component_role: SignalComponentRole,
+    secondary_code: Option<SignalSecondaryCodeSpec>,
     code_rate_hz: f64,
     code_length: usize,
     local_code_model: LocalCodeModel,
+    discriminator_family: TrackingDiscriminatorFamily,
+    phase_transition_source: TrackingPhaseTransitionSource,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TrackingDiscriminatorFamily {
+    EarlyPromptLate,
+    BocEarlyPromptLate,
+    CbocEarlyPromptLate,
+}
+
+impl TrackingDiscriminatorFamily {
+    fn label(self) -> &'static str {
+        match self {
+            Self::EarlyPromptLate => "early_prompt_late",
+            Self::BocEarlyPromptLate => "boc_early_prompt_late",
+            Self::CbocEarlyPromptLate => "cboc_early_prompt_late",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TrackingPhaseTransitionSource {
+    None,
+    DataSymbol,
+    SecondaryCode,
+}
+
+impl TrackingPhaseTransitionSource {
+    fn allows_half_cycle_transition(self) -> bool {
+        !matches!(self, Self::None)
+    }
+
+    fn reports_navigation_bit_lock(self) -> bool {
+        matches!(self, Self::DataSymbol)
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::DataSymbol => "data_symbol",
+            Self::SecondaryCode => "secondary_code",
+        }
+    }
 }
 
 impl TrackingSignalModel {
@@ -331,9 +378,14 @@ impl TrackingSignalModel {
                         && (signal_band == SignalBand::L1))
                         .then_some(glonass_frequency_channel)
                         .flatten(),
+                    signal_spec: registry_entry.spec,
+                    component_role: component.role,
+                    secondary_code: component.secondary_code,
                     code_rate_hz: component.primary_code_rate_hz,
                     code_length: component.primary_code_chips as usize,
                     local_code_model,
+                    discriminator_family: tracking_discriminator_family(component.subcarrier),
+                    phase_transition_source: tracking_phase_transition_source(component),
                 }
             }
             _ => Self::fallback(config, sat, signal_band),
@@ -350,9 +402,20 @@ impl TrackingSignalModel {
             signal_band,
             signal_code: default_signal_code_for_band(sat.constellation, signal_band),
             glonass_frequency_channel: None,
+            signal_spec: SignalSpec {
+                constellation: sat.constellation,
+                band: signal_band,
+                code: default_signal_code_for_band(sat.constellation, signal_band),
+                code_rate_hz: config.code_freq_basis_hz,
+                carrier_hz: FreqHz::new(0.0),
+            },
+            component_role: SignalComponentRole::Data,
+            secondary_code: None,
             code_rate_hz: config.code_freq_basis_hz,
             code_length: config.code_length.max(1),
             local_code_model,
+            discriminator_family: TrackingDiscriminatorFamily::EarlyPromptLate,
+            phase_transition_source: TrackingPhaseTransitionSource::None,
         }
     }
 
@@ -401,6 +464,39 @@ impl TrackingSignalModel {
         self.local_code_model
             .sample_tracking_value(wrapped_chip_phase, primary_code_period_index)
             .unwrap_or(0.0)
+    }
+
+    fn nominal_carrier_hz(&self) -> f64 {
+        self.signal_spec.carrier_hz.0
+    }
+
+    fn supports_navigation_bit_sign_recovery(&self) -> bool {
+        self.signal_spec.constellation == Constellation::Gps
+            && self.signal_band == SignalBand::L1
+            && self.signal_code == SignalCode::Ca
+            && self.phase_transition_source.reports_navigation_bit_lock()
+    }
+}
+
+fn tracking_discriminator_family(
+    subcarrier: SignalSubcarrierSpec,
+) -> TrackingDiscriminatorFamily {
+    match subcarrier {
+        SignalSubcarrierSpec::None => TrackingDiscriminatorFamily::EarlyPromptLate,
+        SignalSubcarrierSpec::Boc { .. } => TrackingDiscriminatorFamily::BocEarlyPromptLate,
+        SignalSubcarrierSpec::Cboc { .. } => TrackingDiscriminatorFamily::CbocEarlyPromptLate,
+    }
+}
+
+fn tracking_phase_transition_source(
+    component: &bijux_gnss_core::api::SignalComponentSpec,
+) -> TrackingPhaseTransitionSource {
+    if component.secondary_code.is_some() {
+        TrackingPhaseTransitionSource::SecondaryCode
+    } else if component.symbol_period_s.is_some() && component.role == SignalComponentRole::Data {
+        TrackingPhaseTransitionSource::DataSymbol
+    } else {
+        TrackingPhaseTransitionSource::None
     }
 }
 
