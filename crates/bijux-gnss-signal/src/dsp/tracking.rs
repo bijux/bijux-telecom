@@ -20,6 +20,9 @@ const TRACKING_UNCERTAINTY_MIN_CODE_PHASE_SAMPLES: f64 = 0.01;
 const TRACKING_UNCERTAINTY_MIN_CARRIER_PHASE_CYCLES: f64 = 0.001;
 const TRACKING_UNCERTAINTY_MIN_DOPPLER_HZ: f64 = 0.01;
 const TRACKING_UNCERTAINTY_MIN_CN0_DBHZ: f64 = 0.05;
+const LOOP_FILTER_BANDWIDTH_SOLVER_ITERATIONS: usize = 80;
+const LOOP_FILTER_IMPULSE_RESPONSE_EPOCHS: usize = 16_384;
+const LOOP_FILTER_IMPULSE_RESPONSE_EPSILON: f64 = 1.0e-15;
 
 /// First-order loop coefficients derived from noise bandwidth and coherent integration time.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -162,6 +165,29 @@ pub struct TrackingUncertaintyInputs {
     pub quality_class: TrackingQualityClass,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LoopFilterOrder {
+    First,
+    Second,
+    Third,
+}
+
+impl LoopFilterOrder {
+    fn as_usize(self) -> usize {
+        match self {
+            Self::First => 1,
+            Self::Second => 2,
+            Self::Third => 3,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct LoopObserverDesign {
+    correction_gains: [f64; 3],
+    closed_loop_pole: f64,
+}
+
 /// Adaptive loop bandwidth scaling based on CN0.
 pub fn adaptive_bandwidth(dll_bw: f64, pll_bw: f64, fll_bw: f64, cn0_dbhz: f64) -> (f64, f64, f64) {
     if cn0_dbhz < 25.0 {
@@ -267,24 +293,361 @@ pub fn carrier_frequency_error_hz_from_phase_delta(
     phase_delta_rad / (std::f64::consts::TAU * coherent_integration_s)
 }
 
-/// Derive first-order loop coefficients from noise bandwidth and coherent integration time.
-pub fn first_order_loop_coefficients(
+fn loop_observer_design(
+    order: LoopFilterOrder,
     noise_bandwidth_hz: f64,
     coherent_integration_s: f64,
-) -> FirstOrderLoopCoefficients {
+) -> LoopObserverDesign {
     if !noise_bandwidth_hz.is_finite()
         || noise_bandwidth_hz <= 0.0
         || !coherent_integration_s.is_finite()
         || coherent_integration_s <= 0.0
     {
-        return FirstOrderLoopCoefficients { error_blend: 0.0, rate_gain_hz: 0.0 };
+        return LoopObserverDesign { correction_gains: [0.0; 3], closed_loop_pole: 1.0 };
     }
 
-    let normalized_bandwidth = noise_bandwidth_hz * coherent_integration_s;
-    let error_blend = 1.0 - (-normalized_bandwidth).exp();
-    let rate_gain_hz = error_blend / coherent_integration_s;
+    let nyquist_bandwidth_hz = 0.5 / coherent_integration_s;
+    if noise_bandwidth_hz >= nyquist_bandwidth_hz {
+        return LoopObserverDesign {
+            correction_gains: loop_observer_gains(order, 0.0, coherent_integration_s),
+            closed_loop_pole: 0.0,
+        };
+    }
 
-    FirstOrderLoopCoefficients { error_blend, rate_gain_hz }
+    let mut low_pole = 0.0;
+    let mut high_pole = 1.0 - f64::EPSILON;
+    for _ in 0..LOOP_FILTER_BANDWIDTH_SOLVER_ITERATIONS {
+        let pole = (low_pole + high_pole) * 0.5;
+        let gains = loop_observer_gains(order, pole, coherent_integration_s);
+        let measured_bandwidth_hz =
+            loop_noise_bandwidth_hz(order, coherent_integration_s, gains);
+        if measured_bandwidth_hz > noise_bandwidth_hz {
+            low_pole = pole;
+        } else {
+            high_pole = pole;
+        }
+    }
+
+    let closed_loop_pole = high_pole;
+    LoopObserverDesign {
+        correction_gains: loop_observer_gains(order, closed_loop_pole, coherent_integration_s),
+        closed_loop_pole,
+    }
+}
+
+fn loop_observer_gains(
+    order: LoopFilterOrder,
+    closed_loop_pole: f64,
+    coherent_integration_s: f64,
+) -> [f64; 3] {
+    let dimension = order.as_usize();
+    let transition = loop_state_transition(order, coherent_integration_s);
+    let output = loop_output_matrix();
+    let transition_transpose = transpose_square_matrix(transition, dimension);
+    let input = output;
+    let controllability =
+        controllability_matrix(transition_transpose, input, dimension);
+    let controllability_inverse = invert_square_matrix(controllability, dimension)
+        .expect("integrator-chain observer design must remain controllable");
+    let characteristic = repeated_pole_characteristic_coefficients(closed_loop_pole, dimension);
+    let desired_matrix = evaluate_matrix_polynomial(
+        transition_transpose,
+        characteristic,
+        dimension,
+    );
+    let mut gain = [0.0; 3];
+    for column in 0..dimension {
+        let mut projected = 0.0;
+        for index in 0..dimension {
+            projected += controllability_inverse[dimension - 1][index] * desired_matrix[index][column];
+        }
+        gain[column] = projected;
+    }
+
+    let mut correction_gains = [0.0; 3];
+    for index in 0..dimension {
+        correction_gains[index] = gain[index];
+    }
+    correction_gains
+}
+
+fn loop_noise_bandwidth_hz(
+    order: LoopFilterOrder,
+    coherent_integration_s: f64,
+    correction_gains: [f64; 3],
+) -> f64 {
+    let dimension = order.as_usize();
+    let corrected_transition =
+        corrected_loop_transition(order, coherent_integration_s, correction_gains);
+    let mut state = [0.0; 3];
+    let mut impulse_energy = 0.0;
+    let mut impulse_sum = 0.0;
+
+    for epoch in 0..LOOP_FILTER_IMPULSE_RESPONSE_EPOCHS {
+        let input = if epoch == 0 { 1.0 } else { 0.0 };
+        let mut next_state = [0.0; 3];
+        for row in 0..dimension {
+            next_state[row] = correction_gains[row] * input;
+            for column in 0..dimension {
+                next_state[row] += corrected_transition[row][column] * state[column];
+            }
+        }
+        state = next_state;
+        let output = state[0];
+        impulse_sum += output;
+        impulse_energy += output * output;
+        if epoch + 1 >= dimension
+            && state[..dimension]
+                .iter()
+                .all(|value| value.abs() <= LOOP_FILTER_IMPULSE_RESPONSE_EPSILON)
+        {
+            break;
+        }
+    }
+
+    if impulse_sum.abs() <= f64::EPSILON {
+        return 0.0;
+    }
+
+    impulse_energy * 0.5 / coherent_integration_s / (impulse_sum * impulse_sum)
+}
+
+fn corrected_loop_transition(
+    order: LoopFilterOrder,
+    coherent_integration_s: f64,
+    correction_gains: [f64; 3],
+) -> [[f64; 3]; 3] {
+    let dimension = order.as_usize();
+    let transition = loop_state_transition(order, coherent_integration_s);
+    let output = loop_output_matrix();
+    let mut corrected = [[0.0; 3]; 3];
+
+    for row in 0..dimension {
+        for column in 0..dimension {
+            corrected[row][column] =
+                transition[row][column] - correction_gains[row] * output[column];
+        }
+    }
+
+    corrected
+}
+
+fn loop_state_transition(
+    order: LoopFilterOrder,
+    coherent_integration_s: f64,
+) -> [[f64; 3]; 3] {
+    let mut transition = identity_square_matrix(order.as_usize());
+    match order {
+        LoopFilterOrder::First => {}
+        LoopFilterOrder::Second => {
+            transition[0][1] = coherent_integration_s;
+        }
+        LoopFilterOrder::Third => {
+            transition[0][1] = coherent_integration_s;
+            transition[0][2] = 0.5 * coherent_integration_s * coherent_integration_s;
+            transition[1][2] = coherent_integration_s;
+        }
+    }
+    transition
+}
+
+fn loop_output_matrix() -> [f64; 3] {
+    [1.0, 0.0, 0.0]
+}
+
+fn repeated_pole_characteristic_coefficients(
+    closed_loop_pole: f64,
+    dimension: usize,
+) -> [f64; 4] {
+    match dimension {
+        1 => [1.0, -closed_loop_pole, 0.0, 0.0],
+        2 => [1.0, -2.0 * closed_loop_pole, closed_loop_pole * closed_loop_pole, 0.0],
+        3 => [
+            1.0,
+            -3.0 * closed_loop_pole,
+            3.0 * closed_loop_pole * closed_loop_pole,
+            -closed_loop_pole * closed_loop_pole * closed_loop_pole,
+        ],
+        _ => panic!("unsupported loop-filter order"),
+    }
+}
+
+fn evaluate_matrix_polynomial(
+    matrix: [[f64; 3]; 3],
+    coefficients: [f64; 4],
+    dimension: usize,
+) -> [[f64; 3]; 3] {
+    let mut matrix_power = identity_square_matrix(dimension);
+    let mut polynomial = scale_square_matrix(matrix_power, coefficients[dimension], dimension);
+
+    for power in 1..=dimension {
+        matrix_power = multiply_square_matrices(matrix_power, matrix, dimension);
+        polynomial = add_square_matrices(
+            polynomial,
+            scale_square_matrix(matrix_power, coefficients[dimension - power], dimension),
+            dimension,
+        );
+    }
+
+    polynomial
+}
+
+fn controllability_matrix(
+    transition: [[f64; 3]; 3],
+    input: [f64; 3],
+    dimension: usize,
+) -> [[f64; 3]; 3] {
+    let mut controllability = [[0.0; 3]; 3];
+    let mut column = input;
+    for column_index in 0..dimension {
+        for row in 0..dimension {
+            controllability[row][column_index] = column[row];
+        }
+        column = multiply_square_matrix_vector(transition, column, dimension);
+    }
+    controllability
+}
+
+fn multiply_square_matrix_vector(
+    matrix: [[f64; 3]; 3],
+    vector: [f64; 3],
+    dimension: usize,
+) -> [f64; 3] {
+    let mut result = [0.0; 3];
+    for row in 0..dimension {
+        for column in 0..dimension {
+            result[row] += matrix[row][column] * vector[column];
+        }
+    }
+    result
+}
+
+fn multiply_square_matrices(
+    left: [[f64; 3]; 3],
+    right: [[f64; 3]; 3],
+    dimension: usize,
+) -> [[f64; 3]; 3] {
+    let mut result = [[0.0; 3]; 3];
+    for row in 0..dimension {
+        for column in 0..dimension {
+            for index in 0..dimension {
+                result[row][column] += left[row][index] * right[index][column];
+            }
+        }
+    }
+    result
+}
+
+fn add_square_matrices(
+    left: [[f64; 3]; 3],
+    right: [[f64; 3]; 3],
+    dimension: usize,
+) -> [[f64; 3]; 3] {
+    let mut result = [[0.0; 3]; 3];
+    for row in 0..dimension {
+        for column in 0..dimension {
+            result[row][column] = left[row][column] + right[row][column];
+        }
+    }
+    result
+}
+
+fn scale_square_matrix(
+    matrix: [[f64; 3]; 3],
+    scale: f64,
+    dimension: usize,
+) -> [[f64; 3]; 3] {
+    let mut result = [[0.0; 3]; 3];
+    for row in 0..dimension {
+        for column in 0..dimension {
+            result[row][column] = matrix[row][column] * scale;
+        }
+    }
+    result
+}
+
+fn transpose_square_matrix(matrix: [[f64; 3]; 3], dimension: usize) -> [[f64; 3]; 3] {
+    let mut transpose = [[0.0; 3]; 3];
+    for row in 0..dimension {
+        for column in 0..dimension {
+            transpose[column][row] = matrix[row][column];
+        }
+    }
+    transpose
+}
+
+fn identity_square_matrix(dimension: usize) -> [[f64; 3]; 3] {
+    let mut identity = [[0.0; 3]; 3];
+    for index in 0..dimension {
+        identity[index][index] = 1.0;
+    }
+    identity
+}
+
+fn invert_square_matrix(matrix: [[f64; 3]; 3], dimension: usize) -> Option<[[f64; 3]; 3]> {
+    let mut augmented = [[0.0; 6]; 3];
+    for row in 0..dimension {
+        for column in 0..dimension {
+            augmented[row][column] = matrix[row][column];
+        }
+        augmented[row][dimension + row] = 1.0;
+    }
+
+    for pivot_index in 0..dimension {
+        let mut best_pivot_row = pivot_index;
+        let mut best_pivot_abs = augmented[pivot_index][pivot_index].abs();
+        for row in (pivot_index + 1)..dimension {
+            let pivot_abs = augmented[row][pivot_index].abs();
+            if pivot_abs > best_pivot_abs {
+                best_pivot_abs = pivot_abs;
+                best_pivot_row = row;
+            }
+        }
+        if best_pivot_abs <= f64::EPSILON {
+            return None;
+        }
+        if best_pivot_row != pivot_index {
+            augmented.swap(best_pivot_row, pivot_index);
+        }
+
+        let pivot = augmented[pivot_index][pivot_index];
+        for column in pivot_index..(dimension * 2) {
+            augmented[pivot_index][column] /= pivot;
+        }
+        for row in 0..dimension {
+            if row == pivot_index {
+                continue;
+            }
+            let factor = augmented[row][pivot_index];
+            if factor.abs() <= f64::EPSILON {
+                continue;
+            }
+            for column in pivot_index..(dimension * 2) {
+                augmented[row][column] -= factor * augmented[pivot_index][column];
+            }
+        }
+    }
+
+    let mut inverse = [[0.0; 3]; 3];
+    for row in 0..dimension {
+        for column in 0..dimension {
+            inverse[row][column] = augmented[row][dimension + column];
+        }
+    }
+    Some(inverse)
+}
+
+/// Derive first-order loop coefficients from noise bandwidth and coherent integration time.
+pub fn first_order_loop_coefficients(
+    noise_bandwidth_hz: f64,
+    coherent_integration_s: f64,
+) -> FirstOrderLoopCoefficients {
+    let design =
+        loop_observer_design(LoopFilterOrder::First, noise_bandwidth_hz, coherent_integration_s);
+    FirstOrderLoopCoefficients {
+        error_blend: design.correction_gains[0],
+        rate_gain_hz: design.correction_gains[0] / coherent_integration_s.max(f64::EPSILON),
+    }
 }
 
 /// Derive first-order coefficients for carrier-frequency loops from angular bandwidth.
@@ -292,19 +655,7 @@ pub fn first_order_angular_loop_coefficients(
     noise_bandwidth_hz: f64,
     coherent_integration_s: f64,
 ) -> FirstOrderLoopCoefficients {
-    if !noise_bandwidth_hz.is_finite()
-        || noise_bandwidth_hz <= 0.0
-        || !coherent_integration_s.is_finite()
-        || coherent_integration_s <= 0.0
-    {
-        return FirstOrderLoopCoefficients { error_blend: 0.0, rate_gain_hz: 0.0 };
-    }
-
-    let normalized_bandwidth = std::f64::consts::TAU * noise_bandwidth_hz * coherent_integration_s;
-    let error_blend = 1.0 - (-normalized_bandwidth).exp();
-    let rate_gain_hz = error_blend / coherent_integration_s;
-
-    FirstOrderLoopCoefficients { error_blend, rate_gain_hz }
+    first_order_loop_coefficients(noise_bandwidth_hz, coherent_integration_s)
 }
 
 /// Derive a second-order PLL filter from loop bandwidth and coherent integration time.
@@ -869,6 +1220,151 @@ mod tests {
     }
 
     #[test]
+    fn first_order_loop_design_matches_requested_noise_bandwidth() {
+        let coherent_integration_s = 0.001;
+        let target_bandwidth_hz = 12.5;
+        let design = super::loop_observer_design(
+            super::LoopFilterOrder::First,
+            target_bandwidth_hz,
+            coherent_integration_s,
+        );
+        let measured_bandwidth_hz = super::loop_noise_bandwidth_hz(
+            super::LoopFilterOrder::First,
+            coherent_integration_s,
+            design.correction_gains,
+        );
+
+        assert!(
+            (measured_bandwidth_hz - target_bandwidth_hz).abs() <= 1.0e-6,
+            "design={design:?} measured_bandwidth_hz={measured_bandwidth_hz}",
+        );
+    }
+
+    #[test]
+    fn first_order_loop_design_places_requested_closed_loop_pole() {
+        let coherent_integration_s = 0.001;
+        let design = super::loop_observer_design(
+            super::LoopFilterOrder::First,
+            8.0,
+            coherent_integration_s,
+        );
+        let transition = super::corrected_loop_transition(
+            super::LoopFilterOrder::First,
+            coherent_integration_s,
+            design.correction_gains,
+        );
+
+        assert!(
+            (transition[0][0] - design.closed_loop_pole).abs() <= 1.0e-12,
+            "design={design:?} transition={transition:?}",
+        );
+    }
+
+    #[test]
+    fn second_order_loop_design_matches_requested_noise_bandwidth() {
+        let coherent_integration_s = 0.001;
+        let target_bandwidth_hz = 6.0;
+        let design = super::loop_observer_design(
+            super::LoopFilterOrder::Second,
+            target_bandwidth_hz,
+            coherent_integration_s,
+        );
+        let measured_bandwidth_hz = super::loop_noise_bandwidth_hz(
+            super::LoopFilterOrder::Second,
+            coherent_integration_s,
+            design.correction_gains,
+        );
+
+        assert!(
+            (measured_bandwidth_hz - target_bandwidth_hz).abs() <= 1.0e-6,
+            "design={design:?} measured_bandwidth_hz={measured_bandwidth_hz}",
+        );
+    }
+
+    #[test]
+    fn second_order_loop_design_repeats_the_requested_pole() {
+        let coherent_integration_s = 0.001;
+        let design = super::loop_observer_design(
+            super::LoopFilterOrder::Second,
+            6.0,
+            coherent_integration_s,
+        );
+        let transition = super::corrected_loop_transition(
+            super::LoopFilterOrder::Second,
+            coherent_integration_s,
+            design.correction_gains,
+        );
+        let trace = transition[0][0] + transition[1][1];
+        let determinant = transition[0][0] * transition[1][1] - transition[0][1] * transition[1][0];
+
+        assert!((trace - 2.0 * design.closed_loop_pole).abs() <= 1.0e-9, "{transition:?}");
+        assert!(
+            (determinant - design.closed_loop_pole * design.closed_loop_pole).abs() <= 1.0e-9,
+            "{transition:?}",
+        );
+    }
+
+    #[test]
+    fn third_order_loop_design_matches_requested_noise_bandwidth() {
+        let coherent_integration_s = 0.001;
+        let target_bandwidth_hz = 18.0;
+        let design = super::loop_observer_design(
+            super::LoopFilterOrder::Third,
+            target_bandwidth_hz,
+            coherent_integration_s,
+        );
+        let measured_bandwidth_hz = super::loop_noise_bandwidth_hz(
+            super::LoopFilterOrder::Third,
+            coherent_integration_s,
+            design.correction_gains,
+        );
+
+        assert!(
+            (measured_bandwidth_hz - target_bandwidth_hz).abs() <= 1.0e-6,
+            "design={design:?} measured_bandwidth_hz={measured_bandwidth_hz}",
+        );
+    }
+
+    #[test]
+    fn third_order_loop_design_repeats_the_requested_pole() {
+        let coherent_integration_s = 0.001;
+        let design = super::loop_observer_design(
+            super::LoopFilterOrder::Third,
+            18.0,
+            coherent_integration_s,
+        );
+        let transition = super::corrected_loop_transition(
+            super::LoopFilterOrder::Third,
+            coherent_integration_s,
+            design.correction_gains,
+        );
+        let trace = transition[0][0] + transition[1][1] + transition[2][2];
+        let principal_minors = transition[0][0] * transition[1][1]
+            + transition[0][0] * transition[2][2]
+            + transition[1][1] * transition[2][2]
+            - transition[0][1] * transition[1][0]
+            - transition[0][2] * transition[2][0]
+            - transition[1][2] * transition[2][1];
+        let determinant = transition[0][0]
+            * (transition[1][1] * transition[2][2] - transition[1][2] * transition[2][1])
+            - transition[0][1]
+                * (transition[1][0] * transition[2][2] - transition[1][2] * transition[2][0])
+            + transition[0][2]
+                * (transition[1][0] * transition[2][1] - transition[1][1] * transition[2][0]);
+
+        assert!((trace - 3.0 * design.closed_loop_pole).abs() <= 1.0e-9, "{transition:?}");
+        assert!(
+            (principal_minors - 3.0 * design.closed_loop_pole * design.closed_loop_pole).abs()
+                <= 1.0e-9,
+            "{transition:?}",
+        );
+        assert!(
+            (determinant - design.closed_loop_pole.powi(3)).abs() <= 1.0e-9,
+            "{transition:?}",
+        );
+    }
+
+    #[test]
     fn phase_lock_loop_coefficients_are_finite_and_stronger_for_wider_bandwidths() {
         let narrow = phase_lock_loop_coefficients(5.0, 0.001);
         let wide = phase_lock_loop_coefficients(15.0, 0.001);
@@ -887,8 +1383,7 @@ mod tests {
         let linear = first_order_loop_coefficients(10.0, 0.001);
         let angular = first_order_angular_loop_coefficients(10.0, 0.001);
 
-        assert!(angular.error_blend > linear.error_blend, "{angular:?} {linear:?}");
-        assert!(angular.rate_gain_hz > linear.rate_gain_hz, "{angular:?} {linear:?}");
+        assert_eq!(angular, linear);
     }
 
     #[test]
