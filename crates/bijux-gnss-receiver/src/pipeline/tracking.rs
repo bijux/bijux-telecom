@@ -3870,6 +3870,31 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "nav")]
+    fn gps_l1ca_tracking_signal_model() -> super::TrackingSignalModel {
+        let config = ReceiverPipelineConfig::default();
+        super::TrackingSignalModel::for_sat(
+            &config,
+            SatId { constellation: Constellation::Gps, prn: 1 },
+        )
+    }
+
+    #[cfg(feature = "nav")]
+    fn prompt_history_epochs(prompt_i: &[f32]) -> Vec<TrackEpoch> {
+        prompt_i
+            .iter()
+            .enumerate()
+            .map(|(index, prompt_i)| TrackEpoch {
+                epoch: Epoch { index: index as u64 },
+                sample_index: index as u64,
+                sat: SatId { constellation: Constellation::Gps, prn: 1 },
+                prompt_i: *prompt_i,
+                tracking_provenance: "tracking".to_string(),
+                ..TrackEpoch::default()
+            })
+            .collect()
+    }
+
     #[test]
     fn tracking_recovery_from_loss_of_lock() {
         let lost = Tracking::transition_state(1, ChannelState::Tracking, ChannelState::Lost);
@@ -3893,6 +3918,52 @@ mod tests {
         assert_eq!(super::acq_to_track_state(&AcqHypothesis::Ambiguous), "degraded");
         assert_eq!(super::acq_to_track_state(&AcqHypothesis::Rejected), "rejected");
         assert_eq!(super::acq_to_track_state(&AcqHypothesis::Deferred), "deferred");
+    }
+
+    #[cfg(feature = "nav")]
+    #[test]
+    fn annotate_navigation_bit_signs_waits_for_boundary_confidence() {
+        let signal_model = gps_l1ca_tracking_signal_model();
+        let prompt = vec![1.0_f32; 60];
+        let mut epochs = prompt_history_epochs(&prompt);
+
+        super::annotate_navigation_bit_signs(&signal_model, &mut epochs);
+
+        assert!(
+            epochs.iter().all(|epoch| epoch.navigation_bit_sign.is_none()),
+            "ambiguous symbol boundaries must not emit bit signs: {epochs:?}"
+        );
+        assert!(epochs.iter().all(|epoch| !epoch.nav_bit_lock));
+        assert!(epochs
+            .iter()
+            .all(|epoch| !epoch.tracking_provenance.contains("nav_symbol_sync=confident")));
+    }
+
+    #[cfg(feature = "nav")]
+    #[test]
+    fn annotate_navigation_bit_signs_emits_confident_symbol_windows() {
+        let signal_model = gps_l1ca_tracking_signal_model();
+        let mut prompt = vec![0.2_f32; 6];
+        prompt.extend(std::iter::repeat_n(1.0_f32, 20));
+        prompt.extend(std::iter::repeat_n(-1.0_f32, 20));
+        prompt.extend(std::iter::repeat_n(1.0_f32, 20));
+        let mut epochs = prompt_history_epochs(&prompt);
+
+        super::annotate_navigation_bit_signs(&signal_model, &mut epochs);
+
+        assert!(epochs[..6].iter().all(|epoch| epoch.navigation_bit_sign.is_none()));
+        assert!(epochs[6..26]
+            .iter()
+            .all(|epoch| epoch.navigation_bit_sign == Some(1) && epoch.nav_bit_lock));
+        assert!(epochs[26..46]
+            .iter()
+            .all(|epoch| epoch.navigation_bit_sign == Some(-1) && epoch.nav_bit_lock));
+        assert!(epochs[46..66]
+            .iter()
+            .all(|epoch| epoch.navigation_bit_sign == Some(1) && epoch.nav_bit_lock));
+        assert!(epochs[6..66]
+            .iter()
+            .all(|epoch| epoch.tracking_provenance.contains("nav_symbol_sync=confident")));
     }
 
     #[test]
