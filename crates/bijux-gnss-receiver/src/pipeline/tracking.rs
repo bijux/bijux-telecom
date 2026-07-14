@@ -26,7 +26,7 @@ use bijux_gnss_signal::api::{
     coherent_integration_seconds as signal_coherent_integration_seconds,
     correlate_early_prompt_late, default_local_code_model_for_signal, discriminators,
     dll_hold_threshold as signal_dll_hold_threshold,
-    dll_lock_threshold as signal_dll_lock_threshold,
+    dll_lock_threshold as signal_dll_lock_threshold, double_delta_dll_discriminator,
     epoch_start_code_phase_samples_from_receiver_phase, estimate_cn0_dbhz,
     estimate_tracking_uncertainty as signal_estimate_tracking_uncertainty,
     fll_lock_threshold_hz as signal_fll_lock_threshold_hz, galileo_e5a_q_epoch_symbol,
@@ -870,6 +870,7 @@ fn prompt_center_primary_code_period_index(
 #[derive(Debug, Clone, Copy)]
 struct TrackingEpochCorrelation {
     primary: CorrelatorOutput,
+    double_delta_outer: Option<CorrelatorOutput>,
     carrier_prompt: Complex<f32>,
     carrier_prompt_source: CarrierPromptSource,
     data_prompt: Option<Complex<f32>>,
@@ -916,6 +917,21 @@ impl TrackingDiscriminatorFamily {
 
     fn requires_unambiguous_code_lock(self) -> bool {
         matches!(self, Self::BocEarlyPromptLate | Self::CbocEarlyPromptLate)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CodeDiscriminatorMode {
+    EarlyPromptLate,
+    DoubleDeltaEarlyPromptLate,
+}
+
+impl CodeDiscriminatorMode {
+    fn label(self) -> &'static str {
+        match self {
+            Self::EarlyPromptLate => "early_prompt_late",
+            Self::DoubleDeltaEarlyPromptLate => "double_delta_early_prompt_late",
+        }
     }
 }
 
@@ -1160,6 +1176,36 @@ fn resolve_signal_tracking_params(
     params.early_late_spacing_chips =
         params.early_late_spacing_chips.min(signal_default_early_late_spacing_chips(signal_model));
     params
+}
+
+fn code_discriminator_mode(signal_model: &TrackingSignalModel) -> CodeDiscriminatorMode {
+    match signal_model.discriminator_family {
+        TrackingDiscriminatorFamily::EarlyPromptLate => {
+            CodeDiscriminatorMode::DoubleDeltaEarlyPromptLate
+        }
+        TrackingDiscriminatorFamily::BocEarlyPromptLate
+        | TrackingDiscriminatorFamily::CbocEarlyPromptLate => {
+            CodeDiscriminatorMode::EarlyPromptLate
+        }
+    }
+}
+
+fn tracking_dll_discriminator(correlation: &TrackingEpochCorrelation) -> f32 {
+    if let Some(outer) = correlation.double_delta_outer {
+        return double_delta_dll_discriminator(
+            correlation.primary.early,
+            correlation.primary.late,
+            outer.early,
+            outer.late,
+        );
+    }
+    let (dll_err, _, _, _) = discriminators(
+        correlation.primary.early,
+        correlation.primary.prompt,
+        correlation.primary.late,
+        None,
+    );
+    dll_err
 }
 
 fn joint_tracking_components(
@@ -1785,6 +1831,22 @@ impl Tracking {
             early_late_spacing_chips,
             |chip_phase| signal_model.value_at_phase(chip_phase, epoch_primary_code_period_index),
         );
+        let double_delta_outer = (code_discriminator_mode(signal_model)
+            == CodeDiscriminatorMode::DoubleDeltaEarlyPromptLate)
+            .then(|| {
+                correlate_early_prompt_late(
+                    samples,
+                    sample_rate_hz,
+                    carrier_freq_hz,
+                    carrier_phase_offset_radians(carrier_phase_cycles),
+                    base_chip_phase,
+                    tracked_chips_per_sample,
+                    early_late_spacing_chips * 2.0,
+                    |chip_phase| {
+                        signal_model.value_at_phase(chip_phase, epoch_primary_code_period_index)
+                    },
+                )
+            });
         let subcarrier_ambiguity_guard = subcarrier_ambiguity_guard(
             signal_model,
             samples,
@@ -1853,6 +1915,7 @@ impl Tracking {
         );
         TrackingEpochCorrelation {
             primary,
+            double_delta_outer,
             carrier_prompt,
             carrier_prompt_source,
             data_prompt,
@@ -2307,7 +2370,7 @@ impl Tracking {
                 for epoch in &mut channel.epochs {
                     let runtime_tracking_provenance = epoch.tracking_provenance.clone();
                     epoch.tracking_provenance = format!(
-                        "acq_hypothesis={} acq_score={:.6} acq_signal_band={:?} acq_doppler_hz={:.3} acq_carrier_hz={:.3} acq_code_phase_samples={} acq_resolved_code_phase_samples={:.6} acq_start_sample_index={} track_component_role={:?} nominal_carrier_hz={:.3} secondary_code={} discriminator_family={} phase_transition_source={} aiding_mode={} pilot_component={} data_symbol_component={}",
+                        "acq_hypothesis={} acq_score={:.6} acq_signal_band={:?} acq_doppler_hz={:.3} acq_carrier_hz={:.3} acq_code_phase_samples={} acq_resolved_code_phase_samples={:.6} acq_start_sample_index={} track_component_role={:?} nominal_carrier_hz={:.3} secondary_code={} discriminator_family={} code_discriminator={} phase_transition_source={} aiding_mode={} pilot_component={} data_symbol_component={}",
                         channel.acquisition_hypothesis,
                         channel.acquisition_score,
                         channel.signal_band,
@@ -2320,6 +2383,7 @@ impl Tracking {
                         channel.signal_model.nominal_carrier_hz(),
                         channel.signal_model.secondary_code.is_some(),
                         channel.signal_model.discriminator_family.label(),
+                        code_discriminator_mode(&channel.signal_model).label(),
                         channel.signal_model.phase_transition_source.label(),
                         channel.signal_model.aiding_mode.label(),
                         channel.signal_model.pilot_component.is_some(),
@@ -2492,12 +2556,7 @@ impl Tracking {
             correlation.secondary_code_prompt_period_index,
             carrier_prompt,
         );
-        let (dll_err, _unused_pll_err, _unused_fll_err, _unused_lock) = discriminators(
-            primary_correlator.early,
-            primary_correlator.prompt,
-            primary_correlator.late,
-            None,
-        );
+        let dll_err = tracking_dll_discriminator(&correlation);
         let dll_err =
             normalize_dll_discriminator(dll_err, tracking_params.early_late_spacing_chips);
         let (_raw_pll_err, raw_fll_err, lock) =
@@ -4489,6 +4548,33 @@ mod tests {
                 "narrow correlator must reduce delayed-path code bias: delayed_path={delayed_path:?} standard_bias_chips={standard_bias_chips:.6} narrow_bias_chips={narrow_bias_chips:.6}",
             );
         }
+    }
+
+    #[test]
+    fn tracking_dll_discriminator_uses_double_delta_outer_pair() {
+        let correlation = super::TrackingEpochCorrelation {
+            primary: super::CorrelatorOutput {
+                early: Complex::new(8.0, 0.0),
+                prompt: Complex::new(10.0, 0.0),
+                late: Complex::new(4.0, 0.0),
+                early_late_noise_weight_energy: 0.0,
+            },
+            double_delta_outer: Some(super::CorrelatorOutput {
+                early: Complex::new(6.0, 0.0),
+                prompt: Complex::new(10.0, 0.0),
+                late: Complex::new(2.0, 0.0),
+                early_late_noise_weight_energy: 0.0,
+            }),
+            carrier_prompt: Complex::new(10.0, 0.0),
+            carrier_prompt_source: super::CarrierPromptSource::Primary,
+            data_prompt: None,
+            secondary_code_prompt_period_index: 0,
+            subcarrier_ambiguity_guard: None,
+        };
+
+        assert!(
+            (super::tracking_dll_discriminator(&correlation) - 0.083_333_34).abs() <= f32::EPSILON
+        );
     }
 
     fn galileo_e1_subcarrier_guard_config() -> ReceiverPipelineConfig {
@@ -7657,6 +7743,42 @@ mod tests {
         let tracking_params = super::resolve_signal_tracking_params(&config, &signal_model);
 
         assert_eq!(tracking_params.early_late_spacing_chips, 0.25);
+    }
+
+    #[test]
+    fn code_discriminator_mode_uses_double_delta_for_bpsk_tracking() {
+        let config = crate::engine::receiver_config::ReceiverPipelineConfig::default();
+        let sat = SatId { constellation: Constellation::Gps, prn: 3 };
+        let signal_model = super::TrackingSignalModel::for_sat_signal_band(
+            &config,
+            sat,
+            SignalBand::L1,
+            SignalCode::Ca,
+            None,
+        );
+
+        assert_eq!(
+            super::code_discriminator_mode(&signal_model),
+            super::CodeDiscriminatorMode::DoubleDeltaEarlyPromptLate
+        );
+    }
+
+    #[test]
+    fn code_discriminator_mode_keeps_subcarrier_tracking_unambiguous() {
+        let config = crate::engine::receiver_config::ReceiverPipelineConfig::default();
+        let sat = SatId { constellation: Constellation::Galileo, prn: 11 };
+        let signal_model = super::TrackingSignalModel::for_sat_signal_band(
+            &config,
+            sat,
+            SignalBand::E1,
+            SignalCode::E1B,
+            None,
+        );
+
+        assert_eq!(
+            super::code_discriminator_mode(&signal_model),
+            super::CodeDiscriminatorMode::EarlyPromptLate
+        );
     }
 
     #[test]
