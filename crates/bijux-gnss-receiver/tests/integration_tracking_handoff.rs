@@ -261,6 +261,12 @@ fn tracking_reports_signal_default_l1_spacing() {
 
     assert_eq!(assumptions.early_late_spacing_chips, 0.25);
     assert_eq!(assumptions.discriminator_family, "early_prompt_late");
+    assert!(
+        first_epoch
+            .tracking_provenance
+            .contains("code_discriminator=double_delta_early_prompt_late"),
+        "tracking provenance must report the active code discriminator: {first_epoch:?}"
+    );
 }
 
 #[test]
@@ -327,5 +333,9 @@ fn tracking_uses_explicit_galileo_e1_parameters() {
     assert!(
         first_epoch.tracking_provenance.contains("acq_signal_band=E1"),
         "tracking provenance must preserve the explicit Galileo E1 band: {first_epoch:?}"
+    );
+    assert!(
+        first_epoch.tracking_provenance.contains("code_discriminator=early_prompt_late"),
+        "tracking provenance must report the active Galileo E1 code discriminator: {first_epoch:?}"
     );
 }
