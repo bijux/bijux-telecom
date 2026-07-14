@@ -375,11 +375,18 @@ enum SearchWindowEdge {
     Upper,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SearchWindowDimension {
+    Doppler,
+    CodePhase,
+}
+
 #[derive(Debug, Clone)]
 struct SearchWindowDiagnostic {
+    dimension: SearchWindowDimension,
     edge: SearchWindowEdge,
-    best_carrier_hz: f64,
-    interior_carrier_hz: f64,
+    best_axis_value: f64,
+    interior_axis_value: f64,
     best_peak_mean_ratio: f32,
     interior_peak_mean_ratio: f32,
 }
@@ -1240,7 +1247,7 @@ impl Acquisition {
                 doppler += resolved_request.doppler_step_hz.max(1);
             }
 
-            let search_window_diagnostic = signal_outside_search_range(
+            let doppler_search_window_diagnostic = signal_outside_search_range(
                 &grid_candidates,
                 search_center_hz,
                 resolved_request.doppler_search_hz,
@@ -1279,6 +1286,32 @@ impl Acquisition {
                 );
             }
             if candidates.is_empty() {
+                if should_retry_assisted_search(
+                    request,
+                    &resolved_bounds,
+                    None,
+                    doppler_search_window_diagnostic.as_ref(),
+                ) {
+                    let fallback_reason =
+                        assisted_search_fallback_reason(None, doppler_search_window_diagnostic.as_ref());
+                    let fallback_request = AcqRequest { assistance_bounds: None, ..request };
+                    let mut fallback_candidates = self
+                        .run_fft_topn_for_requests_with_explain(frame, &[fallback_request], top_n)
+                        .results
+                        .into_iter()
+                        .next()
+                        .unwrap_or_default();
+                    append_assisted_search_fallback_reason(
+                        &mut fallback_candidates,
+                        &fallback_reason,
+                    );
+                    sat_evaluations.push(AcquisitionSatEvaluation {
+                        sat,
+                        candidates: fallback_candidates,
+                        search_window_diagnostic: None,
+                    });
+                    continue;
+                }
                 sat_evaluations.push(AcquisitionSatEvaluation {
                     sat,
                     candidates: Vec::new(),
@@ -1286,6 +1319,7 @@ impl Acquisition {
                 });
                 continue;
             }
+            let mut selected_search_window_diagnostic = doppler_search_window_diagnostic.clone();
             for (rank, candidate) in candidates.iter_mut().enumerate() {
                 candidate.candidate_rank = rank as u8 + 1;
                 candidate.is_primary_candidate = rank == 0;
@@ -1301,7 +1335,23 @@ impl Acquisition {
                 }
                 let local_peak_separation_ratio = candidate.peak_second_ratio;
                 if rank == 0 {
+                    let search_window_diagnostic = selected_search_window_diagnostic.clone().or_else(
+                        || {
+                            assisted_code_phase_search_window_diagnostic(
+                                &self.config,
+                                &signal_model,
+                                frame,
+                                sat,
+                                candidate.carrier_hz.0,
+                                request.coherent_ms,
+                                request.noncoherent,
+                                &resolved_bounds,
+                                resolved_thresholds.peak_mean_threshold,
+                            )
+                        },
+                    );
                     if let Some(diagnostic) = search_window_diagnostic.as_ref() {
+                        selected_search_window_diagnostic = Some(diagnostic.clone());
                         candidate.hypothesis = AcqHypothesis::Rejected;
                         candidate.score = 0.0;
                         candidate.explain_selection_reason =
@@ -1378,6 +1428,31 @@ impl Acquisition {
                 .first()
                 .cloned()
                 .expect("retained acquisition candidates must include a primary row");
+            if should_retry_assisted_search(
+                request,
+                &resolved_bounds,
+                Some(&primary_candidate),
+                selected_search_window_diagnostic.as_ref(),
+            ) {
+                let fallback_reason = assisted_search_fallback_reason(
+                    Some(&primary_candidate),
+                    selected_search_window_diagnostic.as_ref(),
+                );
+                let fallback_request = AcqRequest { assistance_bounds: None, ..request };
+                let mut fallback_candidates = self
+                    .run_fft_topn_for_requests_with_explain(frame, &[fallback_request], top_n)
+                    .results
+                    .into_iter()
+                    .next()
+                    .unwrap_or_default();
+                append_assisted_search_fallback_reason(&mut fallback_candidates, &fallback_reason);
+                sat_evaluations.push(AcquisitionSatEvaluation {
+                    sat,
+                    candidates: fallback_candidates,
+                    search_window_diagnostic: None,
+                });
+                continue;
+            }
             for candidate in candidates.iter_mut().skip(1) {
                 candidate.hypothesis = AcqHypothesis::Rejected;
                 candidate.score = 0.0;
@@ -1387,7 +1462,7 @@ impl Acquisition {
             sat_evaluations.push(AcquisitionSatEvaluation {
                 sat,
                 candidates,
-                search_window_diagnostic,
+                search_window_diagnostic: selected_search_window_diagnostic,
             });
         }
         suppress_wrong_prn_correlations(&mut sat_evaluations);
@@ -1498,8 +1573,18 @@ impl Acquisition {
                                 SearchWindowEdge::Upper => "upper".to_string(),
                             },
                         ),
-                        ("best_carrier_hz", format!("{:.3}", diagnostic.best_carrier_hz)),
-                        ("interior_carrier_hz", format!("{:.3}", diagnostic.interior_carrier_hz)),
+                        (
+                            "dimension",
+                            match diagnostic.dimension {
+                                SearchWindowDimension::Doppler => "doppler".to_string(),
+                                SearchWindowDimension::CodePhase => "code_phase".to_string(),
+                            },
+                        ),
+                        ("best_axis_value", format!("{:.3}", diagnostic.best_axis_value)),
+                        (
+                            "interior_axis_value",
+                            format!("{:.3}", diagnostic.interior_axis_value),
+                        ),
                         ("best_peak_mean_ratio", format!("{:.6}", diagnostic.best_peak_mean_ratio)),
                         (
                             "interior_peak_mean_ratio",
@@ -2292,9 +2377,10 @@ fn signal_outside_search_range(
             return None;
         }
         Some(SearchWindowDiagnostic {
+            dimension: SearchWindowDimension::Doppler,
             edge,
-            best_carrier_hz: edge_candidate.carrier_hz.0,
-            interior_carrier_hz: interior_candidate.carrier_hz.0,
+            best_axis_value: edge_candidate.carrier_hz.0,
+            interior_axis_value: interior_candidate.carrier_hz.0,
             best_peak_mean_ratio: edge_candidate.peak_mean_ratio,
             interior_peak_mean_ratio: interior_candidate.peak_mean_ratio,
         })
@@ -2311,13 +2397,165 @@ fn search_window_candidate_reason(diagnostic: &SearchWindowDiagnostic) -> String
         SearchWindowEdge::Lower => "lower",
         SearchWindowEdge::Upper => "upper",
     };
-    format!(
-        "signal_outside_search_range: best carrier {:.3} Hz sits on the {edge} search edge and exceeds the interior neighbor at {:.3} Hz (peak_mean_ratio {:.6} > {:.6})",
-        diagnostic.best_carrier_hz,
-        diagnostic.interior_carrier_hz,
-        diagnostic.best_peak_mean_ratio,
-        diagnostic.interior_peak_mean_ratio,
+    match diagnostic.dimension {
+        SearchWindowDimension::Doppler => format!(
+            "signal_outside_search_range: best carrier {:.3} Hz sits on the {edge} search edge and exceeds the interior neighbor at {:.3} Hz (peak_mean_ratio {:.6} > {:.6})",
+            diagnostic.best_axis_value,
+            diagnostic.interior_axis_value,
+            diagnostic.best_peak_mean_ratio,
+            diagnostic.interior_peak_mean_ratio,
+        ),
+        SearchWindowDimension::CodePhase => format!(
+            "signal_outside_search_range: best code phase {:.0} samples sits on the {edge} search edge and exceeds the interior neighbor at {:.0} samples (peak_mean_ratio {:.6} > {:.6})",
+            diagnostic.best_axis_value,
+            diagnostic.interior_axis_value,
+            diagnostic.best_peak_mean_ratio,
+            diagnostic.interior_peak_mean_ratio,
+        ),
+    }
+}
+
+fn assisted_code_phase_search_window_diagnostic(
+    config: &ReceiverPipelineConfig,
+    signal_model: &AcquisitionSignalModel,
+    frame: &SamplesFrame,
+    sat: SatId,
+    carrier_hz: f64,
+    coherent_ms: u32,
+    noncoherent: u32,
+    resolved_bounds: &ResolvedAcquisitionSearchBounds,
+    peak_mean_threshold: f32,
+) -> Option<SearchWindowDiagnostic> {
+    if resolved_bounds.code_phase_search_bins == 0
+        || resolved_bounds.code_phase_search_mode == "full_code"
+    {
+        return None;
+    }
+    let correlation_profile = measure_code_phase_profile(
+        config,
+        signal_model,
+        frame,
+        sat,
+        carrier_hz,
+        coherent_ms,
+        noncoherent,
+    )?;
+    code_phase_outside_search_range(
+        &correlation_profile,
+        resolved_bounds.code_phase_search_start_sample,
+        resolved_bounds.code_phase_search_step_samples,
+        resolved_bounds.code_phase_search_bins,
+        peak_mean_threshold,
     )
+}
+
+fn candidate_is_trackable(candidate: &AcqResult) -> bool {
+    matches!(candidate.hypothesis, AcqHypothesis::Accepted | AcqHypothesis::Ambiguous)
+}
+
+fn should_retry_assisted_search(
+    request: AcqRequest,
+    resolved_bounds: &ResolvedAcquisitionSearchBounds,
+    primary_candidate: Option<&AcqResult>,
+    search_window_diagnostic: Option<&SearchWindowDiagnostic>,
+) -> bool {
+    request.assistance_bounds.is_some()
+        && resolved_bounds.search_domain_reduced
+        && (search_window_diagnostic.is_some()
+            || !primary_candidate.is_some_and(candidate_is_trackable))
+}
+
+fn assisted_search_fallback_reason(
+    primary_candidate: Option<&AcqResult>,
+    search_window_diagnostic: Option<&SearchWindowDiagnostic>,
+) -> String {
+    match search_window_diagnostic {
+        Some(diagnostic) => format!(
+            "assistance_bounds_fallback: {}",
+            search_window_candidate_reason(diagnostic)
+        ),
+        None => {
+            let candidate_reason = primary_candidate
+                .and_then(|candidate| candidate.explain_selection_reason.as_deref())
+                .unwrap_or("bounded search returned no trackable candidate");
+            format!("assistance_bounds_fallback: {candidate_reason}")
+        }
+    }
+}
+
+fn append_assisted_search_fallback_reason(candidates: &mut [AcqResult], fallback_reason: &str) {
+    if let Some(primary_candidate) = candidates.first_mut() {
+        let existing_reason = primary_candidate
+            .explain_selection_reason
+            .clone()
+            .unwrap_or_else(|| selected_reason_for_candidate(primary_candidate).to_string());
+        primary_candidate.explain_selection_reason =
+            Some(format!("{existing_reason}; {fallback_reason}"));
+    }
+}
+
+fn code_phase_outside_search_range(
+    correlation_profile: &[f32],
+    search_start_sample: usize,
+    search_step_samples: usize,
+    search_bins: usize,
+    peak_mean_threshold: f32,
+) -> Option<SearchWindowDiagnostic> {
+    if correlation_profile.len() < 2
+        || search_bins < 2
+        || search_bins >= correlation_profile.len()
+        || search_step_samples == 0
+    {
+        return None;
+    }
+
+    let mean = correlation_profile.iter().copied().sum::<f32>() / correlation_profile.len() as f32;
+    let peak_mean_ratio = |idx: usize| correlation_profile[idx] / (mean + 1.0e-6);
+    let best_peak_mean_ratio = correlation_profile
+        .iter()
+        .copied()
+        .fold(0.0_f32, f32::max)
+        / (mean + 1.0e-6);
+    let hint_threshold =
+        peak_mean_threshold.max(best_peak_mean_ratio * SEARCH_EDGE_HINT_PEAK_MEAN_RATIO_FRACTION);
+    let lower_edge_index = search_start_sample % correlation_profile.len();
+    let lower_interior_index = (lower_edge_index + search_step_samples) % correlation_profile.len();
+    let upper_edge_index = (search_start_sample + (search_bins - 1) * search_step_samples)
+        % correlation_profile.len();
+    let upper_interior_index =
+        (upper_edge_index + correlation_profile.len() - search_step_samples % correlation_profile.len())
+            % correlation_profile.len();
+
+    [
+        (SearchWindowEdge::Lower, lower_edge_index, lower_interior_index),
+        (SearchWindowEdge::Upper, upper_edge_index, upper_interior_index),
+    ]
+    .into_iter()
+    .filter_map(|(edge, edge_index, interior_index)| {
+        let edge_peak_mean_ratio = peak_mean_ratio(edge_index);
+        let interior_peak_mean_ratio = peak_mean_ratio(interior_index);
+        if edge_peak_mean_ratio < hint_threshold {
+            return None;
+        }
+        if edge_peak_mean_ratio
+            <= interior_peak_mean_ratio * (1.0 + SEARCH_EDGE_RISE_RATIO_EPSILON)
+        {
+            return None;
+        }
+        Some(SearchWindowDiagnostic {
+            dimension: SearchWindowDimension::CodePhase,
+            edge,
+            best_axis_value: edge_index as f64,
+            interior_axis_value: interior_index as f64,
+            best_peak_mean_ratio: edge_peak_mean_ratio,
+            interior_peak_mean_ratio,
+        })
+    })
+    .max_by(|left, right| {
+        left.best_peak_mean_ratio
+            .partial_cmp(&right.best_peak_mean_ratio)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    })
 }
 
 fn acquisition_decision(
@@ -4490,6 +4728,78 @@ mod tests {
     }
 
     #[test]
+    fn wrong_assisted_code_phase_bounds_retry_full_search() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 4_092_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 1023,
+            acquisition_doppler_search_hz: 2_000,
+            acquisition_doppler_step_hz: 250,
+            ..ReceiverPipelineConfig::default()
+        };
+        let sat = SatId { constellation: Constellation::Gps, prn: 10 };
+        let code_phase_chips = 147.25;
+        let frame = generate_l1_ca(
+            &config,
+            SyntheticSignalParams {
+                sat,
+                glonass_frequency_channel: None,
+                signal_band: SignalBand::L1,
+                signal_code: SignalCode::Unknown,
+                doppler_hz: 0.0,
+                code_phase_chips,
+                carrier_phase_rad: 0.0,
+                cn0_db_hz: 58.0,
+                navigation_data: false.into(),
+            },
+            0xFA11_BAC4,
+            0.020,
+        );
+        let request = AcqRequest {
+            sat,
+            glonass_frequency_channel: None,
+            signal_band: SignalBand::L1,
+            signal_code: SignalCode::Unknown,
+            doppler_center_hz: 0.0,
+            expected_line_of_sight_doppler_hz: Some(0.0),
+            assistance_bounds: Some(AcqAssistanceBounds {
+                expected_code_phase_samples: 32.0,
+                time_uncertainty_s: 0.0,
+                position_uncertainty_m: 0.0,
+                oscillator_uncertainty_hz: 120.0,
+                approximate_velocity_uncertainty_mps: 6.0,
+            }),
+            doppler_search_hz: 2_000,
+            doppler_step_hz: 250,
+            coherent_ms: 1,
+            noncoherent: 1,
+        };
+
+        let result = Acquisition::new(config, ReceiverRuntime::default())
+            .run_fft_for_requests(&frame, &[request])
+            .remove(0);
+
+        assert!(
+            matches!(result.hypothesis, AcqHypothesis::Accepted | AcqHypothesis::Ambiguous),
+            "{result:?}"
+        );
+        let assumptions = result
+            .assumptions
+            .as_ref()
+            .expect("fallback acquisition result should preserve assumptions");
+        assert_eq!(assumptions.code_phase_search_mode, "full_code");
+        assert_eq!(assumptions.assistance_bounds, None);
+        assert!(
+            result
+                .explain_selection_reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains("assistance_bounds_fallback")),
+            "{result:?}"
+        );
+    }
+
+    #[test]
     fn run_fft_for_requests_preserves_explicit_galileo_e5b_signal_code() {
         let config = ReceiverPipelineConfig {
             sampling_freq_hz: 10_230_000.0,
@@ -4827,9 +5137,10 @@ mod tests {
         )
         .expect("search-window diagnostic");
 
+        assert_eq!(diagnostic.dimension, SearchWindowDimension::Doppler);
         assert_eq!(diagnostic.edge, SearchWindowEdge::Upper);
-        assert_eq!(diagnostic.best_carrier_hz, 1_500.0);
-        assert_eq!(diagnostic.interior_carrier_hz, 1_250.0);
+        assert_eq!(diagnostic.best_axis_value, 1_500.0);
+        assert_eq!(diagnostic.interior_axis_value, 1_250.0);
     }
 
     #[test]
@@ -4868,9 +5179,10 @@ mod tests {
         )
         .expect("search-window diagnostic");
 
+        assert_eq!(diagnostic.dimension, SearchWindowDimension::Doppler);
         assert_eq!(diagnostic.edge, SearchWindowEdge::Lower);
-        assert_eq!(diagnostic.best_carrier_hz, -1_500.0);
-        assert_eq!(diagnostic.interior_carrier_hz, -1_250.0);
+        assert_eq!(diagnostic.best_axis_value, -1_500.0);
+        assert_eq!(diagnostic.interior_axis_value, -1_250.0);
     }
 
     #[test]
@@ -4926,13 +5238,14 @@ mod tests {
         )
         .expect("search-window diagnostic");
 
+        assert_eq!(diagnostic.dimension, SearchWindowDimension::Doppler);
         assert_eq!(diagnostic.edge, SearchWindowEdge::Upper);
         assert_eq!(
-            diagnostic.best_carrier_hz,
+            diagnostic.best_axis_value,
             carrier_hz_from_doppler_hz(intermediate_freq_hz, 1_500.0)
         );
         assert_eq!(
-            diagnostic.interior_carrier_hz,
+            diagnostic.interior_axis_value,
             carrier_hz_from_doppler_hz(intermediate_freq_hz, 1_250.0)
         );
     }
