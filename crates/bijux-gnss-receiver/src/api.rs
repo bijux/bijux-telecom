@@ -44,8 +44,9 @@ pub use crate::pipeline::acquisition::Acquisition as AcquisitionEngine;
 /// Acquisition assistance helpers.
 pub use crate::pipeline::acquisition_assistance::{
     build_common_oscillator_bias_follow_up_requests, estimate_common_oscillator_bias,
-    CommonOscillatorBiasEstimate, CommonOscillatorBiasFollowUpRequest,
-    CommonOscillatorBiasSignalEstimate,
+    resolve_acquisition_search_bounds, CommonOscillatorBiasEstimate,
+    CommonOscillatorBiasFollowUpRequest, CommonOscillatorBiasSignalEstimate,
+    ResolvedAcquisitionSearchBounds,
 };
 /// Carrier/Doppler conversion helpers.
 pub use crate::pipeline::doppler::{carrier_hz_from_doppler_hz, doppler_hz_from_carrier_hz};
