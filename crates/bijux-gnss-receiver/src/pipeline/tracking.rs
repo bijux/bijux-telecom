@@ -903,8 +903,8 @@ impl TrackingDiscriminatorFamily {
     fn label(self) -> &'static str {
         match self {
             Self::EarlyPromptLate => "early_prompt_late",
-            Self::BocEarlyPromptLate => "boc_early_prompt_late",
-            Self::CbocEarlyPromptLate => "cboc_early_prompt_late",
+            Self::BocEarlyPromptLate => "unambiguous_boc_early_prompt_late",
+            Self::CbocEarlyPromptLate => "unambiguous_cboc_early_prompt_late",
         }
     }
 
@@ -7441,7 +7441,7 @@ mod tests {
 
         let assumptions = super::tracking_assumptions(&signal_model, tracking_params);
 
-        assert_eq!(assumptions.discriminator_family, "cboc_early_prompt_late");
+        assert_eq!(assumptions.discriminator_family, "unambiguous_cboc_early_prompt_late");
     }
 
     #[derive(Debug, Deserialize)]

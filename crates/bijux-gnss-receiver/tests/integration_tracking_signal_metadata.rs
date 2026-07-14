@@ -322,7 +322,7 @@ fn galileo_e1b_tracking_reports_cboc_discriminator_metadata() {
     assert!(
         tracking.epochs.iter().all(|epoch| {
             epoch.tracking_assumptions.as_ref().is_some_and(|assumptions| {
-                assumptions.discriminator_family == "cboc_early_prompt_late"
+                assumptions.discriminator_family == "unambiguous_cboc_early_prompt_late"
             })
         }),
         "{tracking:#?}"
@@ -330,7 +330,9 @@ fn galileo_e1b_tracking_reports_cboc_discriminator_metadata() {
     assert!(
         tracking.epochs.iter().all(|epoch| {
             epoch.tracking_provenance.contains("track_component_role=Data")
-                && epoch.tracking_provenance.contains("discriminator_family=cboc_early_prompt_late")
+                && epoch
+                    .tracking_provenance
+                    .contains("discriminator_family=unambiguous_cboc_early_prompt_late")
                 && epoch.tracking_provenance.contains("nominal_carrier_hz=1575420000.000")
         }),
         "{tracking:#?}"
