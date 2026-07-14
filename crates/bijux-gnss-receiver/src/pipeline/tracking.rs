@@ -267,6 +267,25 @@ pub(crate) struct IncrementalTrackingState {
     channels: Vec<IncrementalTrackingChannel>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct VectorTrackingMeasurement {
+    sat: SatId,
+    channel_id: u8,
+    epoch_idx: u64,
+    sample_index: u64,
+    cn0_dbhz: f64,
+    dll_error_samples: f64,
+    pll_error_rad: f64,
+    fll_error_hz: f64,
+    code_rate_error_hz: f64,
+    carrier_rate_hz_per_s: f64,
+    prompt_locked: bool,
+    dll_locked: bool,
+    pll_locked: bool,
+    fll_locked: bool,
+    channel_state: ChannelState,
+}
+
 #[derive(Debug, Clone)]
 struct TrackingStartContext {
     seed: AcqTrackingSeed,
@@ -1761,7 +1780,7 @@ impl Tracking {
         state: &mut LoopState,
         out: &mut Vec<TrackEpoch>,
         transitions: &mut Vec<TrackTransition>,
-    ) {
+    ) -> Option<VectorTrackingMeasurement> {
         let samples_per_code = signal_model.samples_per_code(self.config.sampling_freq_hz);
         let samples_per_chip = samples_per_code as f64 / signal_model.code_length as f64;
         let alloc_before = crate::engine::alloc::allocation_count();
@@ -2168,6 +2187,24 @@ impl Tracking {
             });
         }
 
+        let measurement = VectorTrackingMeasurement {
+            sat,
+            channel_id,
+            epoch_idx: track_epoch.epoch.index,
+            sample_index: track_epoch.sample_index,
+            cn0_dbhz,
+            dll_error_samples: (dll_err as f64) * samples_per_chip,
+            pll_error_rad: pll_err as f64,
+            fll_error_hz: fll_err_hz as f64,
+            code_rate_error_hz: state.code_rate_hz - signal_model.code_rate_hz,
+            carrier_rate_hz_per_s: state.carrier_rate_hz_per_s,
+            prompt_locked: channel_locked,
+            dll_locked: dll_lock,
+            pll_locked: pll_lock,
+            fll_locked: fll_lock,
+            channel_state: state.state,
+        };
+
         out.push(TrackEpoch {
             lock: channel_locked,
             carrier_hz: Hertz(state.carrier_hz),
@@ -2192,6 +2229,7 @@ impl Tracking {
             tracking_uncertainty,
             ..track_epoch
         });
+        Some(measurement)
     }
 }
 
