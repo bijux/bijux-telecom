@@ -377,7 +377,14 @@ impl TrackingComponentLocalCodeModel {
 struct TrackingEpochCorrelation {
     primary: CorrelatorOutput,
     carrier_prompt: Complex<f32>,
+    carrier_prompt_source: CarrierPromptSource,
     data_prompt: Option<Complex<f32>>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CarrierPromptSource {
+    Primary,
+    Pilot,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -790,22 +797,22 @@ fn select_carrier_prompt(
     primary_prompt: Complex<f32>,
     pilot_prompt: Option<Complex<f32>>,
     aiding_mode: TrackingAidingMode,
-) -> Complex<f32> {
+) -> (Complex<f32>, CarrierPromptSource) {
     if aiding_mode != TrackingAidingMode::PilotCarrier {
-        return primary_prompt;
+        return (primary_prompt, CarrierPromptSource::Primary);
     }
     let Some(pilot_prompt) = pilot_prompt else {
-        return primary_prompt;
+        return (primary_prompt, CarrierPromptSource::Primary);
     };
     let primary_norm = primary_prompt.norm();
     let pilot_norm = pilot_prompt.norm();
     if primary_norm <= f32::EPSILON {
-        return pilot_prompt;
+        return (pilot_prompt, CarrierPromptSource::Pilot);
     }
     if pilot_norm >= primary_norm * JOINT_COMPONENT_MIN_PROMPT_RATIO {
-        pilot_prompt
+        (pilot_prompt, CarrierPromptSource::Pilot)
     } else {
-        primary_prompt
+        (primary_prompt, CarrierPromptSource::Primary)
     }
 }
 
@@ -1175,9 +1182,9 @@ impl Tracking {
                 .prompt
             }
         });
-        let carrier_prompt =
+        let (carrier_prompt, carrier_prompt_source) =
             select_carrier_prompt(primary.prompt, pilot_prompt, signal_model.aiding_mode);
-        TrackingEpochCorrelation { primary, carrier_prompt, data_prompt }
+        TrackingEpochCorrelation { primary, carrier_prompt, carrier_prompt_source, data_prompt }
     }
 
     pub fn track_epoch(
@@ -2014,6 +2021,7 @@ impl Tracking {
             signal_model,
             correlation.data_prompt,
             carrier_prompt,
+            correlation.carrier_prompt_source,
             phase_decision.nav_bit_phase_offset_cycles,
             tracking_state_locked && pll_lock,
         );
@@ -2817,6 +2825,7 @@ fn recover_epoch_navigation_bit_sign(
     signal_model: &TrackingSignalModel,
     data_prompt: Option<Complex<f32>>,
     carrier_prompt: Complex<f32>,
+    carrier_prompt_source: CarrierPromptSource,
     carrier_phase_offset_cycles: f64,
     allow_decision: bool,
 ) -> Option<i8> {
@@ -2834,12 +2843,32 @@ fn recover_epoch_navigation_bit_sign(
     if !carrier_norm.is_finite() || carrier_norm <= f32::EPSILON {
         return None;
     }
-    let aligned_data_prompt = prompt * carrier_reference.conj();
+    let data_axis_reference = align_prompt_with_phase_offset(
+        carrier_reference,
+        carrier_to_data_phase_offset_cycles(signal_model, carrier_prompt_source),
+    );
+    let aligned_data_prompt = prompt * data_axis_reference.conj();
     if !aligned_data_prompt.re.is_finite() || !aligned_data_prompt.im.is_finite() {
         return None;
     }
     (aligned_data_prompt.re.abs() >= aligned_data_prompt.im.abs())
         .then_some(if aligned_data_prompt.re >= 0.0 { 1 } else { -1 })
+}
+
+fn carrier_to_data_phase_offset_cycles(
+    signal_model: &TrackingSignalModel,
+    carrier_prompt_source: CarrierPromptSource,
+) -> f64 {
+    if carrier_prompt_source != CarrierPromptSource::Pilot {
+        return 0.0;
+    }
+    match signal_model.pilot_component.as_ref().map(|component| &component.local_code_model) {
+        Some(
+            TrackingComponentLocalCodeModel::GalileoE5aQ { .. }
+            | TrackingComponentLocalCodeModel::GalileoE5bQ { .. },
+        ) => 0.25,
+        _ => 0.0,
+    }
 }
 
 fn align_prompt_with_phase_offset(prompt: Complex<f32>, phase_offset_cycles: f64) -> Complex<f32> {
@@ -5599,13 +5628,14 @@ mod tests {
 
     #[test]
     fn select_carrier_prompt_prefers_pilot_when_it_is_strong_enough() {
-        let selected = super::select_carrier_prompt(
+        let (selected, source) = super::select_carrier_prompt(
             Complex::new(0.25, 0.05),
             Some(Complex::new(0.60, -0.10)),
             super::TrackingAidingMode::PilotCarrier,
         );
 
         assert_eq!(selected, Complex::new(0.60, -0.10));
+        assert_eq!(source, super::CarrierPromptSource::Pilot);
     }
 
     #[test]
@@ -5629,6 +5659,7 @@ mod tests {
                 &signal_model,
                 Some(Complex::new(0.75, 0.05)),
                 Complex::new(0.80, 0.02),
+                super::CarrierPromptSource::Primary,
                 0.0,
                 true,
             ),
@@ -5639,6 +5670,7 @@ mod tests {
                 &signal_model,
                 Some(Complex::new(-0.75, 0.05)),
                 Complex::new(0.80, 0.02),
+                super::CarrierPromptSource::Primary,
                 0.0,
                 true,
             ),
@@ -5667,6 +5699,7 @@ mod tests {
                 &signal_model,
                 Some(Complex::new(0.72, -0.08)),
                 Complex::new(-0.83, 0.04),
+                super::CarrierPromptSource::Primary,
                 0.5,
                 true,
             ),
@@ -5677,6 +5710,7 @@ mod tests {
                 &signal_model,
                 Some(Complex::new(-0.72, 0.08)),
                 Complex::new(-0.83, 0.04),
+                super::CarrierPromptSource::Primary,
                 0.5,
                 true,
             ),
@@ -5709,6 +5743,7 @@ mod tests {
                 &signal_model,
                 Some(positive_data),
                 carrier_reference,
+                super::CarrierPromptSource::Primary,
                 0.0,
                 true,
             ),
@@ -5719,6 +5754,47 @@ mod tests {
                 &signal_model,
                 Some(negative_data),
                 carrier_reference,
+                super::CarrierPromptSource::Primary,
+                0.0,
+                true,
+            ),
+            Some(-1)
+        );
+    }
+
+    #[test]
+    fn recover_epoch_navigation_bit_sign_rotates_galileo_pilot_axis_into_data_axis() {
+        let config = crate::engine::receiver_config::ReceiverPipelineConfig {
+            code_freq_basis_hz: 10_230_000.0,
+            code_length: 10_230,
+            ..crate::engine::receiver_config::ReceiverPipelineConfig::default()
+        };
+        let sat = SatId { constellation: Constellation::Galileo, prn: 11 };
+        let signal_model = super::TrackingSignalModel::for_sat_signal_band(
+            &config,
+            sat,
+            SignalBand::E5,
+            SignalCode::E5b,
+            None,
+        );
+
+        assert_eq!(
+            super::recover_epoch_navigation_bit_sign(
+                &signal_model,
+                Some(Complex::new(0.70, 0.02)),
+                Complex::new(0.01, 0.80),
+                super::CarrierPromptSource::Pilot,
+                0.0,
+                true,
+            ),
+            Some(1)
+        );
+        assert_eq!(
+            super::recover_epoch_navigation_bit_sign(
+                &signal_model,
+                Some(Complex::new(-0.70, -0.02)),
+                Complex::new(0.01, 0.80),
+                super::CarrierPromptSource::Pilot,
                 0.0,
                 true,
             ),
