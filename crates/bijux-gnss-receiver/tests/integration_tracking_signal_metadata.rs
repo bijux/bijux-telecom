@@ -184,6 +184,60 @@ fn gps_l1ca_tracking_still_reports_navigation_bit_lock_for_data_symbols() {
 }
 
 #[test]
+fn galileo_e5b_tracking_reports_joint_component_metadata() {
+    let config = wideband_tracking_config();
+    let sat = SatId { constellation: Constellation::Galileo, prn: 11 };
+    let scenario = SyntheticScenario {
+        sample_rate_hz: config.sampling_freq_hz,
+        intermediate_freq_hz: config.intermediate_freq_hz,
+        receiver_clock_frequency_bias_hz: 0.0,
+        duration_s: 0.080,
+        seed: 0x6A11_E5B0,
+        satellites: vec![SyntheticSignalParams {
+            sat,
+            glonass_frequency_channel: None,
+            signal_band: SignalBand::E5,
+            signal_code: SignalCode::E5b,
+            doppler_hz: 180.0,
+            code_phase_chips: 2_048.375,
+            carrier_phase_rad: 0.25,
+            cn0_db_hz: 60.0,
+            navigation_data: true.into(),
+        }],
+        ephemerides: Vec::new(),
+        id: "tracking-signal-metadata-galileo-e5b".to_string(),
+    };
+
+    let artifacts = run_tracking_case(&config, &scenario);
+    let tracking =
+        artifacts.tracking.iter().find(|result| result.sat == sat).expect("Galileo E5-B tracking");
+
+    assert!(tracking.epochs.iter().any(|epoch| epoch.nav_bit_lock), "{tracking:#?}");
+    assert!(
+        tracking.epochs.iter().any(|epoch| epoch.navigation_bit_sign.is_some()),
+        "{tracking:#?}"
+    );
+    assert!(
+        tracking.epochs.iter().all(|epoch| {
+            epoch.tracking_assumptions
+                .as_ref()
+                .is_some_and(|assumptions| assumptions.aiding_mode == "pilot_carrier")
+        }),
+        "{tracking:#?}"
+    );
+    assert!(
+        tracking.epochs.iter().all(|epoch| {
+            epoch.tracking_provenance.contains("track_component_role=Data")
+                && epoch.tracking_provenance.contains("phase_transition_source=secondary_code")
+                && epoch.tracking_provenance.contains("aiding_mode=pilot_carrier")
+                && epoch.tracking_provenance.contains("pilot_component=true")
+                && epoch.tracking_provenance.contains("data_symbol_component=true")
+        }),
+        "{tracking:#?}"
+    );
+}
+
+#[test]
 fn beidou_b1i_tracking_reports_secondary_code_metadata_without_navigation_bit_lock() {
     let config = beidou_b1_tracking_config();
     let sat = SatId { constellation: Constellation::Beidou, prn: 11 };
