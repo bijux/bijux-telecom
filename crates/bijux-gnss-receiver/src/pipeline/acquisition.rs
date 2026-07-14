@@ -23,7 +23,8 @@ use crate::engine::receiver_config::{
 };
 use crate::engine::runtime::{ReceiverRuntime, TraceRecord};
 use crate::pipeline::acquisition_assistance::{
-    resolve_acquisition_search_bounds, ResolvedAcquisitionSearchBounds,
+    build_related_signal_follow_up_requests, resolve_acquisition_search_bounds,
+    RelatedSignalFollowUpRequest, ResolvedAcquisitionSearchBounds,
 };
 use crate::pipeline::acquisition_components::{
     acquisition_strategies_for_signal, AcquisitionComponentPlan, AcquisitionStrategyPlan,
@@ -579,6 +580,79 @@ pub struct AcquisitionRun {
     pub explains: Vec<AcqExplain>,
 }
 
+fn related_signal_follow_up_label(follow_up_request: &RelatedSignalFollowUpRequest) -> String {
+    format!(
+        "same_satellite_cross_band_assistance(source={:?}:{:?},target={:?}:{:?})",
+        follow_up_request.source_signal_band,
+        follow_up_request.source_signal_code,
+        follow_up_request.request.signal_band,
+        follow_up_request.request.signal_code,
+    )
+}
+
+fn related_signal_hypothesis_rank(hypothesis: AcqHypothesis) -> u8 {
+    match hypothesis {
+        AcqHypothesis::Accepted => 3,
+        AcqHypothesis::Ambiguous => 2,
+        AcqHypothesis::Rejected => 1,
+        AcqHypothesis::Deferred => 0,
+    }
+}
+
+fn should_replace_related_signal_row(
+    existing_candidates: &[AcqResult],
+    replacement_candidates: &[AcqResult],
+) -> bool {
+    let Some(replacement_primary) = replacement_candidates.first() else {
+        return false;
+    };
+    let Some(existing_primary) = existing_candidates.first() else {
+        return true;
+    };
+    let replacement_rank = related_signal_hypothesis_rank(replacement_primary.hypothesis);
+    let existing_rank = related_signal_hypothesis_rank(existing_primary.hypothesis);
+    replacement_rank > existing_rank
+        || (replacement_rank == existing_rank
+            && (replacement_primary.score > existing_primary.score
+                || (existing_primary
+                    .assumptions
+                    .as_ref()
+                    .and_then(|assumptions| assumptions.assistance_bounds)
+                    .is_none()
+                    && replacement_primary
+                        .assumptions
+                        .as_ref()
+                        .and_then(|assumptions| assumptions.assistance_bounds)
+                        .is_some())))
+}
+
+fn annotate_related_signal_follow_up_candidates(
+    candidates: &mut [AcqResult],
+    follow_up_request: &RelatedSignalFollowUpRequest,
+) {
+    let label = related_signal_follow_up_label(follow_up_request);
+    for candidate in candidates {
+        let reason = candidate
+            .explain_selection_reason
+            .take()
+            .map(|existing| format!("{label}; {existing}"))
+            .unwrap_or_else(|| label.clone());
+        candidate.explain_selection_reason = Some(reason);
+    }
+}
+
+fn annotate_related_signal_follow_up_explain(
+    mut explain: AcqExplain,
+    follow_up_request: &RelatedSignalFollowUpRequest,
+) -> AcqExplain {
+    let label = related_signal_follow_up_label(follow_up_request);
+    explain.selected_reason = format!("{label}; {}", explain.selected_reason);
+    for candidate in &mut explain.candidates {
+        candidate.reason = format!("{label}; {}", candidate.reason);
+    }
+    explain
+}
+
 impl Acquisition {
     fn with_stats<F, R>(&self, f: F) -> R
     where
@@ -930,7 +1004,7 @@ impl Acquisition {
         requests: &[AcqRequest],
         top_n: usize,
     ) -> AcquisitionRun {
-        self.run_fft_topn_internal(frame, requests, top_n, true)
+        self.run_fft_topn_internal(frame, requests, top_n, true, true)
     }
 
     /// Perform acquisition for explicit request rows.
@@ -940,10 +1014,79 @@ impl Acquisition {
         requests: &[AcqRequest],
         top_n: usize,
     ) -> Vec<Vec<AcqResult>> {
-        self.run_fft_topn_internal(frame, requests, top_n, false).results
+        self.run_fft_topn_internal(frame, requests, top_n, false, true).results
     }
 
     fn run_fft_topn_internal(
+        &self,
+        frame: &SamplesFrame,
+        requests: &[AcqRequest],
+        top_n: usize,
+        emit_explanations: bool,
+        allow_related_signal_follow_up: bool,
+    ) -> AcquisitionRun {
+        let mut run =
+            self.run_fft_topn_single_pass(frame, requests, top_n, emit_explanations);
+        if !allow_related_signal_follow_up || requests.len() < 2 {
+            return run;
+        }
+        let follow_up_requests =
+            build_related_signal_follow_up_requests(&self.config, requests, &run.results);
+        for follow_up_request in follow_up_requests {
+            let follow_up_run = self.run_fft_topn_single_pass(
+                frame,
+                &[follow_up_request.request],
+                top_n,
+                emit_explanations,
+            );
+            let Some(replacement_candidates) = follow_up_run.results.into_iter().next() else {
+                continue;
+            };
+            if !should_replace_related_signal_row(
+                run.results.get(follow_up_request.request_index).map(Vec::as_slice).unwrap_or(&[]),
+                &replacement_candidates,
+            ) {
+                continue;
+            }
+            self.runtime.trace.record(TraceRecord {
+                name: "acquisition_related_signal_follow_up",
+                fields: vec![
+                    ("constellation", format!("{:?}", follow_up_request.request.sat.constellation)),
+                    ("prn", follow_up_request.request.sat.prn.to_string()),
+                    ("source_band", format!("{:?}", follow_up_request.source_signal_band)),
+                    ("source_code", format!("{:?}", follow_up_request.source_signal_code)),
+                    ("target_band", format!("{:?}", follow_up_request.request.signal_band)),
+                    ("target_code", format!("{:?}", follow_up_request.request.signal_code)),
+                    (
+                        "doppler_center_hz",
+                        format!("{:.6}", follow_up_request.estimated_signal_doppler_hz),
+                    ),
+                    (
+                        "code_phase_samples",
+                        format!("{:.6}", follow_up_request.transferred_code_phase_samples),
+                    ),
+                ],
+            });
+            let mut replacement_candidates = replacement_candidates;
+            annotate_related_signal_follow_up_candidates(
+                &mut replacement_candidates,
+                &follow_up_request,
+            );
+            run.results[follow_up_request.request_index] = replacement_candidates;
+            if emit_explanations {
+                if let Some(replacement_explain) = follow_up_run.explains.into_iter().next() {
+                    run.explains[follow_up_request.request_index] =
+                        annotate_related_signal_follow_up_explain(
+                            replacement_explain,
+                            &follow_up_request,
+                        );
+                }
+            }
+        }
+        run
+    }
+
+    fn run_fft_topn_single_pass(
         &self,
         frame: &SamplesFrame,
         requests: &[AcqRequest],
@@ -3209,6 +3352,7 @@ fn refine_acquisition_candidates(
     coherent_ms: u32,
     noncoherent: u32,
 ) {
+    let search_center_hz = signal_model.search_center_hz(acquisition.config.intermediate_freq_hz);
     for candidate in candidates {
         let coarse_carrier_hz = candidate.carrier_hz.0;
         if let Some(refinement) = acquisition.estimate_joint_acquisition_refinement(
@@ -3225,10 +3369,8 @@ fn refine_acquisition_candidates(
             candidate.carrier_hz = Hertz(
                 coarse_carrier_hz + (refinement.doppler_offset_bins * doppler_step_hz as f64),
             );
-            candidate.doppler_hz = Hertz(doppler_hz_from_carrier_hz(
-                acquisition.config.intermediate_freq_hz,
-                candidate.carrier_hz.0,
-            ));
+            candidate.doppler_hz =
+                Hertz(doppler_hz_from_carrier_hz(search_center_hz, candidate.carrier_hz.0));
             candidate.doppler_refinement = Some(AcqDopplerRefinement {
                 method: JOINT_ACQUISITION_REFINEMENT_METHOD.to_string(),
                 coarse_carrier_hz: Hertz(coarse_carrier_hz),
@@ -3255,10 +3397,8 @@ fn refine_acquisition_candidates(
             doppler_step_hz,
         ) {
             candidate.carrier_hz = Hertz(coarse_carrier_hz + refinement.offset_hz);
-            candidate.doppler_hz = Hertz(doppler_hz_from_carrier_hz(
-                acquisition.config.intermediate_freq_hz,
-                candidate.carrier_hz.0,
-            ));
+            candidate.doppler_hz =
+                Hertz(doppler_hz_from_carrier_hz(search_center_hz, candidate.carrier_hz.0));
             candidate.doppler_refinement = Some(refinement);
         }
         candidate.code_phase_refinement = acquisition.estimate_acquisition_code_phase_refinement(
@@ -3681,7 +3821,8 @@ mod tests {
         SampleTime, SamplesFrame, SatId, Seconds, SignalComponentRole, GPS_L1_CA_CARRIER_HZ,
     };
     use bijux_gnss_signal::api::{
-        glonass_l1_carrier_hz, sample_glonass_l1_st_code, samples_per_code, SignalSource,
+        glonass_l1_carrier_hz, sample_glonass_l1_st_code, samples_per_code,
+        shared_path_doppler_hz, signal_spec_gps_l1_ca, signal_spec_gps_l5_i, SignalSource,
     };
 
     fn acquisition_component_plan_for_signal(
@@ -3714,6 +3855,18 @@ mod tests {
                 )
                 .collect(),
         )
+    }
+
+    fn signal_only_frame(
+        config: &ReceiverPipelineConfig,
+        scenario: &SyntheticScenario,
+        frame_len: usize,
+    ) -> SamplesFrame {
+        let mut source = SyntheticSignalSource::new_signal_only(config, scenario);
+        source
+            .next_frame(frame_len)
+            .expect("signal-only frame")
+            .expect("acquisition frame")
     }
 
     fn resolved_thresholds(config: &ReceiverPipelineConfig) -> ResolvedAcquisitionThresholds {
@@ -5846,6 +5999,237 @@ mod tests {
             vec![SignalComponentRole::Pilot]
         );
         assert!(selected.uncertainty.is_none(), "{run:?}");
+    }
+
+    #[test]
+    fn related_signal_follow_up_reruns_same_satellite_cross_band_request() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 10_230_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 10_230_000.0,
+            code_length: 10_230,
+            acquisition_doppler_search_hz: 2_000,
+            acquisition_doppler_step_hz: 250,
+            acquisition_integration_ms: 1,
+            acquisition_noncoherent: 1,
+            ..ReceiverPipelineConfig::default()
+        };
+        let sat = SatId { constellation: Constellation::Gps, prn: 17 };
+        let l1_doppler_hz = -750.0;
+        let l5_doppler_hz = shared_path_doppler_hz(
+            l1_doppler_hz,
+            signal_spec_gps_l1_ca(),
+            signal_spec_gps_l5_i(),
+        )
+        .expect("same-satellite carrier scaling");
+        let scenario = SyntheticScenario {
+            sample_rate_hz: config.sampling_freq_hz,
+            intermediate_freq_hz: config.intermediate_freq_hz,
+            receiver_clock_frequency_bias_hz: 0.0,
+            duration_s: 0.030,
+            seed: 0x2810_0001,
+            satellites: vec![
+                SyntheticSignalParams {
+                    sat,
+                    glonass_frequency_channel: None,
+                    signal_band: SignalBand::L1,
+                    signal_code: SignalCode::Ca,
+                    doppler_hz: l1_doppler_hz,
+                    code_phase_chips: 32.1,
+                    carrier_phase_rad: 0.25,
+                    cn0_db_hz: 56.0,
+                    navigation_data: false.into(),
+                },
+                SyntheticSignalParams {
+                    sat,
+                    glonass_frequency_channel: None,
+                    signal_band: SignalBand::L5,
+                    signal_code: SignalCode::L5I,
+                    doppler_hz: l5_doppler_hz,
+                    code_phase_chips: 321.0,
+                    carrier_phase_rad: 0.25,
+                    cn0_db_hz: 31.5,
+                    navigation_data: false.into(),
+                },
+            ],
+            ephemerides: Vec::new(),
+            id: "related-signal-follow-up-same-satellite".to_string(),
+        };
+        let frame = signal_only_frame(&config, &scenario, 30_690);
+        let requests = [
+            AcqRequest {
+                sat,
+                glonass_frequency_channel: None,
+                signal_band: SignalBand::L1,
+                signal_code: SignalCode::Ca,
+                doppler_center_hz: 0.0,
+                doppler_rate_center_hz_per_s: 0.0,
+                doppler_rate_search_hz_per_s: 0,
+                doppler_rate_step_hz_per_s: 250,
+                expected_line_of_sight_doppler_hz: None,
+                assistance_bounds: None,
+                doppler_search_hz: config.acquisition_doppler_search_hz,
+                doppler_step_hz: config.acquisition_doppler_step_hz,
+                coherent_ms: config.acquisition_integration_ms,
+                noncoherent: config.acquisition_noncoherent,
+            },
+            AcqRequest {
+                sat,
+                glonass_frequency_channel: None,
+                signal_band: SignalBand::L5,
+                signal_code: SignalCode::L5I,
+                doppler_center_hz: 0.0,
+                doppler_rate_center_hz_per_s: 0.0,
+                doppler_rate_search_hz_per_s: 0,
+                doppler_rate_step_hz_per_s: 250,
+                expected_line_of_sight_doppler_hz: None,
+                assistance_bounds: None,
+                doppler_search_hz: config.acquisition_doppler_search_hz,
+                doppler_step_hz: config.acquisition_doppler_step_hz,
+                coherent_ms: config.acquisition_integration_ms,
+                noncoherent: config.acquisition_noncoherent,
+            },
+        ];
+
+        let run = Acquisition::new(config, ReceiverRuntime::default())
+            .run_fft_topn_for_requests_with_explain(&frame, &requests, 1);
+
+        let l1_result = run.results[0].first().expect("L1 acquisition result");
+        let l5_result = run.results[1].first().expect("L5 acquisition result");
+        let assumptions = l5_result
+            .assumptions
+            .as_ref()
+            .expect("cross-band follow-up should preserve assumptions");
+        let expected_l5_center_hz = shared_path_doppler_hz(
+            l1_result.doppler_hz.0,
+            signal_spec_gps_l1_ca(),
+            signal_spec_gps_l5_i(),
+        )
+        .expect("measured L1 Doppler should scale onto L5");
+
+        assert!(
+            matches!(l5_result.hypothesis, AcqHypothesis::Accepted | AcqHypothesis::Ambiguous),
+            "{run:#?}"
+        );
+        assert!(assumptions.assistance_bounds.is_some(), "{l5_result:#?}");
+        assert!(
+            (assumptions.doppler_center_hz - expected_l5_center_hz).abs() <= 1.0e-6,
+            "{l5_result:#?}"
+        );
+        assert!(
+            l5_result
+                .explain_selection_reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains("same_satellite_cross_band_assistance")),
+            "{l5_result:#?}"
+        );
+        assert!(
+            run.explains[1].selected_reason.contains("same_satellite_cross_band_assistance"),
+            "{run:#?}"
+        );
+    }
+
+    #[test]
+    fn related_signal_follow_up_does_not_cross_satellite_boundaries() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 10_230_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 10_230_000.0,
+            code_length: 10_230,
+            acquisition_doppler_search_hz: 2_000,
+            acquisition_doppler_step_hz: 250,
+            acquisition_integration_ms: 1,
+            acquisition_noncoherent: 1,
+            ..ReceiverPipelineConfig::default()
+        };
+        let l1_sat = SatId { constellation: Constellation::Gps, prn: 17 };
+        let l5_sat = SatId { constellation: Constellation::Gps, prn: 18 };
+        let l5_doppler_hz = shared_path_doppler_hz(
+            -750.0,
+            signal_spec_gps_l1_ca(),
+            signal_spec_gps_l5_i(),
+        )
+        .expect("same-carrier-ratio scaling");
+        let scenario = SyntheticScenario {
+            sample_rate_hz: config.sampling_freq_hz,
+            intermediate_freq_hz: config.intermediate_freq_hz,
+            receiver_clock_frequency_bias_hz: 0.0,
+            duration_s: 0.030,
+            seed: 0x2810_0002,
+            satellites: vec![
+                SyntheticSignalParams {
+                    sat: l1_sat,
+                    glonass_frequency_channel: None,
+                    signal_band: SignalBand::L1,
+                    signal_code: SignalCode::Ca,
+                    doppler_hz: -750.0,
+                    code_phase_chips: 32.1,
+                    carrier_phase_rad: 0.25,
+                    cn0_db_hz: 56.0,
+                    navigation_data: false.into(),
+                },
+                SyntheticSignalParams {
+                    sat: l5_sat,
+                    glonass_frequency_channel: None,
+                    signal_band: SignalBand::L5,
+                    signal_code: SignalCode::L5I,
+                    doppler_hz: l5_doppler_hz,
+                    code_phase_chips: 321.0,
+                    carrier_phase_rad: 0.25,
+                    cn0_db_hz: 31.5,
+                    navigation_data: false.into(),
+                },
+            ],
+            ephemerides: Vec::new(),
+            id: "related-signal-follow-up-cross-satellite".to_string(),
+        };
+        let frame = signal_only_frame(&config, &scenario, 30_690);
+        let requests = [
+            AcqRequest {
+                sat: l1_sat,
+                glonass_frequency_channel: None,
+                signal_band: SignalBand::L1,
+                signal_code: SignalCode::Ca,
+                doppler_center_hz: 0.0,
+                doppler_rate_center_hz_per_s: 0.0,
+                doppler_rate_search_hz_per_s: 0,
+                doppler_rate_step_hz_per_s: 250,
+                expected_line_of_sight_doppler_hz: None,
+                assistance_bounds: None,
+                doppler_search_hz: config.acquisition_doppler_search_hz,
+                doppler_step_hz: config.acquisition_doppler_step_hz,
+                coherent_ms: config.acquisition_integration_ms,
+                noncoherent: config.acquisition_noncoherent,
+            },
+            AcqRequest {
+                sat: l5_sat,
+                glonass_frequency_channel: None,
+                signal_band: SignalBand::L5,
+                signal_code: SignalCode::L5I,
+                doppler_center_hz: 0.0,
+                doppler_rate_center_hz_per_s: 0.0,
+                doppler_rate_search_hz_per_s: 0,
+                doppler_rate_step_hz_per_s: 250,
+                expected_line_of_sight_doppler_hz: None,
+                assistance_bounds: None,
+                doppler_search_hz: config.acquisition_doppler_search_hz,
+                doppler_step_hz: config.acquisition_doppler_step_hz,
+                coherent_ms: config.acquisition_integration_ms,
+                noncoherent: config.acquisition_noncoherent,
+            },
+        ];
+
+        let run = Acquisition::new(config, ReceiverRuntime::default())
+            .run_fft_topn_for_requests_with_explain(&frame, &requests, 1);
+
+        let l5_result = run.results[1].first().expect("L5 acquisition result");
+        let assumptions = l5_result.assumptions.as_ref().expect("L5 assumptions");
+
+        assert!(assumptions.assistance_bounds.is_none(), "{l5_result:#?}");
+        assert!(
+            !run.explains[1].selected_reason.contains("same_satellite_cross_band_assistance"),
+            "{run:#?}"
+        );
     }
 
     #[test]
