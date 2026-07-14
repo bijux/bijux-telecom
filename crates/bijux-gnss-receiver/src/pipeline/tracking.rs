@@ -86,6 +86,12 @@ const REACQUISITION_STABLE_TRACKING_EPOCHS: u8 = 5;
 const TRACKING_CN0_WINDOW_EPOCHS: usize = 8;
 const TRACKING_CN0_MIN_WINDOW_EPOCHS: usize = 4;
 const TRACKING_UNCERTAINTY_WINDOW_EPOCHS: usize = 8;
+const VECTOR_TRACKING_MIN_CONTRIBUTORS: usize = 2;
+const VECTOR_TRACKING_MIN_CN0_DBHZ: f64 = 35.0;
+const VECTOR_TRACKING_HISTORY_SECONDS: f64 = 0.050;
+const VECTOR_TRACKING_MAX_CARRIER_AID_HZ: f64 = 25.0;
+const VECTOR_TRACKING_MAX_CODE_RATE_AID_HZ: f64 = 2.0;
+const VECTOR_TRACKING_MAX_CARRIER_RATE_AID_HZ_PER_S: f64 = 1_000.0;
 const SAMPLE_RATE_MISMATCH_CATASTROPHIC_PHASE_STEP_MULTIPLIER: f64 = 8.0;
 const LOW_RESOLUTION_DLL_MIN_SAMPLE_SEPARATION: f64 = 1.0;
 const JOINT_COMPONENT_MIN_PROMPT_RATIO: f32 = 0.35;
@@ -265,6 +271,7 @@ struct LoopState {
 #[derive(Debug, Clone)]
 pub(crate) struct IncrementalTrackingState {
     channels: Vec<IncrementalTrackingChannel>,
+    vector_state: VectorTrackingState,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -284,6 +291,183 @@ struct VectorTrackingMeasurement {
     pll_locked: bool,
     fll_locked: bool,
     channel_state: ChannelState,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct VectorTrackingPrediction {
+    sample_index: u64,
+    contributor_count: usize,
+    mean_cn0_dbhz: f64,
+    receiver_clock_frequency_error_hz: f64,
+    receiver_code_rate_error_hz: f64,
+    receiver_motion_frequency_rate_hz_per_s: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct VectorTrackingApplication {
+    prediction: VectorTrackingPrediction,
+    carrier_frequency_correction_hz: f64,
+    code_rate_correction_hz: f64,
+    carrier_rate_correction_hz_per_s: f64,
+}
+
+#[derive(Debug, Clone, Default)]
+struct VectorTrackingState {
+    measurements: VecDeque<VectorTrackingMeasurement>,
+}
+
+impl VectorTrackingState {
+    fn record(&mut self, measurement: VectorTrackingMeasurement, sample_rate_hz: f64) {
+        if !vector_tracking_measurement_is_usable(measurement) {
+            return;
+        }
+        self.measurements.push_back(measurement);
+        let history_samples = vector_tracking_history_samples(sample_rate_hz);
+        let latest_sample_index = measurement.sample_index;
+        while self.measurements.front().is_some_and(|oldest| {
+            latest_sample_index.saturating_sub(oldest.sample_index) > history_samples
+        }) {
+            self.measurements.pop_front();
+        }
+    }
+
+    fn prediction_for(
+        &self,
+        sample_index: u64,
+        sample_rate_hz: f64,
+    ) -> Option<VectorTrackingPrediction> {
+        let history_samples = vector_tracking_history_samples(sample_rate_hz);
+        let mut latest_by_channel = Vec::new();
+        for measurement in self.measurements.iter().rev().copied() {
+            if measurement.sample_index > sample_index {
+                continue;
+            }
+            if sample_index.saturating_sub(measurement.sample_index) > history_samples {
+                continue;
+            }
+            if latest_by_channel.iter().any(|candidate: &VectorTrackingMeasurement| {
+                candidate.channel_id == measurement.channel_id
+            }) {
+                continue;
+            }
+            latest_by_channel.push(measurement);
+        }
+        vector_tracking_prediction(&latest_by_channel)
+    }
+}
+
+fn vector_tracking_history_samples(sample_rate_hz: f64) -> u64 {
+    ((sample_rate_hz.max(1.0) * VECTOR_TRACKING_HISTORY_SECONDS).round() as u64).max(1)
+}
+
+fn vector_tracking_measurement_is_usable(measurement: VectorTrackingMeasurement) -> bool {
+    matches!(measurement.channel_state, ChannelState::Tracking | ChannelState::Degraded)
+        && measurement.prompt_locked
+        && measurement.dll_locked
+        && measurement.pll_locked
+        && measurement.fll_locked
+        && measurement.cn0_dbhz >= VECTOR_TRACKING_MIN_CN0_DBHZ
+        && measurement.cn0_dbhz.is_finite()
+        && measurement.dll_error_samples.is_finite()
+        && measurement.pll_error_rad.is_finite()
+        && measurement.fll_error_hz.is_finite()
+        && measurement.code_rate_error_hz.is_finite()
+        && measurement.carrier_rate_hz_per_s.is_finite()
+}
+
+fn vector_tracking_prediction(
+    measurements: &[VectorTrackingMeasurement],
+) -> Option<VectorTrackingPrediction> {
+    if measurements.len() < VECTOR_TRACKING_MIN_CONTRIBUTORS {
+        return None;
+    }
+    let mut weighted_clock_error_hz = 0.0;
+    let mut weighted_code_error_hz = 0.0;
+    let mut weighted_motion_rate_hz_per_s = 0.0;
+    let mut weighted_cn0_dbhz = 0.0;
+    let mut weight_sum = 0.0;
+    let mut sample_index = 0;
+    for measurement in measurements {
+        let weight = vector_tracking_cn0_weight(measurement.cn0_dbhz);
+        weighted_clock_error_hz += measurement.fll_error_hz * weight;
+        weighted_code_error_hz += measurement.code_rate_error_hz * weight;
+        weighted_motion_rate_hz_per_s += measurement.carrier_rate_hz_per_s * weight;
+        weighted_cn0_dbhz += measurement.cn0_dbhz * weight;
+        weight_sum += weight;
+        sample_index = sample_index.max(measurement.sample_index);
+    }
+    if weight_sum <= f64::EPSILON {
+        return None;
+    }
+    Some(VectorTrackingPrediction {
+        sample_index,
+        contributor_count: measurements.len(),
+        mean_cn0_dbhz: weighted_cn0_dbhz / weight_sum,
+        receiver_clock_frequency_error_hz: weighted_clock_error_hz / weight_sum,
+        receiver_code_rate_error_hz: weighted_code_error_hz / weight_sum,
+        receiver_motion_frequency_rate_hz_per_s: weighted_motion_rate_hz_per_s / weight_sum,
+    })
+}
+
+fn vector_tracking_cn0_weight(cn0_dbhz: f64) -> f64 {
+    let relative_db = (cn0_dbhz - VECTOR_TRACKING_MIN_CN0_DBHZ).clamp(0.0, 15.0);
+    10.0_f64.powf(relative_db / 10.0)
+}
+
+fn vector_tracking_application(
+    prediction: VectorTrackingPrediction,
+    state: &LoopState,
+) -> Option<VectorTrackingApplication> {
+    let gain = vector_tracking_channel_gain(state.state);
+    if gain <= f64::EPSILON {
+        return None;
+    }
+    Some(VectorTrackingApplication {
+        prediction,
+        carrier_frequency_correction_hz: prediction
+            .receiver_clock_frequency_error_hz
+            .clamp(-VECTOR_TRACKING_MAX_CARRIER_AID_HZ, VECTOR_TRACKING_MAX_CARRIER_AID_HZ)
+            * gain,
+        code_rate_correction_hz: prediction
+            .receiver_code_rate_error_hz
+            .clamp(-VECTOR_TRACKING_MAX_CODE_RATE_AID_HZ, VECTOR_TRACKING_MAX_CODE_RATE_AID_HZ)
+            * gain,
+        carrier_rate_correction_hz_per_s: prediction.receiver_motion_frequency_rate_hz_per_s.clamp(
+            -VECTOR_TRACKING_MAX_CARRIER_RATE_AID_HZ_PER_S,
+            VECTOR_TRACKING_MAX_CARRIER_RATE_AID_HZ_PER_S,
+        ) * gain,
+    })
+}
+
+fn vector_tracking_channel_gain(state: ChannelState) -> f64 {
+    match state {
+        ChannelState::Acquired | ChannelState::PullIn => 0.35,
+        ChannelState::Degraded => 0.20,
+        ChannelState::Tracking => 0.05,
+        ChannelState::Idle | ChannelState::Lost => 0.0,
+    }
+}
+
+fn vector_tracking_aiding_mode_label(signal_model: &TrackingSignalModel) -> String {
+    match signal_model.aiding_mode {
+        TrackingAidingMode::None => "vector_receiver_state".to_string(),
+        TrackingAidingMode::PilotCarrier => "pilot_carrier+vector_receiver_state".to_string(),
+    }
+}
+
+fn vector_tracking_provenance(application: VectorTrackingApplication) -> String {
+    format!(
+        "vector_tracking=applied vector_prediction_sample_index={} vector_contributors={} vector_mean_cn0_dbhz={:.3} vector_clock_frequency_error_hz={:.6} vector_code_rate_error_hz={:.6} vector_motion_frequency_rate_hz_per_s={:.6} vector_carrier_frequency_correction_hz={:.6} vector_code_rate_correction_hz={:.6} vector_carrier_rate_correction_hz_per_s={:.6}",
+        application.prediction.sample_index,
+        application.prediction.contributor_count,
+        application.prediction.mean_cn0_dbhz,
+        application.prediction.receiver_clock_frequency_error_hz,
+        application.prediction.receiver_code_rate_error_hz,
+        application.prediction.receiver_motion_frequency_rate_hz_per_s,
+        application.carrier_frequency_correction_hz,
+        application.code_rate_correction_hz,
+        application.carrier_rate_correction_hz_per_s,
+    )
 }
 
 #[derive(Debug, Clone)]
@@ -1598,7 +1782,7 @@ impl Tracking {
                 }
             })
             .collect();
-        IncrementalTrackingState { channels }
+        IncrementalTrackingState { channels, vector_state: VectorTrackingState::default() }
     }
 
     pub(crate) fn track_incremental_frame(
@@ -1606,6 +1790,7 @@ impl Tracking {
         tracking: &mut IncrementalTrackingState,
         frame: &SamplesFrame,
     ) {
+        let vector_state = &mut tracking.vector_state;
         for channel in &mut tracking.channels {
             let Some(channel_frame_start) = tracking_frame_start_offset(
                 frame,
@@ -1633,7 +1818,15 @@ impl Tracking {
                 };
                 let epoch_count_before = channel.epochs.len();
                 let transition_count_before = channel.transitions.len();
-                self.append_tracked_epoch_range(
+                let vector_prediction = if self.config.vector_tracking_enabled {
+                    vector_state.prediction_for(
+                        frame.t0.sample_index + epoch_start as u64,
+                        self.config.sampling_freq_hz,
+                    )
+                } else {
+                    None
+                };
+                let measurement = self.append_tracked_epoch_range(
                     frame,
                     epoch_start,
                     epoch_end,
@@ -1642,10 +1835,16 @@ impl Tracking {
                     &channel.signal_model,
                     channel.tracking_params,
                     tracking_params,
+                    vector_prediction,
                     &mut channel.state,
                     &mut channel.epochs,
                     &mut channel.transitions,
                 );
+                if self.config.vector_tracking_enabled {
+                    if let Some(measurement) = measurement {
+                        vector_state.record(measurement, self.config.sampling_freq_hz);
+                    }
+                }
                 apply_reacquisition_annotations(
                     &mut channel.state,
                     &mut channel.epochs[epoch_count_before..],
@@ -1666,6 +1865,7 @@ impl Tracking {
             .into_iter()
             .map(|mut channel| {
                 for epoch in &mut channel.epochs {
+                    let runtime_tracking_provenance = epoch.tracking_provenance.clone();
                     epoch.tracking_provenance = format!(
                         "acq_hypothesis={} acq_score={:.6} acq_signal_band={:?} acq_doppler_hz={:.3} acq_carrier_hz={:.3} acq_code_phase_samples={} acq_resolved_code_phase_samples={:.6} acq_start_sample_index={} track_component_role={:?} nominal_carrier_hz={:.3} secondary_code={} discriminator_family={} phase_transition_source={} aiding_mode={} pilot_component={} data_symbol_component={}",
                         channel.acquisition_hypothesis,
@@ -1690,6 +1890,10 @@ impl Tracking {
                         code_rate_reference_label(&self.config, &channel.signal_model, epoch.carrier_hz.0),
                         carrier_aiding_doppler_window_hz(&self.config),
                     ));
+                    if runtime_tracking_provenance.starts_with("vector_tracking=applied") {
+                        epoch.tracking_provenance.push(' ');
+                        epoch.tracking_provenance.push_str(&runtime_tracking_provenance);
+                    }
                 }
                 self.apply_sample_rate_mismatch_diagnostic(
                     channel.sat,
@@ -1758,6 +1962,7 @@ impl Tracking {
                 signal_model,
                 base_tracking_params,
                 tracking_params,
+                None,
                 state,
                 out,
                 transitions,
@@ -1777,12 +1982,27 @@ impl Tracking {
         signal_model: &TrackingSignalModel,
         base_tracking_params: TrackingParams,
         tracking_params: TrackingParams,
+        vector_prediction: Option<VectorTrackingPrediction>,
         state: &mut LoopState,
         out: &mut Vec<TrackEpoch>,
         transitions: &mut Vec<TrackTransition>,
     ) -> Option<VectorTrackingMeasurement> {
         let samples_per_code = signal_model.samples_per_code(self.config.sampling_freq_hz);
         let samples_per_chip = samples_per_code as f64 / signal_model.code_length as f64;
+        let vector_application =
+            vector_prediction.and_then(|prediction| vector_tracking_application(prediction, state));
+        let aided_carrier_hz = state.carrier_hz
+            + vector_application
+                .map(|application| application.carrier_frequency_correction_hz)
+                .unwrap_or_default();
+        let aided_code_rate_hz = state.code_rate_hz
+            + vector_application
+                .map(|application| application.code_rate_correction_hz)
+                .unwrap_or_default();
+        let aided_carrier_rate_hz_per_s = state.carrier_rate_hz_per_s
+            + vector_application
+                .map(|application| application.carrier_rate_correction_hz_per_s)
+                .unwrap_or_default();
         let alloc_before = crate::engine::alloc::allocation_count();
         let (mut track_epoch, correlation) = self.track_epoch_range_with_signal_model(
             frame,
@@ -1791,9 +2011,9 @@ impl Tracking {
             channel_id,
             sat,
             signal_model,
-            state.carrier_hz,
+            aided_carrier_hz,
             state.carrier_phase_cycles,
-            state.code_rate_hz,
+            aided_code_rate_hz,
             state.code_phase_samples,
             tracking_params.early_late_spacing_chips,
         );
@@ -2100,13 +2320,13 @@ impl Tracking {
             tracked_signal_center_hz(self.config.intermediate_freq_hz, signal_model.signal_spec);
         let current_carrier_doppler_hz = tracked_signal_doppler_hz(
             self.config.intermediate_freq_hz,
-            state.carrier_hz,
+            aided_carrier_hz,
             signal_model.signal_spec,
         );
         let carrier_loop = apply_carrier_loop(CarrierLoopInput {
             current_carrier_hz: current_carrier_doppler_hz,
             current_carrier_phase_cycles: state.carrier_phase_cycles,
-            current_carrier_rate_hz_per_s: state.carrier_rate_hz_per_s,
+            current_carrier_rate_hz_per_s: aided_carrier_rate_hz_per_s,
             epoch_len_samples,
             sample_rate_hz: self.config.sampling_freq_hz,
             coherent_integration_s,
@@ -2127,7 +2347,7 @@ impl Tracking {
             raw_fll_lock || sustained_pll_lock,
         );
         let code_loop = apply_dll_code_loop(CodeLoopInput {
-            current_code_rate_hz: state.code_rate_hz,
+            current_code_rate_hz: aided_code_rate_hz,
             previous_reference_code_rate_hz: state.code_rate_reference_hz,
             reference_code_rate_hz: code_rate_reference_hz,
             current_code_phase_samples: state.code_phase_samples,
@@ -2204,6 +2424,11 @@ impl Tracking {
             fll_locked: fll_lock,
             channel_state: state.state,
         };
+        let mut epoch_assumptions = tracking_assumptions(signal_model, tracking_params);
+        if vector_application.is_some() {
+            epoch_assumptions.aiding_mode = vector_tracking_aiding_mode_label(signal_model);
+        }
+        let vector_provenance = vector_application.map(vector_tracking_provenance);
 
         out.push(TrackEpoch {
             lock: channel_locked,
@@ -2224,7 +2449,9 @@ impl Tracking {
             cycle_slip_reason,
             lock_state,
             lock_state_reason,
-            tracking_assumptions: Some(tracking_assumptions(signal_model, tracking_params)),
+            tracking_provenance: vector_provenance
+                .unwrap_or_else(|| track_epoch.tracking_provenance.clone()),
+            tracking_assumptions: Some(epoch_assumptions),
             signal_delay_alignment: state.signal_delay_alignment.clone(),
             tracking_uncertainty,
             ..track_epoch
