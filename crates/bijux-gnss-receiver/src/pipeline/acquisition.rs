@@ -33,8 +33,8 @@ use crate::pipeline::acquisition_symbol_hypotheses::{
 };
 use crate::pipeline::doppler::{carrier_hz_from_doppler_hz, doppler_hz_from_carrier_hz};
 use bijux_gnss_signal::api::{
-    measure_iq_front_end_metrics, samples_per_code, wipeoff_carrier, AcquisitionSignalModel,
-    SignalError,
+    measure_iq_front_end_metrics, samples_per_code, wipeoff_carrier,
+    wipeoff_carrier_with_linear_rate, AcquisitionSignalModel, SignalError,
 };
 
 /// Acquisition engine (coarse search).
@@ -211,6 +211,9 @@ fn acquisition_signal_model_for_sat(
             signal_band,
             signal_code,
             doppler_center_hz: 0.0,
+            doppler_rate_center_hz_per_s: 0.0,
+            doppler_rate_search_hz_per_s: 0,
+            doppler_rate_step_hz_per_s: 250,
             expected_line_of_sight_doppler_hz: None,
             assistance_bounds: None,
             doppler_search_hz: 0,
@@ -276,6 +279,8 @@ fn threshold_provenance_for_request(
         noncoherent: request.noncoherent,
         doppler_search_hz: request.doppler_search_hz,
         doppler_step_hz: request.doppler_step_hz.max(1),
+        doppler_rate_search_hz_per_s: request.doppler_rate_search_hz_per_s.max(0),
+        doppler_rate_step_hz_per_s: request.doppler_rate_step_hz_per_s.max(1),
         peak_mean_threshold: config.acquisition_peak_mean_threshold,
         peak_second_threshold: config.acquisition_peak_second_threshold,
         false_alarm_probability,
@@ -378,6 +383,7 @@ enum SearchWindowEdge {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SearchWindowDimension {
     Doppler,
+    DopplerRate,
     CodePhase,
 }
 
@@ -619,10 +625,13 @@ impl Acquisition {
     ) -> AcqAssumptions {
         AcqAssumptions {
             doppler_center_hz: request.doppler_center_hz,
+            doppler_rate_center_hz_per_s: request.doppler_rate_center_hz_per_s,
             expected_line_of_sight_doppler_hz: request.expected_line_of_sight_doppler_hz,
             assistance_bounds: request.assistance_bounds,
             doppler_search_hz: resolved_bounds.doppler_search_hz,
             doppler_step_hz: request.doppler_step_hz.max(1),
+            doppler_rate_search_hz_per_s: request.doppler_rate_search_hz_per_s.max(0),
+            doppler_rate_step_hz_per_s: request.doppler_rate_step_hz_per_s.max(1),
             coherent_ms: request.coherent_ms,
             noncoherent: request.noncoherent,
             samples_per_code,
@@ -644,10 +653,16 @@ impl Acquisition {
                 resolved_acquisition_signal_band(&self.config, sat),
             ),
             doppler_center_hz: 0.0,
+            doppler_rate_center_hz_per_s: 0.0,
             expected_line_of_sight_doppler_hz: None,
             assistance_bounds: None,
             doppler_search_hz: self.doppler_search_hz,
             doppler_step_hz: self.doppler_step_hz,
+            doppler_rate_search_hz_per_s: self.config.acquisition_doppler_rate_search_hz_per_s,
+            doppler_rate_step_hz_per_s: self
+                .config
+                .acquisition_doppler_rate_step_hz_per_s
+                .max(1),
             coherent_ms,
             noncoherent,
         }
@@ -1128,123 +1143,135 @@ impl Acquisition {
                 })
                 .collect::<Vec<_>>();
             let mut grid_candidates = Vec::new();
+            let mut doppler_rate = -resolved_request.doppler_rate_search_hz_per_s;
+            while doppler_rate <= resolved_request.doppler_rate_search_hz_per_s {
+                let absolute_doppler_rate_hz_per_s =
+                    request.doppler_rate_center_hz_per_s + doppler_rate as f64;
+                let mut doppler = -resolved_request.doppler_search_hz;
+                while doppler <= resolved_request.doppler_search_hz {
+                    let absolute_doppler_hz = request.doppler_center_hz + doppler as f64;
+                    let carrier = carrier_hz_from_doppler_hz(search_center_hz, doppler as f64);
+                    let mut component_accumulations =
+                        Vec::with_capacity(strategy_components.len());
 
-            let mut doppler = -resolved_request.doppler_search_hz;
-            while doppler <= resolved_request.doppler_search_hz {
-                let absolute_doppler_hz = request.doppler_center_hz + doppler as f64;
-                let carrier = carrier_hz_from_doppler_hz(search_center_hz, doppler as f64);
-                let mut component_accumulations = Vec::with_capacity(strategy_components.len());
+                    for (component, code_fft) in
+                        strategy_components.iter().zip(component_ffts.iter())
+                    {
+                        let accumulation = accumulate_component_correlations(
+                            frame,
+                            component,
+                            code_fft,
+                            carrier,
+                            absolute_doppler_rate_hz_per_s,
+                            self.config.sampling_freq_hz,
+                            samples_per_code,
+                            coherent_periods,
+                            request.noncoherent,
+                            fft.as_ref(),
+                            ifft.as_ref(),
+                        );
+                        component_accumulations.push(accumulation);
+                    }
 
-                for (component, code_fft) in strategy_components.iter().zip(component_ffts.iter()) {
-                    let accumulation = accumulate_component_correlations(
-                        frame,
-                        component,
-                        code_fft,
-                        carrier,
-                        self.config.sampling_freq_hz,
-                        samples_per_code,
-                        coherent_periods,
-                        request.noncoherent,
-                        fft.as_ref(),
-                        ifft.as_ref(),
-                    );
-                    component_accumulations.push(accumulation);
-                }
-
-                for (strategy, component_indexes) in
-                    strategies.iter().zip(strategy_component_indexes.iter())
-                {
-                    let combined_accumulator = match strategy.combination_mode {
-                        AcqComponentCombinationMode::SingleComponent => component_accumulations
-                            [component_indexes[0]]
-                            .noncoherent_accumulator
-                            .clone(),
-                        AcqComponentCombinationMode::NoncoherentComponentSum => {
-                            let mut combined = vec![0.0f32; samples_per_code];
-                            for &component_index in component_indexes {
-                                for (combined_value, component_value) in combined.iter_mut().zip(
-                                    component_accumulations[component_index]
-                                        .noncoherent_accumulator
-                                        .iter(),
-                                ) {
-                                    *combined_value += *component_value;
-                                }
-                            }
-                            combined
-                        }
-                        AcqComponentCombinationMode::CoherentComponentSum => {
-                            let mut combined = vec![0.0f32; samples_per_code];
-                            for nc in 0..request.noncoherent as usize {
-                                for sample_index in 0..samples_per_code {
-                                    let mut coherent_sum: Complex<f32> = Complex::zero();
-                                    for &component_index in component_indexes {
-                                        coherent_sum += component_accumulations[component_index]
-                                            .per_noncoherent[nc][sample_index];
+                    for (strategy, component_indexes) in
+                        strategies.iter().zip(strategy_component_indexes.iter())
+                    {
+                        let combined_accumulator = match strategy.combination_mode {
+                            AcqComponentCombinationMode::SingleComponent => component_accumulations
+                                [component_indexes[0]]
+                                .noncoherent_accumulator
+                                .clone(),
+                            AcqComponentCombinationMode::NoncoherentComponentSum => {
+                                let mut combined = vec![0.0f32; samples_per_code];
+                                for &component_index in component_indexes {
+                                    for (combined_value, component_value) in combined.iter_mut().zip(
+                                        component_accumulations[component_index]
+                                            .noncoherent_accumulator
+                                            .iter(),
+                                    ) {
+                                        *combined_value += *component_value;
                                     }
-                                    combined[sample_index] += coherent_sum.norm();
                                 }
+                                combined
                             }
-                            combined
-                        }
-                    };
+                            AcqComponentCombinationMode::CoherentComponentSum => {
+                                let mut combined = vec![0.0f32; samples_per_code];
+                                for nc in 0..request.noncoherent as usize {
+                                    for sample_index in 0..samples_per_code {
+                                        let mut coherent_sum: Complex<f32> = Complex::zero();
+                                        for &component_index in component_indexes {
+                                            coherent_sum += component_accumulations[component_index]
+                                                .per_noncoherent[nc][sample_index];
+                                        }
+                                        combined[sample_index] += coherent_sum.norm();
+                                    }
+                                }
+                                combined
+                            }
+                        };
 
-                    let correlation_metrics = correlation_metrics_in_window(
-                        &combined_accumulator,
-                        resolved_bounds.code_phase_search_start_sample,
-                        resolved_bounds.code_phase_search_step_samples,
-                        resolved_bounds.code_phase_search_bins,
-                    );
-                    let peak_mean_ratio =
-                        correlation_metrics.peak / (correlation_metrics.mean + 1e-6);
-                    let peak_second_ratio =
-                        correlation_metrics.peak / (correlation_metrics.second + 1e-6);
-                    let cn0_proxy = peak_mean_ratio * 10.0;
-                    let component_provenance = strategy_component_provenance(
-                        strategy,
-                        component_indexes,
-                        &component_accumulations,
-                    );
-                    grid_candidates.push(AcqResult {
-                        sat,
-                        signal_band: signal_model.signal_band,
-                        signal_code,
-                        glonass_frequency_channel: request.glonass_frequency_channel,
-                        source_time: ReceiverSampleTrace::from_sample_time(frame.t0),
-                        candidate_rank: 1,
-                        is_primary_candidate: true,
-                        doppler_hz: Hertz(absolute_doppler_hz),
-                        carrier_hz: Hertz(carrier),
-                        code_phase_samples: correlation_metrics.peak_idx,
-                        peak: correlation_metrics.peak,
-                        second_peak: correlation_metrics.second,
-                        mean: correlation_metrics.mean,
-                        peak_mean_ratio,
-                        peak_second_ratio,
-                        cn0_proxy,
-                        score: 0.0,
-                        hypothesis: AcqHypothesis::Deferred,
-                        assumptions: Some(assumptions.clone()),
-                        evidence: vec![AcqEvidence {
-                            rank: 1,
+                        let correlation_metrics = correlation_metrics_in_window(
+                            &combined_accumulator,
+                            resolved_bounds.code_phase_search_start_sample,
+                            resolved_bounds.code_phase_search_step_samples,
+                            resolved_bounds.code_phase_search_bins,
+                        );
+                        let peak_mean_ratio =
+                            correlation_metrics.peak / (correlation_metrics.mean + 1e-6);
+                        let peak_second_ratio =
+                            correlation_metrics.peak / (correlation_metrics.second + 1e-6);
+                        let cn0_proxy = peak_mean_ratio * 10.0;
+                        let component_provenance = strategy_component_provenance(
+                            strategy,
+                            component_indexes,
+                            &component_accumulations,
+                        );
+                        grid_candidates.push(AcqResult {
+                            sat,
+                            signal_band: signal_model.signal_band,
+                            signal_code,
+                            glonass_frequency_channel: request.glonass_frequency_channel,
+                            source_time: ReceiverSampleTrace::from_sample_time(frame.t0),
+                            candidate_rank: 1,
+                            is_primary_candidate: true,
+                            doppler_hz: Hertz(absolute_doppler_hz),
+                            doppler_rate_hz_per_s: absolute_doppler_rate_hz_per_s,
+                            carrier_hz: Hertz(carrier),
                             code_phase_samples: correlation_metrics.peak_idx,
-                            doppler_hz: absolute_doppler_hz,
                             peak: correlation_metrics.peak,
                             second_peak: correlation_metrics.second,
+                            mean: correlation_metrics.mean,
                             peak_mean_ratio,
                             peak_second_ratio,
-                            mean: correlation_metrics.mean,
-                            component_provenance: Some(component_provenance),
-                        }],
-                        threshold_provenance: Some(resolved_thresholds.provenance.clone()),
-                        explain_selection_reason: None,
-                        doppler_refinement: None,
-                        code_phase_refinement: None,
-                        signal_delay_alignment: None,
-                        uncertainty: None,
-                    });
+                            cn0_proxy,
+                            score: 0.0,
+                            hypothesis: AcqHypothesis::Deferred,
+                            assumptions: Some(assumptions.clone()),
+                            evidence: vec![AcqEvidence {
+                                rank: 1,
+                                code_phase_samples: correlation_metrics.peak_idx,
+                                doppler_hz: absolute_doppler_hz,
+                                doppler_rate_hz_per_s: absolute_doppler_rate_hz_per_s,
+                                peak: correlation_metrics.peak,
+                                second_peak: correlation_metrics.second,
+                                peak_mean_ratio,
+                                peak_second_ratio,
+                                mean: correlation_metrics.mean,
+                                component_provenance: Some(component_provenance),
+                            }],
+                            threshold_provenance: Some(resolved_thresholds.provenance.clone()),
+                            explain_selection_reason: None,
+                            doppler_refinement: None,
+                            code_phase_refinement: None,
+                            signal_delay_alignment: None,
+                            uncertainty: None,
+                        });
+                    }
+
+                    doppler += resolved_request.doppler_step_hz.max(1);
                 }
 
-                doppler += resolved_request.doppler_step_hz.max(1);
+                doppler_rate += resolved_request.doppler_rate_step_hz_per_s.max(1);
             }
 
             let doppler_search_window_diagnostic = signal_outside_search_range(
@@ -1327,6 +1354,7 @@ impl Acquisition {
                     evidence.rank = candidate.candidate_rank;
                     evidence.code_phase_samples = candidate.code_phase_samples;
                     evidence.doppler_hz = candidate.doppler_hz.0;
+                    evidence.doppler_rate_hz_per_s = candidate.doppler_rate_hz_per_s;
                     evidence.peak = candidate.peak;
                     evidence.second_peak = candidate.second_peak;
                     evidence.peak_mean_ratio = candidate.peak_mean_ratio;
@@ -1343,9 +1371,23 @@ impl Acquisition {
                                 frame,
                                 sat,
                                 candidate.carrier_hz.0,
+                                candidate.doppler_rate_hz_per_s,
                                 request.coherent_ms,
                                 request.noncoherent,
                                 &resolved_bounds,
+                                resolved_thresholds.peak_mean_threshold,
+                            )
+                        }).or_else(|| {
+                            signal_outside_doppler_rate_search_range(
+                                &grid_candidates,
+                                candidate
+                                    .doppler_refinement
+                                    .as_ref()
+                                    .map(|refinement| refinement.coarse_carrier_hz.0)
+                                    .unwrap_or(candidate.carrier_hz.0),
+                                request.doppler_rate_center_hz_per_s,
+                                resolved_request.doppler_rate_search_hz_per_s,
+                                resolved_request.doppler_rate_step_hz_per_s.max(1),
                                 resolved_thresholds.peak_mean_threshold,
                             )
                         },
@@ -1377,6 +1419,7 @@ impl Acquisition {
                                 &signal_model,
                                 sat,
                                 candidate.carrier_hz.0,
+                                candidate.doppler_rate_hz_per_s,
                                 candidate.code_phase_samples,
                                 samples_per_code,
                                 request.coherent_ms,
@@ -1577,6 +1620,9 @@ impl Acquisition {
                             "dimension",
                             match diagnostic.dimension {
                                 SearchWindowDimension::Doppler => "doppler".to_string(),
+                                SearchWindowDimension::DopplerRate => {
+                                    "doppler_rate".to_string()
+                                }
                                 SearchWindowDimension::CodePhase => "code_phase".to_string(),
                             },
                         ),
@@ -1731,6 +1777,7 @@ impl Acquisition {
         signal_model: &AcquisitionSignalModel,
         sat: SatId,
         coarse_carrier_hz: f64,
+        coarse_doppler_rate_hz_per_s: f64,
         coarse_code_phase_samples: usize,
         doppler_step_hz: i32,
         coherent_ms: u32,
@@ -1754,6 +1801,7 @@ impl Acquisition {
             frame,
             sat,
             coarse_carrier_hz,
+            coarse_doppler_rate_hz_per_s,
             coarse_code_phase_samples,
             doppler_step_hz as f64,
             coherent_ms,
@@ -1786,6 +1834,7 @@ impl Acquisition {
         signal_model: &AcquisitionSignalModel,
         sat: SatId,
         carrier_hz: f64,
+        doppler_rate_hz_per_s: f64,
         coarse_code_phase_samples: usize,
         coherent_ms: u32,
         noncoherent: u32,
@@ -1804,6 +1853,7 @@ impl Acquisition {
             frame,
             sat,
             carrier_hz,
+            doppler_rate_hz_per_s,
             coherent_ms,
             noncoherent,
         )?;
@@ -2034,10 +2084,13 @@ fn zero_signal_run(
         let signal_code = resolved_request_signal_code(request);
         let assumptions = AcqAssumptions {
             doppler_center_hz: request.doppler_center_hz,
+            doppler_rate_center_hz_per_s: request.doppler_rate_center_hz_per_s,
             expected_line_of_sight_doppler_hz: request.expected_line_of_sight_doppler_hz,
             assistance_bounds: request.assistance_bounds,
             doppler_search_hz: threshold_provenance.doppler_search_hz,
             doppler_step_hz: threshold_provenance.doppler_step_hz,
+            doppler_rate_search_hz_per_s: threshold_provenance.doppler_rate_search_hz_per_s,
+            doppler_rate_step_hz_per_s: threshold_provenance.doppler_rate_step_hz_per_s,
             coherent_ms: threshold_provenance.coherent_ms,
             noncoherent: threshold_provenance.noncoherent,
             samples_per_code: signal_model.samples_per_code(config.sampling_freq_hz),
@@ -2108,6 +2161,7 @@ fn insufficient_frame_candidates(
         candidate_rank: 1,
         is_primary_candidate: true,
         doppler_hz: Hertz(0.0),
+        doppler_rate_hz_per_s: assumptions.doppler_rate_center_hz_per_s,
         carrier_hz: Hertz(intermediate_freq_hz),
         code_phase_samples: 0,
         peak: 0.0,
@@ -2139,14 +2193,17 @@ fn acquisition_request_error_candidates(
 ) -> Vec<AcqResult> {
     let samples_per_code =
         samples_per_code(config.sampling_freq_hz, config.code_freq_basis_hz, config.code_length);
-    let assumptions = AcqAssumptions {
-        doppler_center_hz: request.doppler_center_hz,
-        expected_line_of_sight_doppler_hz: request.expected_line_of_sight_doppler_hz,
-        assistance_bounds: request.assistance_bounds,
-        doppler_search_hz: threshold_provenance.doppler_search_hz,
-        doppler_step_hz: threshold_provenance.doppler_step_hz,
-        coherent_ms: threshold_provenance.coherent_ms,
-        noncoherent: threshold_provenance.noncoherent,
+        let assumptions = AcqAssumptions {
+            doppler_center_hz: request.doppler_center_hz,
+            doppler_rate_center_hz_per_s: request.doppler_rate_center_hz_per_s,
+            expected_line_of_sight_doppler_hz: request.expected_line_of_sight_doppler_hz,
+            assistance_bounds: request.assistance_bounds,
+            doppler_search_hz: threshold_provenance.doppler_search_hz,
+            doppler_step_hz: threshold_provenance.doppler_step_hz,
+            doppler_rate_search_hz_per_s: threshold_provenance.doppler_rate_search_hz_per_s,
+            doppler_rate_step_hz_per_s: threshold_provenance.doppler_rate_step_hz_per_s,
+            coherent_ms: threshold_provenance.coherent_ms,
+            noncoherent: threshold_provenance.noncoherent,
         samples_per_code,
         frame_samples,
         code_phase_search_start_sample: 0,
@@ -2171,6 +2228,7 @@ fn acquisition_request_error_candidates(
         candidate_rank: 1,
         is_primary_candidate: true,
         doppler_hz: Hertz(request.doppler_center_hz),
+        doppler_rate_hz_per_s: request.doppler_rate_center_hz_per_s,
         carrier_hz: Hertz(carrier_hz_from_doppler_hz(
             config.intermediate_freq_hz,
             request.doppler_center_hz,
@@ -2231,6 +2289,7 @@ fn zero_signal_candidate(
         candidate_rank: 1,
         is_primary_candidate: true,
         doppler_hz: Hertz(assumptions.doppler_center_hz),
+        doppler_rate_hz_per_s: assumptions.doppler_rate_center_hz_per_s,
         carrier_hz: Hertz(intermediate_freq_hz),
         code_phase_samples: 0,
         peak: 0.0,
@@ -2296,6 +2355,7 @@ fn unsupported_coherent_integration_candidate(
         candidate_rank: 1,
         is_primary_candidate: true,
         doppler_hz: Hertz(assumptions.doppler_center_hz),
+        doppler_rate_hz_per_s: assumptions.doppler_rate_center_hz_per_s,
         carrier_hz: Hertz(intermediate_freq_hz),
         code_phase_samples: 0,
         peak: 0.0,
@@ -2362,12 +2422,8 @@ fn signal_outside_search_range(
     ]
     .into_iter()
     .filter_map(|(edge, edge_carrier_hz, interior_carrier_hz)| {
-        let edge_candidate = candidates
-            .iter()
-            .find(|candidate| (candidate.carrier_hz.0 - edge_carrier_hz).abs() <= f64::EPSILON)?;
-        let interior_candidate = candidates.iter().find(|candidate| {
-            (candidate.carrier_hz.0 - interior_carrier_hz).abs() <= f64::EPSILON
-        })?;
+        let edge_candidate = find_candidate_by_carrier_hz(candidates, edge_carrier_hz)?;
+        let interior_candidate = find_candidate_by_carrier_hz(candidates, interior_carrier_hz)?;
         if edge_candidate.peak_mean_ratio < hint_threshold {
             return None;
         }
@@ -2405,6 +2461,13 @@ fn search_window_candidate_reason(diagnostic: &SearchWindowDiagnostic) -> String
             diagnostic.best_peak_mean_ratio,
             diagnostic.interior_peak_mean_ratio,
         ),
+        SearchWindowDimension::DopplerRate => format!(
+            "signal_outside_search_range: best Doppler rate {:.3} Hz/s sits on the {edge} search edge and exceeds the interior neighbor at {:.3} Hz/s (peak_mean_ratio {:.6} > {:.6})",
+            diagnostic.best_axis_value,
+            diagnostic.interior_axis_value,
+            diagnostic.best_peak_mean_ratio,
+            diagnostic.interior_peak_mean_ratio,
+        ),
         SearchWindowDimension::CodePhase => format!(
             "signal_outside_search_range: best code phase {:.0} samples sits on the {edge} search edge and exceeds the interior neighbor at {:.0} samples (peak_mean_ratio {:.6} > {:.6})",
             diagnostic.best_axis_value,
@@ -2421,6 +2484,7 @@ fn assisted_code_phase_search_window_diagnostic(
     frame: &SamplesFrame,
     sat: SatId,
     carrier_hz: f64,
+    doppler_rate_hz_per_s: f64,
     coherent_ms: u32,
     noncoherent: u32,
     resolved_bounds: &ResolvedAcquisitionSearchBounds,
@@ -2437,6 +2501,7 @@ fn assisted_code_phase_search_window_diagnostic(
         frame,
         sat,
         carrier_hz,
+        doppler_rate_hz_per_s,
         coherent_ms,
         noncoherent,
     )?;
@@ -2447,6 +2512,78 @@ fn assisted_code_phase_search_window_diagnostic(
         resolved_bounds.code_phase_search_bins,
         peak_mean_threshold,
     )
+}
+
+fn signal_outside_doppler_rate_search_range(
+    candidates: &[AcqResult],
+    carrier_hz: f64,
+    doppler_rate_center_hz_per_s: f64,
+    doppler_rate_search_hz_per_s: i32,
+    doppler_rate_step_hz_per_s: i32,
+    peak_mean_threshold: f32,
+) -> Option<SearchWindowDiagnostic> {
+    if candidates.len() < 2
+        || doppler_rate_search_hz_per_s <= 0
+        || doppler_rate_step_hz_per_s <= 0
+    {
+        return None;
+    }
+
+    let best_peak_mean_ratio = candidates
+        .iter()
+        .filter(|candidate| (candidate.carrier_hz.0 - carrier_hz).abs() <= f64::EPSILON)
+        .map(|candidate| candidate.peak_mean_ratio)
+        .fold(0.0_f32, f32::max);
+    if best_peak_mean_ratio <= f32::EPSILON {
+        return None;
+    }
+    let hint_threshold =
+        peak_mean_threshold.max(best_peak_mean_ratio * SEARCH_EDGE_HINT_PEAK_MEAN_RATIO_FRACTION);
+    [
+        (
+            SearchWindowEdge::Lower,
+            doppler_rate_center_hz_per_s - doppler_rate_search_hz_per_s as f64,
+            doppler_rate_center_hz_per_s
+                - (doppler_rate_search_hz_per_s - doppler_rate_step_hz_per_s) as f64,
+        ),
+        (
+            SearchWindowEdge::Upper,
+            doppler_rate_center_hz_per_s + doppler_rate_search_hz_per_s as f64,
+            doppler_rate_center_hz_per_s
+                + (doppler_rate_search_hz_per_s - doppler_rate_step_hz_per_s) as f64,
+        ),
+    ]
+    .into_iter()
+    .filter_map(|(edge, edge_rate_hz_per_s, interior_rate_hz_per_s)| {
+        let edge_candidate =
+            find_best_candidate_by_carrier_hz_and_rate(candidates, carrier_hz, edge_rate_hz_per_s)?;
+        let interior_candidate = find_best_candidate_by_carrier_hz_and_rate(
+            candidates,
+            carrier_hz,
+            interior_rate_hz_per_s,
+        )?;
+        if edge_candidate.peak_mean_ratio < hint_threshold {
+            return None;
+        }
+        if edge_candidate.peak_mean_ratio
+            <= interior_candidate.peak_mean_ratio * (1.0 + SEARCH_EDGE_RISE_RATIO_EPSILON)
+        {
+            return None;
+        }
+        Some(SearchWindowDiagnostic {
+            dimension: SearchWindowDimension::DopplerRate,
+            edge,
+            best_axis_value: edge_candidate.doppler_rate_hz_per_s,
+            interior_axis_value: interior_candidate.doppler_rate_hz_per_s,
+            best_peak_mean_ratio: edge_candidate.peak_mean_ratio,
+            interior_peak_mean_ratio: interior_candidate.peak_mean_ratio,
+        })
+    })
+    .max_by(|left, right| {
+        left.best_peak_mean_ratio
+            .partial_cmp(&right.best_peak_mean_ratio)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    })
 }
 
 fn candidate_is_trackable(candidate: &AcqResult) -> bool {
@@ -2746,6 +2883,7 @@ fn classify_delayed_secondary_peak(
     signal_model: &AcquisitionSignalModel,
     sat: SatId,
     carrier_hz: f64,
+    doppler_rate_hz_per_s: f64,
     code_phase_samples: usize,
     samples_per_code: usize,
     coherent_ms: u32,
@@ -2770,6 +2908,7 @@ fn classify_delayed_secondary_peak(
         frame,
         sat,
         carrier_hz,
+        doppler_rate_hz_per_s,
         coherent_ms,
         noncoherent,
     )?;
@@ -2786,6 +2925,7 @@ fn accumulate_component_correlations(
     component: &AcquisitionComponentPlan,
     code_fft: &[Complex<f32>],
     carrier_hz: f64,
+    doppler_rate_hz_per_s: f64,
     sample_rate_hz: f64,
     samples_per_code: usize,
     coherent_periods: u32,
@@ -2800,11 +2940,12 @@ fn accumulate_component_correlations(
         let end = start + samples_per_code;
         let block = &frame.iq[start..end];
 
-        let mixed = wipeoff_carrier(
+        let mixed = wipeoff_search_carrier(
             block,
             carrier_hz,
+            doppler_rate_hz_per_s,
             sample_rate_hz,
-            frame.t0.sample_index + start as u64,
+            start as u64,
             0.0,
         )
         .expect("acquisition carrier wipeoff requires finite carrier inputs");
@@ -2855,6 +2996,34 @@ fn accumulate_component_correlations(
         noncoherent_accumulator,
         secondary_code_phase_periods: None,
     }
+}
+
+fn wipeoff_search_carrier(
+    samples: &[Complex<f32>],
+    carrier_hz: f64,
+    doppler_rate_hz_per_s: f64,
+    sample_rate_hz: f64,
+    start_sample_index: u64,
+    initial_phase_radians: f64,
+) -> Result<Vec<Complex<f32>>, SignalError> {
+    if doppler_rate_hz_per_s.abs() <= f64::EPSILON {
+        return wipeoff_carrier(
+            samples,
+            carrier_hz,
+            sample_rate_hz,
+            start_sample_index,
+            initial_phase_radians,
+        );
+    }
+
+    wipeoff_carrier_with_linear_rate(
+        samples,
+        carrier_hz,
+        doppler_rate_hz_per_s,
+        sample_rate_hz,
+        start_sample_index,
+        initial_phase_radians,
+    )
 }
 
 fn component_data_sign_hypotheses(
@@ -3025,6 +3194,7 @@ fn same_acquisition_hypothesis(left: &AcqResult, right: &AcqResult) -> bool {
         && left.signal_code == right.signal_code
         && left.glonass_frequency_channel == right.glonass_frequency_channel
         && left.code_phase_samples == right.code_phase_samples
+        && (left.doppler_rate_hz_per_s - right.doppler_rate_hz_per_s).abs() <= f64::EPSILON
         && (left.carrier_hz.0 - right.carrier_hz.0).abs() <= f64::EPSILON
 }
 
@@ -3046,6 +3216,7 @@ fn refine_acquisition_candidates(
             signal_model,
             sat,
             coarse_carrier_hz,
+            candidate.doppler_rate_hz_per_s,
             candidate.code_phase_samples,
             doppler_step_hz,
             coherent_ms,
@@ -3079,6 +3250,7 @@ fn refine_acquisition_candidates(
         }
         if let Some(refinement) = estimate_acquisition_doppler_refinement(
             coarse_carrier_hz,
+            candidate.doppler_rate_hz_per_s,
             grid_candidates,
             doppler_step_hz,
         ) {
@@ -3094,6 +3266,7 @@ fn refine_acquisition_candidates(
             signal_model,
             sat,
             candidate.carrier_hz.0,
+            candidate.doppler_rate_hz_per_s,
             candidate.code_phase_samples,
             coherent_ms,
             noncoherent,
@@ -3182,6 +3355,7 @@ fn curvature_based_resolution_fraction(
 
 fn estimate_acquisition_doppler_refinement(
     coarse_carrier_hz: f64,
+    coarse_doppler_rate_hz_per_s: f64,
     grid_candidates: &[AcqResult],
     doppler_step_hz: i32,
 ) -> Option<AcqDopplerRefinement> {
@@ -3189,9 +3363,21 @@ fn estimate_acquisition_doppler_refinement(
         return None;
     }
     let step_hz = doppler_step_hz as f64;
-    let left = find_candidate_by_carrier_hz(grid_candidates, coarse_carrier_hz - step_hz)?;
-    let center = find_candidate_by_carrier_hz(grid_candidates, coarse_carrier_hz)?;
-    let right = find_candidate_by_carrier_hz(grid_candidates, coarse_carrier_hz + step_hz)?;
+    let left = find_best_candidate_by_carrier_hz_and_rate(
+        grid_candidates,
+        coarse_carrier_hz - step_hz,
+        coarse_doppler_rate_hz_per_s,
+    )?;
+    let center = find_best_candidate_by_carrier_hz_and_rate(
+        grid_candidates,
+        coarse_carrier_hz,
+        coarse_doppler_rate_hz_per_s,
+    )?;
+    let right = find_best_candidate_by_carrier_hz_and_rate(
+        grid_candidates,
+        coarse_carrier_hz + step_hz,
+        coarse_doppler_rate_hz_per_s,
+    )?;
     if center.peak_mean_ratio < left.peak_mean_ratio
         || center.peak_mean_ratio < right.peak_mean_ratio
     {
@@ -3232,6 +3418,7 @@ fn measure_local_acquisition_likelihood_surface(
     frame: &SamplesFrame,
     sat: SatId,
     coarse_carrier_hz: f64,
+    coarse_doppler_rate_hz_per_s: f64,
     coarse_code_phase_samples: usize,
     doppler_step_hz: f64,
     coherent_ms: u32,
@@ -3264,6 +3451,7 @@ fn measure_local_acquisition_likelihood_surface(
             frame,
             sat,
             carrier_hz,
+            coarse_doppler_rate_hz_per_s,
             coherent_ms,
             noncoherent,
         )?;
@@ -3347,6 +3535,7 @@ fn measure_code_phase_profile(
     frame: &SamplesFrame,
     _sat: SatId,
     carrier_hz: f64,
+    doppler_rate_hz_per_s: f64,
     coherent_ms: u32,
     noncoherent: u32,
 ) -> Option<Vec<f32>> {
@@ -3373,11 +3562,12 @@ fn measure_code_phase_profile(
             let start = offset_period * samples_per_code;
             let end = start + samples_per_code;
             let block = &frame.iq[start..end];
-            let mixed = wipeoff_carrier(
+            let mixed = wipeoff_search_carrier(
                 block,
                 carrier_hz,
+                doppler_rate_hz_per_s,
                 config.sampling_freq_hz,
-                frame.t0.sample_index + start as u64,
+                start as u64,
                 0.0,
             )
             .ok()?;
@@ -3449,7 +3639,32 @@ fn wrap_acquisition_code_phase_samples(code_phase_samples: f64, period_samples: 
 }
 
 fn find_candidate_by_carrier_hz(candidates: &[AcqResult], carrier_hz: f64) -> Option<&AcqResult> {
-    candidates.iter().find(|candidate| (candidate.carrier_hz.0 - carrier_hz).abs() <= f64::EPSILON)
+    candidates
+        .iter()
+        .filter(|candidate| (candidate.carrier_hz.0 - carrier_hz).abs() <= f64::EPSILON)
+        .max_by(|left, right| {
+            left.peak_mean_ratio
+                .partial_cmp(&right.peak_mean_ratio)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
+}
+
+fn find_best_candidate_by_carrier_hz_and_rate(
+    candidates: &[AcqResult],
+    carrier_hz: f64,
+    doppler_rate_hz_per_s: f64,
+) -> Option<&AcqResult> {
+    candidates
+        .iter()
+        .filter(|candidate| {
+            (candidate.carrier_hz.0 - carrier_hz).abs() <= f64::EPSILON
+                && (candidate.doppler_rate_hz_per_s - doppler_rate_hz_per_s).abs() <= f64::EPSILON
+        })
+        .max_by(|left, right| {
+            left.peak_mean_ratio
+                .partial_cmp(&right.peak_mean_ratio)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
 }
 
 #[allow(clippy::items_after_test_module)]
@@ -3511,6 +3726,8 @@ mod tests {
                 noncoherent: config.acquisition_noncoherent,
                 doppler_search_hz: config.acquisition_doppler_search_hz,
                 doppler_step_hz: config.acquisition_doppler_step_hz,
+                doppler_rate_search_hz_per_s: config.acquisition_doppler_rate_search_hz_per_s,
+                doppler_rate_step_hz_per_s: config.acquisition_doppler_rate_step_hz_per_s,
                 peak_mean_threshold: config.acquisition_peak_mean_threshold,
                 peak_second_threshold: config.acquisition_peak_second_threshold,
                 false_alarm_probability: None,
@@ -3595,6 +3812,7 @@ mod tests {
             candidate_rank: 1,
             is_primary_candidate: true,
             doppler_hz: Hertz(0.0),
+            doppler_rate_hz_per_s: 0.0,
             carrier_hz: Hertz(0.0),
             code_phase_samples: 0,
             peak: 10.0,
@@ -3610,6 +3828,7 @@ mod tests {
                 rank: 1,
                 code_phase_samples: 0,
                 doppler_hz: 0.0,
+                doppler_rate_hz_per_s: 0.0,
                 peak: 10.0,
                 second_peak: 5.0,
                 peak_mean_ratio: 5.0,
@@ -3698,6 +3917,9 @@ mod tests {
                 signal_band: SignalBand::L1,
                 signal_code: SignalCode::Unknown,
                 doppler_center_hz: 0.0,
+                doppler_rate_center_hz_per_s: 0.0,
+                doppler_rate_search_hz_per_s: 0,
+                doppler_rate_step_hz_per_s: 250,
                 expected_line_of_sight_doppler_hz: None,
                 assistance_bounds: None,
                 doppler_search_hz: 2_000,
@@ -3731,6 +3953,9 @@ mod tests {
                 signal_band: SignalBand::L2,
                 signal_code: SignalCode::L2C,
                 doppler_center_hz: 0.0,
+                doppler_rate_center_hz_per_s: 0.0,
+                doppler_rate_search_hz_per_s: 0,
+                doppler_rate_step_hz_per_s: 250,
                 expected_line_of_sight_doppler_hz: None,
                 assistance_bounds: None,
                 doppler_search_hz: 2_000,
@@ -3770,6 +3995,9 @@ mod tests {
                 signal_band: SignalBand::L1,
                 signal_code: SignalCode::Unknown,
                 doppler_center_hz: 0.0,
+                doppler_rate_center_hz_per_s: 0.0,
+                doppler_rate_search_hz_per_s: 0,
+                doppler_rate_step_hz_per_s: 250,
                 expected_line_of_sight_doppler_hz: None,
                 assistance_bounds: None,
                 doppler_search_hz: 2_000,
@@ -3817,6 +4045,9 @@ mod tests {
                 signal_band: SignalBand::L1,
                 signal_code: SignalCode::Unknown,
                 doppler_center_hz: 0.0,
+                doppler_rate_center_hz_per_s: 0.0,
+                doppler_rate_search_hz_per_s: 0,
+                doppler_rate_step_hz_per_s: 250,
                 expected_line_of_sight_doppler_hz: None,
                 assistance_bounds: None,
                 doppler_search_hz: 2_000,
@@ -3846,6 +4077,9 @@ mod tests {
             signal_band: SignalBand::L2,
             signal_code: SignalCode::L2C,
             doppler_center_hz: 0.0,
+            doppler_rate_center_hz_per_s: 0.0,
+            doppler_rate_search_hz_per_s: 0,
+            doppler_rate_step_hz_per_s: 250,
             expected_line_of_sight_doppler_hz: None,
             assistance_bounds: None,
             doppler_search_hz: 2_000,
@@ -3894,6 +4128,9 @@ mod tests {
             signal_band: SignalBand::L5,
             signal_code: SignalCode::L5Q,
             doppler_center_hz: 0.0,
+            doppler_rate_center_hz_per_s: 0.0,
+            doppler_rate_search_hz_per_s: 0,
+            doppler_rate_step_hz_per_s: 250,
             expected_line_of_sight_doppler_hz: None,
             assistance_bounds: None,
             doppler_search_hz: 2_000,
@@ -3936,6 +4173,9 @@ mod tests {
             signal_band: SignalBand::E5,
             signal_code: SignalCode::E5b,
             doppler_center_hz: 0.0,
+            doppler_rate_center_hz_per_s: 0.0,
+            doppler_rate_search_hz_per_s: 0,
+            doppler_rate_step_hz_per_s: 250,
             expected_line_of_sight_doppler_hz: None,
             assistance_bounds: None,
             doppler_search_hz: 2_000,
@@ -4155,7 +4395,8 @@ mod tests {
         ];
 
         let refinement =
-            estimate_acquisition_doppler_refinement(0.0, &candidates, 250).expect("refinement");
+            estimate_acquisition_doppler_refinement(0.0, 0.0, &candidates, 250)
+                .expect("refinement");
 
         assert_eq!(refinement.method, "parabolic_peak");
         assert_eq!(refinement.coarse_carrier_hz.0, 0.0);
@@ -4171,7 +4412,7 @@ mod tests {
             candidate_for_search_window_test(sat, 250.0, 12.0),
         ];
 
-        let refinement = estimate_acquisition_doppler_refinement(0.0, &candidates, 250);
+        let refinement = estimate_acquisition_doppler_refinement(0.0, 0.0, &candidates, 250);
 
         assert!(refinement.is_none());
     }
@@ -4397,6 +4638,9 @@ mod tests {
             signal_band: SignalBand::L5,
             signal_code: SignalCode::L5Q,
             doppler_center_hz: 0.0,
+            doppler_rate_center_hz_per_s: 0.0,
+            doppler_rate_search_hz_per_s: 0,
+            doppler_rate_step_hz_per_s: 250,
             expected_line_of_sight_doppler_hz: None,
             assistance_bounds: None,
             doppler_search_hz: 2_000,
@@ -4579,6 +4823,9 @@ mod tests {
             signal_band: SignalBand::L5,
             signal_code: SignalCode::L5Q,
             doppler_center_hz: 0.0,
+            doppler_rate_center_hz_per_s: 0.0,
+            doppler_rate_search_hz_per_s: 0,
+            doppler_rate_step_hz_per_s: 250,
             expected_line_of_sight_doppler_hz: None,
             assistance_bounds: None,
             doppler_search_hz: 0,
@@ -4629,6 +4876,9 @@ mod tests {
             signal_band: SignalBand::L1,
             signal_code: SignalCode::Unknown,
             doppler_center_hz: true_doppler_hz,
+            doppler_rate_center_hz_per_s: 0.0,
+            doppler_rate_search_hz_per_s: 0,
+            doppler_rate_step_hz_per_s: 250,
             expected_line_of_sight_doppler_hz: Some(true_doppler_hz),
             assistance_bounds: None,
             doppler_search_hz: 0,
@@ -4690,6 +4940,9 @@ mod tests {
             signal_band: SignalBand::L1,
             signal_code: SignalCode::Unknown,
             doppler_center_hz: true_doppler_hz,
+            doppler_rate_center_hz_per_s: 0.0,
+            doppler_rate_search_hz_per_s: 0,
+            doppler_rate_step_hz_per_s: 250,
             expected_line_of_sight_doppler_hz: Some(true_doppler_hz),
             assistance_bounds: Some(AcqAssistanceBounds {
                 expected_code_phase_samples: code_phase_chips
@@ -4762,6 +5015,9 @@ mod tests {
             signal_band: SignalBand::L1,
             signal_code: SignalCode::Unknown,
             doppler_center_hz: 0.0,
+            doppler_rate_center_hz_per_s: 0.0,
+            doppler_rate_search_hz_per_s: 0,
+            doppler_rate_step_hz_per_s: 250,
             expected_line_of_sight_doppler_hz: Some(0.0),
             assistance_bounds: Some(AcqAssistanceBounds {
                 expected_code_phase_samples: 32.0,
@@ -4829,6 +5085,9 @@ mod tests {
             signal_band: SignalBand::E5,
             signal_code: SignalCode::E5b,
             doppler_center_hz: 0.0,
+            doppler_rate_center_hz_per_s: 0.0,
+            doppler_rate_search_hz_per_s: 0,
+            doppler_rate_step_hz_per_s: 250,
             expected_line_of_sight_doppler_hz: None,
             assistance_bounds: None,
             doppler_search_hz: 0,
@@ -4874,6 +5133,9 @@ mod tests {
             signal_band: SignalBand::E5,
             signal_code: SignalCode::E5a,
             doppler_center_hz: 0.0,
+            doppler_rate_center_hz_per_s: 0.0,
+            doppler_rate_search_hz_per_s: 0,
+            doppler_rate_step_hz_per_s: 250,
             expected_line_of_sight_doppler_hz: None,
             assistance_bounds: None,
             doppler_search_hz: 0,
@@ -4915,6 +5177,9 @@ mod tests {
             signal_band: SignalBand::E5,
             signal_code: SignalCode::E5a,
             doppler_center_hz: 0.0,
+            doppler_rate_center_hz_per_s: 0.0,
+            doppler_rate_search_hz_per_s: 0,
+            doppler_rate_step_hz_per_s: 250,
             expected_line_of_sight_doppler_hz: None,
             assistance_bounds: None,
             doppler_search_hz: 0,
@@ -4991,6 +5256,9 @@ mod tests {
             signal_band: SignalBand::E5,
             signal_code: SignalCode::E5a,
             doppler_center_hz: 0.0,
+            doppler_rate_center_hz_per_s: 0.0,
+            doppler_rate_search_hz_per_s: 0,
+            doppler_rate_step_hz_per_s: 250,
             expected_line_of_sight_doppler_hz: None,
             assistance_bounds: None,
             doppler_search_hz: 0,
@@ -5027,6 +5295,9 @@ mod tests {
             signal_band: SignalBand::L5,
             signal_code: SignalCode::L5Q,
             doppler_center_hz: 0.0,
+            doppler_rate_center_hz_per_s: 0.0,
+            doppler_rate_search_hz_per_s: 0,
+            doppler_rate_step_hz_per_s: 250,
             expected_line_of_sight_doppler_hz: None,
             assistance_bounds: None,
             doppler_search_hz: 0,
@@ -5058,6 +5329,7 @@ mod tests {
                 candidate_rank: 1,
                 is_primary_candidate: true,
                 doppler_hz: Hertz(100.0),
+                doppler_rate_hz_per_s: 0.0,
                 carrier_hz: Hertz(100.0),
                 code_phase_samples: 10,
                 peak: 10.0,
@@ -5086,6 +5358,7 @@ mod tests {
                 candidate_rank: 1,
                 is_primary_candidate: true,
                 doppler_hz: Hertz(50.0),
+                doppler_rate_hz_per_s: 0.0,
                 carrier_hz: Hertz(50.0),
                 code_phase_samples: 20,
                 peak: 10.0,
@@ -5338,6 +5611,9 @@ mod tests {
             signal_band: SignalBand::E5,
             signal_code: SignalCode::E5b,
             doppler_center_hz: 0.0,
+            doppler_rate_center_hz_per_s: 0.0,
+            doppler_rate_search_hz_per_s: 0,
+            doppler_rate_step_hz_per_s: 250,
             expected_line_of_sight_doppler_hz: None,
             assistance_bounds: None,
             doppler_search_hz: 2_000,
@@ -5391,6 +5667,7 @@ mod tests {
             &frame,
             sat,
             signal_model.search_center_hz(config.intermediate_freq_hz),
+            0.0,
             config.acquisition_integration_ms,
             config.acquisition_noncoherent,
         )
@@ -5452,6 +5729,9 @@ mod tests {
             signal_band: SignalBand::E1,
             signal_code: SignalCode::E1B,
             doppler_center_hz: 0.0,
+            doppler_rate_center_hz_per_s: 0.0,
+            doppler_rate_search_hz_per_s: 0,
+            doppler_rate_step_hz_per_s: 250,
             expected_line_of_sight_doppler_hz: None,
             assistance_bounds: None,
             doppler_search_hz: config.acquisition_doppler_search_hz,
@@ -5541,6 +5821,9 @@ mod tests {
             signal_band: SignalBand::E1,
             signal_code: SignalCode::E1B,
             doppler_center_hz: 0.0,
+            doppler_rate_center_hz_per_s: 0.0,
+            doppler_rate_search_hz_per_s: 0,
+            doppler_rate_step_hz_per_s: 250,
             expected_line_of_sight_doppler_hz: None,
             assistance_bounds: None,
             doppler_search_hz: config.acquisition_doppler_search_hz,
@@ -5565,6 +5848,32 @@ mod tests {
         assert!(selected.uncertainty.is_none(), "{run:?}");
     }
 
+    #[test]
+    fn search_window_diagnostic_detects_doppler_rate_edge_rise() {
+        let sat = SatId { constellation: Constellation::Gps, prn: 1 };
+        let candidates = vec![
+            search_window_rate_candidate(sat, 250.0, -20_000.0, 6.0),
+            search_window_rate_candidate(sat, 250.0, -15_000.0, 5.0),
+            search_window_rate_candidate(sat, 250.0, 15_000.0, 7.0),
+            search_window_rate_candidate(sat, 250.0, 20_000.0, 9.0),
+        ];
+
+        let diagnostic = signal_outside_doppler_rate_search_range(
+            &candidates,
+            250.0,
+            0.0,
+            20_000,
+            5_000,
+            4.0,
+        )
+        .expect("doppler-rate edge diagnostic");
+
+        assert_eq!(diagnostic.dimension, SearchWindowDimension::DopplerRate);
+        assert_eq!(diagnostic.edge, SearchWindowEdge::Upper);
+        assert_eq!(diagnostic.best_axis_value, 20_000.0);
+        assert_eq!(diagnostic.interior_axis_value, 15_000.0);
+    }
+
     fn candidate_for_search_window_test(
         sat: SatId,
         carrier_hz: f64,
@@ -5579,6 +5888,7 @@ mod tests {
             candidate_rank: 1,
             is_primary_candidate: true,
             doppler_hz: Hertz(carrier_hz),
+            doppler_rate_hz_per_s: 0.0,
             carrier_hz: Hertz(carrier_hz),
             code_phase_samples: 0,
             peak: peak_mean_ratio,
@@ -5598,6 +5908,17 @@ mod tests {
             signal_delay_alignment: None,
             uncertainty: None,
         }
+    }
+
+    fn search_window_rate_candidate(
+        sat: SatId,
+        carrier_hz: f64,
+        doppler_rate_hz_per_s: f64,
+        peak_mean_ratio: f32,
+    ) -> AcqResult {
+        let mut candidate = candidate_for_search_window_test(sat, carrier_hz, peak_mean_ratio);
+        candidate.doppler_rate_hz_per_s = doppler_rate_hz_per_s;
+        candidate
     }
 }
 
