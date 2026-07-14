@@ -4580,6 +4580,37 @@ mod tests {
     }
 
     #[test]
+    fn tracking_signal_model_uses_registry_metadata_for_beidou_b1i() {
+        let config = crate::engine::receiver_config::ReceiverPipelineConfig {
+            code_freq_basis_hz: 2_046_000.0,
+            code_length: 2046,
+            ..crate::engine::receiver_config::ReceiverPipelineConfig::default()
+        };
+        let sat = SatId { constellation: Constellation::Beidou, prn: 11 };
+
+        let signal_model = super::TrackingSignalModel::for_sat_signal_band(
+            &config,
+            sat,
+            SignalBand::B1,
+            SignalCode::B1I,
+            None,
+        );
+
+        assert_eq!(signal_model.component_role, SignalComponentRole::Data);
+        assert!(signal_model.secondary_code.is_some());
+        assert_eq!(
+            signal_model.discriminator_family,
+            super::TrackingDiscriminatorFamily::EarlyPromptLate
+        );
+        assert_eq!(
+            signal_model.phase_transition_source,
+            super::TrackingPhaseTransitionSource::SecondaryCode
+        );
+        assert!((signal_model.nominal_carrier_hz() - 1_561_098_000.0).abs() <= f64::EPSILON);
+        assert!(!signal_model.supports_navigation_bit_sign_recovery());
+    }
+
+    #[test]
     fn tracking_assumptions_follow_signal_metadata() {
         let config = crate::engine::receiver_config::ReceiverPipelineConfig::default();
         let sat = SatId { constellation: Constellation::Galileo, prn: 11 };
