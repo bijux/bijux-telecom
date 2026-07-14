@@ -48,6 +48,8 @@ pub struct PhaseLockLoopCoefficients {
     pub phase_blend: f64,
     /// Frequency correction gain in Hz per radian of phase error.
     pub frequency_gain_hz_per_rad: f64,
+    /// Frequency-rate correction gain in Hz/s per radian of phase error.
+    pub frequency_rate_gain_hz_per_s_per_rad: f64,
 }
 
 /// Early/prompt/late correlation accumulators for one coherent interval.
@@ -102,6 +104,8 @@ pub struct CarrierTrackingLoopInput {
     pub current_carrier_hz: f64,
     /// Current unwrapped carrier phase estimate in cycles.
     pub current_carrier_phase_cycles: f64,
+    /// Current carrier frequency-rate estimate in Hz/s.
+    pub current_carrier_rate_hz_per_s: f64,
     /// Coherent interval length in samples.
     pub epoch_len_samples: usize,
     /// Receiver sample rate in Hz.
@@ -129,6 +133,8 @@ pub struct CarrierTrackingLoopUpdate {
     pub carrier_hz: f64,
     /// Updated unwrapped carrier phase estimate in cycles.
     pub carrier_phase_cycles: f64,
+    /// Updated carrier frequency-rate estimate in Hz/s.
+    pub carrier_rate_hz_per_s: f64,
 }
 
 /// Coarse tracking quality class used to scale uncertainty estimates.
@@ -670,27 +676,13 @@ pub fn phase_lock_loop_coefficients(
     noise_bandwidth_hz: f64,
     coherent_integration_s: f64,
 ) -> PhaseLockLoopCoefficients {
-    const PLL_DAMPING_RATIO: f64 = std::f64::consts::FRAC_1_SQRT_2;
-
-    if !noise_bandwidth_hz.is_finite()
-        || noise_bandwidth_hz <= 0.0
-        || !coherent_integration_s.is_finite()
-        || coherent_integration_s <= 0.0
-    {
-        return PhaseLockLoopCoefficients { phase_blend: 0.0, frequency_gain_hz_per_rad: 0.0 };
+    let design =
+        loop_observer_design(LoopFilterOrder::Third, noise_bandwidth_hz, coherent_integration_s);
+    PhaseLockLoopCoefficients {
+        phase_blend: design.correction_gains[0],
+        frequency_gain_hz_per_rad: design.correction_gains[1] / std::f64::consts::TAU,
+        frequency_rate_gain_hz_per_s_per_rad: design.correction_gains[2] / std::f64::consts::TAU,
     }
-
-    let normalized_bandwidth = std::f64::consts::TAU * noise_bandwidth_hz * coherent_integration_s;
-    let natural_frequency = normalized_bandwidth * (8.0 * PLL_DAMPING_RATIO)
-        / (4.0 * PLL_DAMPING_RATIO * PLL_DAMPING_RATIO + 1.0);
-    let denominator =
-        1.0 + 2.0 * PLL_DAMPING_RATIO * natural_frequency + natural_frequency * natural_frequency;
-    let phase_blend = (4.0 * PLL_DAMPING_RATIO * natural_frequency) / denominator;
-    let frequency_blend = (4.0 * natural_frequency * natural_frequency) / denominator;
-    let frequency_gain_hz_per_rad =
-        frequency_blend / (std::f64::consts::TAU * coherent_integration_s);
-
-    PhaseLockLoopCoefficients { phase_blend, frequency_gain_hz_per_rad }
 }
 
 /// DLL/PLL/FLL discriminators from early/prompt/late.
@@ -951,7 +943,10 @@ pub fn apply_carrier_tracking_loop(input: CarrierTrackingLoopInput) -> CarrierTr
         phase_lock_loop_coefficients(input.pll_bw_hz, input.coherent_integration_s);
     let fll_coefficients =
         first_order_angular_loop_coefficients(input.fll_bw_hz, input.coherent_integration_s);
-    let mut carrier_hz = input.current_carrier_hz;
+    let coherent_integration_s = input.coherent_integration_s;
+    let mut carrier_rate_hz_per_s = input.current_carrier_rate_hz_per_s;
+    let mut carrier_hz =
+        input.current_carrier_hz + input.current_carrier_rate_hz_per_s * coherent_integration_s;
     if input.apply_fll {
         carrier_hz += bounded_fll_pull_in_correction_hz(
             input.fll_err_hz * fll_coefficients.error_blend,
@@ -959,14 +954,16 @@ pub fn apply_carrier_tracking_loop(input: CarrierTrackingLoopInput) -> CarrierTr
         );
     }
     if input.apply_pll_frequency {
+        carrier_rate_hz_per_s +=
+            pll_coefficients.frequency_rate_gain_hz_per_s_per_rad * input.pll_err_rad;
         carrier_hz += pll_coefficients.frequency_gain_hz_per_rad * input.pll_err_rad;
     }
 
     let carrier_phase_cycles = input.current_carrier_phase_cycles
-        + carrier_hz * input.epoch_len_samples as f64 / input.sample_rate_hz
+        + (input.current_carrier_hz + carrier_hz) * coherent_integration_s * 0.5
         + pll_coefficients.phase_blend * input.pll_err_rad / std::f64::consts::TAU;
 
-    CarrierTrackingLoopUpdate { carrier_hz, carrier_phase_cycles }
+    CarrierTrackingLoopUpdate { carrier_hz, carrier_phase_cycles, carrier_rate_hz_per_s }
 }
 
 /// Return code chip at a fractional sample index.
@@ -1372,9 +1369,14 @@ mod tests {
 
         assert!(narrow.phase_blend.is_finite());
         assert!(narrow.frequency_gain_hz_per_rad.is_finite());
+        assert!(narrow.frequency_rate_gain_hz_per_s_per_rad.is_finite());
         assert!(wide.phase_blend > narrow.phase_blend, "{wide:?} {narrow:?}");
         assert!(
             wide.frequency_gain_hz_per_rad > narrow.frequency_gain_hz_per_rad,
+            "{wide:?} {narrow:?}"
+        );
+        assert!(
+            wide.frequency_rate_gain_hz_per_s_per_rad > narrow.frequency_rate_gain_hz_per_s_per_rad,
             "{wide:?} {narrow:?}"
         );
     }
@@ -1460,6 +1462,7 @@ mod tests {
         let update = apply_carrier_tracking_loop(CarrierTrackingLoopInput {
             current_carrier_hz: 1_000.0,
             current_carrier_phase_cycles: 12.0,
+            current_carrier_rate_hz_per_s: 0.0,
             epoch_len_samples: 4_092,
             sample_rate_hz: 4_092_000.0,
             coherent_integration_s: 0.001,
@@ -1478,10 +1481,69 @@ mod tests {
                 < 1.0e-9,
             "{update:?}"
         );
+        assert!(
+            (update.carrier_rate_hz_per_s
+                - pll_coefficients.frequency_rate_gain_hz_per_s_per_rad * 0.25)
+                .abs()
+                < 1.0e-9,
+            "{update:?}"
+        );
         let expected_phase_cycles = 12.0
-            + (1_000.0 + pll_coefficients.frequency_gain_hz_per_rad * 0.25) * 0.001
+            + (1_000.0 + (1_000.0 + pll_coefficients.frequency_gain_hz_per_rad * 0.25)) * 0.0005
             + pll_coefficients.phase_blend * 0.25 / std::f64::consts::TAU;
         assert!((update.carrier_phase_cycles - expected_phase_cycles).abs() < 1.0e-9, "{update:?}");
+    }
+
+    #[test]
+    fn phase_lock_loop_ramp_response_tracks_constant_frequency_rate() {
+        let coherent_integration_s = 0.001;
+        let true_initial_frequency_hz = 500.0;
+        let true_frequency_rate_hz_per_s = 40.0;
+        let mut true_frequency_hz = true_initial_frequency_hz;
+        let mut true_phase_cycles = 0.0;
+        let mut estimated_frequency_hz = true_initial_frequency_hz;
+        let mut estimated_phase_cycles = 0.0;
+        let mut estimated_frequency_rate_hz_per_s = 0.0;
+
+        for _ in 0..1_000 {
+            let next_true_frequency_hz =
+                true_frequency_hz + true_frequency_rate_hz_per_s * coherent_integration_s;
+            true_phase_cycles +=
+                (true_frequency_hz + next_true_frequency_hz) * coherent_integration_s * 0.5;
+            true_frequency_hz = next_true_frequency_hz;
+            let phase_error_rad =
+                (true_phase_cycles - estimated_phase_cycles) * std::f64::consts::TAU;
+            let update = apply_carrier_tracking_loop(CarrierTrackingLoopInput {
+                current_carrier_hz: estimated_frequency_hz,
+                current_carrier_phase_cycles: estimated_phase_cycles,
+                current_carrier_rate_hz_per_s: estimated_frequency_rate_hz_per_s,
+                epoch_len_samples: 4_092,
+                sample_rate_hz: 4_092_000.0,
+                coherent_integration_s,
+                pll_bw_hz: 18.0,
+                pll_err_rad: phase_error_rad,
+                fll_bw_hz: 0.0,
+                fll_err_hz: 0.0,
+                apply_fll: false,
+                apply_pll_frequency: true,
+            });
+            estimated_frequency_hz = update.carrier_hz;
+            estimated_phase_cycles = update.carrier_phase_cycles;
+            estimated_frequency_rate_hz_per_s = update.carrier_rate_hz_per_s;
+        }
+
+        assert!(
+            (estimated_frequency_rate_hz_per_s - true_frequency_rate_hz_per_s).abs() < 2.0,
+            "estimated_frequency_rate_hz_per_s={estimated_frequency_rate_hz_per_s}",
+        );
+        assert!(
+            (true_frequency_hz - estimated_frequency_hz).abs() < 1.0,
+            "true_frequency_hz={true_frequency_hz} estimated_frequency_hz={estimated_frequency_hz}",
+        );
+        assert!(
+            (true_phase_cycles - estimated_phase_cycles).abs() < 1.0,
+            "true_phase_cycles={true_phase_cycles} estimated_phase_cycles={estimated_phase_cycles}",
+        );
     }
 
     #[test]
