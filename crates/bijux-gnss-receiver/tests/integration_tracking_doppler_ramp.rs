@@ -3,9 +3,11 @@
 mod support;
 
 use bijux_gnss_core::api::{
-    AcqHypothesis, AcqResult, Constellation, Hertz, ReceiverSampleTrace, SatId, SignalBand,
+    AcqHypothesis, AcqRequest, AcqResult, Constellation, Hertz, ReceiverSampleTrace, SatId,
+    SignalBand,
 };
 use bijux_gnss_receiver::api::{
+    AcquisitionEngine,
     sim::{
         expected_acquisition_code_phase_samples, expected_acquisition_code_phase_samples_f64,
         generate_l1_ca_with_doppler_ramp, SyntheticDopplerRampParams, SyntheticSignalParams,
@@ -24,6 +26,11 @@ const CLEAN_DOPPLER_RAMP_DURATION_S: f64 = 0.060;
 const CLEAN_DOPPLER_RAMP_LOCKED_CARRIER_ERROR_MAX_HZ: f64 = 10.0;
 const CLEAN_DOPPLER_RAMP_LOCKED_CODE_ERROR_MAX_SAMPLES: f64 = 1.0;
 const CLEAN_DOPPLER_RAMP_MIN_FULLY_LOCKED_EPOCHS: usize = 40;
+const ACQUISITION_DOPPLER_RAMP_DURATION_S: f64 = 0.020;
+const ACQUISITION_DOPPLER_RAMP_PEAK_MEAN_THRESHOLD: f32 = 8.0;
+const ACQUISITION_DOPPLER_RAMP_RATE_HZ_PER_S: f64 = 20_000.0;
+const ACQUISITION_DOPPLER_RAMP_RATE_STEP_HZ_PER_S: i32 = 5_000;
+const ACQUISITION_DOPPLER_RAMP_RATE_SEARCH_HZ_PER_S: i32 = 25_000;
 
 fn accepted_acquisition(sat: SatId, doppler_hz: f64, code_phase_samples: usize) -> AcqResult {
     AcqResult {
@@ -35,6 +42,7 @@ fn accepted_acquisition(sat: SatId, doppler_hz: f64, code_phase_samples: usize) 
         candidate_rank: 1,
         is_primary_candidate: true,
         doppler_hz: Hertz(doppler_hz),
+        doppler_rate_hz_per_s: 0.0,
         carrier_hz: Hertz(doppler_hz),
         code_phase_samples,
         peak: 1.0,
@@ -67,6 +75,27 @@ fn doppler_ramp_tracking_config() -> ReceiverPipelineConfig {
         dll_bw_hz: 2.0,
         pll_bw_hz: 18.0,
         fll_bw_hz: 12.0,
+        ..ReceiverPipelineConfig::default()
+    }
+}
+
+fn doppler_ramp_acquisition_config(
+    doppler_rate_search_hz_per_s: i32,
+) -> ReceiverPipelineConfig {
+    ReceiverPipelineConfig {
+        sampling_freq_hz: 4_092_000.0,
+        intermediate_freq_hz: 0.0,
+        code_freq_basis_hz: 1_023_000.0,
+        code_length: 1023,
+        channels: 4,
+        acquisition_doppler_search_hz: 500,
+        acquisition_doppler_step_hz: 250,
+        acquisition_doppler_rate_search_hz_per_s: doppler_rate_search_hz_per_s,
+        acquisition_doppler_rate_step_hz_per_s: ACQUISITION_DOPPLER_RAMP_RATE_STEP_HZ_PER_S,
+        acquisition_integration_ms: 20,
+        acquisition_noncoherent: 1,
+        acquisition_peak_mean_threshold: ACQUISITION_DOPPLER_RAMP_PEAK_MEAN_THRESHOLD,
+        acquisition_peak_second_threshold: 1.5,
         ..ReceiverPipelineConfig::default()
     }
 }
@@ -109,6 +138,56 @@ fn track_clean_doppler_ramp_case(
     tracks.first().expect("track").epochs.clone()
 }
 
+fn acquire_clean_doppler_ramp_case(
+    config: &ReceiverPipelineConfig,
+    sat: SatId,
+    initial_doppler_hz: f64,
+    doppler_rate_hz_per_s: f64,
+    code_phase_chips: f64,
+    carrier_phase_rad: f64,
+) -> (AcqResult, bijux_gnss_core::api::SamplesFrame) {
+    let frame = generate_l1_ca_with_doppler_ramp(
+        config,
+        SyntheticDopplerRampParams {
+            signal: SyntheticSignalParams {
+                sat,
+                glonass_frequency_channel: None,
+                signal_band: bijux_gnss_core::api::SignalBand::L1,
+                signal_code: bijux_gnss_core::api::SignalCode::Ca,
+                doppler_hz: initial_doppler_hz,
+                code_phase_chips,
+                carrier_phase_rad,
+                cn0_db_hz: CLEAN_DOPPLER_RAMP_CN0_DB_HZ,
+                navigation_data: false.into(),
+            },
+            doppler_rate_hz_per_s,
+        },
+        0xAC05_7100,
+        ACQUISITION_DOPPLER_RAMP_DURATION_S,
+    );
+    let request = AcqRequest {
+        sat,
+        glonass_frequency_channel: None,
+        signal_band: SignalBand::L1,
+        signal_code: bijux_gnss_core::api::SignalCode::Ca,
+        doppler_center_hz: 0.0,
+        doppler_rate_center_hz_per_s: 0.0,
+        expected_line_of_sight_doppler_hz: None,
+        assistance_bounds: None,
+        doppler_search_hz: config.acquisition_doppler_search_hz,
+        doppler_step_hz: config.acquisition_doppler_step_hz,
+        doppler_rate_search_hz_per_s: config.acquisition_doppler_rate_search_hz_per_s,
+        doppler_rate_step_hz_per_s: config.acquisition_doppler_rate_step_hz_per_s,
+        coherent_ms: config.acquisition_integration_ms,
+        noncoherent: config.acquisition_noncoherent,
+    };
+    let result = AcquisitionEngine::new(config.clone(), ReceiverRuntime::default())
+        .run_fft_for_requests(&frame, &[request])
+        .remove(0);
+
+    (result, frame)
+}
+
 fn lock_preserved_epoch(epoch: &bijux_gnss_core::api::TrackEpoch) -> bool {
     epoch.lock
         && matches!(epoch.lock_state.as_str(), "tracking" | "degraded")
@@ -122,6 +201,80 @@ fn fully_locked_epoch(epoch: &bijux_gnss_core::api::TrackEpoch) -> bool {
 
 fn count_fully_locked_epochs(epochs: &[bijux_gnss_core::api::TrackEpoch]) -> usize {
     epochs.iter().filter(|epoch| fully_locked_epoch(epoch)).count()
+}
+
+#[test]
+fn acquisition_requires_declared_doppler_rate_support_for_strong_ramp() {
+    let sat = SatId { constellation: Constellation::Gps, prn: 16 };
+    let initial_doppler_hz = 250.0;
+    let code_phase_chips = 211.25;
+    let carrier_phase_rad = 0.40;
+    let without_rate_config = doppler_ramp_acquisition_config(0);
+    let with_rate_config =
+        doppler_ramp_acquisition_config(ACQUISITION_DOPPLER_RAMP_RATE_SEARCH_HZ_PER_S);
+
+    let (without_rate_support, _) = acquire_clean_doppler_ramp_case(
+        &without_rate_config,
+        sat,
+        initial_doppler_hz,
+        ACQUISITION_DOPPLER_RAMP_RATE_HZ_PER_S,
+        code_phase_chips,
+        carrier_phase_rad,
+    );
+    let (with_rate_support, frame) = acquire_clean_doppler_ramp_case(
+        &with_rate_config,
+        sat,
+        initial_doppler_hz,
+        ACQUISITION_DOPPLER_RAMP_RATE_HZ_PER_S,
+        code_phase_chips,
+        carrier_phase_rad,
+    );
+    let expected_code_phase_samples =
+        expected_acquisition_code_phase_samples(&with_rate_config, &frame, code_phase_chips);
+
+    assert!(
+        (without_rate_support.doppler_hz.0 - initial_doppler_hz).abs()
+            >= without_rate_config.acquisition_doppler_step_hz as f64 - f64::EPSILON,
+        "zero-rate search should bias the Doppler estimate by at least one coarse bin under the ramp: {without_rate_support:?}"
+    );
+    assert!(
+        without_rate_support.peak_second_ratio
+            < without_rate_config.acquisition_peak_second_threshold,
+        "zero-rate search should fail the declared peak-separation threshold under the ramp: {without_rate_support:?}"
+    );
+    assert!(
+        matches!(
+            without_rate_support.hypothesis,
+            AcqHypothesis::Rejected | AcqHypothesis::Ambiguous
+        ),
+        "{without_rate_support:?}"
+    );
+    assert!(
+        matches!(
+            with_rate_support.hypothesis,
+            AcqHypothesis::Accepted | AcqHypothesis::Ambiguous
+        ),
+        "{with_rate_support:?}"
+    );
+    assert!(
+        with_rate_support.peak_mean_ratio >= with_rate_config.acquisition_peak_mean_threshold,
+        "rate-aware acquisition should clear the declared threshold: {with_rate_support:?}"
+    );
+    assert!(
+        with_rate_support.peak_mean_ratio > without_rate_support.peak_mean_ratio * 1.1,
+        "rate-aware acquisition should materially outperform the zero-rate search: without={without_rate_support:?}, with={with_rate_support:?}"
+    );
+    assert_eq!(with_rate_support.code_phase_samples, expected_code_phase_samples);
+    assert!(
+        (with_rate_support.doppler_hz.0 - initial_doppler_hz).abs()
+            <= with_rate_config.acquisition_doppler_step_hz as f64 + f64::EPSILON,
+        "{with_rate_support:?}"
+    );
+    assert!(
+        (with_rate_support.doppler_rate_hz_per_s - ACQUISITION_DOPPLER_RAMP_RATE_HZ_PER_S).abs()
+            <= with_rate_config.acquisition_doppler_rate_step_hz_per_s as f64 + f64::EPSILON,
+        "{with_rate_support:?}"
+    );
 }
 
 #[test]
