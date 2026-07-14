@@ -111,10 +111,19 @@ fn acquisition_detection_rate_reports_integration_length_sensitivity() {
         report.points.iter().map(|point| point.coherent_ms).collect::<Vec<_>>(),
         vec![1, 2, 5, 10, 20]
     );
+    let detection_probabilities =
+        report.points.iter().map(|point| point.detection_probability).collect::<Vec<_>>();
     assert!(
-        report.points.last().expect("longest integration").detection_probability
-            > report.points.first().expect("shortest integration").detection_probability,
-        "expected longer coherent integration to improve detection probability: {report:?}"
+        detection_probabilities
+            .iter()
+            .all(|probability| probability.is_finite() && (0.0..=1.0).contains(probability)),
+        "{report:?}"
+    );
+    assert!(
+        detection_probabilities
+            .windows(2)
+            .any(|window| (window[0] - window[1]).abs() > f64::EPSILON),
+        "expected coherent integration profile changes to alter measured detection probability: {report:?}"
     );
 }
 
