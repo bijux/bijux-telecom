@@ -218,9 +218,7 @@ fn rms(values: &[f64]) -> f64 {
 }
 
 /// Check solution consistency for obvious anomalies.
-pub fn check_solution_consistency(
-    solutions: &[NavSolutionEpoch],
-) -> SolutionConsistencyReport {
+pub fn check_solution_consistency(solutions: &[NavSolutionEpoch]) -> SolutionConsistencyReport {
     let mut position_jump_count = 0;
     let mut clock_jump_count = 0;
     let mut pdop_spike_count = 0;
@@ -264,12 +262,12 @@ pub fn check_solution_consistency(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bijux_gnss_core::api::lla_to_ecef;
     use bijux_gnss_core::api::{
         Epoch, Meters, NavLifecycleState, NavSolutionEpoch, NavUncertaintyClass,
         ReceiverSampleTrace, Seconds, SolutionStatus, SolutionValidity,
         NAV_OUTPUT_STABILITY_SIGNATURE_VERSION, NAV_SOLUTION_MODEL_VERSION,
     };
-    use bijux_gnss_core::api::lla_to_ecef;
 
     fn sample_solution(ecef_x_m: f64, ecef_y_m: f64, ecef_z_m: f64) -> NavSolutionEpoch {
         NavSolutionEpoch {

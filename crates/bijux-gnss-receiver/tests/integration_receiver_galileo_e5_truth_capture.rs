@@ -115,8 +115,12 @@ fn longest_tracking_lock_window(
 
 #[test]
 fn galileo_e5a_acquisition_truth_table_matches_capture_truth() {
-    let fixture =
-        galileo_e5_truth_capture_fixture("receiver-galileo-e5a-truth-capture", SignalCode::E5a, false, 0.060);
+    let fixture = galileo_e5_truth_capture_fixture(
+        "receiver-galileo-e5a-truth-capture",
+        SignalCode::E5a,
+        false,
+        0.060,
+    );
     let report = validate_truth_guided_acquisition_table(
         &fixture.config,
         &fixture.frame,
@@ -133,8 +137,12 @@ fn galileo_e5a_acquisition_truth_table_matches_capture_truth() {
 
 #[test]
 fn galileo_e5a_tracking_truth_table_matches_capture_truth() {
-    let fixture =
-        galileo_e5_truth_capture_fixture("receiver-galileo-e5a-truth-capture", SignalCode::E5a, false, 0.060);
+    let fixture = galileo_e5_truth_capture_fixture(
+        "receiver-galileo-e5a-truth-capture",
+        SignalCode::E5a,
+        false,
+        0.060,
+    );
     let budget = truth_guided_receiver_accuracy_budgets().tracking;
     let report = validate_truth_guided_tracking_table(
         &fixture.config,
@@ -155,8 +163,12 @@ fn galileo_e5a_tracking_truth_table_matches_capture_truth() {
 
 #[test]
 fn receiver_finds_sustained_galileo_e5a_lock_window() {
-    let fixture =
-        galileo_e5_truth_capture_fixture("receiver-galileo-e5a-truth-capture", SignalCode::E5a, false, 0.060);
+    let fixture = galileo_e5_truth_capture_fixture(
+        "receiver-galileo-e5a-truth-capture",
+        SignalCode::E5a,
+        false,
+        0.060,
+    );
     let mut source = SyntheticSignalSource::new_signal_only(&fixture.config, &fixture.scenario);
     let receiver = Receiver::new(fixture.config.clone(), ReceiverRuntime::default());
 
@@ -176,8 +188,12 @@ fn receiver_finds_sustained_galileo_e5a_lock_window() {
 
 #[test]
 fn galileo_e5b_acquisition_truth_table_matches_capture_truth() {
-    let fixture =
-        galileo_e5_truth_capture_fixture("receiver-galileo-e5b-truth-capture", SignalCode::E5b, true, 0.060);
+    let fixture = galileo_e5_truth_capture_fixture(
+        "receiver-galileo-e5b-truth-capture",
+        SignalCode::E5b,
+        true,
+        0.060,
+    );
     let report = validate_truth_guided_acquisition_table(
         &fixture.config,
         &fixture.frame,
@@ -194,8 +210,12 @@ fn galileo_e5b_acquisition_truth_table_matches_capture_truth() {
 
 #[test]
 fn galileo_e5b_tracking_truth_table_matches_capture_truth() {
-    let fixture =
-        galileo_e5_truth_capture_fixture("receiver-galileo-e5b-truth-capture", SignalCode::E5b, true, 0.060);
+    let fixture = galileo_e5_truth_capture_fixture(
+        "receiver-galileo-e5b-truth-capture",
+        SignalCode::E5b,
+        true,
+        0.060,
+    );
     let budget = truth_guided_receiver_accuracy_budgets().tracking;
     let report = validate_truth_guided_tracking_table(
         &fixture.config,
@@ -216,8 +236,12 @@ fn galileo_e5b_tracking_truth_table_matches_capture_truth() {
 
 #[test]
 fn receiver_finds_sustained_galileo_e5b_lock_window() {
-    let fixture =
-        galileo_e5_truth_capture_fixture("receiver-galileo-e5b-truth-capture", SignalCode::E5b, true, 0.060);
+    let fixture = galileo_e5_truth_capture_fixture(
+        "receiver-galileo-e5b-truth-capture",
+        SignalCode::E5b,
+        true,
+        0.060,
+    );
     let mut source = SyntheticSignalSource::new_signal_only(&fixture.config, &fixture.scenario);
     let receiver = Receiver::new(fixture.config.clone(), ReceiverRuntime::default());
 

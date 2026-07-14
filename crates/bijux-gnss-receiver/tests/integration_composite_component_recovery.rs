@@ -24,8 +24,7 @@ const MAX_RECOVERED_PHASE_ERROR_RAD: f64 = 0.08;
 
 #[test]
 fn composite_component_recovery_matches_multiconstellation_fixture() {
-    let fixture =
-        load_composite_component_recovery_fixture("composite_component_recovery.toml");
+    let fixture = load_composite_component_recovery_fixture("composite_component_recovery.toml");
     let (scaled_frame, truth) = build_noisy_capture(&fixture);
 
     let report = validate_truth_guided_composite_component_recovery(
@@ -51,8 +50,7 @@ fn composite_component_recovery_matches_multiconstellation_fixture() {
 
 #[test]
 fn composite_component_recovery_keeps_noisy_power_and_phase_errors_small() {
-    let fixture =
-        load_composite_component_recovery_fixture("composite_component_recovery.toml");
+    let fixture = load_composite_component_recovery_fixture("composite_component_recovery.toml");
     let (scaled_frame, truth) = build_noisy_capture(&fixture);
 
     let report = validate_truth_guided_composite_component_recovery(
@@ -144,11 +142,8 @@ fn composite_component_recovery_separates_same_satellite_mixed_band_rows() {
     );
 
     assert!(report.pass, "{report:?}");
-    let duplicated_rows = report
-        .satellites
-        .iter()
-        .filter(|row| row.sat == duplicated_sat)
-        .collect::<Vec<_>>();
+    let duplicated_rows =
+        report.satellites.iter().filter(|row| row.sat == duplicated_sat).collect::<Vec<_>>();
     assert_eq!(duplicated_rows.len(), 2, "{report:?}");
     assert!(duplicated_rows.iter().all(|row| row.pass), "{duplicated_rows:?}");
     assert!(duplicated_rows

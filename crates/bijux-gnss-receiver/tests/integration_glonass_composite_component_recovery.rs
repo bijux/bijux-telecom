@@ -63,16 +63,10 @@ fn composite_component_recovery_keeps_glonass_fdma_channels_distinct() {
         "{report:?}"
     );
 
-    let lower_row = report
-        .satellites
-        .iter()
-        .find(|row| row.sat == lower_sat)
-        .expect("lower GLONASS row");
-    let upper_row = report
-        .satellites
-        .iter()
-        .find(|row| row.sat == upper_sat)
-        .expect("upper GLONASS row");
+    let lower_row =
+        report.satellites.iter().find(|row| row.sat == lower_sat).expect("lower GLONASS row");
+    let upper_row =
+        report.satellites.iter().find(|row| row.sat == upper_sat).expect("upper GLONASS row");
     assert_eq!(lower_row.glonass_frequency_channel, Some(lower_channel), "{lower_row:?}");
     assert_eq!(upper_row.glonass_frequency_channel, Some(upper_channel), "{upper_row:?}");
     assert_ne!(lower_row.glonass_frequency_channel, upper_row.glonass_frequency_channel);

@@ -2,8 +2,8 @@
 
 //! Receiver runtime utilities.
 
-pub mod alloc;
 mod acquisition_catalog;
+pub mod alloc;
 pub mod diagnostics;
 #[allow(clippy::module_inception)]
 pub mod engine;

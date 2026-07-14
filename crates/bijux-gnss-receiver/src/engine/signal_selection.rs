@@ -136,7 +136,8 @@ fn supported_signal_bands(constellation: Constellation) -> &'static [SignalBand]
 mod tests {
     use super::{
         acquisition_constellation_matches_config, resolved_acquisition_signal_band,
-        resolved_acquisition_signals, resolved_primary_acquisition_signal, signal_band_matches_config,
+        resolved_acquisition_signals, resolved_primary_acquisition_signal,
+        signal_band_matches_config,
     };
     use crate::engine::receiver_config::ReceiverPipelineConfig;
     use bijux_gnss_core::api::{Constellation, SatId, SignalBand, SignalCode};

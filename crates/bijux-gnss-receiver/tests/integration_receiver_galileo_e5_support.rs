@@ -23,7 +23,11 @@ fn galileo_e5_config() -> ReceiverPipelineConfig {
     }
 }
 
-fn galileo_e5_scenario(sat: SatId, signal_code: SignalCode, data_bit_flip: bool) -> SyntheticScenario {
+fn galileo_e5_scenario(
+    sat: SatId,
+    signal_code: SignalCode,
+    data_bit_flip: bool,
+) -> SyntheticScenario {
     SyntheticScenario {
         sample_rate_hz: 10_230_000.0,
         intermediate_freq_hz: 0.0,

@@ -5,7 +5,9 @@ use std::path::Path;
 
 use bijux_gnss_core::api::SamplesFrame;
 use bijux_gnss_receiver::api::{
-    sim::{build_iq16_capture_bundle, generate_l1_ca_multi, SyntheticIqTruthBundle, SyntheticScenario},
+    sim::{
+        build_iq16_capture_bundle, generate_l1_ca_multi, SyntheticIqTruthBundle, SyntheticScenario,
+    },
     ReceiverPipelineConfig,
 };
 
@@ -65,8 +67,8 @@ fn build_capture(
 }
 
 fn load_scenario(scenario_file: &str) -> SyntheticScenario {
-    let path =
-        Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("../../configs/scenarios/{scenario_file}"));
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join(format!("../../configs/scenarios/{scenario_file}"));
     let contents = fs::read_to_string(path).expect("scenario file");
     toml::from_str(&contents).expect("valid scenario")
 }

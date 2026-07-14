@@ -4,10 +4,13 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use bijux_gnss_core::api::{Constellation, SatId, SamplesFrame, SignalBand, SignalCode};
+use bijux_gnss_core::api::{Constellation, SamplesFrame, SatId, SignalBand, SignalCode};
 use bijux_gnss_receiver::api::{
-    sim::{build_quantized_capture_bundle, generate_l1_ca_multi, SyntheticScenario, SyntheticSignalParams},
     signal::{quantize_samples_for_storage, IqQuantization},
+    sim::{
+        build_quantized_capture_bundle, generate_l1_ca_multi, SyntheticScenario,
+        SyntheticSignalParams,
+    },
     FileSamples, ReceiverPipelineConfig, SignalSource,
 };
 
@@ -70,7 +73,8 @@ fn quantized_capture_bundle_round_trips_through_raw_iq_ingest() {
             "2026-07-13T00:00:00Z",
             Some("quantized raw-iq round trip".to_string()),
         );
-        let expected = expected_quantized_frame(&frame, bundle.truth.output_scale_applied, quantization);
+        let expected =
+            expected_quantized_frame(&frame, bundle.truth.output_scale_applied, quantization);
         let extension = match quantization {
             IqQuantization::Float32 => "cf32",
             IqQuantization::Signed16Bit => "iq16",
@@ -79,12 +83,10 @@ fn quantized_capture_bundle_round_trips_through_raw_iq_ingest() {
         let path = temp_file_path("quantized_round_trip", extension);
         fs::write(&path, &bundle.raw_iq_bytes).expect("write quantized fixture");
 
-        let mut source =
-            FileSamples::open_raw_iq(&path, bundle.metadata.clone()).expect("open quantized fixture");
-        let decoded = source
-            .next_frame(frame.len())
-            .expect("read quantized frame")
-            .expect("decoded frame");
+        let mut source = FileSamples::open_raw_iq(&path, bundle.metadata.clone())
+            .expect("open quantized fixture");
+        let decoded =
+            source.next_frame(frame.len()).expect("read quantized frame").expect("decoded frame");
 
         assert_eq!(decoded.len(), expected.len(), "{quantization:?}");
         for (decoded_sample, expected_sample) in decoded.iq.iter().zip(expected.iq.iter()) {

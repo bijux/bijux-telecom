@@ -92,10 +92,7 @@ mod tests {
         assert_eq!(row.stage_support.data_decoding, SupportStatus::Planned);
         assert_eq!(row.stage_support.observations, SupportStatus::Supported);
         assert_eq!(row.stage_support.positioning, SupportStatus::Supported);
-        assert_eq!(
-            row.requirements,
-            vec!["glonass_frequency_channel_available".to_string()]
-        );
+        assert_eq!(row.requirements, vec!["glonass_frequency_channel_available".to_string()]);
     }
 
     #[test]
