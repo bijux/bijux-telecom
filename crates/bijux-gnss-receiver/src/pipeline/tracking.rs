@@ -3768,6 +3768,33 @@ mod tests {
     use num_complex::Complex;
     use serde::Deserialize;
 
+    fn vector_measurement(
+        channel_id: u8,
+        sample_index: u64,
+        cn0_dbhz: f64,
+        fll_error_hz: f64,
+        code_rate_error_hz: f64,
+        carrier_rate_hz_per_s: f64,
+    ) -> super::VectorTrackingMeasurement {
+        super::VectorTrackingMeasurement {
+            sat: SatId { constellation: Constellation::Gps, prn: channel_id + 1 },
+            channel_id,
+            epoch_idx: sample_index / 5_000,
+            sample_index,
+            cn0_dbhz,
+            dll_error_samples: 0.05,
+            pll_error_rad: 0.02,
+            fll_error_hz,
+            code_rate_error_hz,
+            carrier_rate_hz_per_s,
+            prompt_locked: true,
+            dll_locked: true,
+            pll_locked: true,
+            fll_locked: true,
+            channel_state: ChannelState::Tracking,
+        }
+    }
+
     #[test]
     fn tracking_recovery_from_loss_of_lock() {
         let lost = Tracking::transition_state(1, ChannelState::Tracking, ChannelState::Lost);
@@ -4607,6 +4634,85 @@ mod tests {
         assert_eq!(super::tracking_epoch_count(60, 20), 3);
         assert_eq!(super::tracking_epoch_count(61, 20), 4);
         assert_eq!(super::tracking_epoch_count(0, 20), 0);
+    }
+
+    #[test]
+    fn vector_tracking_rejects_weak_or_incomplete_evidence() {
+        let weak = vector_measurement(0, 5_000, 34.9, 1.0, 0.1, 0.0);
+        let mut unlocked = vector_measurement(1, 5_000, 42.0, 1.0, 0.1, 0.0);
+        unlocked.pll_locked = false;
+        let strong = vector_measurement(2, 5_000, 42.0, 1.0, 0.1, 0.0);
+
+        assert!(!super::vector_tracking_measurement_is_usable(weak));
+        assert!(!super::vector_tracking_measurement_is_usable(unlocked));
+        assert!(super::vector_tracking_measurement_is_usable(strong));
+        assert!(super::vector_tracking_prediction(&[strong]).is_none());
+    }
+
+    #[test]
+    fn vector_tracking_prediction_uses_latest_measurement_per_channel() {
+        let mut state = super::VectorTrackingState::default();
+        state.record(vector_measurement(0, 100, 42.0, 1.0, 0.10, 4.0), 1_000.0);
+        state.record(vector_measurement(0, 110, 42.0, 5.0, 0.50, 8.0), 1_000.0);
+        state.record(vector_measurement(1, 108, 42.0, 7.0, 0.70, 12.0), 1_000.0);
+
+        let prediction = state.prediction_for(120, 1_000.0).expect("vector prediction");
+
+        assert_eq!(prediction.contributor_count, 2);
+        assert_eq!(prediction.sample_index, 110);
+        assert!((prediction.receiver_clock_frequency_error_hz - 6.0).abs() < 1.0e-9);
+        assert!((prediction.receiver_code_rate_error_hz - 0.60).abs() < 1.0e-9);
+        assert!((prediction.receiver_motion_frequency_rate_hz_per_s - 10.0).abs() < 1.0e-9);
+    }
+
+    #[test]
+    fn vector_tracking_application_bounds_weak_channel_aid() {
+        let config = ReceiverPipelineConfig::default();
+        let tracking = Tracking::new(config.clone(), ReceiverRuntime::default());
+        let sat = SatId { constellation: Constellation::Gps, prn: 1 };
+        let signal_model = super::TrackingSignalModel::for_sat(&config, sat);
+        let mut loop_state = tracking.initial_loop_state(
+            &signal_model,
+            1500.0,
+            0.0,
+            42.0,
+            None,
+            config.tracking_params(SignalBand::L1),
+            false,
+        );
+        loop_state.state = ChannelState::PullIn;
+        let prediction = super::VectorTrackingPrediction {
+            sample_index: 10_000,
+            contributor_count: 3,
+            mean_cn0_dbhz: 44.0,
+            receiver_clock_frequency_error_hz: 1_000.0,
+            receiver_code_rate_error_hz: 50.0,
+            receiver_motion_frequency_rate_hz_per_s: 5_000.0,
+        };
+
+        let application =
+            super::vector_tracking_application(prediction, &loop_state).expect("vector aid");
+
+        assert!(
+            (application.carrier_frequency_correction_hz
+                - super::VECTOR_TRACKING_MAX_CARRIER_AID_HZ * 0.35)
+                .abs()
+                < 1.0e-9
+        );
+        assert!(
+            (application.code_rate_correction_hz
+                - super::VECTOR_TRACKING_MAX_CODE_RATE_AID_HZ * 0.35)
+                .abs()
+                < 1.0e-9
+        );
+        assert!(
+            (application.carrier_rate_correction_hz_per_s
+                - super::VECTOR_TRACKING_MAX_CARRIER_RATE_AID_HZ_PER_S * 0.35)
+                .abs()
+                < 1.0e-9
+        );
+        loop_state.state = ChannelState::Lost;
+        assert!(super::vector_tracking_application(prediction, &loop_state).is_none());
     }
 
     #[test]
