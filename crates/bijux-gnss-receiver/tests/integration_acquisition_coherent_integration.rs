@@ -173,10 +173,80 @@ fn acquisition_supports_coherent_lengths_with_nav_bit_modulation() {
     }
 }
 
+#[test]
+fn acquisition_supports_gps_l1_twenty_millisecond_integration_across_bit_boundary() {
+    let config = ReceiverPipelineConfig {
+        sampling_freq_hz: 4_092_000.0,
+        intermediate_freq_hz: 0.0,
+        code_freq_basis_hz: 1_023_000.0,
+        code_length: 1023,
+        acquisition_doppler_search_hz: 10_000,
+        acquisition_doppler_step_hz: 500,
+        ..ReceiverPipelineConfig::default()
+    };
+    let scenario = SyntheticScenario {
+        sample_rate_hz: config.sampling_freq_hz,
+        intermediate_freq_hz: config.intermediate_freq_hz,
+        receiver_clock_frequency_bias_hz: 0.0,
+        duration_s: 0.05,
+        seed: 2_407_1987,
+        satellites: vec![SyntheticSignalParams {
+            sat: SatId { constellation: Constellation::Gps, prn: 5 },
+            glonass_frequency_channel: None,
+            signal_band: bijux_gnss_core::api::SignalBand::L1,
+            signal_code: bijux_gnss_core::api::SignalCode::Ca,
+            doppler_hz: 500.0,
+            code_phase_chips: 145.375,
+            carrier_phase_rad: 0.0,
+            cn0_db_hz: 58.0,
+            navigation_data: true.into(),
+        }],
+        ephemerides: Vec::new(),
+        id: "acquisition_coherent_integration_gps_l1_boundary_crossing".to_string(),
+    };
+    let frame = generate_l1_ca_multi(&config, &scenario);
+    let bundle = build_iq16_capture_bundle(
+        &scenario.id,
+        &scenario,
+        &frame,
+        "2026-07-09T00:00:00Z",
+        Some("integration acquisition coherent integration gps l1 boundary crossing".to_string()),
+    );
+    let scaled_frame = scaled_frame(&frame, bundle.truth.output_scale_applied);
+    let samples_per_code = (config.sampling_freq_hz / 1_000.0).round() as usize;
+    let shifted_frame = windowed_frame(&scaled_frame, 19 * samples_per_code, 20 * samples_per_code);
+
+    let report = validate_truth_guided_acquisition_coherent_integration(
+        &config,
+        &shifted_frame,
+        &bundle.truth,
+        20,
+        1,
+        2,
+        5,
+    );
+
+    assert!(report.pass, "{report:?}");
+    assert_eq!(report.satellites.len(), 1);
+    assert!(report.satellites[0].pass, "{report:?}");
+    assert!(matches!(report.satellites[0].hypothesis.as_str(), "accepted" | "ambiguous"));
+}
+
 fn scaled_frame(frame: &SamplesFrame, output_scale_applied: f32) -> SamplesFrame {
     SamplesFrame::new(
         frame.t0,
         frame.dt_s,
         frame.iq.iter().map(|sample| *sample * output_scale_applied).collect(),
+    )
+}
+
+fn windowed_frame(frame: &SamplesFrame, start_sample: usize, sample_count: usize) -> SamplesFrame {
+    SamplesFrame::new(
+        bijux_gnss_core::api::SampleTime {
+            sample_index: frame.t0.sample_index + start_sample as u64,
+            sample_rate_hz: frame.t0.sample_rate_hz,
+        },
+        frame.dt_s,
+        frame.iq[start_sample..start_sample + sample_count].to_vec(),
     )
 }
