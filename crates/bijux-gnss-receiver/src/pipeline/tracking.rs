@@ -3227,7 +3227,7 @@ mod tests {
     use bijux_gnss_signal::api::{
         advance_code_phase_seconds, delay_lock_loop_coefficients, discriminators,
         first_order_angular_loop_coefficients, phase_lock_loop_coefficients, sample_ca_code,
-        samples_per_code, signal_spec_gps_l5_i, Prn,
+        samples_per_code, shared_path_code_rate_hz, signal_spec_gps_l5_i, Prn,
     };
     use num_complex::Complex;
     use serde::Deserialize;
@@ -5061,6 +5061,60 @@ mod tests {
         assert_eq!(channel_state.state.carrier_hz, carrier_hz);
         assert!((channel_state.signal_model.code_rate_hz - 511_000.0).abs() <= f64::EPSILON);
         assert_eq!(channel_state.signal_model.code_length, 511);
+    }
+
+    #[test]
+    fn begin_incremental_tracking_seeds_code_rate_from_carrier_aid() {
+        let config = crate::engine::receiver_config::ReceiverPipelineConfig {
+            intermediate_freq_hz: GPS_L1_CA_CARRIER_HZ.value() - signal_spec_gps_l5_i().carrier_hz.value(),
+            code_freq_basis_hz: 10_230_000.0,
+            code_length: 10_230,
+            ..crate::engine::receiver_config::ReceiverPipelineConfig::default()
+        };
+        let tracking = Tracking::new(config, ReceiverRuntime::default());
+        let acquisition = bijux_gnss_core::api::AcqResult {
+            sat: SatId { constellation: Constellation::Gps, prn: 18 },
+            signal_band: SignalBand::L5,
+            signal_code: SignalCode::L5I,
+            glonass_frequency_channel: None,
+            source_time: ReceiverSampleTrace::default(),
+            candidate_rank: 1,
+            is_primary_candidate: true,
+            doppler_hz: Hertz(1_500.0),
+            doppler_rate_hz_per_s: 0.0,
+            carrier_hz: Hertz(1_500.0),
+            code_phase_samples: 37,
+            peak: 1.0,
+            second_peak: 0.1,
+            mean: 0.01,
+            peak_mean_ratio: 8.0,
+            peak_second_ratio: 3.0,
+            cn0_proxy: 48.0,
+            score: 5.0,
+            hypothesis: AcqHypothesis::Accepted,
+            assumptions: None,
+            evidence: Vec::new(),
+            threshold_provenance: None,
+            explain_selection_reason: None,
+            doppler_refinement: None,
+            code_phase_refinement: None,
+            signal_delay_alignment: None,
+            uncertainty: None,
+        };
+
+        let incremental = tracking.begin_incremental_tracking(&[acquisition]);
+        let channel_state = incremental.channels.first().expect("GPS L5 tracking channel");
+        let expected_code_rate_hz = shared_path_code_rate_hz(
+            1_500.0,
+            signal_spec_gps_l5_i(),
+            signal_spec_gps_l5_i(),
+        )
+        .expect("carrier-aided code rate");
+
+        assert!((channel_state.state.code_rate_hz - expected_code_rate_hz).abs() <= 1.0e-9);
+        assert!(
+            (channel_state.state.code_rate_reference_hz - expected_code_rate_hz).abs() <= 1.0e-9
+        );
     }
 
     #[test]
