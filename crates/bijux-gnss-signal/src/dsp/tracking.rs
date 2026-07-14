@@ -1071,9 +1071,9 @@ mod tests {
         coherent_integration_seconds, correlate_early_prompt_late, delay_lock_loop_coefficients,
         discriminators, dll_lock_threshold, estimate_cn0_dbhz, estimate_tracking_uncertainty,
         first_order_angular_loop_coefficients, first_order_loop_coefficients,
-        phase_lock_loop_coefficients, wrap_phase_cycles_signed, wrap_phase_radians_positive,
-        wrapped_phase_delta_cycles, CarrierTrackingLoopInput, CodeLoopInput, TrackingQualityClass,
-        TrackingUncertaintyInputs,
+        phase_lock_loop_coefficients, predict_code_phase_samples, wrap_phase_cycles_signed,
+        wrap_phase_radians_positive, wrapped_phase_delta_cycles, CarrierTrackingLoopInput,
+        CodeLoopInput, TrackingQualityClass, TrackingUncertaintyInputs,
     };
     use std::collections::VecDeque;
 
@@ -1486,6 +1486,82 @@ mod tests {
         });
 
         assert!((update.code_rate_hz - 1_023_450.0).abs() < 1.0e-9, "{update:?}");
+    }
+
+    #[test]
+    fn apply_code_loop_reduces_phase_error_when_reference_code_rate_changes_each_epoch() {
+        let coherent_integration_s = 0.001;
+        let nominal_code_rate_hz = 1_023_000.0;
+        let epoch_len_samples = 4_092;
+        let samples_per_chip = 4.0;
+        let samples_per_code = 4_092;
+        let reference_code_rates_hz = [
+            nominal_code_rate_hz,
+            nominal_code_rate_hz + 15.0,
+            nominal_code_rate_hz + 35.0,
+            nominal_code_rate_hz + 60.0,
+            nominal_code_rate_hz + 90.0,
+            nominal_code_rate_hz + 125.0,
+        ];
+        let mut aided_code_rate_hz = nominal_code_rate_hz;
+        let mut aided_code_phase_samples = 250.0;
+        let mut frozen_code_rate_hz = nominal_code_rate_hz;
+        let mut frozen_code_phase_samples = 250.0;
+        let mut expected_code_phase_samples = 250.0;
+        let mut previous_reference_code_rate_hz = reference_code_rates_hz[0];
+
+        for reference_code_rate_hz in reference_code_rates_hz.iter().copied().skip(1) {
+            expected_code_phase_samples = predict_code_phase_samples(
+                expected_code_phase_samples,
+                epoch_len_samples,
+                reference_code_rate_hz,
+                nominal_code_rate_hz,
+                samples_per_code,
+            );
+
+            let aided_update = apply_code_loop(CodeLoopInput {
+                current_code_rate_hz: aided_code_rate_hz,
+                previous_reference_code_rate_hz,
+                reference_code_rate_hz,
+                current_code_phase_samples: aided_code_phase_samples,
+                epoch_len_samples,
+                coherent_integration_s,
+                nominal_code_rate_hz,
+                dll_bw_hz: 2.0,
+                dll_err: 0.0,
+                samples_per_chip,
+                samples_per_code,
+            });
+            aided_code_rate_hz = aided_update.code_rate_hz;
+            aided_code_phase_samples = aided_update.code_phase_samples;
+
+            let frozen_update = apply_code_loop(CodeLoopInput {
+                current_code_rate_hz: frozen_code_rate_hz,
+                previous_reference_code_rate_hz: nominal_code_rate_hz,
+                reference_code_rate_hz: nominal_code_rate_hz,
+                current_code_phase_samples: frozen_code_phase_samples,
+                epoch_len_samples,
+                coherent_integration_s,
+                nominal_code_rate_hz,
+                dll_bw_hz: 2.0,
+                dll_err: 0.0,
+                samples_per_chip,
+                samples_per_code,
+            });
+            frozen_code_rate_hz = frozen_update.code_rate_hz;
+            frozen_code_phase_samples = frozen_update.code_phase_samples;
+            previous_reference_code_rate_hz = reference_code_rate_hz;
+        }
+
+        let aided_phase_error_samples = (aided_code_phase_samples - expected_code_phase_samples).abs();
+        let frozen_phase_error_samples =
+            (frozen_code_phase_samples - expected_code_phase_samples).abs();
+
+        assert!(aided_phase_error_samples <= 1.0e-9, "{aided_phase_error_samples}");
+        assert!(
+            frozen_phase_error_samples > 0.5,
+            "aided={aided_phase_error_samples} frozen={frozen_phase_error_samples}"
+        );
     }
 
     #[test]
