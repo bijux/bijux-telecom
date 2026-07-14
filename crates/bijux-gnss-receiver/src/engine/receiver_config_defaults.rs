@@ -7,10 +7,9 @@ use crate::engine::receiver_config::{
     default_acquisition_threshold_calibration_trial_count,
     default_acquisition_threshold_confidence_level, default_adaptive_tracking_enabled,
     default_tracking_integration_ms, default_vector_tracking_enabled, AcquisitionConfig,
-    AcquisitionThresholdMode,
-    AcquisitionThresholdPolicyConfig, ConstellationSelectionPolicy, FrontEndConfig,
-    NavigationConfig, NavigationMotionClass, NavigationWeightingConfig, NavigationWeightingMode,
-    PppConfig, ReceiverConfig, ScienceThresholdsConfig, TrackingConfig,
+    AcquisitionThresholdMode, AcquisitionThresholdPolicyConfig, ConstellationSelectionPolicy,
+    FrontEndConfig, NavigationConfig, NavigationMotionClass, NavigationWeightingConfig,
+    NavigationWeightingMode, PppConfig, ReceiverConfig, ScienceThresholdsConfig, TrackingConfig,
 };
 
 impl Default for ReceiverConfig {
