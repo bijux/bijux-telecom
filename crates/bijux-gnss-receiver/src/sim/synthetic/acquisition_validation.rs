@@ -1015,3 +1015,402 @@ pub fn measure_truth_guided_acquisition_detection_rate(
         points,
     }
 }
+
+#[derive(Debug, Clone)]
+struct SyntheticAcquisitionTrialMeasurement {
+    hypothesis: String,
+    accepted: bool,
+    detected: bool,
+    code_phase_error_samples: Option<usize>,
+    doppler_error_bins: Option<f64>,
+    peak_mean_ratio: f32,
+}
+
+/// Measure same-band acquisition interference against isolated and thermal-noise baselines.
+pub fn measure_truth_guided_acquisition_interference(
+    config: &ReceiverPipelineConfig,
+    cases: &[SyntheticAcquisitionInterferenceCase],
+    trial_seeds: &[u64],
+    scenario_id_prefix: &str,
+    code_phase_tolerance_samples: usize,
+    doppler_tolerance_bins: usize,
+) -> SyntheticAcquisitionInterferenceReport {
+    let doppler_step_hz = config.acquisition_doppler_step_hz.max(1);
+    let points = cases
+        .iter()
+        .map(|case| {
+            measure_truth_guided_acquisition_interference_point(
+                config,
+                case,
+                trial_seeds,
+                &interference_case_id(scenario_id_prefix, case),
+                code_phase_tolerance_samples,
+                doppler_tolerance_bins,
+            )
+        })
+        .collect::<Vec<_>>();
+
+    SyntheticAcquisitionInterferenceReport {
+        scenario_id_prefix: scenario_id_prefix.to_string(),
+        code_phase_tolerance_samples,
+        doppler_tolerance_bins,
+        doppler_step_hz,
+        points,
+    }
+}
+
+fn measure_truth_guided_acquisition_interference_point(
+    config: &ReceiverPipelineConfig,
+    case: &SyntheticAcquisitionInterferenceCase,
+    trial_seeds: &[u64],
+    scenario_id_prefix: &str,
+    code_phase_tolerance_samples: usize,
+    doppler_tolerance_bins: usize,
+) -> SyntheticAcquisitionInterferencePoint {
+    let mut profile_config = config.clone();
+    profile_config.acquisition_integration_ms = case.coherent_ms;
+    profile_config.acquisition_noncoherent = case.noncoherent;
+    let duration_s =
+        (case.coherent_ms.saturating_mul(case.noncoherent).max(1) as f64) / 1000.0;
+
+    let trials = trial_seeds
+        .iter()
+        .enumerate()
+        .map(|(trial_index, seed)| {
+            let scenario_id = format!("{scenario_id_prefix}_trial_{trial_index}");
+            let isolated_frame = scaled_synthetic_acquisition_frame(
+                &profile_config,
+                &SyntheticScenario {
+                    sample_rate_hz: profile_config.sampling_freq_hz,
+                    intermediate_freq_hz: profile_config.intermediate_freq_hz,
+                    receiver_clock_frequency_bias_hz: 0.0,
+                    duration_s,
+                    seed: *seed,
+                    satellites: vec![case.target_signal.clone()],
+                    ephemerides: Vec::new(),
+                    id: format!("{scenario_id}_isolated"),
+                },
+                "synthetic isolated acquisition interference trial",
+            );
+            let interfered_frame = scaled_synthetic_acquisition_frame(
+                &profile_config,
+                &SyntheticScenario {
+                    sample_rate_hz: profile_config.sampling_freq_hz,
+                    intermediate_freq_hz: profile_config.intermediate_freq_hz,
+                    receiver_clock_frequency_bias_hz: 0.0,
+                    duration_s,
+                    seed: *seed,
+                    satellites: std::iter::once(case.target_signal.clone())
+                        .chain(case.interfering_signals.iter().cloned())
+                        .collect(),
+                    ephemerides: Vec::new(),
+                    id: format!("{scenario_id}_interfered"),
+                },
+                "synthetic interfered acquisition trial",
+            );
+            let thermal_noise_frame = scaled_synthetic_acquisition_frame(
+                &profile_config,
+                &SyntheticScenario {
+                    sample_rate_hz: profile_config.sampling_freq_hz,
+                    intermediate_freq_hz: profile_config.intermediate_freq_hz,
+                    receiver_clock_frequency_bias_hz: 0.0,
+                    duration_s,
+                    seed: *seed,
+                    satellites: Vec::new(),
+                    ephemerides: Vec::new(),
+                    id: format!("{scenario_id}_thermal_noise"),
+                },
+                "synthetic thermal-noise acquisition interference trial",
+            );
+            let interference_only_frame = scaled_synthetic_acquisition_frame(
+                &profile_config,
+                &SyntheticScenario {
+                    sample_rate_hz: profile_config.sampling_freq_hz,
+                    intermediate_freq_hz: profile_config.intermediate_freq_hz,
+                    receiver_clock_frequency_bias_hz: 0.0,
+                    duration_s,
+                    seed: *seed,
+                    satellites: case.interfering_signals.clone(),
+                    ephemerides: Vec::new(),
+                    id: format!("{scenario_id}_interference_only"),
+                },
+                "synthetic interference-only acquisition trial",
+            );
+
+            let isolated = measure_truth_guided_acquisition_trial(
+                &profile_config,
+                &isolated_frame,
+                &case.target_signal,
+                code_phase_tolerance_samples,
+                doppler_tolerance_bins,
+            );
+            let interfered = measure_truth_guided_acquisition_trial(
+                &profile_config,
+                &interfered_frame,
+                &case.target_signal,
+                code_phase_tolerance_samples,
+                doppler_tolerance_bins,
+            );
+            let thermal_noise =
+                measure_target_absent_acquisition_trial(&profile_config, &thermal_noise_frame, &case.target_signal);
+            let interference_only = measure_target_absent_acquisition_trial(
+                &profile_config,
+                &interference_only_frame,
+                &case.target_signal,
+            );
+
+            let failure_class = if interfered.detected {
+                SyntheticAcquisitionInterferenceFailureClass::Detected
+            } else if isolated.detected {
+                SyntheticAcquisitionInterferenceFailureClass::CrossSignalInterference
+            } else {
+                SyntheticAcquisitionInterferenceFailureClass::ThermalNoiseLimited
+            };
+            let false_alarm_class = if thermal_noise.accepted {
+                SyntheticAcquisitionFalseAlarmClass::ThermalNoise
+            } else if interference_only.accepted {
+                SyntheticAcquisitionFalseAlarmClass::CrossSignalInterference
+            } else {
+                SyntheticAcquisitionFalseAlarmClass::None
+            };
+
+            SyntheticAcquisitionInterferenceTrial {
+                scenario_id,
+                seed: *seed,
+                isolated_detected: isolated.detected,
+                interfered_detected: interfered.detected,
+                failure_class,
+                thermal_noise_false_alarm: thermal_noise.accepted,
+                interference_only_false_alarm: interference_only.accepted,
+                false_alarm_class,
+                isolated_hypothesis: isolated.hypothesis,
+                interfered_hypothesis: interfered.hypothesis,
+                thermal_noise_hypothesis: thermal_noise.hypothesis,
+                interference_only_hypothesis: interference_only.hypothesis,
+                isolated_code_phase_error_samples: isolated.code_phase_error_samples,
+                interfered_code_phase_error_samples: interfered.code_phase_error_samples,
+                isolated_doppler_error_bins: isolated.doppler_error_bins,
+                interfered_doppler_error_bins: interfered.doppler_error_bins,
+                isolated_peak_mean_ratio: isolated.peak_mean_ratio,
+                interfered_peak_mean_ratio: interfered.peak_mean_ratio,
+                thermal_noise_peak_mean_ratio: thermal_noise.peak_mean_ratio,
+                interference_only_peak_mean_ratio: interference_only.peak_mean_ratio,
+            }
+        })
+        .collect::<Vec<_>>();
+
+    let trial_count = trials.len();
+    let isolated_detection_count = trials.iter().filter(|trial| trial.isolated_detected).count();
+    let interfered_detection_count = trials.iter().filter(|trial| trial.interfered_detected).count();
+    let thermal_noise_failure_count = trials
+        .iter()
+        .filter(|trial| {
+            matches!(
+                trial.failure_class,
+                SyntheticAcquisitionInterferenceFailureClass::ThermalNoiseLimited
+            )
+        })
+        .count();
+    let cross_signal_interference_failure_count = trials
+        .iter()
+        .filter(|trial| {
+            matches!(
+                trial.failure_class,
+                SyntheticAcquisitionInterferenceFailureClass::CrossSignalInterference
+            )
+        })
+        .count();
+    let thermal_noise_false_alarm_count = trials
+        .iter()
+        .filter(|trial| {
+            matches!(
+                trial.false_alarm_class,
+                SyntheticAcquisitionFalseAlarmClass::ThermalNoise
+            )
+        })
+        .count();
+    let cross_signal_false_alarm_count = trials
+        .iter()
+        .filter(|trial| {
+            matches!(
+                trial.false_alarm_class,
+                SyntheticAcquisitionFalseAlarmClass::CrossSignalInterference
+            )
+        })
+        .count();
+    let mean_isolated_peak_mean_ratio = mean_peak_mean_ratio(
+        trials.iter().map(|trial| trial.isolated_peak_mean_ratio),
+    );
+    let mean_interfered_peak_mean_ratio = mean_peak_mean_ratio(
+        trials.iter().map(|trial| trial.interfered_peak_mean_ratio),
+    );
+    let isolated_detection_probability = probability(isolated_detection_count, trial_count);
+    let interfered_detection_probability = probability(interfered_detection_count, trial_count);
+
+    SyntheticAcquisitionInterferencePoint {
+        case: case.clone(),
+        trial_count,
+        isolated_detection_count,
+        interfered_detection_count,
+        thermal_noise_failure_count,
+        cross_signal_interference_failure_count,
+        thermal_noise_false_alarm_count,
+        cross_signal_false_alarm_count,
+        isolated_detection_probability,
+        interfered_detection_probability,
+        detection_probability_loss: isolated_detection_probability - interfered_detection_probability,
+        thermal_noise_false_alarm_rate: probability(thermal_noise_false_alarm_count, trial_count),
+        cross_signal_false_alarm_rate: probability(cross_signal_false_alarm_count, trial_count),
+        mean_isolated_peak_mean_ratio,
+        mean_interfered_peak_mean_ratio,
+        trials,
+    }
+}
+
+fn measure_truth_guided_acquisition_trial(
+    config: &ReceiverPipelineConfig,
+    frame: &SamplesFrame,
+    signal: &SyntheticSignalParams,
+    code_phase_tolerance_samples: usize,
+    doppler_tolerance_bins: usize,
+) -> SyntheticAcquisitionTrialMeasurement {
+    let result = acquisition_result_for_target_signal(config, frame, signal);
+    let period_samples =
+        samples_per_code(config.sampling_freq_hz, config.code_freq_basis_hz, config.code_length);
+    let expected_code_phase_samples =
+        expected_acquisition_code_phase_samples(config, frame, signal.code_phase_chips);
+    let code_phase_error_samples = wrapped_code_phase_error_samples(
+        result.code_phase_samples,
+        expected_code_phase_samples,
+        period_samples,
+    );
+    let measured_doppler_hz = synthetic_measured_doppler_hz_from_carrier_hz(
+        config.intermediate_freq_hz,
+        signal.sat,
+        signal.signal_band,
+        signal.signal_code,
+        signal.glonass_frequency_channel,
+        result.carrier_hz.0,
+    );
+    let doppler_step_hz = config.acquisition_doppler_step_hz.max(1) as f64;
+    let doppler_error_bins = (measured_doppler_hz - signal.doppler_hz).abs() / doppler_step_hz;
+    let accepted = matches!(result.hypothesis, crate::api::core::AcqHypothesis::Accepted);
+    let detected = !matches!(result.hypothesis, crate::api::core::AcqHypothesis::Rejected)
+        && code_phase_error_samples <= code_phase_tolerance_samples
+        && doppler_error_bins <= doppler_tolerance_bins as f64 + f64::EPSILON;
+
+    SyntheticAcquisitionTrialMeasurement {
+        hypothesis: result.hypothesis.to_string(),
+        accepted,
+        detected,
+        code_phase_error_samples: Some(code_phase_error_samples),
+        doppler_error_bins: Some(doppler_error_bins),
+        peak_mean_ratio: result.peak_mean_ratio,
+    }
+}
+
+fn measure_target_absent_acquisition_trial(
+    config: &ReceiverPipelineConfig,
+    frame: &SamplesFrame,
+    signal: &SyntheticSignalParams,
+) -> SyntheticAcquisitionTrialMeasurement {
+    let result = acquisition_result_for_target_signal(config, frame, signal);
+    let non_rejected = !matches!(result.hypothesis, crate::api::core::AcqHypothesis::Rejected);
+
+    SyntheticAcquisitionTrialMeasurement {
+        hypothesis: result.hypothesis.to_string(),
+        accepted: non_rejected,
+        detected: false,
+        code_phase_error_samples: None,
+        doppler_error_bins: None,
+        peak_mean_ratio: result.peak_mean_ratio,
+    }
+}
+
+fn acquisition_result_for_target_signal(
+    config: &ReceiverPipelineConfig,
+    frame: &SamplesFrame,
+    signal: &SyntheticSignalParams,
+) -> crate::api::core::AcqResult {
+    let acquisition = crate::pipeline::acquisition::Acquisition::new(
+        config.clone(),
+        crate::engine::runtime::ReceiverRuntime::default(),
+    );
+    acquisition
+        .run_fft_for_requests(frame, &[acquisition_request_for_signal(config, signal)])
+        .remove(0)
+}
+
+fn acquisition_request_for_signal(
+    config: &ReceiverPipelineConfig,
+    signal: &SyntheticSignalParams,
+) -> crate::api::core::AcqRequest {
+    crate::api::core::AcqRequest {
+        sat: signal.sat,
+        glonass_frequency_channel: signal.glonass_frequency_channel,
+        signal_band: signal.signal_band,
+        signal_code: signal.signal_code,
+        doppler_center_hz: 0.0,
+        doppler_rate_center_hz_per_s: 0.0,
+        expected_line_of_sight_doppler_hz: Some(signal.doppler_hz),
+        assistance_bounds: None,
+        doppler_search_hz: config.acquisition_doppler_search_hz,
+        doppler_step_hz: config.acquisition_doppler_step_hz,
+        doppler_rate_search_hz_per_s: config.acquisition_doppler_rate_search_hz_per_s,
+        doppler_rate_step_hz_per_s: config.acquisition_doppler_rate_step_hz_per_s,
+        coherent_ms: config.acquisition_integration_ms,
+        noncoherent: config.acquisition_noncoherent,
+    }
+}
+
+fn scaled_synthetic_acquisition_frame(
+    config: &ReceiverPipelineConfig,
+    scenario: &SyntheticScenario,
+    description: &str,
+) -> SamplesFrame {
+    let frame = generate_l1_ca_multi(config, scenario);
+    let bundle = build_iq16_capture_bundle(
+        &scenario.id,
+        scenario,
+        &frame,
+        "2026-07-14T00:00:00Z",
+        Some(description.to_string()),
+    );
+    SamplesFrame::new(
+        frame.t0,
+        frame.dt_s,
+        frame.iq.iter().map(|sample| *sample * bundle.truth.output_scale_applied).collect(),
+    )
+}
+
+fn interference_case_id(
+    scenario_id_prefix: &str,
+    case: &SyntheticAcquisitionInterferenceCase,
+) -> String {
+    format!(
+        "{scenario_id_prefix}_prn_{}_band_{:?}_code_{:?}_interferers_{}_coherent_{}ms_noncoherent_{}",
+        case.target_signal.sat.prn,
+        case.target_signal.signal_band,
+        case.target_signal.signal_code,
+        case.interfering_signals.len(),
+        case.coherent_ms,
+        case.noncoherent,
+    )
+}
+
+fn mean_peak_mean_ratio(values: impl Iterator<Item = f32>) -> f64 {
+    let values = values.map(|value| value as f64).collect::<Vec<_>>();
+    if values.is_empty() {
+        0.0
+    } else {
+        values.iter().sum::<f64>() / values.len() as f64
+    }
+}
+
+fn probability(count: usize, total: usize) -> f64 {
+    if total == 0 {
+        0.0
+    } else {
+        count as f64 / total as f64
+    }
+}
