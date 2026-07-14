@@ -1456,6 +1456,121 @@ mod tests {
         );
     }
 
+    fn loop_observer_response<F>(
+        order: super::LoopFilterOrder,
+        correction_gains: [f64; 3],
+        coherent_integration_s: f64,
+        epochs: usize,
+        measurement_at_epoch: F,
+    ) -> Vec<[f64; 3]>
+    where
+        F: Fn(usize) -> f64,
+    {
+        let dimension = order.as_usize();
+        let transition =
+            super::corrected_loop_transition(order, coherent_integration_s, correction_gains);
+        let mut state = [0.0; 3];
+        let mut response = Vec::with_capacity(epochs);
+        for epoch in 0..epochs {
+            let measurement = measurement_at_epoch(epoch);
+            let mut next_state = [0.0; 3];
+            for row in 0..dimension {
+                next_state[row] = correction_gains[row] * measurement;
+                for column in 0..dimension {
+                    next_state[row] += transition[row][column] * state[column];
+                }
+            }
+            state = next_state;
+            response.push(state);
+        }
+        response
+    }
+
+    #[test]
+    fn loop_filter_step_responses_converge_for_each_order() {
+        let coherent_integration_s = 0.001;
+        let cases = [
+            (super::LoopFilterOrder::First, 8.0),
+            (super::LoopFilterOrder::Second, 6.0),
+            (super::LoopFilterOrder::Third, 18.0),
+        ];
+
+        for (order, bandwidth_hz) in cases {
+            let design = super::loop_observer_design(order, bandwidth_hz, coherent_integration_s);
+            let response = loop_observer_response(
+                order,
+                design.correction_gains,
+                coherent_integration_s,
+                6_000,
+                |_| 1.0,
+            );
+
+            let final_output = response.last().expect("step response sample")[0];
+            let peak_output =
+                response.iter().map(|state| state[0]).fold(f64::NEG_INFINITY, f64::max);
+            assert!(
+                (final_output - 1.0).abs() <= 1.0e-8,
+                "order={order:?} design={design:?} final_output={final_output}",
+            );
+            assert!(
+                peak_output <= 1.25,
+                "order={order:?} design={design:?} peak_output={peak_output}",
+            );
+        }
+    }
+
+    #[test]
+    fn loop_filter_ramp_responses_match_order_capability() {
+        let coherent_integration_s = 0.001;
+        let ramp_rate_units_per_s = 0.75;
+        let cases = [
+            (super::LoopFilterOrder::First, 8.0),
+            (super::LoopFilterOrder::Second, 6.0),
+            (super::LoopFilterOrder::Third, 18.0),
+        ];
+
+        for (order, bandwidth_hz) in cases {
+            let design = super::loop_observer_design(order, bandwidth_hz, coherent_integration_s);
+            let response = loop_observer_response(
+                order,
+                design.correction_gains,
+                coherent_integration_s,
+                12_000,
+                |epoch| epoch as f64 * coherent_integration_s * ramp_rate_units_per_s,
+            );
+            let final_state = response.last().expect("ramp response sample");
+            let final_measurement =
+                (response.len() - 1) as f64 * coherent_integration_s * ramp_rate_units_per_s;
+            let final_error = final_measurement - final_state[0];
+
+            match order {
+                super::LoopFilterOrder::First => {
+                    let ramp_step_units = ramp_rate_units_per_s * coherent_integration_s;
+                    let expected_lag =
+                        design.closed_loop_pole * ramp_step_units / design.correction_gains[0];
+                    assert!(
+                        (final_error - expected_lag).abs() <= 1.0e-8,
+                        "design={design:?} final_error={final_error} expected_lag={expected_lag}",
+                    );
+                }
+                super::LoopFilterOrder::Second | super::LoopFilterOrder::Third => {
+                    let next_epoch_measurement =
+                        final_measurement + ramp_rate_units_per_s * coherent_integration_s;
+                    assert!(
+                        (next_epoch_measurement - final_state[0]).abs() <= 1.0e-6,
+                        "order={order:?} design={design:?} next_epoch_measurement={next_epoch_measurement} position_state={}",
+                        final_state[0],
+                    );
+                    assert!(
+                        (final_state[1] - ramp_rate_units_per_s).abs() <= 1.0e-6,
+                        "order={order:?} design={design:?} rate_state={}",
+                        final_state[1],
+                    );
+                }
+            }
+        }
+    }
+
     #[test]
     fn second_order_loop_design_matches_requested_noise_bandwidth() {
         let coherent_integration_s = 0.001;
