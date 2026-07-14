@@ -289,6 +289,126 @@ pub fn validate_truth_guided_acquisition_code_phase_refinement(
     }
 }
 
+/// Measure whether joint acquisition refinement improves both code phase and Doppler.
+pub fn validate_truth_guided_acquisition_joint_refinement(
+    config: &ReceiverPipelineConfig,
+    frame: &SamplesFrame,
+    truth: &SyntheticIqTruthBundle,
+) -> SyntheticAcquisitionJointRefinementReport {
+    let period_samples =
+        samples_per_code(config.sampling_freq_hz, config.code_freq_basis_hz, config.code_length)
+            .max(1);
+    let doppler_step_hz = config.acquisition_doppler_step_hz.max(1);
+    let satellites = truth
+        .satellites
+        .iter()
+        .map(|sat_truth| {
+            let isolated_frame = regenerate_isolated_scaled_satellite_signal_only_frame(
+                config, frame, truth, sat_truth,
+            );
+            let acquisition = crate::pipeline::acquisition::Acquisition::new(
+                config.clone(),
+                crate::engine::runtime::ReceiverRuntime::default(),
+            );
+            let result = acquisition.run_fft(&isolated_frame, &[sat_truth.sat]).remove(0);
+            let expected_measured_doppler_hz =
+                synthetic_truth_measured_doppler_hz(truth, sat_truth);
+            let refined_doppler_hz = synthetic_measured_doppler_hz_from_carrier_hz(
+                config.intermediate_freq_hz,
+                sat_truth.sat,
+                sat_truth.signal_band,
+                sat_truth.signal_code,
+                sat_truth.glonass_frequency_channel,
+                result.carrier_hz.0,
+            );
+            let (coarse_doppler_hz, doppler_refined) = result
+                .doppler_refinement
+                .as_ref()
+                .map(|refinement| {
+                    (
+                        synthetic_measured_doppler_hz_from_carrier_hz(
+                            config.intermediate_freq_hz,
+                            sat_truth.sat,
+                            sat_truth.signal_band,
+                            sat_truth.signal_code,
+                            sat_truth.glonass_frequency_channel,
+                            refinement.coarse_carrier_hz.0,
+                        ),
+                        true,
+                    )
+                })
+                .unwrap_or((refined_doppler_hz, false));
+            let coarse_doppler_error_hz = (coarse_doppler_hz - expected_measured_doppler_hz).abs();
+            let refined_doppler_error_hz =
+                (refined_doppler_hz - expected_measured_doppler_hz).abs();
+            let doppler_improvement_hz = coarse_doppler_error_hz - refined_doppler_error_hz;
+
+            let expected_code_phase_samples =
+                expected_truth_guided_acquisition_code_phase_samples_f64(
+                    config,
+                    &isolated_frame,
+                    truth,
+                    sat_truth.code_phase_chips,
+                );
+            let coarse_code_phase_samples = result.code_phase_samples;
+            let refined_code_phase_samples = result.resolved_code_phase_samples();
+            let coarse_code_phase_error_samples = wrapped_code_phase_error_samples_f64(
+                coarse_code_phase_samples as f64,
+                expected_code_phase_samples,
+                period_samples,
+            );
+            let refined_code_phase_error_samples = wrapped_code_phase_error_samples_f64(
+                refined_code_phase_samples,
+                expected_code_phase_samples,
+                period_samples,
+            );
+            let code_phase_improvement_samples =
+                coarse_code_phase_error_samples - refined_code_phase_error_samples;
+            let pass = matches!(
+                result.hypothesis,
+                crate::api::core::AcqHypothesis::Accepted
+                    | crate::api::core::AcqHypothesis::Ambiguous
+            ) && doppler_refined
+                && result.code_phase_refinement.is_some()
+                && refined_doppler_error_hz + f64::EPSILON < coarse_doppler_error_hz
+                && refined_code_phase_error_samples + f64::EPSILON
+                    < coarse_code_phase_error_samples;
+
+            SyntheticAcquisitionJointRefinementSatellite {
+                sat: sat_truth.sat,
+                injected_doppler_hz: sat_truth.doppler_hz,
+                injected_code_phase_chips: sat_truth.code_phase_chips,
+                expected_measured_doppler_hz,
+                expected_code_phase_samples,
+                coarse_doppler_hz,
+                refined_doppler_hz,
+                coarse_doppler_error_hz,
+                refined_doppler_error_hz,
+                doppler_improvement_hz,
+                coarse_code_phase_samples,
+                refined_code_phase_samples,
+                coarse_code_phase_error_samples,
+                refined_code_phase_error_samples,
+                code_phase_improvement_samples,
+                doppler_step_hz,
+                peak_mean_ratio: result.peak_mean_ratio,
+                hypothesis: result.hypothesis.to_string(),
+                pass,
+            }
+        })
+        .collect::<Vec<_>>();
+    let pass = !satellites.is_empty() && satellites.iter().all(|row| row.pass);
+
+    SyntheticAcquisitionJointRefinementReport {
+        scenario_id: truth.scenario_id.clone(),
+        sample_rate_hz: truth.sample_rate_hz,
+        period_samples,
+        doppler_step_hz,
+        pass,
+        satellites,
+    }
+}
+
 /// Measure truth-guided acquisition Doppler accuracy from a synthetic capture.
 pub fn validate_truth_guided_acquisition_doppler(
     config: &ReceiverPipelineConfig,
