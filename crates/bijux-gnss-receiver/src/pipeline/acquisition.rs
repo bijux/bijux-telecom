@@ -3697,6 +3697,77 @@ mod tests {
     }
 
     #[test]
+    fn calibrated_thresholds_record_false_alarm_provenance() {
+        let sat = SatId { constellation: Constellation::Gps, prn: 7 };
+        let mut config = ReceiverPipelineConfig {
+            sampling_freq_hz: 4_092_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 1023,
+            acquisition_doppler_search_hz: 1_500,
+            acquisition_doppler_step_hz: 500,
+            acquisition_integration_ms: 1,
+            acquisition_noncoherent: 1,
+            ..ReceiverPipelineConfig::default()
+        };
+        config.acquisition_threshold_policy.mode = AcquisitionThresholdMode::CalibratedFalseAlarm;
+        config.acquisition_threshold_policy.false_alarm_probability = 0.05;
+        config.acquisition_threshold_policy.calibration_trial_count = 12;
+        config.acquisition_threshold_policy.confidence_level = 0.95;
+
+        let frame = generate_l1_ca(
+            &config,
+            SyntheticSignalParams {
+                sat,
+                glonass_frequency_channel: None,
+                signal_band: SignalBand::L1,
+                signal_code: SignalCode::Ca,
+                doppler_hz: 0.0,
+                code_phase_chips: 217.0,
+                carrier_phase_rad: 0.0,
+                cn0_db_hz: 52.0,
+                navigation_data: false.into(),
+            },
+            0x6A11_E177,
+            0.005,
+        );
+        let acquisition = Acquisition::new(config.clone(), ReceiverRuntime::default());
+        let result = acquisition.run_fft(&frame, &[sat]).remove(0);
+        let provenance = result
+            .threshold_provenance
+            .as_ref()
+            .expect("acquisition result should carry threshold provenance");
+
+        assert_eq!(provenance.mode, "calibrated_false_alarm");
+        assert_eq!(
+            provenance.false_alarm_probability,
+            Some(config.acquisition_threshold_policy.false_alarm_probability)
+        );
+        assert_eq!(
+            provenance.calibration_trial_count,
+            Some(config.acquisition_threshold_policy.calibration_trial_count)
+        );
+        assert_eq!(
+            provenance.calibration_confidence_level,
+            Some(config.acquisition_threshold_policy.confidence_level)
+        );
+        assert!(provenance.peak_mean_threshold > 1.0);
+        assert_eq!(provenance.peak_second_threshold, config.acquisition_peak_second_threshold);
+        let measured_rate = provenance
+            .calibration_false_alarm_rate
+            .expect("calibrated threshold provenance should record the measured rate");
+        let interval_low = provenance
+            .calibration_false_alarm_interval_low
+            .expect("calibrated threshold provenance should record the confidence interval low");
+        let interval_high = provenance
+            .calibration_false_alarm_interval_high
+            .expect("calibrated threshold provenance should record the confidence interval high");
+        assert!((0.0..=1.0).contains(&measured_rate));
+        assert!(interval_low <= measured_rate);
+        assert!(measured_rate <= interval_high);
+    }
+
+    #[test]
     fn selected_reason_for_candidate_reports_low_peak_metric() {
         let sat = SatId { constellation: Constellation::Gps, prn: 1 };
         let mut candidate = candidate_for_search_window_test(sat, 0.0, 2.0);

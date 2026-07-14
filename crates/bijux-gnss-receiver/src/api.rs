@@ -3,8 +3,9 @@
 
 /// Receiver configuration and schema.
 pub use crate::engine::receiver_config::{
-    ConstellationSelectionPolicy, NavigationMotionClass, NavigationWeightingMode, ReceiverConfig,
-    ReceiverError, ReceiverPipelineConfig,
+    AcquisitionThresholdMode, AcquisitionThresholdPolicyConfig, ConstellationSelectionPolicy,
+    NavigationMotionClass, NavigationWeightingMode, ReceiverConfig, ReceiverError,
+    ReceiverPipelineConfig,
 };
 /// Receiver runtime options (side-effectful controls).
 pub use crate::engine::runtime::{
@@ -46,17 +47,10 @@ pub use crate::pipeline::doppler::{carrier_hz_from_doppler_hz, doppler_hz_from_c
 #[cfg(feature = "nav")]
 #[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
 pub use crate::pipeline::navigation::Navigation;
-/// Navigation engine and helpers.
-#[cfg(feature = "nav")]
-#[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
-pub use bijux_gnss_nav::api::{EkfState, NavigationEngine};
 /// Filtered navigation execution helpers.
 #[cfg(feature = "nav")]
 #[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
 pub use crate::pipeline::navigation_filter::NavigationFilter;
-#[cfg(feature = "nav")]
-#[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
-pub use bijux_gnss_nav::api::NavigationFilterThresholds;
 /// Carrier-smoothed code validation helpers.
 pub use crate::pipeline::observation_validation::{
     summarize_carrier_smoothed_code, validate_carrier_smoothed_code,
@@ -83,6 +77,13 @@ pub use crate::pipeline::tracking::{
 };
 /// Pipeline step report helpers.
 pub use crate::pipeline::{StepReport, StepStats};
+#[cfg(feature = "nav")]
+#[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
+pub use bijux_gnss_nav::api::NavigationFilterThresholds;
+/// Navigation engine and helpers.
+#[cfg(feature = "nav")]
+#[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
+pub use bijux_gnss_nav::api::{EkfState, NavigationEngine};
 
 #[cfg(feature = "nav")]
 #[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
