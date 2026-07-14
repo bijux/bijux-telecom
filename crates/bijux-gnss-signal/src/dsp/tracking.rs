@@ -321,17 +321,6 @@ pub fn advance_tracking_adaptation(
     }
 }
 
-/// Stateless bandwidth scaling retained for compatibility with older tracking call sites.
-pub fn adaptive_bandwidth(dll_bw: f64, pll_bw: f64, fll_bw: f64, cn0_dbhz: f64) -> (f64, f64, f64) {
-    if cn0_dbhz < 25.0 {
-        (dll_bw * 0.5, pll_bw * 0.5, fll_bw * 0.5)
-    } else if cn0_dbhz > 40.0 {
-        (dll_bw * 1.5, pll_bw * 1.5, fll_bw * 1.5)
-    } else {
-        (dll_bw, pll_bw, fll_bw)
-    }
-}
-
 fn tracking_loop_profile(
     base_profile: TrackingLoopProfile,
     profile_kind: TrackingLoopProfileKind,
