@@ -2001,6 +2001,8 @@ impl Tracking {
         let navigation_bit_sign = recover_epoch_navigation_bit_sign(
             signal_model,
             correlation.data_prompt,
+            carrier_prompt,
+            phase_decision.nav_bit_phase_offset_cycles,
             tracking_state_locked && pll_lock,
         );
         let nav_bit_lock = navigation_bit_sign.is_some()
@@ -2777,6 +2779,8 @@ fn carrier_prompt_discriminators(
 fn recover_epoch_navigation_bit_sign(
     signal_model: &TrackingSignalModel,
     data_prompt: Option<Complex<f32>>,
+    carrier_prompt: Complex<f32>,
+    carrier_phase_offset_cycles: f64,
     allow_decision: bool,
 ) -> Option<i8> {
     if !allow_decision || !signal_model.supports_epoch_data_symbol_sign_recovery() {
@@ -2787,7 +2791,24 @@ fn recover_epoch_navigation_bit_sign(
     if !prompt_norm.is_finite() || prompt_norm <= f32::EPSILON {
         return None;
     }
-    (prompt.re.abs() >= prompt.im.abs()).then_some(if prompt.re >= 0.0 { 1 } else { -1 })
+    let carrier_reference =
+        align_prompt_with_phase_offset(carrier_prompt, carrier_phase_offset_cycles);
+    let carrier_norm = carrier_reference.norm();
+    if !carrier_norm.is_finite() || carrier_norm <= f32::EPSILON {
+        return None;
+    }
+    let aligned_data_prompt = prompt * carrier_reference.conj();
+    if !aligned_data_prompt.re.is_finite() || !aligned_data_prompt.im.is_finite() {
+        return None;
+    }
+    (aligned_data_prompt.re.abs() >= aligned_data_prompt.im.abs())
+        .then_some(if aligned_data_prompt.re >= 0.0 { 1 } else { -1 })
+}
+
+fn align_prompt_with_phase_offset(prompt: Complex<f32>, phase_offset_cycles: f64) -> Complex<f32> {
+    let rotation_radians = -carrier_phase_offset_radians(phase_offset_cycles) as f32;
+    let rotation = Complex::new(rotation_radians.cos(), rotation_radians.sin());
+    prompt * rotation
 }
 
 fn apply_dll_code_loop(input: CodeLoopInput) -> CodeLoopUpdate {
@@ -5459,6 +5480,8 @@ mod tests {
             super::recover_epoch_navigation_bit_sign(
                 &signal_model,
                 Some(Complex::new(0.75, 0.05)),
+                Complex::new(0.80, 0.02),
+                0.0,
                 true,
             ),
             Some(1)
@@ -5467,6 +5490,88 @@ mod tests {
             super::recover_epoch_navigation_bit_sign(
                 &signal_model,
                 Some(Complex::new(-0.75, 0.05)),
+                Complex::new(0.80, 0.02),
+                0.0,
+                true,
+            ),
+            Some(-1)
+        );
+    }
+
+    #[test]
+    fn recover_epoch_navigation_bit_sign_compensates_half_cycle_pilot_flips() {
+        let config = crate::engine::receiver_config::ReceiverPipelineConfig {
+            code_freq_basis_hz: 10_230_000.0,
+            code_length: 10_230,
+            ..crate::engine::receiver_config::ReceiverPipelineConfig::default()
+        };
+        let sat = SatId { constellation: Constellation::Gps, prn: 18 };
+        let signal_model = super::TrackingSignalModel::for_sat_signal_band(
+            &config,
+            sat,
+            SignalBand::L5,
+            SignalCode::L5I,
+            None,
+        );
+
+        assert_eq!(
+            super::recover_epoch_navigation_bit_sign(
+                &signal_model,
+                Some(Complex::new(0.72, -0.08)),
+                Complex::new(-0.83, 0.04),
+                0.5,
+                true,
+            ),
+            Some(1)
+        );
+        assert_eq!(
+            super::recover_epoch_navigation_bit_sign(
+                &signal_model,
+                Some(Complex::new(-0.72, 0.08)),
+                Complex::new(-0.83, 0.04),
+                0.5,
+                true,
+            ),
+            Some(-1)
+        );
+    }
+
+    #[test]
+    fn recover_epoch_navigation_bit_sign_projects_onto_carrier_reference() {
+        let config = crate::engine::receiver_config::ReceiverPipelineConfig {
+            code_freq_basis_hz: 10_230_000.0,
+            code_length: 10_230,
+            ..crate::engine::receiver_config::ReceiverPipelineConfig::default()
+        };
+        let sat = SatId { constellation: Constellation::Galileo, prn: 11 };
+        let signal_model = super::TrackingSignalModel::for_sat_signal_band(
+            &config,
+            sat,
+            SignalBand::E5,
+            SignalCode::E5b,
+            None,
+        );
+
+        let carrier_reference = Complex::new(0.50, 0.50);
+        let positive_data = Complex::new(0.62, 0.58);
+        let negative_data = -positive_data;
+
+        assert_eq!(
+            super::recover_epoch_navigation_bit_sign(
+                &signal_model,
+                Some(positive_data),
+                carrier_reference,
+                0.0,
+                true,
+            ),
+            Some(1)
+        );
+        assert_eq!(
+            super::recover_epoch_navigation_bit_sign(
+                &signal_model,
+                Some(negative_data),
+                carrier_reference,
+                0.0,
                 true,
             ),
             Some(-1)
