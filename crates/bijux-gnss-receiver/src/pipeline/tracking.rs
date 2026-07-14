@@ -4245,6 +4245,34 @@ mod tests {
     }
 
     #[test]
+    fn secondary_code_sync_accepts_galileo_e5_pilot_phase() {
+        let config = ReceiverPipelineConfig::default();
+        for (signal_code, phase_periods) in [(SignalCode::E5a, 37), (SignalCode::E5b, 61)] {
+            let signal_model = super::TrackingSignalModel::for_sat_signal_band(
+                &config,
+                SatId { constellation: Constellation::Galileo, prn: 11 },
+                SignalBand::E5,
+                signal_code,
+                None,
+            );
+            let component = signal_model.carrier_component();
+            let history = secondary_code_prompt_history(
+                &component,
+                phase_periods,
+                100,
+                Complex::new(1.0, 0.2),
+            );
+
+            let sync =
+                super::secondary_code_sync_from_prompt_history(&component, &history).expect("sync");
+
+            assert!(sync.accepted, "Galileo {signal_code:?} sync should be accepted: {sync:?}");
+            assert_eq!(sync.phase_periods, phase_periods);
+            assert!(sync.best_likelihood > sync.next_best_likelihood);
+        }
+    }
+
+    #[test]
     fn secondary_code_sync_ignores_signals_without_secondary_code() {
         let config = ReceiverPipelineConfig::default();
         let signal_model = super::TrackingSignalModel::for_sat(
