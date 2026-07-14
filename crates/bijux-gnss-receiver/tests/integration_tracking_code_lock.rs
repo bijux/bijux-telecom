@@ -342,6 +342,47 @@ fn tracking_holds_galileo_e1_lock_on_clean_synthetic_signal() {
 }
 
 #[test]
+fn galileo_e1_side_peak_seed_does_not_report_biased_code_lock() {
+    let config = galileo_tracking_config();
+    let sat = SatId { constellation: Constellation::Galileo, prn: 11 };
+    let code_phase_chips = 321.375;
+    let frame = synthetic_frame_with_code_phase(&config, sat, code_phase_chips, 0.020);
+    let expected_code_phase_samples =
+        expected_acquisition_code_phase_samples_f64(&config, &frame, code_phase_chips);
+    let samples_per_chip = config.sampling_freq_hz / config.code_freq_basis_hz;
+    let seeded_code_phase_samples =
+        (expected_code_phase_samples + samples_per_chip * 0.5).round() as usize;
+    let tracking = TrackingEngine::new(config.clone(), ReceiverRuntime::default());
+
+    let tracks = tracking.track_from_acquisition(
+        &frame,
+        &[accepted_acquisition_with_signal_band(
+            sat,
+            SignalBand::E1,
+            0.0,
+            seeded_code_phase_samples,
+        )],
+    );
+    let epochs = &tracks.first().expect("track").epochs;
+    let biased_locked_epochs = epochs
+        .iter()
+        .filter(|epoch| {
+            epoch.dll_lock
+                && wrapped_code_phase_error_samples(
+                    &config,
+                    epoch.code_phase_samples.0,
+                    expected_code_phase_samples,
+                ) > samples_per_chip * 0.35
+        })
+        .collect::<Vec<_>>();
+
+    assert!(
+        biased_locked_epochs.is_empty(),
+        "Galileo E1 side-peak seed reported valid code lock with a biased delay: biased_locked_epochs={biased_locked_epochs:?}, epochs={epochs:?}",
+    );
+}
+
+#[test]
 fn tracking_holds_beidou_b1i_lock_on_clean_synthetic_signal() {
     let config = beidou_tracking_config();
     let sat = SatId { constellation: Constellation::Beidou, prn: 11 };
