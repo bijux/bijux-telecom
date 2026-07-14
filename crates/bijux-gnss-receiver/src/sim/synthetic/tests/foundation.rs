@@ -124,6 +124,7 @@ fn synthetic_signal_source_matches_materialized_generator_with_receiver_oscillat
         carrier_frequency_bias_hz: 120.0,
         carrier_frequency_drift_hz_per_s: 30.0,
         sampling_clock_fractional_error: 80.0e-6,
+        sampling_clock_fractional_drift_per_s: 0.0,
         phase_noise: SyntheticReceiverPhaseNoiseModel {
             seed: 53,
             knot_interval_samples: 1_023,

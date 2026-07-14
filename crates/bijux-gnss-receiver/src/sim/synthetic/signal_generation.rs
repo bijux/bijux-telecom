@@ -676,6 +676,10 @@ impl SatState {
 
     fn effective_elapsed_s(&self, nominal_elapsed_s: f64) -> f64 {
         nominal_elapsed_s * (1.0 + self.receiver_oscillator_model.sampling_clock_fractional_error)
+            + 0.5
+                * self.receiver_oscillator_model.sampling_clock_fractional_drift_per_s
+                * nominal_elapsed_s
+                * nominal_elapsed_s
     }
 
     fn receiver_oscillator_phase_noise_rad_at_nominal_time_s(&self, nominal_elapsed_s: f64) -> f64 {
@@ -1120,11 +1124,21 @@ fn receiver_oscillator_truth_for_capture(
             .map(|sample_index| SyntheticReceiverOscillatorTruthPoint {
                 sample_index,
                 time_s: sample_index as f64 / sample_rate_hz,
-                value: (sample_index as f64 / sample_rate_hz)
-                    * model.sampling_clock_fractional_error,
+                value: sampling_clock_time_error_s_at_nominal_time(
+                    sample_index as f64 / sample_rate_hz,
+                    model,
+                ),
             })
             .collect(),
     }
+}
+
+fn sampling_clock_time_error_s_at_nominal_time(
+    nominal_elapsed_s: f64,
+    model: &SyntheticReceiverOscillatorModel,
+) -> f64 {
+    nominal_elapsed_s * model.sampling_clock_fractional_error
+        + 0.5 * model.sampling_clock_fractional_drift_per_s * nominal_elapsed_s * nominal_elapsed_s
 }
 
 fn receiver_oscillator_truth_sample_indices(

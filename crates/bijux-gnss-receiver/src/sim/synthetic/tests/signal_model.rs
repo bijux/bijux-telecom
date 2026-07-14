@@ -663,6 +663,7 @@ fn truth_bundle_records_separate_receiver_oscillator_effect_series() {
         carrier_frequency_bias_hz: 125.0,
         carrier_frequency_drift_hz_per_s: 18.0,
         sampling_clock_fractional_error: 75.0e-6,
+        sampling_clock_fractional_drift_per_s: 12.0e-6,
         phase_noise: SyntheticReceiverPhaseNoiseModel {
             seed: 77,
             knot_interval_samples: 2_046,
@@ -707,7 +708,11 @@ fn truth_bundle_records_separate_receiver_oscillator_effect_series() {
         .last()
         .expect("sampling clock truth point");
     let expected_time_error_s =
-        last_sampling_clock_point.time_s * receiver_oscillator.sampling_clock_fractional_error;
+        last_sampling_clock_point.time_s * receiver_oscillator.sampling_clock_fractional_error
+            + 0.5
+                * receiver_oscillator.sampling_clock_fractional_drift_per_s
+                * last_sampling_clock_point.time_s
+                * last_sampling_clock_point.time_s;
     assert!(
         (last_sampling_clock_point.value - expected_time_error_s).abs() <= 1.0e-12,
         "{last_sampling_clock_point:?}"
@@ -1562,6 +1567,7 @@ fn receiver_oscillator_drift_accumulates_separately_from_signal_doppler_rate() {
             carrier_frequency_bias_hz: 150.0,
             carrier_frequency_drift_hz_per_s: 25.0,
             sampling_clock_fractional_error: 0.0,
+            sampling_clock_fractional_drift_per_s: 0.0,
             phase_noise: SyntheticReceiverPhaseNoiseModel::default(),
         },
         40.0,
@@ -1639,6 +1645,7 @@ fn receiver_oscillator_phase_noise_is_deterministic_and_distinct_from_nominal_ca
         carrier_frequency_bias_hz: 0.0,
         carrier_frequency_drift_hz_per_s: 0.0,
         sampling_clock_fractional_error: 0.0,
+        sampling_clock_fractional_drift_per_s: 0.0,
         phase_noise: SyntheticReceiverPhaseNoiseModel {
             seed: 91,
             knot_interval_samples: 1_023,
@@ -1689,6 +1696,7 @@ fn receiver_oscillator_sampling_clock_error_advances_code_phase_at_expected_rate
             carrier_frequency_bias_hz: 0.0,
             carrier_frequency_drift_hz_per_s: 0.0,
             sampling_clock_fractional_error: 100.0e-6,
+            sampling_clock_fractional_drift_per_s: 0.0,
             phase_noise: SyntheticReceiverPhaseNoiseModel::default(),
         },
         4_092,
@@ -1696,6 +1704,52 @@ fn receiver_oscillator_sampling_clock_error_advances_code_phase_at_expected_rate
     let t_s = 0.001;
     let actual_extra_chips = skewed.total_chip_phase_at(t_s) - nominal.total_chip_phase_at(t_s);
     let expected_extra_chips = config.code_freq_basis_hz * t_s * 100.0e-6;
+
+    assert!((actual_extra_chips - expected_extra_chips).abs() <= 1.0e-9);
+}
+
+#[test]
+fn receiver_oscillator_sampling_clock_drift_accelerates_code_phase_quadratically() {
+    let config = ReceiverPipelineConfig {
+        sampling_freq_hz: 4_092_000.0,
+        intermediate_freq_hz: 0.0,
+        code_freq_basis_hz: 1_023_000.0,
+        code_length: 1023,
+        ..ReceiverPipelineConfig::default()
+    };
+    let params = SyntheticSignalParams {
+        sat: SatId { constellation: Constellation::Gps, prn: 10 },
+        glonass_frequency_channel: None,
+        signal_band: bijux_gnss_core::api::SignalBand::L1,
+        signal_code: bijux_gnss_core::api::SignalCode::Unknown,
+        doppler_hz: 0.0,
+        code_phase_chips: 100.0,
+        carrier_phase_rad: 0.0,
+        cn0_db_hz: 60.0,
+        navigation_data: false.into(),
+    };
+    let nominal = SatState::new_with_receiver_oscillator(
+        &config,
+        params.clone(),
+        SyntheticReceiverOscillatorModel::default(),
+        4_092,
+    );
+    let drifted = SatState::new_with_receiver_oscillator(
+        &config,
+        params,
+        SyntheticReceiverOscillatorModel {
+            carrier_frequency_bias_hz: 0.0,
+            carrier_frequency_drift_hz_per_s: 0.0,
+            sampling_clock_fractional_error: 25.0e-6,
+            sampling_clock_fractional_drift_per_s: 60.0e-6,
+            phase_noise: SyntheticReceiverPhaseNoiseModel::default(),
+        },
+        4_092,
+    );
+    let t_s = 0.010;
+    let actual_extra_chips = drifted.total_chip_phase_at(t_s) - nominal.total_chip_phase_at(t_s);
+    let expected_extra_chips = config.code_freq_basis_hz
+        * (t_s * 25.0e-6 + 0.5 * 60.0e-6 * t_s * t_s);
 
     assert!((actual_extra_chips - expected_extra_chips).abs() <= 1.0e-9);
 }

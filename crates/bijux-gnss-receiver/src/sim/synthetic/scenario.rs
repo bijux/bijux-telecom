@@ -130,6 +130,9 @@ pub struct SyntheticReceiverOscillatorModel {
     /// Fractional sampling-clock error applied to elapsed sample time.
     #[serde(default)]
     pub sampling_clock_fractional_error: f64,
+    /// Linear drift of the fractional sampling-clock error, in fractional error per second.
+    #[serde(default)]
+    pub sampling_clock_fractional_drift_per_s: f64,
     /// Deterministic phase-noise profile applied as an additive carrier phase offset.
     #[serde(default)]
     pub phase_noise: SyntheticReceiverPhaseNoiseModel,
@@ -141,6 +144,7 @@ impl Default for SyntheticReceiverOscillatorModel {
             carrier_frequency_bias_hz: 0.0,
             carrier_frequency_drift_hz_per_s: 0.0,
             sampling_clock_fractional_error: 0.0,
+            sampling_clock_fractional_drift_per_s: 0.0,
             phase_noise: SyntheticReceiverPhaseNoiseModel::default(),
         }
     }
@@ -152,6 +156,7 @@ impl SyntheticReceiverOscillatorModel {
             carrier_frequency_bias_hz,
             carrier_frequency_drift_hz_per_s: 0.0,
             sampling_clock_fractional_error: 0.0,
+            sampling_clock_fractional_drift_per_s: 0.0,
             phase_noise: SyntheticReceiverPhaseNoiseModel {
                 seed: 0,
                 knot_interval_samples: 0,
@@ -164,6 +169,7 @@ impl SyntheticReceiverOscillatorModel {
         self.carrier_frequency_bias_hz.abs() <= f64::EPSILON
             && self.carrier_frequency_drift_hz_per_s.abs() <= f64::EPSILON
             && self.sampling_clock_fractional_error.abs() <= f64::EPSILON
+            && self.sampling_clock_fractional_drift_per_s.abs() <= f64::EPSILON
             && !self.phase_noise.is_enabled()
     }
 }
