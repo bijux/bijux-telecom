@@ -8,8 +8,8 @@ use bijux_gnss_core::api::{
 };
 use bijux_gnss_receiver::api::{
     sim::{
-        generate_l1_ca, measure_truth_guided_tracking_lock_probability,
-        measure_truth_guided_tracking_lock_rate, SyntheticSignalParams,
+        generate_l1_ca, generate_l1_ca_multi, measure_truth_guided_tracking_lock_probability,
+        measure_truth_guided_tracking_lock_rate, SyntheticScenario, SyntheticSignalParams,
         SyntheticTrackingLockRateCase,
     },
     ReceiverPipelineConfig, ReceiverRuntime, TrackingChannelState, TrackingEngine,
@@ -22,6 +22,7 @@ const LOW_CN0_SEEDED_CODE_PHASE_ERROR_SAMPLES: isize = 1;
 const LOW_CN0_MIN_LOCKED_EPOCHS: usize = 5;
 const WEAK_SIGNAL_ADAPTATION_CN0_DB_HZ: f32 = 31.0;
 const WEAK_SIGNAL_ADAPTATION_DURATION_S: f64 = 0.120;
+const VECTOR_AID_WEAK_SAT: SatId = SatId { constellation: Constellation::Gps, prn: 19 };
 
 #[test]
 fn tracking_lock_rate_report_runs_multiple_measurement_points() {
@@ -229,6 +230,45 @@ fn adaptive_tracking_lengthens_integration_after_weak_signal_lock() {
     );
 }
 
+#[test]
+fn vector_tracking_aids_weak_channel_from_stronger_channels() {
+    let scalar_epochs = track_vector_aid_case(false);
+    let vector_epochs = track_vector_aid_case(true);
+    let scalar_weak = scalar_epochs
+        .iter()
+        .find(|(sat, _epochs)| *sat == VECTOR_AID_WEAK_SAT)
+        .expect("scalar weak channel")
+        .1
+        .as_slice();
+    let vector_weak = vector_epochs
+        .iter()
+        .find(|(sat, _epochs)| *sat == VECTOR_AID_WEAK_SAT)
+        .expect("vector weak channel")
+        .1
+        .as_slice();
+    let scalar_locked = locked_epoch_count(scalar_weak);
+    let vector_locked = locked_epoch_count(vector_weak);
+
+    assert!(
+        vector_weak.iter().any(|epoch| {
+            epoch.tracking_assumptions.as_ref().is_some_and(|assumptions| {
+                assumptions.aiding_mode.contains("vector_receiver_state")
+            })
+        }),
+        "weak channel never reported vector receiver-state aiding: {vector_weak:?}"
+    );
+    assert!(
+        vector_weak
+            .iter()
+            .any(|epoch| epoch.tracking_provenance.contains("vector_tracking=applied")),
+        "weak channel never preserved vector tracking provenance: {vector_weak:?}"
+    );
+    assert!(
+        vector_locked > scalar_locked,
+        "vector aid should increase weak-channel lock count: scalar={scalar_locked} vector={vector_locked}"
+    );
+}
+
 fn track_weak_signal_case(adaptive_tracking_enabled: bool) -> Vec<TrackEpoch> {
     let config = low_cn0_tracking_profile_with_adaptation(adaptive_tracking_enabled);
     let signal = SyntheticSignalParams {
@@ -249,6 +289,83 @@ fn track_weak_signal_case(adaptive_tracking_enabled: bool) -> Vec<TrackEpoch> {
         tracking.track_from_acquisition(&frame, &[accepted_acquisition(&config, signal, 0.0, 0)]);
 
     tracks.first().expect("weak signal track").epochs.clone()
+}
+
+fn vector_aid_tracking_profile(vector_tracking_enabled: bool) -> ReceiverPipelineConfig {
+    ReceiverPipelineConfig {
+        sampling_freq_hz: 1_023_000.0,
+        vector_tracking_enabled,
+        tracking_budget_ms: 100.0,
+        tracking_over_budget_action: "continue".to_string(),
+        adaptive_tracking_enabled: false,
+        ..low_cn0_tracking_profile()
+    }
+}
+
+fn track_vector_aid_case(vector_tracking_enabled: bool) -> Vec<(SatId, Vec<TrackEpoch>)> {
+    let config = vector_aid_tracking_profile(vector_tracking_enabled);
+    let signals = vector_aid_signals();
+    let scenario = SyntheticScenario {
+        sample_rate_hz: config.sampling_freq_hz,
+        intermediate_freq_hz: config.intermediate_freq_hz,
+        receiver_clock_frequency_bias_hz: 0.0,
+        duration_s: 0.080,
+        seed: 0x2407_19A5,
+        satellites: signals.clone(),
+        ephemerides: Vec::new(),
+        id: "vector_tracking_weak_channel_aid".to_string(),
+    };
+    let frame = generate_l1_ca_multi(&config, &scenario);
+    let acquisitions = signals
+        .into_iter()
+        .map(|signal| accepted_acquisition(&config, signal, 60.0, 0))
+        .collect::<Vec<_>>();
+    let tracking = TrackingEngine::new(config, ReceiverRuntime::default());
+    tracking
+        .track_from_acquisition(&frame, &acquisitions)
+        .into_iter()
+        .map(|track| (track.sat, track.epochs))
+        .collect()
+}
+
+fn vector_aid_signals() -> Vec<SyntheticSignalParams> {
+    vec![
+        vector_aid_signal(11, 48.0, 40.0, 11.25, 0.10),
+        vector_aid_signal(13, 47.0, 42.0, 211.50, 0.40),
+        vector_aid_signal(17, 46.0, 38.0, 611.75, -0.20),
+        vector_aid_signal(19, 31.0, 41.0, 811.25, 0.25),
+    ]
+}
+
+fn vector_aid_signal(
+    prn: u8,
+    cn0_db_hz: f32,
+    doppler_hz: f64,
+    code_phase_chips: f64,
+    carrier_phase_rad: f64,
+) -> SyntheticSignalParams {
+    SyntheticSignalParams {
+        sat: SatId { constellation: Constellation::Gps, prn },
+        glonass_frequency_channel: None,
+        signal_band: bijux_gnss_core::api::SignalBand::L1,
+        signal_code: bijux_gnss_core::api::SignalCode::Unknown,
+        doppler_hz,
+        code_phase_chips,
+        carrier_phase_rad,
+        cn0_db_hz,
+        navigation_data: false.into(),
+    }
+}
+
+fn locked_epoch_count(epochs: &[TrackEpoch]) -> usize {
+    epochs
+        .iter()
+        .filter(|epoch| {
+            (epoch.lock_state == "tracking" || epoch.lock_state == "degraded")
+                && epoch.dll_lock
+                && (epoch.pll_lock || epoch.fll_lock)
+        })
+        .count()
 }
 
 fn tracking_integration_ms_values(epochs: &[TrackEpoch]) -> Vec<u32> {
