@@ -144,6 +144,10 @@ pub fn measure_noise_only_acquisition_false_alarm_rate(
     profile_config.acquisition_integration_ms = coherent_ms;
     profile_config.acquisition_noncoherent = noncoherent;
     let duration_s = (coherent_ms.saturating_mul(noncoherent).max(1) as f64) / 1000.0;
+    let acquisition = crate::pipeline::acquisition::Acquisition::new(
+        profile_config.clone(),
+        crate::engine::runtime::ReceiverRuntime::default(),
+    );
 
     let trials = trial_seeds
         .iter()
@@ -161,10 +165,6 @@ pub fn measure_noise_only_acquisition_false_alarm_rate(
                 id: scenario_id.clone(),
             };
             let frame = generate_l1_ca_multi(&profile_config, &scenario);
-            let acquisition = crate::pipeline::acquisition::Acquisition::new(
-                profile_config.clone(),
-                crate::engine::runtime::ReceiverRuntime::default(),
-            );
             let result = acquisition.run_fft(&frame, &[sat]).remove(0);
             let accepted = matches!(result.hypothesis, crate::api::core::AcqHypothesis::Accepted);
 
