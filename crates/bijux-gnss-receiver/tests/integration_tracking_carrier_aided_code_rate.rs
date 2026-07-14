@@ -145,6 +145,40 @@ fn dynamic_expected_code_rate_hz(
                 * (sample_index as f64 / sample_rate_hz))
 }
 
+fn mean(values: &[f64]) -> f64 {
+    assert!(!values.is_empty(), "mean requires at least one value");
+    values.iter().sum::<f64>() / values.len() as f64
+}
+
+fn assert_carrier_aiding_reduces_dynamic_code_rate_error(
+    stable_code_rate_errors_hz: &[f64],
+    stable_epochs: &[bijux_gnss_core::api::TrackEpoch],
+    config: &ReceiverPipelineConfig,
+    signal: SignalSpec,
+    receiver_oscillator: &SyntheticReceiverOscillatorModel,
+) {
+    let nominal_code_rate_errors_hz = stable_epochs
+        .iter()
+        .map(|epoch| {
+            (signal.code_rate_hz
+                - dynamic_expected_code_rate_hz(
+                    epoch.sample_index,
+                    config.sampling_freq_hz,
+                    signal,
+                    receiver_oscillator,
+                ))
+            .abs()
+        })
+        .collect::<Vec<_>>();
+    let aided_mean_hz = mean(stable_code_rate_errors_hz);
+    let nominal_mean_hz = mean(&nominal_code_rate_errors_hz);
+
+    assert!(
+        aided_mean_hz * 4.0 < nominal_mean_hz,
+        "carrier aiding must materially reduce dynamic code-rate error: aided_mean_hz={aided_mean_hz} nominal_mean_hz={nominal_mean_hz} aided_errors={stable_code_rate_errors_hz:?} nominal_errors={nominal_code_rate_errors_hz:?}",
+    );
+}
+
 fn dynamic_expected_code_phase_samples(
     config: &ReceiverPipelineConfig,
     sample_index: u64,
@@ -413,6 +447,13 @@ fn tracking_follows_dynamic_gps_l5_code_rate_from_common_oscillator_drift() {
             .all(|error_hz| *error_hz <= CARRIER_AID_DRIFT_CODE_RATE_ERROR_MAX_HZ),
         "GPS L5 dynamic code rate did not follow the common oscillator drift: errors={stable_code_rate_errors_hz:?} epochs={stable_epochs:?}",
     );
+    assert_carrier_aiding_reduces_dynamic_code_rate_error(
+        &stable_code_rate_errors_hz,
+        &stable_epochs,
+        &config,
+        signal,
+        &receiver_oscillator,
+    );
     assert!(
         stable_code_phase_errors_samples
             .iter()
@@ -510,6 +551,13 @@ fn tracking_follows_dynamic_beidou_b1i_code_rate_from_common_oscillator_drift() 
             .iter()
             .all(|error_hz| *error_hz <= CARRIER_AID_DRIFT_CODE_RATE_ERROR_MAX_HZ),
         "BeiDou B1I dynamic code rate did not follow the common oscillator drift: errors={stable_code_rate_errors_hz:?} epochs={stable_epochs:?}",
+    );
+    assert_carrier_aiding_reduces_dynamic_code_rate_error(
+        &stable_code_rate_errors_hz,
+        &stable_epochs,
+        &config,
+        signal,
+        &receiver_oscillator,
     );
     assert!(
         stable_code_phase_errors_samples
