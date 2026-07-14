@@ -32,7 +32,7 @@ use bijux_gnss_signal::api::{
     fll_lock_threshold_hz as signal_fll_lock_threshold_hz, galileo_e5a_q_epoch_symbol,
     galileo_e5a_q_secondary_code, galileo_e5b_q_epoch_symbol, galileo_e5b_q_secondary_code,
     generate_galileo_e5a_q_code, generate_galileo_e5b_q_code, generate_gps_l2c_cl_code,
-    prompt_power_ratio as signal_prompt_power_ratio,
+    gps_l5_q_epoch_symbol, prompt_power_ratio as signal_prompt_power_ratio,
     push_tracking_uncertainty_sample as signal_push_tracking_uncertainty_sample,
     refresh_lock_reference_cn0_dbhz as signal_refresh_lock_reference_cn0_dbhz,
     refresh_prompt_power_reference as signal_refresh_prompt_power_reference,
@@ -44,6 +44,8 @@ use bijux_gnss_signal::api::{
     TrackingAdaptationState as SignalTrackingAdaptationState,
     TrackingLoopProfile as SignalTrackingLoopProfile, TrackingQualityClass,
     TrackingUncertaintyInputs as SignalTrackingUncertaintyInputs,
+    GALILEO_E5A_Q_SECONDARY_CODE_CHIPS, GALILEO_E5B_Q_SECONDARY_CODE_CHIPS,
+    GPS_L5_Q_PRIMARY_EPOCHS_PER_SYMBOL,
 };
 
 const SAMPLE_RATE_MISMATCH_MIN_CN0_DBHZ: f64 = 18.0;
@@ -96,6 +98,8 @@ const VECTOR_TRACKING_MAX_CARRIER_RATE_AID_HZ_PER_S: f64 = 1_000.0;
 const SAMPLE_RATE_MISMATCH_CATASTROPHIC_PHASE_STEP_MULTIPLIER: f64 = 8.0;
 const LOW_RESOLUTION_DLL_MIN_SAMPLE_SEPARATION: f64 = 1.0;
 const JOINT_COMPONENT_MIN_PROMPT_RATIO: f32 = 0.35;
+const SECONDARY_CODE_SYNC_MIN_CONFIDENCE: f64 = 0.05;
+const SECONDARY_CODE_SYNC_MIN_OBSERVED_CHIPS: usize = 4;
 const CARRIER_AID_MIN_DOPPLER_WINDOW_HZ: f64 = 25_000.0;
 const CARRIER_AID_DOPPLER_WINDOW_MARGIN_HZ: f64 = 500.0;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -247,6 +251,8 @@ struct LoopState {
     lock_reference_cn0_dbhz: f64,
     prev_prompt: Option<Complex<f32>>,
     prev_prompt_phase_cycles: Option<f64>,
+    secondary_code_prompt_history: VecDeque<SecondaryCodePromptSample>,
+    secondary_code_sync: Option<SecondaryCodeSyncResult>,
     nav_bit_phase_offset_cycles: f64,
     nav_bit_transition_count: u32,
     pull_in_stable_epochs: u8,
@@ -579,6 +585,36 @@ impl TrackingComponentModel {
             .sample_tracking_value(component_chip_phase, component_primary_code_period_index)
             .unwrap_or(0.0)
     }
+
+    fn secondary_code_period(&self) -> Option<usize> {
+        self.local_code_model.secondary_code_period()
+    }
+
+    fn secondary_code_symbol(&self, primary_code_period_index: usize) -> Option<i8> {
+        self.local_code_model.secondary_code_symbol(primary_code_period_index)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct SecondaryCodePromptSample {
+    primary_code_period_index: usize,
+    prompt: Complex<f32>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct SecondaryCodePhaseScore {
+    phase_periods: usize,
+    likelihood: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct SecondaryCodeSyncResult {
+    phase_periods: usize,
+    confidence: f64,
+    best_likelihood: f64,
+    next_best_likelihood: f64,
+    observed_periods: usize,
+    accepted: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -612,6 +648,141 @@ impl TrackingComponentLocalCodeModel {
             }
         }
     }
+
+    fn secondary_code_period(&self) -> Option<usize> {
+        match self {
+            Self::Local(LocalCodeModel::GpsL5Q { .. }) => Some(GPS_L5_Q_PRIMARY_EPOCHS_PER_SYMBOL),
+            Self::GalileoE5aQ { .. } => Some(GALILEO_E5A_Q_SECONDARY_CODE_CHIPS),
+            Self::GalileoE5bQ { .. } => Some(GALILEO_E5B_Q_SECONDARY_CODE_CHIPS),
+            Self::Local(_) | Self::GpsL2cCl { .. } => None,
+        }
+    }
+
+    fn secondary_code_symbol(&self, primary_code_period_index: usize) -> Option<i8> {
+        match self {
+            Self::Local(LocalCodeModel::GpsL5Q { .. }) => {
+                Some(gps_l5_q_epoch_symbol(primary_code_period_index))
+            }
+            Self::GalileoE5aQ { secondary_code, .. } => {
+                Some(galileo_e5a_q_epoch_symbol(secondary_code, primary_code_period_index))
+            }
+            Self::GalileoE5bQ { secondary_code, .. } => {
+                Some(galileo_e5b_q_epoch_symbol(secondary_code, primary_code_period_index))
+            }
+            Self::Local(_) | Self::GpsL2cCl { .. } => None,
+        }
+    }
+}
+
+fn secondary_code_sync_from_prompt_history(
+    component: &TrackingComponentModel,
+    prompt_history: &[SecondaryCodePromptSample],
+) -> Option<SecondaryCodeSyncResult> {
+    let period = component.secondary_code_period()?;
+    if period == 0 || prompt_history.len() < SECONDARY_CODE_SYNC_MIN_OBSERVED_CHIPS {
+        return None;
+    }
+    let mut scores = (0..period)
+        .map(|phase| secondary_code_phase_score(component, prompt_history, phase))
+        .collect::<Vec<_>>();
+    scores.sort_by(|left, right| {
+        right
+            .likelihood
+            .partial_cmp(&left.likelihood)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| left.phase_periods.cmp(&right.phase_periods))
+    });
+    let best = scores.first().copied()?;
+    let next_best = scores
+        .get(1)
+        .copied()
+        .unwrap_or(SecondaryCodePhaseScore { phase_periods: best.phase_periods, likelihood: 0.0 });
+    let confidence = secondary_code_sync_confidence(best.likelihood, next_best.likelihood);
+    Some(SecondaryCodeSyncResult {
+        phase_periods: best.phase_periods,
+        confidence,
+        best_likelihood: best.likelihood,
+        next_best_likelihood: next_best.likelihood,
+        observed_periods: prompt_history.len(),
+        accepted: confidence >= SECONDARY_CODE_SYNC_MIN_CONFIDENCE,
+    })
+}
+
+fn secondary_code_phase_score(
+    component: &TrackingComponentModel,
+    prompt_history: &[SecondaryCodePromptSample],
+    phase_periods: usize,
+) -> SecondaryCodePhaseScore {
+    let mut coherent_prompt = Complex::new(0.0_f64, 0.0_f64);
+    let mut prompt_energy = 0.0_f64;
+    let mut observed_periods = 0usize;
+    let reference_period =
+        prompt_history.first().map(|sample| sample.primary_code_period_index).unwrap_or_default();
+    for sample in prompt_history {
+        let relative_period = sample.primary_code_period_index.saturating_sub(reference_period);
+        let Some(observed_symbol) =
+            component.secondary_code_symbol(sample.primary_code_period_index)
+        else {
+            continue;
+        };
+        let Some(candidate_symbol) =
+            component.secondary_code_symbol(phase_periods + relative_period)
+        else {
+            continue;
+        };
+        let raw_prompt = sample.prompt * observed_symbol as f32;
+        coherent_prompt += Complex::new(
+            (raw_prompt.re * candidate_symbol as f32) as f64,
+            (raw_prompt.im * candidate_symbol as f32) as f64,
+        );
+        prompt_energy += sample.prompt.norm() as f64;
+        observed_periods += 1;
+    }
+    let likelihood = if observed_periods > 0 && prompt_energy > f64::EPSILON {
+        coherent_prompt.norm() / prompt_energy
+    } else {
+        0.0
+    };
+    SecondaryCodePhaseScore { phase_periods, likelihood }
+}
+
+fn secondary_code_sync_confidence(best_likelihood: f64, next_best_likelihood: f64) -> f64 {
+    if best_likelihood <= f64::EPSILON {
+        return 0.0;
+    }
+    ((best_likelihood - next_best_likelihood.max(0.0)) / best_likelihood).clamp(0.0, 1.0)
+}
+
+fn secondary_code_sync_component(
+    signal_model: &TrackingSignalModel,
+) -> Option<TrackingComponentModel> {
+    let component = signal_model.carrier_component();
+    (component.phase_transition_source == TrackingPhaseTransitionSource::SecondaryCode
+        && component.secondary_code_period().is_some())
+    .then_some(component)
+}
+
+fn update_secondary_code_synchronization(
+    signal_model: &TrackingSignalModel,
+    state: &mut LoopState,
+    primary_code_period_index: usize,
+    carrier_prompt: Complex<f32>,
+) -> Option<SecondaryCodeSyncResult> {
+    let component = secondary_code_sync_component(signal_model)?;
+    let period = component.secondary_code_period()?;
+    if !carrier_prompt.re.is_finite() || !carrier_prompt.im.is_finite() {
+        return state.secondary_code_sync;
+    }
+    state
+        .secondary_code_prompt_history
+        .push_back(SecondaryCodePromptSample { primary_code_period_index, prompt: carrier_prompt });
+    while state.secondary_code_prompt_history.len() > period {
+        state.secondary_code_prompt_history.pop_front();
+    }
+    let prompt_history = state.secondary_code_prompt_history.iter().copied().collect::<Vec<_>>();
+    state.secondary_code_sync =
+        secondary_code_sync_from_prompt_history(&component, &prompt_history);
+    state.secondary_code_sync
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -620,6 +791,7 @@ struct TrackingEpochCorrelation {
     carrier_prompt: Complex<f32>,
     carrier_prompt_source: CarrierPromptSource,
     data_prompt: Option<Complex<f32>>,
+    primary_code_period_index: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1244,6 +1416,8 @@ impl Tracking {
             lock_reference_cn0_dbhz: acquisition_cn0_proxy_dbhz,
             prev_prompt: None,
             prev_prompt_phase_cycles: None,
+            secondary_code_prompt_history: VecDeque::new(),
+            secondary_code_sync: None,
             nav_bit_phase_offset_cycles: 0.0,
             nav_bit_transition_count: 0,
             pull_in_stable_epochs: 0,
@@ -1450,7 +1624,13 @@ impl Tracking {
             signal_model.aiding_mode,
             requires_dedicated_pilot_carrier(signal_model),
         );
-        TrackingEpochCorrelation { primary, carrier_prompt, carrier_prompt_source, data_prompt }
+        TrackingEpochCorrelation {
+            primary,
+            carrier_prompt,
+            carrier_prompt_source,
+            data_prompt,
+            primary_code_period_index: epoch_primary_code_period_index,
+        }
     }
 
     pub fn track_epoch(
@@ -2062,6 +2242,12 @@ impl Tracking {
 
         let primary_correlator = correlation.primary;
         let carrier_prompt = correlation.carrier_prompt;
+        update_secondary_code_synchronization(
+            signal_model,
+            state,
+            correlation.primary_code_period_index,
+            carrier_prompt,
+        );
         let (dll_err, _unused_pll_err, _unused_fll_err, _unused_lock) = discriminators(
             primary_correlator.early,
             primary_correlator.prompt,
@@ -3838,7 +4024,7 @@ mod tests {
     use bijux_gnss_signal::api::{
         advance_code_phase_seconds, delay_lock_loop_coefficients, discriminators,
         first_order_angular_loop_coefficients, phase_lock_loop_coefficients, sample_ca_code,
-        samples_per_code, shared_path_code_rate_hz, signal_spec_gps_l5_i, Prn,
+        samples_per_code, shared_path_code_rate_hz, signal_spec_gps_l5_i, LocalCodeModel, Prn,
     };
     use num_complex::Complex;
     use serde::Deserialize;
@@ -3868,6 +4054,127 @@ mod tests {
             fll_locked: true,
             channel_state: ChannelState::Tracking,
         }
+    }
+
+    fn gps_l5q_secondary_code_component() -> super::TrackingComponentModel {
+        super::TrackingComponentModel {
+            role: SignalComponentRole::Pilot,
+            code_length: 10_230,
+            phase_transition_source: super::TrackingPhaseTransitionSource::SecondaryCode,
+            local_code_model: super::TrackingComponentLocalCodeModel::Local(
+                LocalCodeModel::gps_l5_q(18).expect("GPS L5Q local code"),
+            ),
+        }
+    }
+
+    fn secondary_code_prompt_history(
+        component: &super::TrackingComponentModel,
+        phase_periods: usize,
+        observed_periods: usize,
+        prompt: Complex<f32>,
+    ) -> Vec<super::SecondaryCodePromptSample> {
+        (0..observed_periods)
+            .map(|period_offset| {
+                let primary_code_period_index = phase_periods + period_offset;
+                assert!(component.secondary_code_symbol(primary_code_period_index).is_some());
+                super::SecondaryCodePromptSample { primary_code_period_index, prompt }
+            })
+            .collect()
+    }
+
+    #[test]
+    fn secondary_code_sync_accepts_best_likelihood_phase() {
+        let component = gps_l5q_secondary_code_component();
+        let history = secondary_code_prompt_history(&component, 7, 20, Complex::new(2.0, 0.25));
+
+        let sync =
+            super::secondary_code_sync_from_prompt_history(&component, &history).expect("sync");
+
+        assert!(sync.accepted, "sync result should be accepted: {sync:?}");
+        assert_eq!(sync.phase_periods, 7);
+        assert_eq!(sync.observed_periods, 20);
+        assert!(sync.best_likelihood > sync.next_best_likelihood);
+        assert!(sync.confidence >= super::SECONDARY_CODE_SYNC_MIN_CONFIDENCE);
+    }
+
+    #[test]
+    fn secondary_code_sync_scores_incorrect_phase_lower() {
+        let component = gps_l5q_secondary_code_component();
+        let history = secondary_code_prompt_history(&component, 11, 20, Complex::new(1.5, -0.5));
+
+        let correct = super::secondary_code_phase_score(&component, &history, 11);
+        let incorrect = super::secondary_code_phase_score(&component, &history, 12);
+
+        assert!(correct.likelihood > incorrect.likelihood);
+    }
+
+    #[test]
+    fn secondary_code_sync_waits_for_enough_observations() {
+        let component = gps_l5q_secondary_code_component();
+        let history = secondary_code_prompt_history(&component, 3, 3, Complex::new(1.0, 0.0));
+
+        assert!(super::secondary_code_sync_from_prompt_history(&component, &history).is_none());
+    }
+
+    #[test]
+    fn secondary_code_sync_rejects_zero_energy_prompt_history() {
+        let component = gps_l5q_secondary_code_component();
+        let history = secondary_code_prompt_history(&component, 5, 20, Complex::new(0.0, 0.0));
+
+        let sync =
+            super::secondary_code_sync_from_prompt_history(&component, &history).expect("sync");
+
+        assert!(!sync.accepted);
+        assert_eq!(sync.confidence, 0.0);
+    }
+
+    #[test]
+    fn secondary_code_sync_updates_from_pilot_carrier_prompt_history() {
+        let config = ReceiverPipelineConfig::default();
+        let signal_model = super::TrackingSignalModel::for_sat_signal_band(
+            &config,
+            SatId { constellation: Constellation::Gps, prn: 18 },
+            SignalBand::L5,
+            SignalCode::L5I,
+            None,
+        );
+        let mut state = empty_loop_state();
+
+        for period_offset in 0..20 {
+            super::update_secondary_code_synchronization(
+                &signal_model,
+                &mut state,
+                7 + period_offset,
+                Complex::new(1.0, 0.125),
+            );
+        }
+
+        let sync = state.secondary_code_sync.expect("secondary code sync");
+        assert!(sync.accepted, "pilot prompt sync should be accepted: {sync:?}");
+        assert_eq!(sync.phase_periods, 7);
+        assert_eq!(sync.observed_periods, 20);
+        assert_eq!(state.secondary_code_prompt_history.len(), 20);
+    }
+
+    #[test]
+    fn secondary_code_sync_ignores_signals_without_secondary_code() {
+        let config = ReceiverPipelineConfig::default();
+        let signal_model = super::TrackingSignalModel::for_sat(
+            &config,
+            SatId { constellation: Constellation::Gps, prn: 1 },
+        );
+        let mut state = empty_loop_state();
+
+        let sync = super::update_secondary_code_synchronization(
+            &signal_model,
+            &mut state,
+            0,
+            Complex::new(1.0, 0.0),
+        );
+
+        assert!(sync.is_none());
+        assert!(state.secondary_code_sync.is_none());
+        assert!(state.secondary_code_prompt_history.is_empty());
     }
 
     #[cfg(feature = "nav")]
@@ -4645,6 +4952,8 @@ mod tests {
             lock_reference_cn0_dbhz: 45.0,
             prev_prompt: None,
             prev_prompt_phase_cycles: None,
+            secondary_code_prompt_history: std::collections::VecDeque::new(),
+            secondary_code_sync: None,
             nav_bit_phase_offset_cycles: 0.0,
             nav_bit_transition_count: 0,
             pull_in_stable_epochs: 0,
