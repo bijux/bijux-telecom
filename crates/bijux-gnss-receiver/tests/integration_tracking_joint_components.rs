@@ -166,6 +166,18 @@ fn assert_joint_tracking_metadata(epochs: &[TrackEpoch]) {
     );
 }
 
+fn assert_secondary_code_synchronization_accepted(epochs: &[TrackEpoch]) {
+    assert!(
+        epochs.iter().all(|epoch| {
+            epoch.tracking_provenance.contains("secondary_code_sync=accepted")
+                && epoch.tracking_provenance.contains("secondary_code_phase_periods=")
+                && epoch.tracking_provenance.contains("secondary_code_sync_confidence=")
+                && epoch.tracking_provenance.contains("secondary_code_observed_periods=")
+        }),
+        "tracking provenance did not report accepted secondary-code synchronization: epochs={epochs:?}"
+    );
+}
+
 fn assert_recovered_signs_follow_alternating_data(epochs: &[TrackEpoch]) {
     let stable_epochs = stable_joint_tracking_window(epochs);
     let runs = recovered_sign_runs(stable_epochs);
@@ -310,6 +322,7 @@ fn gps_l5i_tracking_uses_l5q_pilot_without_corrupting_data_signs() {
     assert!(epochs.iter().all(|epoch| epoch.signal_code == SignalCode::L5I), "{epochs:?}");
     assert!(epochs.iter().any(|epoch| epoch.nav_bit_lock), "{epochs:?}");
     assert_joint_tracking_metadata(&epochs);
+    assert_secondary_code_synchronization_accepted(&epochs);
     assert_recovered_signs_follow_alternating_data(&epochs);
     assert_carrier_continuity_across_sign_changes(&epochs);
 }

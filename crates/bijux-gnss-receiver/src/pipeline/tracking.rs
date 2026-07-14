@@ -98,7 +98,7 @@ const VECTOR_TRACKING_MAX_CARRIER_RATE_AID_HZ_PER_S: f64 = 1_000.0;
 const SAMPLE_RATE_MISMATCH_CATASTROPHIC_PHASE_STEP_MULTIPLIER: f64 = 8.0;
 const LOW_RESOLUTION_DLL_MIN_SAMPLE_SEPARATION: f64 = 1.0;
 const JOINT_COMPONENT_MIN_PROMPT_RATIO: f32 = 0.35;
-const SECONDARY_CODE_SYNC_MIN_CONFIDENCE: f64 = 0.05;
+const SECONDARY_CODE_SYNC_MIN_CONFIDENCE: f64 = 0.02;
 const SECONDARY_CODE_SYNC_MIN_OBSERVED_CHIPS: usize = 4;
 const CARRIER_AID_MIN_DOPPLER_WINDOW_HZ: f64 = 25_000.0;
 const CARRIER_AID_DOPPLER_WINDOW_MARGIN_HZ: f64 = 500.0;
@@ -713,9 +713,9 @@ fn secondary_code_phase_score(
     prompt_history: &[SecondaryCodePromptSample],
     phase_periods: usize,
 ) -> SecondaryCodePhaseScore {
-    let mut coherent_prompt = Complex::new(0.0_f64, 0.0_f64);
-    let mut prompt_energy = 0.0_f64;
-    let mut observed_periods = 0usize;
+    let mut accumulated_alignment = 0.0_f64;
+    let mut transition_count = 0usize;
+    let mut previous_prompt: Option<Complex<f64>> = None;
     let reference_period =
         prompt_history.first().map(|sample| sample.primary_code_period_index).unwrap_or_default();
     for sample in prompt_history {
@@ -731,18 +731,22 @@ fn secondary_code_phase_score(
             continue;
         };
         let raw_prompt = sample.prompt * observed_symbol as f32;
-        coherent_prompt += Complex::new(
+        let candidate_prompt = Complex::new(
             (raw_prompt.re * candidate_symbol as f32) as f64,
             (raw_prompt.im * candidate_symbol as f32) as f64,
         );
-        prompt_energy += sample.prompt.norm() as f64;
-        observed_periods += 1;
+        if let Some(previous_prompt) = previous_prompt {
+            let norm_product = previous_prompt.norm() * candidate_prompt.norm();
+            if norm_product > f64::EPSILON {
+                let alignment = (previous_prompt.conj() * candidate_prompt).re / norm_product;
+                accumulated_alignment += ((alignment + 1.0) * 0.5).clamp(0.0, 1.0);
+                transition_count += 1;
+            }
+        }
+        previous_prompt = Some(candidate_prompt);
     }
-    let likelihood = if observed_periods > 0 && prompt_energy > f64::EPSILON {
-        coherent_prompt.norm() / prompt_energy
-    } else {
-        0.0
-    };
+    let likelihood =
+        if transition_count > 0 { accumulated_alignment / transition_count as f64 } else { 0.0 };
     SecondaryCodePhaseScore { phase_periods, likelihood }
 }
 
@@ -780,9 +784,31 @@ fn update_secondary_code_synchronization(
         state.secondary_code_prompt_history.pop_front();
     }
     let prompt_history = state.secondary_code_prompt_history.iter().copied().collect::<Vec<_>>();
-    state.secondary_code_sync =
-        secondary_code_sync_from_prompt_history(&component, &prompt_history);
+    state.secondary_code_sync = select_secondary_code_synchronization(
+        state.secondary_code_sync,
+        secondary_code_sync_from_prompt_history(&component, &prompt_history),
+    );
     state.secondary_code_sync
+}
+
+fn select_secondary_code_synchronization(
+    current: Option<SecondaryCodeSyncResult>,
+    candidate: Option<SecondaryCodeSyncResult>,
+) -> Option<SecondaryCodeSyncResult> {
+    match (current, candidate) {
+        (None, candidate) => candidate,
+        (current @ Some(_), None) => current,
+        (Some(current), Some(candidate)) if candidate.accepted && !current.accepted => {
+            Some(candidate)
+        }
+        (Some(current), Some(candidate))
+            if candidate.accepted == current.accepted
+                && candidate.confidence > current.confidence =>
+        {
+            Some(candidate)
+        }
+        (Some(current), Some(_)) => Some(current),
+    }
 }
 
 fn carrier_phase_transition_source_for_prompt(
@@ -819,13 +845,27 @@ fn secondary_code_sync_provenance(
     })
 }
 
+fn prompt_center_primary_code_period_index(
+    epoch_primary_code_period_index: usize,
+    base_chip_phase: f64,
+    tracked_chips_per_sample: f64,
+    coherent_samples: usize,
+    primary_code_length: usize,
+) -> usize {
+    let code_length = primary_code_length.max(1) as f64;
+    let prompt_center_chip_phase =
+        base_chip_phase + tracked_chips_per_sample * coherent_samples as f64 * 0.5;
+    let period_offset = (prompt_center_chip_phase / code_length).floor().max(0.0) as usize;
+    epoch_primary_code_period_index.saturating_add(period_offset)
+}
+
 #[derive(Debug, Clone, Copy)]
 struct TrackingEpochCorrelation {
     primary: CorrelatorOutput,
     carrier_prompt: Complex<f32>,
     carrier_prompt_source: CarrierPromptSource,
     data_prompt: Option<Complex<f32>>,
-    primary_code_period_index: usize,
+    secondary_code_prompt_period_index: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1658,12 +1698,19 @@ impl Tracking {
             signal_model.aiding_mode,
             requires_dedicated_pilot_carrier(signal_model),
         );
+        let secondary_code_prompt_period_index = prompt_center_primary_code_period_index(
+            epoch_primary_code_period_index,
+            base_chip_phase,
+            tracked_chips_per_sample,
+            samples.len(),
+            signal_model.code_length,
+        );
         TrackingEpochCorrelation {
             primary,
             carrier_prompt,
             carrier_prompt_source,
             data_prompt,
-            primary_code_period_index: epoch_primary_code_period_index,
+            secondary_code_prompt_period_index,
         }
     }
 
@@ -2285,7 +2332,7 @@ impl Tracking {
         update_secondary_code_synchronization(
             signal_model,
             state,
-            correlation.primary_code_period_index,
+            correlation.secondary_code_prompt_period_index,
             carrier_prompt,
         );
         let (dll_err, _unused_pll_err, _unused_fll_err, _unused_lock) = discriminators(
@@ -4261,6 +4308,68 @@ mod tests {
             super::secondary_code_sync_provenance(&signal_model, None).expect("provenance");
 
         assert_eq!(provenance, " secondary_code_sync=insufficient");
+    }
+
+    #[test]
+    fn secondary_code_sync_keeps_accepted_phase_over_weaker_candidate() {
+        let accepted = super::SecondaryCodeSyncResult {
+            phase_periods: 7,
+            confidence: 0.25,
+            best_likelihood: 1.0,
+            next_best_likelihood: 0.75,
+            observed_periods: 20,
+            accepted: true,
+        };
+        let rejected = super::SecondaryCodeSyncResult {
+            phase_periods: 3,
+            confidence: 0.01,
+            best_likelihood: 0.6,
+            next_best_likelihood: 0.594,
+            observed_periods: 20,
+            accepted: false,
+        };
+
+        let selected = super::select_secondary_code_synchronization(Some(accepted), Some(rejected))
+            .expect("selected sync");
+
+        assert_eq!(selected, accepted);
+    }
+
+    #[test]
+    fn secondary_code_sync_replaces_rejected_phase_with_accepted_candidate() {
+        let rejected = super::SecondaryCodeSyncResult {
+            phase_periods: 3,
+            confidence: 0.01,
+            best_likelihood: 0.6,
+            next_best_likelihood: 0.594,
+            observed_periods: 20,
+            accepted: false,
+        };
+        let accepted = super::SecondaryCodeSyncResult {
+            phase_periods: 7,
+            confidence: 0.25,
+            best_likelihood: 1.0,
+            next_best_likelihood: 0.75,
+            observed_periods: 20,
+            accepted: true,
+        };
+
+        let selected = super::select_secondary_code_synchronization(Some(rejected), Some(accepted))
+            .expect("selected sync");
+
+        assert_eq!(selected, accepted);
+    }
+
+    #[test]
+    fn prompt_center_period_index_follows_code_phase_across_epoch_boundary() {
+        assert_eq!(
+            super::prompt_center_primary_code_period_index(0, 100.0, 1.0, 10_230, 10_230),
+            0
+        );
+        assert_eq!(
+            super::prompt_center_primary_code_period_index(0, 8_182.0, 1.0, 10_230, 10_230),
+            1
+        );
     }
 
     #[cfg(feature = "nav")]
