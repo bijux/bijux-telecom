@@ -3,8 +3,10 @@
 #[path = "support/navigation_accuracy_artifact.rs"]
 mod navigation_accuracy_artifact;
 
+use bijux_gnss_core::api::{Constellation, SatId, SignalBand, SignalCode};
 use bijux_gnss_receiver::api::sim::{
     build_truth_guided_gnss_accuracy_artifact, write_truth_guided_gnss_accuracy_artifact,
+    SyntheticAcquisitionAccuracyReport, SyntheticAcquisitionAccuracySatellite,
     SyntheticGnssAccuracyArtifact, SyntheticGnssAccuracyArtifactCase,
 };
 
@@ -117,6 +119,68 @@ fn navigation_accuracy_artifact_summarizes_acquisition_and_tracking_stages() {
     assert_eq!(
         artifact.tracking.summary.threshold_max_cn0_error_db_hz,
         fixture.tracking_accuracy.max_cn0_error_db_hz
+    );
+}
+
+#[test]
+fn navigation_accuracy_artifact_preserves_signal_specific_acquisition_thresholds() {
+    let fixture = build_navigation_accuracy_artifact_fixture();
+    let acquisition = SyntheticAcquisitionAccuracyReport {
+        scenario_id: fixture.acquisition_accuracy.scenario_id.clone(),
+        max_doppler_error_hz: 500.0,
+        max_code_phase_error_samples: 2,
+        satellite_count: 2,
+        passing_satellite_count: 2,
+        truth_coverage_ready: true,
+        truth_coverage_issues: Vec::new(),
+        pass: true,
+        satellites: vec![
+            SyntheticAcquisitionAccuracySatellite {
+                sat: SatId { constellation: Constellation::Gps, prn: 3 },
+                glonass_frequency_channel: None,
+                signal_band: SignalBand::L1,
+                signal_code: SignalCode::Ca,
+                doppler_error_hz: 0.25,
+                code_phase_error_samples: 1,
+                max_doppler_error_hz: 500.0,
+                max_doppler_error_bins: 1.0,
+                max_code_phase_error_samples: 2,
+                max_code_phase_error_chips: 1.0,
+                pass: true,
+            },
+            SyntheticAcquisitionAccuracySatellite {
+                sat: SatId { constellation: Constellation::Galileo, prn: 11 },
+                glonass_frequency_channel: None,
+                signal_band: SignalBand::E1,
+                signal_code: SignalCode::E1B,
+                doppler_error_hz: 0.5,
+                code_phase_error_samples: 1,
+                max_doppler_error_hz: 500.0,
+                max_doppler_error_bins: 1.0,
+                max_code_phase_error_samples: 1,
+                max_code_phase_error_chips: 0.25,
+                pass: true,
+            },
+        ],
+    };
+    let artifact = build_truth_guided_gnss_accuracy_artifact(SyntheticGnssAccuracyArtifactCase {
+        scenario_id: &fixture.profile.scenario.id,
+        data_source: fixture.data_source.clone(),
+        reference_truth: fixture.reference_truth.clone(),
+        acquisition: &acquisition,
+        tracking: &fixture.tracking_accuracy,
+        observation: &fixture.observation_accuracy,
+        pvt: &fixture.pvt_accuracy,
+    });
+
+    assert_eq!(artifact.acquisition.summary.threshold_max_doppler_error_hz, 500.0);
+    assert_eq!(artifact.acquisition.summary.threshold_max_code_phase_error_samples, 2);
+    assert_eq!(artifact.acquisition.report.satellites.len(), 2);
+    assert_eq!(artifact.acquisition.report.satellites[0].max_code_phase_error_samples, 2);
+    assert_eq!(artifact.acquisition.report.satellites[1].max_code_phase_error_samples, 1);
+    assert!(
+        (artifact.acquisition.report.satellites[1].max_code_phase_error_chips - 0.25).abs()
+            <= f64::EPSILON
     );
 }
 
@@ -280,7 +344,43 @@ fn navigation_accuracy_artifact_writes_single_json_file() {
     assert_eq!(parsed.reference_truth, artifact.reference_truth);
     assert_eq!(parsed.acquisition.summary, artifact.acquisition.summary);
     assert_eq!(parsed.observation.summary, artifact.observation.summary);
-    assert_eq!(parsed.pvt.summary, artifact.pvt.summary);
+    assert_eq!(parsed.pvt.summary.pass, artifact.pvt.summary.pass);
+    assert_eq!(parsed.pvt.summary.truth_coverage_ready, artifact.pvt.summary.truth_coverage_ready);
+    assert_eq!(parsed.pvt.summary.epoch_count, artifact.pvt.summary.epoch_count);
+    assert_eq!(parsed.pvt.summary.passing_epoch_count, artifact.pvt.summary.passing_epoch_count);
+    assert_optional_close(
+        parsed.pvt.summary.observed_max_position_error_3d_m,
+        artifact.pvt.summary.observed_max_position_error_3d_m,
+        1.0e-12,
+    );
+    assert_optional_close(
+        parsed.pvt.summary.observed_max_clock_bias_error_m,
+        artifact.pvt.summary.observed_max_clock_bias_error_m,
+        1.0e-12,
+    );
+    assert_optional_close(
+        parsed.pvt.summary.observed_max_residual_rms_m,
+        artifact.pvt.summary.observed_max_residual_rms_m,
+        1.0e-12,
+    );
+    assert_optional_close(
+        parsed.pvt.summary.observed_max_pdop,
+        artifact.pvt.summary.observed_max_pdop,
+        1.0e-12,
+    );
+    assert_eq!(
+        parsed.pvt.summary.threshold_max_position_error_3d_m,
+        artifact.pvt.summary.threshold_max_position_error_3d_m
+    );
+    assert_eq!(
+        parsed.pvt.summary.threshold_max_clock_bias_error_m,
+        artifact.pvt.summary.threshold_max_clock_bias_error_m
+    );
+    assert_eq!(
+        parsed.pvt.summary.threshold_max_residual_rms_m,
+        artifact.pvt.summary.threshold_max_residual_rms_m
+    );
+    assert_eq!(parsed.pvt.summary.threshold_max_pdop, artifact.pvt.summary.threshold_max_pdop);
     assert_eq!(parsed.tracking.summary.pass, artifact.tracking.summary.pass);
     assert_eq!(
         parsed.tracking.summary.passing_satellite_count,
@@ -299,4 +399,18 @@ fn navigation_accuracy_artifact_writes_single_json_file() {
     assert!(value["pvt"]["summary"]["threshold_max_position_error_3d_m"].is_number());
 
     std::fs::remove_file(path).expect("remove emitted accuracy artifact");
+}
+
+fn assert_optional_close(actual: Option<f64>, expected: Option<f64>, tolerance: f64) {
+    match (actual, expected) {
+        (Some(actual), Some(expected)) => {
+            let error = (actual - expected).abs();
+            assert!(
+                error <= tolerance,
+                "actual={actual:.15} expected={expected:.15} error={error:.15} tolerance={tolerance:.15}"
+            );
+        }
+        (None, None) => {}
+        _ => panic!("optional float mismatch: actual={actual:?} expected={expected:?}"),
+    }
 }
