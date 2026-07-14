@@ -380,6 +380,19 @@ fn galileo_e1_side_peak_seed_does_not_report_biased_code_lock() {
         biased_locked_epochs.is_empty(),
         "Galileo E1 side-peak seed reported valid code lock with a biased delay: biased_locked_epochs={biased_locked_epochs:?}, epochs={epochs:?}",
     );
+    assert!(
+        epochs
+            .iter()
+            .any(|epoch| epoch.lock_state_reason.as_deref() == Some("subcarrier_ambiguity")),
+        "Galileo E1 side-peak seed did not report the subcarrier ambiguity refusal reason: epochs={epochs:?}",
+    );
+    assert!(
+        epochs.iter().any(|epoch| {
+            epoch.tracking_provenance.contains("subcarrier_ambiguity_guard=side_peak_guard")
+                && epoch.tracking_provenance.contains("prompt_dominance_ratio=")
+        }),
+        "Galileo E1 side-peak seed did not report subcarrier ambiguity guard evidence: epochs={epochs:?}",
+    );
 }
 
 #[test]

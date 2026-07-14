@@ -2627,7 +2627,7 @@ impl Tracking {
             reliable_reacquisition_reference,
         );
 
-        let transition = if refuse_lock {
+        let mut transition = if refuse_lock {
             TransitionDecision {
                 to_state: ChannelState::PullIn,
                 reason: "cn0_below_tracking_lock_floor".to_string(),
@@ -2647,6 +2647,10 @@ impl Tracking {
                 short_fade_relock_evidence,
             )
         };
+        if subcarrier_ambiguity && transition.to_state == ChannelState::PullIn {
+            transition.reason = "subcarrier_ambiguity".to_string();
+            transition.next_unlocked_count = state.unlocked_count.saturating_add(1);
+        }
         state.unlocked_count = transition.next_unlocked_count;
         state.degraded_epochs = transition.next_degraded_epochs;
         state.state = transition.to_state;
