@@ -9,6 +9,8 @@ use bijux_gnss_receiver::api::{
     MemorySamples, Receiver, ReceiverPipelineConfig, ReceiverRuntime, SignalSource,
 };
 
+const WIDEBAND_PRIMARY_PERIOD_SAMPLES: usize = 10_230;
+
 fn wideband_config() -> ReceiverPipelineConfig {
     ReceiverPipelineConfig {
         sampling_freq_hz: 10_230_000.0,
@@ -75,6 +77,35 @@ fn render_memory_samples(
     MemorySamples::new(interleaved_i16, config.sampling_freq_hz).expect("memory source")
 }
 
+fn render_shifted_memory_samples(
+    config: &ReceiverPipelineConfig,
+    scenario: &SyntheticScenario,
+    skip_primary_periods: usize,
+    capture_primary_periods: usize,
+) -> MemorySamples {
+    let mut synthetic = SyntheticSignalSource::new_signal_only(config, scenario);
+    let skip_samples = skip_primary_periods * WIDEBAND_PRIMARY_PERIOD_SAMPLES;
+    if skip_samples > 0 {
+        let skipped = synthetic
+            .next_frame(skip_samples)
+            .expect("skip synthetic frame")
+            .expect("skipped frame");
+        assert_eq!(skipped.iq.len(), skip_samples);
+    }
+    let capture = synthetic
+        .next_frame(capture_primary_periods * WIDEBAND_PRIMARY_PERIOD_SAMPLES)
+        .expect("capture frame")
+        .expect("capture frame present");
+
+    let mut interleaved_i16 = Vec::with_capacity(capture.iq.len() * 2);
+    for sample in capture.iq {
+        interleaved_i16.push((sample.re.clamp(-1.0, 1.0) * 32768.0).round() as i16);
+        interleaved_i16.push((sample.im.clamp(-1.0, 1.0) * 32768.0).round() as i16);
+    }
+
+    MemorySamples::new(interleaved_i16, config.sampling_freq_hz).expect("shifted memory source")
+}
+
 #[test]
 fn receiver_default_acquisition_preserves_gps_l5q_component_provenance_on_raw_source() {
     let config = wideband_config();
@@ -106,6 +137,53 @@ fn receiver_default_acquisition_preserves_gps_l5q_component_provenance_on_raw_so
         provenance.components.iter().map(|component| component.role).collect::<Vec<_>>(),
         vec![SignalComponentRole::Pilot]
     );
+}
+
+#[test]
+fn receiver_acquisition_reports_shifted_gps_l5q_secondary_code_phase() {
+    let mut config = wideband_config();
+    config.acquisition_integration_ms = 20;
+    config.acquisition_noncoherent = 1;
+
+    let sat = SatId { constellation: Constellation::Gps, prn: 24 };
+    let scenario = SyntheticScenario {
+        sample_rate_hz: config.sampling_freq_hz,
+        intermediate_freq_hz: config.intermediate_freq_hz,
+        receiver_clock_frequency_bias_hz: 0.0,
+        duration_s: 0.03,
+        seed: 0xB102_5EEE,
+        satellites: vec![SyntheticSignalParams {
+            sat,
+            glonass_frequency_channel: None,
+            signal_band: SignalBand::L5,
+            signal_code: SignalCode::L5Q,
+            doppler_hz: 0.0,
+            code_phase_chips: 0.0,
+            carrier_phase_rad: 0.25,
+            cn0_db_hz: 60.0,
+            navigation_data: false.into(),
+        }],
+        ephemerides: Vec::new(),
+        id: "receiver-gps-l5q-shifted-secondary-code-phase".to_string(),
+    };
+    let mut source = render_shifted_memory_samples(&config, &scenario, 7, 20);
+    let receiver = Receiver::new(config, ReceiverRuntime::default());
+
+    let artifacts = receiver.run(&mut source).expect("receiver run");
+    let acquisition = artifacts
+        .acquisitions
+        .iter()
+        .find(|result| result.sat == sat && result.signal_code == SignalCode::L5Q)
+        .expect("shifted GPS L5 acquisition result");
+    let pilot_component = acquisition
+        .component_provenance()
+        .expect("shifted GPS L5Q component provenance")
+        .components
+        .iter()
+        .find(|component| component.role == SignalComponentRole::Pilot)
+        .expect("GPS L5Q pilot component");
+
+    assert_eq!(pilot_component.secondary_code_phase_periods, Some(7), "{acquisition:?}");
 }
 
 #[test]
