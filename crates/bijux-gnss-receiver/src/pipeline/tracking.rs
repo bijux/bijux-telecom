@@ -1051,22 +1051,24 @@ impl Tracking {
         );
         let acquisition_carrier_hz =
             normalize_acquisition_carrier_hz(&self.config, &signal_model, acquisition);
-        if let Err(reason) =
-            carrier_aiding_reference(&self.config, &signal_model, acquisition_carrier_hz)
-        {
-            self.runtime.trace.record(TraceRecord {
-                name: "tracking_acquisition_refused",
-                fields: vec![
-                    ("constellation", format!("{:?}", acquisition.sat.constellation)),
-                    ("prn", acquisition.sat.prn.to_string()),
-                    ("signal_band", format!("{:?}", acquisition.signal_band)),
-                    ("signal_code", format!("{:?}", acquisition.signal_code)),
-                    ("reason", reason.to_string()),
-                    ("acquisition_carrier_hz", format!("{acquisition_carrier_hz:.3}")),
-                    ("acquisition_doppler_hz", format!("{:.3}", acquisition.doppler_hz.0)),
-                ],
-            });
-            return None;
+        if carrier_aiding_validation_required(&signal_model) {
+            if let Err(reason) =
+                carrier_aiding_reference(&self.config, &signal_model, acquisition_carrier_hz)
+            {
+                self.runtime.trace.record(TraceRecord {
+                    name: "tracking_acquisition_refused",
+                    fields: vec![
+                        ("constellation", format!("{:?}", acquisition.sat.constellation)),
+                        ("prn", acquisition.sat.prn.to_string()),
+                        ("signal_band", format!("{:?}", acquisition.signal_band)),
+                        ("signal_code", format!("{:?}", acquisition.signal_code)),
+                        ("reason", reason.to_string()),
+                        ("acquisition_carrier_hz", format!("{acquisition_carrier_hz:.3}")),
+                        ("acquisition_doppler_hz", format!("{:.3}", acquisition.doppler_hz.0)),
+                    ],
+                });
+                return None;
+            }
         }
         Some(TrackingStartContext {
             seed: acquisition.tracking_seed(),
@@ -1665,7 +1667,8 @@ impl Tracking {
                         channel.signal_model.data_symbol_component.is_some(),
                     );
                     epoch.tracking_provenance.push_str(&format!(
-                        " code_rate_reference=carrier_doppler carrier_aiding_doppler_window_hz={:.3}",
+                        " code_rate_reference={} carrier_aiding_doppler_window_hz={:.3}",
+                        code_rate_reference_label(&self.config, &channel.signal_model, epoch.carrier_hz.0),
                         carrier_aiding_doppler_window_hz(&self.config),
                     ));
                 }
@@ -2846,6 +2849,22 @@ fn carrier_aiding_reference(
         return Err("carrier_aiding_invalid_code_rate");
     }
     Ok(CarrierAidingReference { tracked_carrier_hz, tracked_doppler_hz, code_rate_hz })
+}
+
+fn carrier_aiding_validation_required(signal_model: &TrackingSignalModel) -> bool {
+    !matches!(signal_model.signal_spec.constellation, Constellation::Glonass)
+}
+
+fn code_rate_reference_label(
+    config: &ReceiverPipelineConfig,
+    signal_model: &TrackingSignalModel,
+    tracked_carrier_hz: f64,
+) -> &'static str {
+    if carrier_aiding_reference(config, signal_model, tracked_carrier_hz).is_ok() {
+        "carrier_doppler"
+    } else {
+        "nominal"
+    }
 }
 
 fn carrier_aiding_doppler_window_hz(config: &ReceiverPipelineConfig) -> f64 {
