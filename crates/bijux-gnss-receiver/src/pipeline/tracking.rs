@@ -2518,8 +2518,28 @@ fn annotate_navigation_bit_signs(signal_model: &TrackingSignalModel, epochs: &mu
         }
         for epoch in epochs[bit.start_prompt_index..bit.end_prompt_index_exclusive].iter_mut() {
             epoch.navigation_bit_sign = Some(bit.sign);
+            epoch.nav_bit_lock = true;
+            annotate_navigation_symbol_sync_provenance(
+                epoch,
+                demodulation.bit_start_ms,
+                demodulation.sync_confidence,
+                bit.confidence,
+            );
         }
     }
+}
+
+#[cfg(feature = "nav")]
+fn annotate_navigation_symbol_sync_provenance(
+    epoch: &mut TrackEpoch,
+    bit_start_ms: usize,
+    sync_confidence: f64,
+    bit_confidence: f64,
+) {
+    epoch.tracking_provenance.push_str(&format!(
+        " nav_symbol_sync=confident nav_symbol_start_ms={} nav_symbol_sync_confidence={:.6} nav_symbol_bit_confidence={:.6}",
+        bit_start_ms, sync_confidence, bit_confidence
+    ));
 }
 
 #[cfg(feature = "nav")]
