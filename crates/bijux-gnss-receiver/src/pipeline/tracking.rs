@@ -785,6 +785,21 @@ fn update_secondary_code_synchronization(
     state.secondary_code_sync
 }
 
+fn carrier_phase_transition_source_for_prompt(
+    signal_model: &TrackingSignalModel,
+    secondary_code_sync: Option<SecondaryCodeSyncResult>,
+) -> TrackingPhaseTransitionSource {
+    let transition_source = signal_model.carrier_phase_transition_source();
+    if transition_source != TrackingPhaseTransitionSource::SecondaryCode {
+        return transition_source;
+    }
+    if secondary_code_sync.is_some_and(|sync| sync.accepted) {
+        TrackingPhaseTransitionSource::SecondaryCode
+    } else {
+        TrackingPhaseTransitionSource::None
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 struct TrackingEpochCorrelation {
     primary: CorrelatorOutput,
@@ -2258,11 +2273,13 @@ impl Tracking {
             carrier_prompt_discriminators(carrier_prompt, state.prev_prompt);
         state.prev_prompt = Some(carrier_prompt);
         let phase_cycles = carrier_prompt.arg() as f64 / (2.0 * std::f64::consts::PI);
+        let phase_transition_source =
+            carrier_phase_transition_source_for_prompt(signal_model, state.secondary_code_sync);
         let phase_decision = classify_prompt_phase(
             phase_cycles,
             state.prev_prompt_phase_cycles,
             state.nav_bit_phase_offset_cycles,
-            signal_model.carrier_phase_transition_source(),
+            phase_transition_source,
         );
         state.prev_prompt_phase_cycles = Some(phase_decision.aligned_phase_cycles);
         state.nav_bit_phase_offset_cycles = phase_decision.nav_bit_phase_offset_cycles;
@@ -2297,11 +2314,10 @@ impl Tracking {
             phase_decision.aligned_phase_delta_cycles * std::f64::consts::TAU,
             coherent_integration_s,
         );
-        let use_nav_bit_aware_fll =
-            signal_model.carrier_phase_transition_source().allows_half_cycle_transition()
-                || phase_decision.nav_bit_transition
-                || state.nav_bit_phase_offset_cycles.abs() > f64::EPSILON
-                || phase_decision.nav_bit_phase_offset_cycles.abs() > f64::EPSILON;
+        let use_nav_bit_aware_fll = phase_transition_source.allows_half_cycle_transition()
+            || phase_decision.nav_bit_transition
+            || state.nav_bit_phase_offset_cycles.abs() > f64::EPSILON
+            || phase_decision.nav_bit_phase_offset_cycles.abs() > f64::EPSILON;
         let fll_err_hz =
             if use_nav_bit_aware_fll { nav_bit_aware_fll_err_hz } else { raw_fll_err_hz } as f32;
         let from_state = state.state;
@@ -4718,6 +4734,54 @@ mod tests {
         assert!(!decision.nav_bit_transition);
         assert!(decision.cycle_slip);
         assert!(decision.aligned_phase_delta_cycles.abs() > 0.35);
+    }
+
+    #[test]
+    fn secondary_code_phase_transition_waits_for_accepted_sync() {
+        let config = ReceiverPipelineConfig::default();
+        let signal_model = super::TrackingSignalModel::for_sat_signal_band(
+            &config,
+            SatId { constellation: Constellation::Gps, prn: 18 },
+            SignalBand::L5,
+            SignalCode::L5I,
+            None,
+        );
+
+        let transition_source =
+            super::carrier_phase_transition_source_for_prompt(&signal_model, None);
+        let decision = super::classify_prompt_phase(-0.39, Some(0.11), 0.0, transition_source);
+
+        assert_eq!(transition_source, super::TrackingPhaseTransitionSource::None);
+        assert!(!decision.nav_bit_transition);
+        assert!(decision.cycle_slip);
+    }
+
+    #[test]
+    fn secondary_code_phase_transition_accepts_synchronized_half_cycle_jump() {
+        let config = ReceiverPipelineConfig::default();
+        let signal_model = super::TrackingSignalModel::for_sat_signal_band(
+            &config,
+            SatId { constellation: Constellation::Gps, prn: 18 },
+            SignalBand::L5,
+            SignalCode::L5I,
+            None,
+        );
+        let sync = super::SecondaryCodeSyncResult {
+            phase_periods: 7,
+            confidence: 1.0,
+            best_likelihood: 1.0,
+            next_best_likelihood: 0.0,
+            observed_periods: 20,
+            accepted: true,
+        };
+
+        let transition_source =
+            super::carrier_phase_transition_source_for_prompt(&signal_model, Some(sync));
+        let decision = super::classify_prompt_phase(-0.39, Some(0.11), 0.0, transition_source);
+
+        assert_eq!(transition_source, super::TrackingPhaseTransitionSource::SecondaryCode);
+        assert!(decision.nav_bit_transition);
+        assert!(!decision.cycle_slip);
     }
 
     #[test]
