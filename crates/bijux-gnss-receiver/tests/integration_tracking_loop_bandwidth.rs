@@ -144,3 +144,58 @@ fn wider_fll_bandwidth_produces_stronger_pull_in_frequency_step() {
         "wide_epoch={wide_epoch:?} narrow_epoch={narrow_epoch:?}"
     );
 }
+
+#[test]
+fn wider_dll_bandwidth_produces_stronger_first_epoch_code_correction() {
+    let sat = SatId { constellation: Constellation::Gps, prn: 11 };
+    let seeded_code_phase_samples = 24;
+    let narrow = ReceiverPipelineConfig {
+        sampling_freq_hz: 4_092_000.0,
+        intermediate_freq_hz: 0.0,
+        code_freq_basis_hz: 1_023_000.0,
+        code_length: 1023,
+        channels: 4,
+        early_late_spacing_chips: 0.5,
+        dll_bw_hz: 1.0,
+        pll_bw_hz: 15.0,
+        fll_bw_hz: 0.0,
+        ..ReceiverPipelineConfig::default()
+    };
+    let mut wide = narrow.clone();
+    wide.dll_bw_hz = 6.0;
+
+    let frame = generate_l1_ca(
+        &narrow,
+        SyntheticSignalParams {
+            sat,
+            glonass_frequency_channel: None,
+            signal_band: bijux_gnss_core::api::SignalBand::L1,
+            signal_code: bijux_gnss_core::api::SignalCode::Unknown,
+            doppler_hz: 0.0,
+            code_phase_chips: 0.0,
+            carrier_phase_rad: 0.0,
+            cn0_db_hz: 60.0,
+            navigation_data: false.into(),
+        },
+        0x91A5_44D2,
+        0.020,
+    );
+    let acquisition = accepted_acquisition(sat, 0.0, seeded_code_phase_samples);
+
+    let narrow_tracks = TrackingEngine::new(narrow, ReceiverRuntime::default())
+        .track_from_acquisition(&frame, &[acquisition.clone()]);
+    let wide_tracks = TrackingEngine::new(wide, ReceiverRuntime::default())
+        .track_from_acquisition(&frame, &[acquisition]);
+
+    let narrow_first_epoch = &narrow_tracks.first().expect("narrow track").epochs[0];
+    let wide_first_epoch = &wide_tracks.first().expect("wide track").epochs[0];
+    let narrow_correction = (narrow_first_epoch.code_phase_samples.0 - seeded_code_phase_samples as f64)
+        .abs();
+    let wide_correction =
+        (wide_first_epoch.code_phase_samples.0 - seeded_code_phase_samples as f64).abs();
+
+    assert!(
+        wide_correction > narrow_correction,
+        "wide_first_epoch={wide_first_epoch:?} narrow_first_epoch={narrow_first_epoch:?}"
+    );
+}
