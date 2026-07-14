@@ -2,11 +2,12 @@ fn truth_guided_acquisition_request(
     config: &ReceiverPipelineConfig,
     sat_truth: &SyntheticSatelliteTruth,
 ) -> crate::api::core::AcqRequest {
+    let signal_code = resolved_truth_signal_code(sat_truth.sat, sat_truth.signal_band, sat_truth.signal_code);
     crate::api::core::AcqRequest {
         sat: sat_truth.sat,
         glonass_frequency_channel: sat_truth.glonass_frequency_channel,
         signal_band: sat_truth.signal_band,
-        signal_code: sat_truth.signal_code,
+        signal_code,
         doppler_center_hz: 0.0,
         doppler_rate_center_hz_per_s: 0.0,
         expected_line_of_sight_doppler_hz: Some(sat_truth.doppler_hz),
@@ -37,6 +38,8 @@ pub fn validate_truth_guided_acquisition_table(
         .satellites
         .iter()
         .map(|sat_truth| {
+            let signal_code =
+                resolved_truth_signal_code(sat_truth.sat, sat_truth.signal_band, sat_truth.signal_code);
             let isolated_frame = regenerate_isolated_scaled_satellite_signal_only_frame(
                 config, frame, truth, sat_truth,
             );
@@ -83,6 +86,9 @@ pub fn validate_truth_guided_acquisition_table(
 
             SyntheticAcquisitionTruthTableSatellite {
                 sat: sat_truth.sat,
+                glonass_frequency_channel: sat_truth.glonass_frequency_channel,
+                signal_band: sat_truth.signal_band,
+                signal_code,
                 injected_doppler_hz: sat_truth.doppler_hz,
                 expected_measured_doppler_hz,
                 measured_doppler_hz,
@@ -112,6 +118,18 @@ pub fn validate_truth_guided_acquisition_table(
         doppler_step_hz,
         pass,
         satellites,
+    }
+}
+
+fn resolved_truth_signal_code(
+    sat: SatId,
+    signal_band: SignalBand,
+    signal_code: SignalCode,
+) -> SignalCode {
+    if signal_code != SignalCode::Unknown {
+        signal_code
+    } else {
+        crate::engine::signal_selection::default_signal_code_for_band(sat.constellation, signal_band)
     }
 }
 

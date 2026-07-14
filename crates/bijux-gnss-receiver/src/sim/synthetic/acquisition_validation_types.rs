@@ -193,6 +193,12 @@ pub struct SyntheticAcquisitionDopplerValidationReport {
 pub struct SyntheticAcquisitionTruthTableSatellite {
     /// Satellite identifier.
     pub sat: SatId,
+    /// GLONASS FDMA channel when the tested signal uses GLONASS L1.
+    pub glonass_frequency_channel: Option<GlonassFrequencyChannel>,
+    /// Explicit signal band validated for this satellite.
+    pub signal_band: SignalBand,
+    /// Explicit signal code validated for this satellite.
+    pub signal_code: SignalCode,
     /// Injected Doppler shift in Hz.
     pub injected_doppler_hz: f64,
     /// Expected acquisition Doppler after the common receiver clock bias is applied, in Hz.

@@ -50,6 +50,12 @@ fn acquisition_truth_table_matches_low_rate_reference_fixture() {
     {
         assert_eq!(actual_satellite.sat, expected_satellite.sat);
         assert_eq!(
+            actual_satellite.glonass_frequency_channel,
+            expected_satellite.glonass_frequency_channel
+        );
+        assert_eq!(actual_satellite.signal_band, expected_satellite.signal_band);
+        assert_eq!(actual_satellite.signal_code, expected_satellite.signal_code);
+        assert_eq!(
             actual_satellite.expected_code_phase_samples,
             expected_satellite.expected_code_phase_samples
         );
