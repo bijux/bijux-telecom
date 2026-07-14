@@ -89,6 +89,8 @@ const TRACKING_UNCERTAINTY_WINDOW_EPOCHS: usize = 8;
 const SAMPLE_RATE_MISMATCH_CATASTROPHIC_PHASE_STEP_MULTIPLIER: f64 = 8.0;
 const LOW_RESOLUTION_DLL_MIN_SAMPLE_SEPARATION: f64 = 1.0;
 const JOINT_COMPONENT_MIN_PROMPT_RATIO: f32 = 0.35;
+const CARRIER_AID_MIN_DOPPLER_WINDOW_HZ: f64 = 25_000.0;
+const CARRIER_AID_DOPPLER_WINDOW_MARGIN_HZ: f64 = 500.0;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChannelState {
     Idle,
@@ -275,6 +277,13 @@ struct TrackingStartContext {
     acquisition_carrier_hz: f64,
     acquisition_cn0_proxy_dbhz: f64,
     acq_to_track_state: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct CarrierAidingReference {
+    tracked_carrier_hz: f64,
+    tracked_doppler_hz: f64,
+    code_rate_hz: f64,
 }
 
 #[derive(Debug, Clone)]
@@ -1040,17 +1049,32 @@ impl Tracking {
             acquisition.signal_code,
             acquisition.glonass_frequency_channel,
         );
+        let acquisition_carrier_hz =
+            normalize_acquisition_carrier_hz(&self.config, &signal_model, acquisition);
+        if let Err(reason) =
+            carrier_aiding_reference(&self.config, &signal_model, acquisition_carrier_hz)
+        {
+            self.runtime.trace.record(TraceRecord {
+                name: "tracking_acquisition_refused",
+                fields: vec![
+                    ("constellation", format!("{:?}", acquisition.sat.constellation)),
+                    ("prn", acquisition.sat.prn.to_string()),
+                    ("signal_band", format!("{:?}", acquisition.signal_band)),
+                    ("signal_code", format!("{:?}", acquisition.signal_code)),
+                    ("reason", reason.to_string()),
+                    ("acquisition_carrier_hz", format!("{acquisition_carrier_hz:.3}")),
+                    ("acquisition_doppler_hz", format!("{:.3}", acquisition.doppler_hz.0)),
+                ],
+            });
+            return None;
+        }
         Some(TrackingStartContext {
             seed: acquisition.tracking_seed(),
             acquisition_hypothesis: acquisition.hypothesis.to_string(),
             acquisition_hypothesis_rank: acquisition_hypothesis_rank(acquisition.hypothesis),
             acquisition_score: acquisition.score,
             acquisition_code_phase_samples: acquisition.code_phase_samples,
-            acquisition_carrier_hz: normalize_acquisition_carrier_hz(
-                &self.config,
-                &signal_model,
-                acquisition,
-            ),
+            acquisition_carrier_hz,
             acquisition_cn0_proxy_dbhz: acquisition.cn0_proxy as f64,
             acq_to_track_state: acq_to_track_state(&acquisition.hypothesis).to_string(),
         })
@@ -2772,16 +2796,9 @@ fn carrier_aided_code_rate_hz(
     signal_model: &TrackingSignalModel,
     tracked_carrier_hz: f64,
 ) -> f64 {
-    shared_path_code_rate_hz(
-        tracked_signal_doppler_hz(
-            config.intermediate_freq_hz,
-            tracked_carrier_hz,
-            signal_model.signal_spec,
-        ),
-        signal_model.signal_spec,
-        signal_model.signal_spec,
-    )
-    .unwrap_or(signal_model.code_rate_hz)
+    carrier_aiding_reference(config, signal_model, tracked_carrier_hz)
+        .map(|reference| reference.code_rate_hz)
+        .unwrap_or(signal_model.code_rate_hz)
 }
 
 fn next_code_rate_reference_hz(
@@ -2796,6 +2813,41 @@ fn next_code_rate_reference_hz(
     } else {
         previous_reference_hz
     }
+}
+
+fn carrier_aiding_reference(
+    config: &ReceiverPipelineConfig,
+    signal_model: &TrackingSignalModel,
+    tracked_carrier_hz: f64,
+) -> Result<CarrierAidingReference, &'static str> {
+    let tracked_doppler_hz = tracked_signal_doppler_hz(
+        config.intermediate_freq_hz,
+        tracked_carrier_hz,
+        signal_model.signal_spec,
+    );
+    if !tracked_carrier_hz.is_finite() || !tracked_doppler_hz.is_finite() {
+        return Err("carrier_aiding_non_finite_seed");
+    }
+    if tracked_doppler_hz.abs() > carrier_aiding_doppler_window_hz(config) {
+        return Err("carrier_aiding_incompatible_signal_center");
+    }
+    let Some(code_rate_hz) = shared_path_code_rate_hz(
+        tracked_doppler_hz,
+        signal_model.signal_spec,
+        signal_model.signal_spec,
+    ) else {
+        return Err("carrier_aiding_invalid_signal_metadata");
+    };
+    if !code_rate_hz.is_finite() || code_rate_hz <= 0.0 {
+        return Err("carrier_aiding_invalid_code_rate");
+    }
+    Ok(CarrierAidingReference { tracked_carrier_hz, tracked_doppler_hz, code_rate_hz })
+}
+
+fn carrier_aiding_doppler_window_hz(config: &ReceiverPipelineConfig) -> f64 {
+    (config.acquisition_doppler_search_hz.unsigned_abs() as f64
+        + CARRIER_AID_DOPPLER_WINDOW_MARGIN_HZ)
+        .max(CARRIER_AID_MIN_DOPPLER_WINDOW_HZ)
 }
 
 fn frame_slice(frame: &SamplesFrame, start: usize, end: usize) -> SamplesFrame {
@@ -5387,6 +5439,54 @@ mod tests {
     }
 
     #[test]
+    fn begin_incremental_tracking_refuses_incompatible_carrier_aiding_seed() {
+        let config = crate::engine::receiver_config::ReceiverPipelineConfig {
+            intermediate_freq_hz: GPS_L1_CA_CARRIER_HZ.value()
+                - signal_spec_gps_l5_i().carrier_hz.value(),
+            code_freq_basis_hz: 10_230_000.0,
+            code_length: 10_230,
+            ..crate::engine::receiver_config::ReceiverPipelineConfig::default()
+        };
+        let tracking = Tracking::new(config, ReceiverRuntime::default());
+        let acquisition = bijux_gnss_core::api::AcqResult {
+            sat: SatId { constellation: Constellation::Gps, prn: 18 },
+            signal_band: SignalBand::L5,
+            signal_code: SignalCode::L5I,
+            glonass_frequency_channel: None,
+            source_time: ReceiverSampleTrace::default(),
+            candidate_rank: 1,
+            is_primary_candidate: true,
+            doppler_hz: Hertz(1_500.0),
+            doppler_rate_hz_per_s: 0.0,
+            carrier_hz: Hertz(GPS_L1_CA_CARRIER_HZ.value() + 1_500.0),
+            code_phase_samples: 37,
+            peak: 1.0,
+            second_peak: 0.1,
+            mean: 0.01,
+            peak_mean_ratio: 8.0,
+            peak_second_ratio: 3.0,
+            cn0_proxy: 48.0,
+            score: 5.0,
+            hypothesis: AcqHypothesis::Accepted,
+            assumptions: None,
+            evidence: Vec::new(),
+            threshold_provenance: None,
+            explain_selection_reason: None,
+            doppler_refinement: None,
+            code_phase_refinement: None,
+            signal_delay_alignment: None,
+            uncertainty: None,
+        };
+
+        let incremental = tracking.begin_incremental_tracking(&[acquisition]);
+
+        assert!(
+            incremental.channels.is_empty(),
+            "wrong-band carrier seeds must not enter carrier-aided tracking: {incremental:?}",
+        );
+    }
+
+    #[test]
     fn tracking_signal_model_uses_registry_metadata_for_gps_l5q() {
         let config = crate::engine::receiver_config::ReceiverPipelineConfig {
             code_freq_basis_hz: 10_230_000.0,
@@ -5576,6 +5676,34 @@ mod tests {
             + (875.0 * signal_model.code_rate_hz / signal_model.signal_spec.carrier_hz.value());
 
         assert!((aided_code_rate_hz - expected).abs() <= 1.0e-9);
+    }
+
+    #[test]
+    fn carrier_aiding_reference_rejects_cross_band_center() {
+        let config = crate::engine::receiver_config::ReceiverPipelineConfig {
+            intermediate_freq_hz: GPS_L1_CA_CARRIER_HZ.value()
+                - signal_spec_gps_l5_i().carrier_hz.value(),
+            code_freq_basis_hz: 10_230_000.0,
+            code_length: 10_230,
+            ..crate::engine::receiver_config::ReceiverPipelineConfig::default()
+        };
+        let sat = SatId { constellation: Constellation::Gps, prn: 18 };
+        let signal_model = super::TrackingSignalModel::for_sat_signal_band(
+            &config,
+            sat,
+            SignalBand::L5,
+            SignalCode::L5I,
+            None,
+        );
+
+        let error = super::carrier_aiding_reference(
+            &config,
+            &signal_model,
+            GPS_L1_CA_CARRIER_HZ.value() + 875.0,
+        )
+        .expect_err("GPS L1 carrier must not aid a GPS L5 code loop");
+
+        assert_eq!(error, "carrier_aiding_incompatible_signal_center");
     }
 
     #[test]
