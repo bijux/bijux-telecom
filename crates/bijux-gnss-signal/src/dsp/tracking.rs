@@ -924,9 +924,16 @@ pub fn double_delta_dll_discriminator(
     outer_early: Complex<f32>,
     outer_late: Complex<f32>,
 ) -> f32 {
-    let inner = dll_discriminator_from_early_late(inner_early, inner_late);
-    let outer = dll_discriminator_from_early_late(outer_early, outer_late);
-    (inner - DOUBLE_DELTA_OUTER_WEIGHT * outer).clamp(-1.0, 1.0)
+    let inner_early_norm = inner_early.norm();
+    let inner_late_norm = inner_late.norm();
+    let denominator = inner_early_norm + inner_late_norm;
+    if denominator <= f32::EPSILON {
+        return 0.0;
+    }
+    let inner_difference = inner_early_norm - inner_late_norm;
+    let outer_difference = outer_early.norm() - outer_late.norm();
+    ((inner_difference - DOUBLE_DELTA_OUTER_WEIGHT * outer_difference) / denominator)
+        .clamp(-1.0, 1.0)
 }
 
 /// Normalize a noncoherent early-minus-late DLL discriminator to the legacy 0.5-chip loop gain.
@@ -2251,7 +2258,7 @@ mod tests {
             super::double_delta_dll_discriminator(inner_early, inner_late, outer_early, outer_late);
 
         assert!(double_delta.abs() < early_late.abs());
-        assert!((double_delta - 0.083_333_34).abs() <= f32::EPSILON);
+        assert!((double_delta - 0.166_666_67).abs() <= f32::EPSILON);
     }
 
     #[test]
