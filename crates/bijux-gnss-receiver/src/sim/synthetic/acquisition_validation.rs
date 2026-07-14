@@ -951,6 +951,183 @@ pub fn measure_truth_guided_acquisition_detection_rate(
     }
 }
 
+/// Build deterministic operating-envelope cases for every acquisition-supported signal.
+pub fn default_supported_acquisition_operating_envelope_signal_cases(
+) -> Vec<SyntheticAcquisitionOperatingEnvelopeSignalCase> {
+    crate::engine::support_matrix::build_support_matrix()
+        .rows
+        .into_iter()
+        .filter(|row| row.stage_support.acquisition == crate::api::core::SupportStatus::Supported)
+        .map(default_supported_acquisition_operating_envelope_signal_case)
+        .collect()
+}
+
+/// Measure per-signal acquisition operating envelopes across supported sweep axes.
+pub fn measure_truth_guided_acquisition_operating_envelopes(
+    cases: &[SyntheticAcquisitionOperatingEnvelopeSignalCase],
+    trial_seeds: &[u64],
+    scenario_id_prefix: &str,
+    code_phase_tolerance_samples: usize,
+    doppler_tolerance_bins: usize,
+) -> SyntheticAcquisitionOperatingEnvelopeReport {
+    let signals = cases
+        .iter()
+        .map(|case| {
+            measure_truth_guided_acquisition_operating_envelope_signal(
+                case,
+                trial_seeds,
+                scenario_id_prefix,
+                code_phase_tolerance_samples,
+                doppler_tolerance_bins,
+            )
+        })
+        .collect::<Vec<_>>();
+
+    SyntheticAcquisitionOperatingEnvelopeReport {
+        scenario_id_prefix: scenario_id_prefix.to_string(),
+        code_phase_tolerance_samples,
+        doppler_tolerance_bins,
+        signals,
+    }
+}
+
+fn default_supported_acquisition_operating_envelope_signal_case(
+    row: bijux_gnss_core::api::SignalSupportRow,
+) -> SyntheticAcquisitionOperatingEnvelopeSignalCase {
+    let signal = default_operating_envelope_signal_seed(
+        row.constellation,
+        row.band,
+        row.code,
+        default_operating_envelope_glonass_frequency_channel(row.constellation),
+    );
+    let config = default_operating_envelope_config_for_signal(
+        signal.sat,
+        signal.signal_band,
+        signal.signal_code,
+        signal.glonass_frequency_channel,
+    );
+    let integration_profiles = default_operating_envelope_integration_profiles(&config, &signal);
+    let code_length = config.code_length.max(1) as f64;
+    let shifted_code_phase_chips =
+        wrap_code_phase_chips(signal.code_phase_chips + (code_length / 3.0), code_length);
+    let acquisition_doppler_step_hz = config.acquisition_doppler_step_hz;
+
+    SyntheticAcquisitionOperatingEnvelopeSignalCase {
+        config,
+        signal: signal.clone(),
+        integration_profiles,
+        cn0_db_hz_points: vec![signal.cn0_db_hz - 8.0, signal.cn0_db_hz],
+        doppler_hz_points: vec![
+            0.0,
+            baseline_profile_doppler_offset_hz(&signal, acquisition_doppler_step_hz),
+        ],
+        receiver_clock_frequency_bias_hz_points: vec![0.0, acquisition_doppler_step_hz as f64],
+        code_phase_chips_points: vec![signal.code_phase_chips, shifted_code_phase_chips],
+    }
+}
+
+fn measure_truth_guided_acquisition_operating_envelope_signal(
+    case: &SyntheticAcquisitionOperatingEnvelopeSignalCase,
+    trial_seeds: &[u64],
+    scenario_id_prefix: &str,
+    code_phase_tolerance_samples: usize,
+    doppler_tolerance_bins: usize,
+) -> SyntheticAcquisitionOperatingEnvelopeSignalReport {
+    let baseline_profile = operating_envelope_baseline_integration_profile(case);
+    let mut false_alarm_cache = BTreeMap::new();
+    for profile in operating_envelope_effective_integration_profiles(case) {
+        false_alarm_cache.insert(
+            (profile.coherent_ms, profile.noncoherent),
+            measure_targeted_noise_only_acquisition_false_alarm_profile(
+                &case.config,
+                &case.signal,
+                profile.coherent_ms,
+                profile.noncoherent,
+                trial_seeds,
+                &operating_envelope_false_alarm_case_id(scenario_id_prefix, &case.signal, profile),
+            ),
+        );
+    }
+
+    let points = operating_envelope_variants(case, baseline_profile)
+        .into_iter()
+        .map(|variant| {
+            let profile_config = operating_envelope_profile_config(
+                &case.config,
+                variant.coherent_ms,
+                variant.noncoherent,
+            );
+            let trials = measure_truth_guided_targeted_acquisition_sensitivity_trials(
+                &profile_config,
+                &variant.signal,
+                variant.receiver_clock_frequency_bias_hz,
+                trial_seeds,
+                &operating_envelope_point_case_id(
+                    scenario_id_prefix,
+                    variant.axis,
+                    &variant.signal,
+                    variant.coherent_ms,
+                    variant.noncoherent,
+                    variant.receiver_clock_frequency_bias_hz,
+                ),
+                code_phase_tolerance_samples,
+                doppler_tolerance_bins,
+            );
+            let sensitivity = synthetic_acquisition_sensitivity_report(
+                scenario_id_prefix,
+                variant.signal.sat,
+                Some(variant.signal.cn0_db_hz),
+                variant.coherent_ms,
+                variant.noncoherent,
+                code_phase_tolerance_samples,
+                doppler_tolerance_bins,
+                profile_config.acquisition_doppler_step_hz.max(1),
+                trials,
+            );
+            let false_alarm = false_alarm_cache
+                .get(&(variant.coherent_ms, variant.noncoherent))
+                .expect("operating envelope false-alarm profile");
+
+            SyntheticAcquisitionOperatingEnvelopePoint {
+                axis: variant.axis,
+                sat: variant.signal.sat,
+                signal_band: variant.signal.signal_band,
+                signal_code: variant.signal.signal_code,
+                glonass_frequency_channel: variant.signal.glonass_frequency_channel,
+                cn0_db_hz: variant.signal.cn0_db_hz,
+                coherent_ms: variant.coherent_ms,
+                noncoherent: variant.noncoherent,
+                doppler_hz: variant.signal.doppler_hz,
+                receiver_clock_frequency_bias_hz: variant.receiver_clock_frequency_bias_hz,
+                code_phase_chips: variant.signal.code_phase_chips,
+                trial_count: sensitivity.trial_count,
+                accepted_count: sensitivity.accepted_count,
+                detected_count: sensitivity.detected_count,
+                false_alarm_trial_count: false_alarm.trial_count,
+                false_alarm_count: false_alarm.false_alarm_count,
+                acceptance_probability: sensitivity.acceptance_probability,
+                detection_probability: sensitivity.detection_probability,
+                false_alarm_rate: false_alarm.false_alarm_rate,
+                mean_peak_mean_ratio: sensitivity.mean_peak_mean_ratio,
+            }
+        })
+        .collect::<Vec<_>>();
+
+    SyntheticAcquisitionOperatingEnvelopeSignalReport {
+        sat: case.signal.sat,
+        signal_band: case.signal.signal_band,
+        signal_code: case.signal.signal_code,
+        glonass_frequency_channel: case.signal.glonass_frequency_channel,
+        sampling_freq_hz: case.config.sampling_freq_hz,
+        intermediate_freq_hz: case.config.intermediate_freq_hz,
+        code_freq_basis_hz: case.config.code_freq_basis_hz,
+        code_length: case.config.code_length,
+        acquisition_doppler_search_hz: case.config.acquisition_doppler_search_hz,
+        acquisition_doppler_step_hz: case.config.acquisition_doppler_step_hz.max(1),
+        points,
+    }
+}
+
 fn measure_truth_guided_acquisition_sensitivity_trials(
     config: &ReceiverPipelineConfig,
     signal: &SyntheticSignalParams,
@@ -960,11 +1137,10 @@ fn measure_truth_guided_acquisition_sensitivity_trials(
     code_phase_tolerance_samples: usize,
     doppler_tolerance_bins: usize,
 ) -> Vec<SyntheticAcquisitionSensitivityTrial> {
-    let duration_s = (config
-        .acquisition_integration_ms
-        .saturating_mul(config.acquisition_noncoherent)
-        .max(1) as f64)
-        / 1000.0;
+    let duration_s =
+        (config.acquisition_integration_ms.saturating_mul(config.acquisition_noncoherent).max(1)
+            as f64)
+            / 1000.0;
 
     trial_seeds
         .iter()
@@ -1016,6 +1192,66 @@ fn measure_truth_guided_acquisition_sensitivity_trials(
         .collect()
 }
 
+fn measure_truth_guided_targeted_acquisition_sensitivity_trials(
+    config: &ReceiverPipelineConfig,
+    signal: &SyntheticSignalParams,
+    receiver_clock_frequency_bias_hz: f64,
+    trial_seeds: &[u64],
+    scenario_id_prefix: &str,
+    code_phase_tolerance_samples: usize,
+    doppler_tolerance_bins: usize,
+) -> Vec<SyntheticAcquisitionSensitivityTrial> {
+    let duration_s =
+        (config.acquisition_integration_ms.saturating_mul(config.acquisition_noncoherent).max(1)
+            as f64)
+            / 1000.0;
+
+    trial_seeds
+        .iter()
+        .enumerate()
+        .map(|(trial_index, seed)| {
+            let scenario_id = format!("{scenario_id_prefix}_trial_{trial_index}");
+            let scenario = SyntheticScenario {
+                sample_rate_hz: config.sampling_freq_hz,
+                intermediate_freq_hz: config.intermediate_freq_hz,
+                receiver_clock_frequency_bias_hz,
+                duration_s,
+                seed: *seed,
+                satellites: vec![signal.clone()],
+                ephemerides: Vec::new(),
+                id: scenario_id.clone(),
+            };
+            let scaled_frame = scaled_synthetic_acquisition_frame(
+                config,
+                &scenario,
+                "synthetic targeted acquisition sensitivity trial",
+            );
+            let result = acquisition_result_for_target_signal(config, &scaled_frame, signal);
+            let trial = acquisition_trial_measurement_from_result(
+                config,
+                &scaled_frame,
+                signal,
+                result,
+                signal.doppler_hz + receiver_clock_frequency_bias_hz,
+                code_phase_tolerance_samples,
+                doppler_tolerance_bins,
+            );
+
+            SyntheticAcquisitionSensitivityTrial {
+                scenario_id,
+                seed: *seed,
+                sat: signal.sat,
+                hypothesis: trial.hypothesis,
+                accepted: trial.accepted,
+                detected: trial.detected,
+                code_phase_error_samples: trial.code_phase_error_samples,
+                doppler_error_bins: trial.doppler_error_bins,
+                peak_mean_ratio: trial.peak_mean_ratio,
+            }
+        })
+        .collect()
+}
+
 #[derive(Debug, Clone)]
 struct SyntheticAcquisitionTrialMeasurement {
     hypothesis: String,
@@ -1024,6 +1260,22 @@ struct SyntheticAcquisitionTrialMeasurement {
     code_phase_error_samples: Option<usize>,
     doppler_error_bins: Option<f64>,
     peak_mean_ratio: f32,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct SyntheticAcquisitionFalseAlarmProfileMeasurement {
+    trial_count: usize,
+    false_alarm_count: usize,
+    false_alarm_rate: f64,
+}
+
+#[derive(Debug, Clone)]
+struct SyntheticAcquisitionOperatingEnvelopeVariant {
+    axis: SyntheticAcquisitionOperatingEnvelopeAxis,
+    signal: SyntheticSignalParams,
+    coherent_ms: u32,
+    noncoherent: u32,
+    receiver_clock_frequency_bias_hz: f64,
 }
 
 const GAUSSIAN_ONE_SIGMA_COVERAGE_RATE: f64 = 0.682_689_492_137_085_9;
@@ -1077,8 +1329,7 @@ fn measure_truth_guided_acquisition_interference_point(
     let mut profile_config = config.clone();
     profile_config.acquisition_integration_ms = case.coherent_ms;
     profile_config.acquisition_noncoherent = case.noncoherent;
-    let duration_s =
-        (case.coherent_ms.saturating_mul(case.noncoherent).max(1) as f64) / 1000.0;
+    let duration_s = (case.coherent_ms.saturating_mul(case.noncoherent).max(1) as f64) / 1000.0;
 
     let trials = trial_seeds
         .iter()
@@ -1158,8 +1409,11 @@ fn measure_truth_guided_acquisition_interference_point(
                 code_phase_tolerance_samples,
                 doppler_tolerance_bins,
             );
-            let thermal_noise =
-                measure_target_absent_acquisition_trial(&profile_config, &thermal_noise_frame, &case.target_signal);
+            let thermal_noise = measure_target_absent_acquisition_trial(
+                &profile_config,
+                &thermal_noise_frame,
+                &case.target_signal,
+            );
             let interference_only = measure_target_absent_acquisition_trial(
                 &profile_config,
                 &interference_only_frame,
@@ -1208,7 +1462,8 @@ fn measure_truth_guided_acquisition_interference_point(
 
     let trial_count = trials.len();
     let isolated_detection_count = trials.iter().filter(|trial| trial.isolated_detected).count();
-    let interfered_detection_count = trials.iter().filter(|trial| trial.interfered_detected).count();
+    let interfered_detection_count =
+        trials.iter().filter(|trial| trial.interfered_detected).count();
     let thermal_noise_failure_count = trials
         .iter()
         .filter(|trial| {
@@ -1230,10 +1485,7 @@ fn measure_truth_guided_acquisition_interference_point(
     let thermal_noise_false_alarm_count = trials
         .iter()
         .filter(|trial| {
-            matches!(
-                trial.false_alarm_class,
-                SyntheticAcquisitionFalseAlarmClass::ThermalNoise
-            )
+            matches!(trial.false_alarm_class, SyntheticAcquisitionFalseAlarmClass::ThermalNoise)
         })
         .count();
     let cross_signal_false_alarm_count = trials
@@ -1245,12 +1497,10 @@ fn measure_truth_guided_acquisition_interference_point(
             )
         })
         .count();
-    let mean_isolated_peak_mean_ratio = mean_peak_mean_ratio(
-        trials.iter().map(|trial| trial.isolated_peak_mean_ratio),
-    );
-    let mean_interfered_peak_mean_ratio = mean_peak_mean_ratio(
-        trials.iter().map(|trial| trial.interfered_peak_mean_ratio),
-    );
+    let mean_isolated_peak_mean_ratio =
+        mean_peak_mean_ratio(trials.iter().map(|trial| trial.isolated_peak_mean_ratio));
+    let mean_interfered_peak_mean_ratio =
+        mean_peak_mean_ratio(trials.iter().map(|trial| trial.interfered_peak_mean_ratio));
     let isolated_detection_probability = probability(isolated_detection_count, trial_count);
     let interfered_detection_probability = probability(interfered_detection_count, trial_count);
 
@@ -1265,7 +1515,8 @@ fn measure_truth_guided_acquisition_interference_point(
         cross_signal_false_alarm_count,
         isolated_detection_probability,
         interfered_detection_probability,
-        detection_probability_loss: isolated_detection_probability - interfered_detection_probability,
+        detection_probability_loss: isolated_detection_probability
+            - interfered_detection_probability,
         thermal_noise_false_alarm_rate: probability(thermal_noise_false_alarm_count, trial_count),
         cross_signal_false_alarm_rate: probability(cross_signal_false_alarm_count, trial_count),
         mean_isolated_peak_mean_ratio,
@@ -1484,10 +1735,8 @@ pub fn measure_synthetic_acquisition_uncertainty_coverage(
                 .collect::<Vec<_>>();
             let successful_trial_count =
                 trials.iter().filter(|trial| trial.reported_doppler_sigma_hz.is_some()).count();
-            let doppler_within_one_sigma_count = trials
-                .iter()
-                .filter(|trial| trial.doppler_within_one_sigma == Some(true))
-                .count();
+            let doppler_within_one_sigma_count =
+                trials.iter().filter(|trial| trial.doppler_within_one_sigma == Some(true)).count();
             let code_phase_within_one_sigma_count = trials
                 .iter()
                 .filter(|trial| trial.code_phase_within_one_sigma == Some(true))
@@ -1613,6 +1862,373 @@ fn interference_case_id(
         case.coherent_ms,
         case.noncoherent,
     )
+}
+
+fn measure_targeted_noise_only_acquisition_false_alarm_profile(
+    config: &ReceiverPipelineConfig,
+    signal: &SyntheticSignalParams,
+    coherent_ms: u32,
+    noncoherent: u32,
+    trial_seeds: &[u64],
+    scenario_id_prefix: &str,
+) -> SyntheticAcquisitionFalseAlarmProfileMeasurement {
+    let profile_config = operating_envelope_profile_config(config, coherent_ms, noncoherent);
+    let duration_s = (coherent_ms.saturating_mul(noncoherent).max(1) as f64) / 1000.0;
+    let false_alarm_count = trial_seeds
+        .iter()
+        .enumerate()
+        .filter(|(trial_index, seed)| {
+            let scenario = SyntheticScenario {
+                sample_rate_hz: profile_config.sampling_freq_hz,
+                intermediate_freq_hz: profile_config.intermediate_freq_hz,
+                receiver_clock_frequency_bias_hz: 0.0,
+                duration_s,
+                seed: **seed,
+                satellites: Vec::new(),
+                ephemerides: Vec::new(),
+                id: format!("{scenario_id_prefix}_trial_{trial_index}"),
+            };
+            let scaled_frame = scaled_synthetic_acquisition_frame(
+                &profile_config,
+                &scenario,
+                "synthetic targeted acquisition false-alarm trial",
+            );
+            let result =
+                acquisition_result_for_target_signal(&profile_config, &scaled_frame, signal);
+            matches!(result.hypothesis, crate::api::core::AcqHypothesis::Accepted)
+        })
+        .count();
+
+    SyntheticAcquisitionFalseAlarmProfileMeasurement {
+        trial_count: trial_seeds.len(),
+        false_alarm_count,
+        false_alarm_rate: probability(false_alarm_count, trial_seeds.len()),
+    }
+}
+
+fn default_operating_envelope_glonass_frequency_channel(
+    constellation: bijux_gnss_core::api::Constellation,
+) -> Option<bijux_gnss_core::api::GlonassFrequencyChannel> {
+    (constellation == bijux_gnss_core::api::Constellation::Glonass).then(|| {
+        bijux_gnss_core::api::GlonassFrequencyChannel::new(-4)
+            .expect("GLONASS operating-envelope channel -4 must be valid")
+    })
+}
+
+fn default_operating_envelope_signal_seed(
+    constellation: bijux_gnss_core::api::Constellation,
+    signal_band: SignalBand,
+    signal_code: SignalCode,
+    glonass_frequency_channel: Option<GlonassFrequencyChannel>,
+) -> SyntheticSignalParams {
+    let sat = match constellation {
+        bijux_gnss_core::api::Constellation::Gps => {
+            let prn = if signal_band == SignalBand::L5 && signal_code == SignalCode::L5Q {
+                24
+            } else if signal_band == SignalBand::L5 {
+                12
+            } else {
+                7
+            };
+            SatId { constellation, prn }
+        }
+        bijux_gnss_core::api::Constellation::Galileo => SatId { constellation, prn: 11 },
+        bijux_gnss_core::api::Constellation::Beidou => SatId { constellation, prn: 11 },
+        bijux_gnss_core::api::Constellation::Glonass => bijux_gnss_core::api::glonass_slot_sat(
+            bijux_gnss_core::api::GlonassSlot::new(8)
+                .expect("GLONASS operating-envelope slot 8 must be valid"),
+        ),
+        _ => SatId { constellation, prn: 7 },
+    };
+    let code_phase_chips = match (constellation, signal_band, signal_code) {
+        (bijux_gnss_core::api::Constellation::Gps, SignalBand::L1, SignalCode::Ca) => 300.0,
+        (bijux_gnss_core::api::Constellation::Gps, SignalBand::L5, _) => 2_048.375,
+        (bijux_gnss_core::api::Constellation::Galileo, SignalBand::E1, SignalCode::E1B) => 321.0,
+        (bijux_gnss_core::api::Constellation::Galileo, SignalBand::E5, _) => 2_048.375,
+        (bijux_gnss_core::api::Constellation::Beidou, SignalBand::B1, SignalCode::B1I)
+        | (bijux_gnss_core::api::Constellation::Beidou, SignalBand::B2, SignalCode::B2I) => 321.375,
+        (bijux_gnss_core::api::Constellation::Glonass, SignalBand::L1, SignalCode::Unknown) => {
+            147.25
+        }
+        _ => 256.0,
+    };
+
+    SyntheticSignalParams {
+        sat,
+        glonass_frequency_channel,
+        signal_band,
+        signal_code,
+        doppler_hz: 0.0,
+        code_phase_chips,
+        carrier_phase_rad: 0.25,
+        cn0_db_hz: 38.0,
+        navigation_data: false.into(),
+    }
+}
+
+fn default_operating_envelope_config_for_signal(
+    sat: SatId,
+    signal_band: SignalBand,
+    signal_code: SignalCode,
+    glonass_frequency_channel: Option<GlonassFrequencyChannel>,
+) -> ReceiverPipelineConfig {
+    let mut config = ReceiverPipelineConfig::default();
+    config.acquisition_doppler_search_hz = 1_500;
+    config.channels = 4;
+    config.tracking_budget_ms = 100.0;
+    config.tracking_over_budget_action = "continue".to_string();
+
+    match (sat.constellation, signal_band, signal_code) {
+        (bijux_gnss_core::api::Constellation::Gps, SignalBand::L1, SignalCode::Ca) => {
+            config.sampling_freq_hz = 4_092_000.0;
+            config.intermediate_freq_hz = 0.0;
+            config.code_freq_basis_hz = 1_023_000.0;
+            config.code_length = 1_023;
+            config.acquisition_doppler_step_hz = 250;
+            config.acquisition_integration_ms = 1;
+            config.acquisition_noncoherent = 1;
+        }
+        (bijux_gnss_core::api::Constellation::Gps, SignalBand::L5, SignalCode::L5I)
+        | (bijux_gnss_core::api::Constellation::Gps, SignalBand::L5, SignalCode::L5Q)
+        | (bijux_gnss_core::api::Constellation::Galileo, SignalBand::E5, SignalCode::E5a)
+        | (bijux_gnss_core::api::Constellation::Galileo, SignalBand::E5, SignalCode::E5b) => {
+            config.sampling_freq_hz = 10_230_000.0;
+            config.intermediate_freq_hz = 0.0;
+            config.code_freq_basis_hz = 10_230_000.0;
+            config.code_length = 10_230;
+            config.acquisition_doppler_step_hz = 250;
+            config.acquisition_integration_ms = 1;
+            config.acquisition_noncoherent = 1;
+        }
+        (bijux_gnss_core::api::Constellation::Galileo, SignalBand::E1, SignalCode::E1B) => {
+            config.sampling_freq_hz = 4_092_000.0;
+            config.intermediate_freq_hz = 0.0;
+            config.code_freq_basis_hz = 1_023_000.0;
+            config.code_length = 4_092;
+            config.acquisition_doppler_step_hz = 500;
+            config.acquisition_integration_ms = 20;
+            config.acquisition_noncoherent = 1;
+        }
+        (bijux_gnss_core::api::Constellation::Beidou, SignalBand::B1, SignalCode::B1I) => {
+            config.sampling_freq_hz = 4_092_000.0;
+            config.intermediate_freq_hz = bijux_gnss_core::api::GPS_L1_CA_CARRIER_HZ.value()
+                - bijux_gnss_core::api::BEIDOU_B1_CARRIER_HZ.value();
+            config.code_freq_basis_hz = 2_046_000.0;
+            config.code_length = 2_046;
+            config.acquisition_doppler_step_hz = 250;
+            config.acquisition_integration_ms = 1;
+            config.acquisition_noncoherent = 1;
+        }
+        (bijux_gnss_core::api::Constellation::Beidou, SignalBand::B2, SignalCode::B2I) => {
+            config.sampling_freq_hz = 4_092_000.0;
+            config.intermediate_freq_hz = 0.0;
+            config.code_freq_basis_hz = 2_046_000.0;
+            config.code_length = 2_046;
+            config.acquisition_doppler_step_hz = 500;
+            config.acquisition_integration_ms = 1;
+            config.acquisition_noncoherent = 1;
+        }
+        (bijux_gnss_core::api::Constellation::Glonass, SignalBand::L1, SignalCode::Unknown) => {
+            let channel = glonass_frequency_channel
+                .expect("GLONASS operating-envelope signal requires channel");
+            config.sampling_freq_hz = 2_044_000.0;
+            config.intermediate_freq_hz = bijux_gnss_core::api::GPS_L1_CA_CARRIER_HZ.value()
+                - bijux_gnss_signal::api::glonass_l1_carrier_hz(channel).value();
+            config.code_freq_basis_hz = 511_000.0;
+            config.code_length = 511;
+            config.acquisition_doppler_step_hz = 250;
+            config.acquisition_integration_ms = 1;
+            config.acquisition_noncoherent = 1;
+            config.channels = 2;
+        }
+        _ => panic!(
+            "unsupported operating-envelope acquisition signal {:?} {:?} {:?}",
+            sat.constellation, signal_band, signal_code
+        ),
+    }
+
+    config
+}
+
+fn default_operating_envelope_integration_profiles(
+    config: &ReceiverPipelineConfig,
+    signal: &SyntheticSignalParams,
+) -> Vec<SyntheticAcquisitionIntegrationProfile> {
+    let mut profiles = vec![SyntheticAcquisitionIntegrationProfile {
+        coherent_ms: config.acquisition_integration_ms,
+        noncoherent: config.acquisition_noncoherent,
+    }];
+    let comparison_profile =
+        match (signal.sat.constellation, signal.signal_band, signal.signal_code) {
+            (bijux_gnss_core::api::Constellation::Galileo, SignalBand::E1, SignalCode::E1B) => {
+                SyntheticAcquisitionIntegrationProfile { coherent_ms: 4, noncoherent: 1 }
+            }
+            _ => SyntheticAcquisitionIntegrationProfile { coherent_ms: 5, noncoherent: 1 },
+        };
+    if !profiles.contains(&comparison_profile) {
+        profiles.push(comparison_profile);
+    }
+    profiles
+}
+
+fn baseline_profile_doppler_offset_hz(
+    _signal: &SyntheticSignalParams,
+    acquisition_doppler_step_hz: i32,
+) -> f64 {
+    acquisition_doppler_step_hz.max(1) as f64 / 2.0
+}
+
+fn operating_envelope_baseline_integration_profile(
+    case: &SyntheticAcquisitionOperatingEnvelopeSignalCase,
+) -> SyntheticAcquisitionIntegrationProfile {
+    case.integration_profiles.first().copied().unwrap_or(SyntheticAcquisitionIntegrationProfile {
+        coherent_ms: case.config.acquisition_integration_ms,
+        noncoherent: case.config.acquisition_noncoherent,
+    })
+}
+
+fn operating_envelope_effective_integration_profiles(
+    case: &SyntheticAcquisitionOperatingEnvelopeSignalCase,
+) -> Vec<SyntheticAcquisitionIntegrationProfile> {
+    if case.integration_profiles.is_empty() {
+        vec![operating_envelope_baseline_integration_profile(case)]
+    } else {
+        case.integration_profiles.clone()
+    }
+}
+
+fn operating_envelope_profile_config(
+    config: &ReceiverPipelineConfig,
+    coherent_ms: u32,
+    noncoherent: u32,
+) -> ReceiverPipelineConfig {
+    let mut profile_config = config.clone();
+    profile_config.acquisition_integration_ms = coherent_ms;
+    profile_config.acquisition_noncoherent = noncoherent;
+    profile_config
+}
+
+fn operating_envelope_variants(
+    case: &SyntheticAcquisitionOperatingEnvelopeSignalCase,
+    baseline_profile: SyntheticAcquisitionIntegrationProfile,
+) -> Vec<SyntheticAcquisitionOperatingEnvelopeVariant> {
+    let mut variants = Vec::new();
+
+    for cn0_db_hz in &case.cn0_db_hz_points {
+        let mut signal = case.signal.clone();
+        signal.cn0_db_hz = *cn0_db_hz;
+        variants.push(SyntheticAcquisitionOperatingEnvelopeVariant {
+            axis: SyntheticAcquisitionOperatingEnvelopeAxis::Cn0DbHz,
+            signal,
+            coherent_ms: baseline_profile.coherent_ms,
+            noncoherent: baseline_profile.noncoherent,
+            receiver_clock_frequency_bias_hz: 0.0,
+        });
+    }
+    for profile in operating_envelope_effective_integration_profiles(case) {
+        variants.push(SyntheticAcquisitionOperatingEnvelopeVariant {
+            axis: SyntheticAcquisitionOperatingEnvelopeAxis::IntegrationProfile,
+            signal: case.signal.clone(),
+            coherent_ms: profile.coherent_ms,
+            noncoherent: profile.noncoherent,
+            receiver_clock_frequency_bias_hz: 0.0,
+        });
+    }
+    for doppler_hz in &case.doppler_hz_points {
+        let mut signal = case.signal.clone();
+        signal.doppler_hz = *doppler_hz;
+        variants.push(SyntheticAcquisitionOperatingEnvelopeVariant {
+            axis: SyntheticAcquisitionOperatingEnvelopeAxis::DopplerHz,
+            signal,
+            coherent_ms: baseline_profile.coherent_ms,
+            noncoherent: baseline_profile.noncoherent,
+            receiver_clock_frequency_bias_hz: 0.0,
+        });
+    }
+    for receiver_clock_frequency_bias_hz in &case.receiver_clock_frequency_bias_hz_points {
+        variants.push(SyntheticAcquisitionOperatingEnvelopeVariant {
+            axis: SyntheticAcquisitionOperatingEnvelopeAxis::ReceiverClockFrequencyBiasHz,
+            signal: case.signal.clone(),
+            coherent_ms: baseline_profile.coherent_ms,
+            noncoherent: baseline_profile.noncoherent,
+            receiver_clock_frequency_bias_hz: *receiver_clock_frequency_bias_hz,
+        });
+    }
+    for code_phase_chips in &case.code_phase_chips_points {
+        let mut signal = case.signal.clone();
+        signal.code_phase_chips = *code_phase_chips;
+        variants.push(SyntheticAcquisitionOperatingEnvelopeVariant {
+            axis: SyntheticAcquisitionOperatingEnvelopeAxis::CodePhaseChips,
+            signal,
+            coherent_ms: baseline_profile.coherent_ms,
+            noncoherent: baseline_profile.noncoherent,
+            receiver_clock_frequency_bias_hz: 0.0,
+        });
+    }
+
+    variants
+}
+
+fn operating_envelope_point_case_id(
+    scenario_id_prefix: &str,
+    axis: SyntheticAcquisitionOperatingEnvelopeAxis,
+    signal: &SyntheticSignalParams,
+    coherent_ms: u32,
+    noncoherent: u32,
+    receiver_clock_frequency_bias_hz: f64,
+) -> String {
+    format!(
+        "{scenario_id_prefix}_{}_{}_{}_{}_channel_{:+03}_prn_{}_coherent_{}ms_noncoherent_{}_cn0_{:03}_doppler_{:+05}_clock_bias_{:+05}_code_phase_{:05}",
+        operating_envelope_axis_name(axis),
+        format!("{:?}", signal.sat.constellation).to_lowercase(),
+        format!("{:?}", signal.signal_band).to_lowercase(),
+        format!("{:?}", signal.signal_code).to_lowercase(),
+        signal
+            .glonass_frequency_channel
+            .map(|channel| channel.value())
+            .unwrap_or_default(),
+        signal.sat.prn,
+        coherent_ms,
+        noncoherent,
+        (signal.cn0_db_hz * 10.0).round() as i32,
+        signal.doppler_hz.round() as i32,
+        receiver_clock_frequency_bias_hz.round() as i32,
+        signal.code_phase_chips.round() as i32,
+    )
+}
+
+fn operating_envelope_false_alarm_case_id(
+    scenario_id_prefix: &str,
+    signal: &SyntheticSignalParams,
+    profile: SyntheticAcquisitionIntegrationProfile,
+) -> String {
+    format!(
+        "{scenario_id_prefix}_false_alarm_{}_{}_{}_{}_coherent_{}ms_noncoherent_{}",
+        format!("{:?}", signal.sat.constellation).to_lowercase(),
+        format!("{:?}", signal.signal_band).to_lowercase(),
+        format!("{:?}", signal.signal_code).to_lowercase(),
+        signal.sat.prn,
+        profile.coherent_ms,
+        profile.noncoherent,
+    )
+}
+
+fn operating_envelope_axis_name(axis: SyntheticAcquisitionOperatingEnvelopeAxis) -> &'static str {
+    match axis {
+        SyntheticAcquisitionOperatingEnvelopeAxis::Cn0DbHz => "cn0",
+        SyntheticAcquisitionOperatingEnvelopeAxis::IntegrationProfile => "integration",
+        SyntheticAcquisitionOperatingEnvelopeAxis::DopplerHz => "doppler",
+        SyntheticAcquisitionOperatingEnvelopeAxis::ReceiverClockFrequencyBiasHz => "clock_bias",
+        SyntheticAcquisitionOperatingEnvelopeAxis::CodePhaseChips => "code_phase",
+    }
+}
+
+fn wrap_code_phase_chips(code_phase_chips: f64, code_length: f64) -> f64 {
+    if code_length <= f64::EPSILON {
+        code_phase_chips
+    } else {
+        code_phase_chips.rem_euclid(code_length)
+    }
 }
 
 fn mean_peak_mean_ratio(values: impl Iterator<Item = f32>) -> f64 {
