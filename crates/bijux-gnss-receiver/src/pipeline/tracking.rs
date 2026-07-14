@@ -2003,8 +2003,13 @@ impl Tracking {
             apply_pll_frequency: !apply_fll
                 || (matches!(state.state, ChannelState::PullIn) && !raw_fll_lock),
         });
-        let code_rate_reference_hz =
-            carrier_aided_code_rate_hz(&self.config, signal_model, carrier_loop.carrier_hz);
+        let code_rate_reference_hz = next_code_rate_reference_hz(
+            &self.config,
+            signal_model,
+            carrier_loop.carrier_hz,
+            state.code_rate_reference_hz,
+            raw_fll_lock || sustained_pll_lock,
+        );
         let code_loop = apply_dll_code_loop(CodeLoopInput {
             current_code_rate_hz: state.code_rate_hz,
             previous_reference_code_rate_hz: state.code_rate_reference_hz,
@@ -2623,6 +2628,20 @@ fn carrier_aided_code_rate_hz(
         signal_model.signal_spec,
     )
     .unwrap_or(signal_model.code_rate_hz)
+}
+
+fn next_code_rate_reference_hz(
+    config: &ReceiverPipelineConfig,
+    signal_model: &TrackingSignalModel,
+    tracked_carrier_hz: f64,
+    previous_reference_hz: f64,
+    carrier_lock_ready: bool,
+) -> f64 {
+    if carrier_lock_ready {
+        carrier_aided_code_rate_hz(config, signal_model, tracked_carrier_hz)
+    } else {
+        previous_reference_hz
+    }
 }
 
 fn frame_slice(frame: &SamplesFrame, start: usize, end: usize) -> SamplesFrame {
@@ -5194,6 +5213,38 @@ mod tests {
             + (875.0 * signal_model.code_rate_hz / signal_model.signal_spec.carrier_hz.value());
 
         assert!((aided_code_rate_hz - expected).abs() <= 1.0e-9);
+    }
+
+    #[test]
+    fn next_code_rate_reference_hz_holds_previous_value_until_carrier_lock_is_ready() {
+        let config = crate::engine::receiver_config::ReceiverPipelineConfig {
+            code_freq_basis_hz: 10_230_000.0,
+            code_length: 10_230,
+            ..crate::engine::receiver_config::ReceiverPipelineConfig::default()
+        };
+        let sat = SatId { constellation: Constellation::Gps, prn: 18 };
+        let signal_model = super::TrackingSignalModel::for_sat_signal_band(
+            &config,
+            sat,
+            SignalBand::L5,
+            SignalCode::L5I,
+            None,
+        );
+        let previous_reference_hz = signal_model.code_rate_hz;
+        let tracked_carrier_hz =
+            super::tracked_signal_center_hz(config.intermediate_freq_hz, signal_model.signal_spec)
+                + 875.0;
+
+        assert_eq!(
+            super::next_code_rate_reference_hz(
+                &config,
+                &signal_model,
+                tracked_carrier_hz,
+                previous_reference_hz,
+                false,
+            ),
+            previous_reference_hz,
+        );
     }
 
     #[test]
