@@ -75,6 +75,9 @@ const DISCRIMINATOR_INSTABILITY_MIN_PROMPT_POWER_RATIO: f32 = 0.5;
 const DISCRIMINATOR_INSTABILITY_REQUIRED_EPOCHS: u8 = 2;
 const DEGRADED_FADE_INSTABILITY_GRACE_EPOCHS: u16 = 2;
 const SHORT_FADE_RECOVERY_GRACE_EPOCHS: u16 = 5;
+const NARROW_BPSK_EARLY_LATE_SPACING_CHIPS: f64 = 0.25;
+const NARROW_HIGH_RATE_EARLY_LATE_SPACING_CHIPS: f64 = 0.10;
+const NARROW_SUBCARRIER_EARLY_LATE_SPACING_CHIPS: f64 = 0.15;
 // If prompt energy returns near the short-fade boundary, the loops may need a
 // few extra epochs to re-enter tracking without opening a long interruption gap.
 const SHORT_FADE_RELOCK_EVIDENCE_GRACE_EPOCHS: u16 = 3;
@@ -1131,6 +1134,34 @@ impl TrackingSignalModel {
     }
 }
 
+fn signal_default_early_late_spacing_chips(signal_model: &TrackingSignalModel) -> f64 {
+    match signal_model.discriminator_family {
+        TrackingDiscriminatorFamily::BocEarlyPromptLate
+        | TrackingDiscriminatorFamily::CbocEarlyPromptLate => {
+            NARROW_SUBCARRIER_EARLY_LATE_SPACING_CHIPS
+        }
+        TrackingDiscriminatorFamily::EarlyPromptLate
+            if signal_model.code_rate_hz >= 10_000_000.0 - f64::EPSILON =>
+        {
+            NARROW_HIGH_RATE_EARLY_LATE_SPACING_CHIPS
+        }
+        TrackingDiscriminatorFamily::EarlyPromptLate => NARROW_BPSK_EARLY_LATE_SPACING_CHIPS,
+    }
+}
+
+fn resolve_signal_tracking_params(
+    config: &ReceiverPipelineConfig,
+    signal_model: &TrackingSignalModel,
+) -> TrackingParams {
+    let mut params = config.tracking_params(signal_model.signal_band);
+    if config.tracking_per_band.iter().any(|profile| profile.band == signal_model.signal_band) {
+        return params;
+    }
+    params.early_late_spacing_chips =
+        params.early_late_spacing_chips.min(signal_default_early_late_spacing_chips(signal_model));
+    params
+}
+
 fn joint_tracking_components(
     sat: SatId,
     signal_band: SignalBand,
@@ -1962,6 +1993,7 @@ impl Tracking {
         );
         let sat = SatId { constellation: Constellation::Gps, prn: 1 };
         let signal_model = TrackingSignalModel::for_sat(&self.config, sat);
+        let tracking_params = resolve_signal_tracking_params(&self.config, &signal_model);
         let epochs = self.track_epochs(
             &frame,
             0,
@@ -1970,7 +2002,7 @@ impl Tracking {
             0.0,
             0.0,
             f64::INFINITY,
-            self.config.tracking_params(SignalBand::L1),
+            tracking_params,
             5,
         );
         vec![TrackingResult {
@@ -2142,7 +2174,6 @@ impl Tracking {
             .enumerate()
             .map(|(channel_idx, context)| {
                 let channel_id = channel_idx as u8;
-                let tracking_params = self.config.tracking_params(context.seed.signal_band);
                 let signal_model = TrackingSignalModel::for_sat_signal_band(
                     &self.config,
                     context.seed.sat,
@@ -2150,6 +2181,7 @@ impl Tracking {
                     context.seed.signal_code,
                     context.seed.glonass_frequency_channel,
                 );
+                let tracking_params = resolve_signal_tracking_params(&self.config, &signal_model);
                 self.runtime.trace.record(TraceRecord {
                     name: "tracking_sat_start",
                     fields: vec![
@@ -3498,7 +3530,7 @@ fn default_tracking_assumptions(
     config: &ReceiverPipelineConfig,
     signal_model: &TrackingSignalModel,
 ) -> TrackingAssumptions {
-    tracking_assumptions(signal_model, config.tracking_params(signal_model.signal_band))
+    tracking_assumptions(signal_model, resolve_signal_tracking_params(config, signal_model))
 }
 
 fn tracking_assumptions(
@@ -4252,7 +4284,9 @@ impl Tracking {
 #[cfg(test)]
 mod tests {
     use super::{ChannelState, Tracking};
-    use crate::engine::receiver_config::{ReceiverPipelineConfig, TrackingParams};
+    use crate::engine::receiver_config::{
+        BandTrackingSpec, ReceiverPipelineConfig, TrackingParams,
+    };
     use crate::engine::runtime::ReceiverRuntime;
     use crate::sim::synthetic::{generate_l1_ca, SyntheticSignalParams};
     use bijux_gnss_core::api::{
@@ -7449,10 +7483,70 @@ mod tests {
     }
 
     #[test]
+    fn signal_tracking_params_use_narrow_spacing_for_gps_l1_ca_defaults() {
+        let config = crate::engine::receiver_config::ReceiverPipelineConfig::default();
+        let sat = SatId { constellation: Constellation::Gps, prn: 3 };
+        let signal_model = super::TrackingSignalModel::for_sat_signal_band(
+            &config,
+            sat,
+            SignalBand::L1,
+            SignalCode::Ca,
+            None,
+        );
+
+        let tracking_params = super::resolve_signal_tracking_params(&config, &signal_model);
+
+        assert_eq!(tracking_params.early_late_spacing_chips, 0.25);
+    }
+
+    #[test]
+    fn signal_tracking_params_use_tighter_spacing_for_high_rate_signals() {
+        let config = crate::engine::receiver_config::ReceiverPipelineConfig::default();
+        let sat = SatId { constellation: Constellation::Gps, prn: 18 };
+        let signal_model = super::TrackingSignalModel::for_sat_signal_band(
+            &config,
+            sat,
+            SignalBand::L5,
+            SignalCode::L5I,
+            None,
+        );
+
+        let tracking_params = super::resolve_signal_tracking_params(&config, &signal_model);
+
+        assert_eq!(tracking_params.early_late_spacing_chips, 0.10);
+    }
+
+    #[test]
+    fn signal_tracking_params_preserve_per_band_spacing_overrides() {
+        let config = crate::engine::receiver_config::ReceiverPipelineConfig {
+            tracking_per_band: vec![BandTrackingSpec {
+                band: SignalBand::L1,
+                early_late_spacing_chips: 0.5,
+                dll_bw_hz: 2.0,
+                pll_bw_hz: 15.0,
+                fll_bw_hz: 10.0,
+                integration_ms: 1,
+            }],
+            ..crate::engine::receiver_config::ReceiverPipelineConfig::default()
+        };
+        let sat = SatId { constellation: Constellation::Gps, prn: 3 };
+        let signal_model = super::TrackingSignalModel::for_sat_signal_band(
+            &config,
+            sat,
+            SignalBand::L1,
+            SignalCode::Ca,
+            None,
+        );
+
+        let tracking_params = super::resolve_signal_tracking_params(&config, &signal_model);
+
+        assert_eq!(tracking_params.early_late_spacing_chips, 0.5);
+    }
+
+    #[test]
     fn tracking_assumptions_follow_signal_metadata() {
         let config = crate::engine::receiver_config::ReceiverPipelineConfig::default();
         let sat = SatId { constellation: Constellation::Galileo, prn: 11 };
-        let tracking_params = config.tracking_params(SignalBand::E1);
         let signal_model = super::TrackingSignalModel::for_sat_signal_band(
             &config,
             sat,
@@ -7460,10 +7554,12 @@ mod tests {
             SignalCode::E1B,
             None,
         );
+        let tracking_params = super::resolve_signal_tracking_params(&config, &signal_model);
 
         let assumptions = super::tracking_assumptions(&signal_model, tracking_params);
 
         assert_eq!(assumptions.discriminator_family, "unambiguous_cboc_early_prompt_late");
+        assert_eq!(assumptions.early_late_spacing_chips, 0.15);
     }
 
     #[derive(Debug, Deserialize)]
