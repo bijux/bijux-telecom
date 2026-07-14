@@ -22,6 +22,14 @@ const TRACKING_UNCERTAINTY_MIN_CN0_DBHZ: f64 = 0.05;
 const LOOP_FILTER_BANDWIDTH_SOLVER_ITERATIONS: usize = 80;
 const LOOP_FILTER_IMPULSE_RESPONSE_EPOCHS: usize = 16_384;
 const LOOP_FILTER_IMPULSE_RESPONSE_EPSILON: f64 = 1.0e-15;
+const WEAK_SIGNAL_ENTRY_CN0_DBHZ: f64 = 31.0;
+const WEAK_SIGNAL_EXIT_CN0_DBHZ: f64 = 34.0;
+const DYNAMIC_STRESS_ENTRY_FLL_ERROR_HZ: f64 = 18.0;
+const DYNAMIC_STRESS_EXIT_FLL_ERROR_HZ: f64 = 8.0;
+const DYNAMIC_STRESS_ENTRY_CARRIER_RATE_HZ_PER_S: f64 = 25.0;
+const DYNAMIC_STRESS_EXIT_CARRIER_RATE_HZ_PER_S: f64 = 10.0;
+const WEAK_SIGNAL_INTEGRATION_MS: u32 = 5;
+const DYNAMIC_STRESS_INTEGRATION_MS: u32 = 1;
 
 /// First-order loop coefficients derived from noise bandwidth and coherent integration time.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -206,7 +214,114 @@ struct LoopObserverDesign {
     closed_loop_pole: f64,
 }
 
-/// Adaptive loop bandwidth scaling based on CN0.
+/// Tracking loop profile selected by the adaptation controller.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TrackingLoopProfileKind {
+    /// Use the configured base loop parameters unchanged.
+    Nominal,
+    /// Narrow the loops and lengthen coherent integration for weak but stable signals.
+    WeakSignal,
+    /// Widen the loops and shorten coherent integration under strong dynamics.
+    DynamicStress,
+}
+
+/// Loop parameters chosen for the next tracking epoch.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TrackingLoopProfile {
+    /// Effective DLL bandwidth in Hz.
+    pub dll_bw_hz: f64,
+    /// Effective PLL bandwidth in Hz.
+    pub pll_bw_hz: f64,
+    /// Effective FLL bandwidth in Hz.
+    pub fll_bw_hz: f64,
+    /// Effective coherent integration length in milliseconds.
+    pub integration_ms: u32,
+}
+
+/// Inputs evaluated by the tracking adaptation controller.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TrackingAdaptationInput {
+    /// Current CN0 estimate in dB-Hz.
+    pub cn0_dbhz: f64,
+    /// Current FLL discriminator error in Hz.
+    pub fll_error_hz: f64,
+    /// Current carrier frequency-rate estimate in Hz/s.
+    pub carrier_rate_hz_per_s: f64,
+    /// Whether the carrier loop is stable enough to support longer coherent integration.
+    pub carrier_lock_ready: bool,
+    /// Whether the channel is already in a steady tracking state.
+    pub steady_state_lock: bool,
+    /// Whether recent discriminator behavior is stable.
+    pub discriminator_stable: bool,
+}
+
+/// Stateful hysteresis memory for tracking adaptation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TrackingAdaptationState {
+    /// Currently active loop profile.
+    pub active_profile: TrackingLoopProfileKind,
+    pending_profile: Option<TrackingLoopProfileKind>,
+    pending_epochs: u8,
+}
+
+impl Default for TrackingAdaptationState {
+    fn default() -> Self {
+        Self {
+            active_profile: TrackingLoopProfileKind::Nominal,
+            pending_profile: None,
+            pending_epochs: 0,
+        }
+    }
+}
+
+/// Result of one tracking adaptation step.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TrackingAdaptationDecision {
+    /// Updated adaptation state to persist into the next epoch.
+    pub state: TrackingAdaptationState,
+    /// Active loop profile kind chosen for the next epoch.
+    pub profile_kind: TrackingLoopProfileKind,
+    /// Effective loop parameters chosen for the next epoch.
+    pub profile: TrackingLoopProfile,
+}
+
+/// Advance the tracking adaptation controller by one epoch.
+pub fn advance_tracking_adaptation(
+    base_profile: TrackingLoopProfile,
+    state: TrackingAdaptationState,
+    input: TrackingAdaptationInput,
+) -> TrackingAdaptationDecision {
+    let requested_profile = requested_tracking_loop_profile(state.active_profile, input);
+    let required_confirmation_epochs = required_confirmation_epochs(requested_profile);
+    let mut next_state = state;
+
+    if requested_profile == state.active_profile {
+        next_state.pending_profile = None;
+        next_state.pending_epochs = 0;
+    } else if next_state.pending_profile == Some(requested_profile) {
+        next_state.pending_epochs = next_state.pending_epochs.saturating_add(1);
+    } else {
+        next_state.pending_profile = Some(requested_profile);
+        next_state.pending_epochs = 1;
+    }
+
+    if requested_profile != state.active_profile
+        && next_state.pending_epochs >= required_confirmation_epochs
+    {
+        next_state.active_profile = requested_profile;
+        next_state.pending_profile = None;
+        next_state.pending_epochs = 0;
+    }
+
+    let profile = tracking_loop_profile(base_profile, next_state.active_profile);
+    TrackingAdaptationDecision {
+        state: next_state,
+        profile_kind: next_state.active_profile,
+        profile,
+    }
+}
+
+/// Stateless bandwidth scaling retained for compatibility with older tracking call sites.
 pub fn adaptive_bandwidth(dll_bw: f64, pll_bw: f64, fll_bw: f64, cn0_dbhz: f64) -> (f64, f64, f64) {
     if cn0_dbhz < 25.0 {
         (dll_bw * 0.5, pll_bw * 0.5, fll_bw * 0.5)
@@ -214,6 +329,88 @@ pub fn adaptive_bandwidth(dll_bw: f64, pll_bw: f64, fll_bw: f64, cn0_dbhz: f64) 
         (dll_bw * 1.5, pll_bw * 1.5, fll_bw * 1.5)
     } else {
         (dll_bw, pll_bw, fll_bw)
+    }
+}
+
+fn tracking_loop_profile(
+    base_profile: TrackingLoopProfile,
+    profile_kind: TrackingLoopProfileKind,
+) -> TrackingLoopProfile {
+    match profile_kind {
+        TrackingLoopProfileKind::Nominal => TrackingLoopProfile {
+            integration_ms: base_profile.integration_ms.max(1),
+            ..base_profile
+        },
+        TrackingLoopProfileKind::WeakSignal => TrackingLoopProfile {
+            dll_bw_hz: base_profile.dll_bw_hz * 0.6,
+            pll_bw_hz: base_profile.pll_bw_hz * 0.55,
+            fll_bw_hz: base_profile.fll_bw_hz * 0.5,
+            integration_ms: weak_signal_integration_ms(base_profile.integration_ms),
+        },
+        TrackingLoopProfileKind::DynamicStress => TrackingLoopProfile {
+            dll_bw_hz: base_profile.dll_bw_hz * 1.5,
+            pll_bw_hz: base_profile.pll_bw_hz * 1.8,
+            fll_bw_hz: base_profile.fll_bw_hz * 1.8,
+            integration_ms: DYNAMIC_STRESS_INTEGRATION_MS,
+        },
+    }
+}
+
+fn weak_signal_integration_ms(base_integration_ms: u32) -> u32 {
+    base_integration_ms.max(WEAK_SIGNAL_INTEGRATION_MS).min(10)
+}
+
+fn requested_tracking_loop_profile(
+    active_profile: TrackingLoopProfileKind,
+    input: TrackingAdaptationInput,
+) -> TrackingLoopProfileKind {
+    if dynamic_stress_requested(active_profile, input) {
+        return TrackingLoopProfileKind::DynamicStress;
+    }
+    if weak_signal_requested(active_profile, input) {
+        return TrackingLoopProfileKind::WeakSignal;
+    }
+    TrackingLoopProfileKind::Nominal
+}
+
+fn dynamic_stress_requested(
+    active_profile: TrackingLoopProfileKind,
+    input: TrackingAdaptationInput,
+) -> bool {
+    let fll_error_hz = input.fll_error_hz.abs();
+    let carrier_rate_hz_per_s = input.carrier_rate_hz_per_s.abs();
+    let (fll_threshold_hz, carrier_rate_threshold_hz_per_s) =
+        if active_profile == TrackingLoopProfileKind::DynamicStress {
+            (DYNAMIC_STRESS_EXIT_FLL_ERROR_HZ, DYNAMIC_STRESS_EXIT_CARRIER_RATE_HZ_PER_S)
+        } else {
+            (DYNAMIC_STRESS_ENTRY_FLL_ERROR_HZ, DYNAMIC_STRESS_ENTRY_CARRIER_RATE_HZ_PER_S)
+        };
+
+    fll_error_hz >= fll_threshold_hz
+        || carrier_rate_hz_per_s >= carrier_rate_threshold_hz_per_s
+        || (!input.discriminator_stable && !input.steady_state_lock)
+}
+
+fn weak_signal_requested(
+    active_profile: TrackingLoopProfileKind,
+    input: TrackingAdaptationInput,
+) -> bool {
+    if !(input.carrier_lock_ready || input.steady_state_lock) || !input.discriminator_stable {
+        return false;
+    }
+    let cn0_threshold_dbhz = if active_profile == TrackingLoopProfileKind::WeakSignal {
+        WEAK_SIGNAL_EXIT_CN0_DBHZ
+    } else {
+        WEAK_SIGNAL_ENTRY_CN0_DBHZ
+    };
+    input.cn0_dbhz.is_finite() && input.cn0_dbhz <= cn0_threshold_dbhz
+}
+
+fn required_confirmation_epochs(profile_kind: TrackingLoopProfileKind) -> u8 {
+    match profile_kind {
+        TrackingLoopProfileKind::Nominal => 4,
+        TrackingLoopProfileKind::WeakSignal => 3,
+        TrackingLoopProfileKind::DynamicStress => 1,
     }
 }
 
@@ -1066,14 +1263,16 @@ fn tracking_uncertainty_state_scale(
 #[cfg(test)]
 mod tests {
     use super::{
-        anti_false_lock_detected, apply_carrier_tracking_loop, apply_code_loop,
-        carrier_frequency_error_hz_from_phase_delta, carrier_phase_offset_radians,
+        advance_tracking_adaptation, anti_false_lock_detected, apply_carrier_tracking_loop,
+        apply_code_loop, carrier_frequency_error_hz_from_phase_delta, carrier_phase_offset_radians,
         coherent_integration_seconds, correlate_early_prompt_late, delay_lock_loop_coefficients,
         discriminators, dll_lock_threshold, estimate_cn0_dbhz, estimate_tracking_uncertainty,
         first_order_angular_loop_coefficients, first_order_loop_coefficients,
         phase_lock_loop_coefficients, predict_code_phase_samples, wrap_phase_cycles_signed,
         wrap_phase_radians_positive, wrapped_phase_delta_cycles, CarrierTrackingLoopInput,
-        CodeLoopInput, TrackingQualityClass, TrackingUncertaintyInputs,
+        CodeLoopInput, TrackingAdaptationInput, TrackingAdaptationState, TrackingLoopProfile,
+        TrackingLoopProfileKind, TrackingQualityClass, TrackingUncertaintyInputs,
+        DYNAMIC_STRESS_INTEGRATION_MS, WEAK_SIGNAL_INTEGRATION_MS,
     };
     use std::collections::VecDeque;
 
@@ -1553,7 +1752,8 @@ mod tests {
             previous_reference_code_rate_hz = reference_code_rate_hz;
         }
 
-        let aided_phase_error_samples = (aided_code_phase_samples - expected_code_phase_samples).abs();
+        let aided_phase_error_samples =
+            (aided_code_phase_samples - expected_code_phase_samples).abs();
         let frozen_phase_error_samples =
             (frozen_code_phase_samples - expected_code_phase_samples).abs();
 
@@ -1651,6 +1851,105 @@ mod tests {
             (true_phase_cycles - estimated_phase_cycles).abs() < 1.0,
             "true_phase_cycles={true_phase_cycles} estimated_phase_cycles={estimated_phase_cycles}",
         );
+    }
+
+    #[test]
+    fn tracking_adaptation_prefers_dynamic_stress_for_large_frequency_ramps() {
+        let decision = advance_tracking_adaptation(
+            TrackingLoopProfile {
+                dll_bw_hz: 2.0,
+                pll_bw_hz: 15.0,
+                fll_bw_hz: 10.0,
+                integration_ms: 5,
+            },
+            TrackingAdaptationState::default(),
+            TrackingAdaptationInput {
+                cn0_dbhz: 45.0,
+                fll_error_hz: 30.0,
+                carrier_rate_hz_per_s: 40.0,
+                carrier_lock_ready: false,
+                steady_state_lock: false,
+                discriminator_stable: false,
+            },
+        );
+
+        assert_eq!(decision.profile_kind, TrackingLoopProfileKind::DynamicStress);
+        assert_eq!(decision.profile.integration_ms, DYNAMIC_STRESS_INTEGRATION_MS);
+        assert!(decision.profile.pll_bw_hz > 15.0, "{decision:?}");
+    }
+
+    #[test]
+    fn tracking_adaptation_requires_persistent_low_cn0_before_weak_signal_switch() {
+        let base_profile = TrackingLoopProfile {
+            dll_bw_hz: 2.0,
+            pll_bw_hz: 15.0,
+            fll_bw_hz: 10.0,
+            integration_ms: 1,
+        };
+        let input = TrackingAdaptationInput {
+            cn0_dbhz: 29.5,
+            fll_error_hz: 0.5,
+            carrier_rate_hz_per_s: 0.0,
+            carrier_lock_ready: true,
+            steady_state_lock: true,
+            discriminator_stable: true,
+        };
+        let first =
+            advance_tracking_adaptation(base_profile, TrackingAdaptationState::default(), input);
+        let second = advance_tracking_adaptation(base_profile, first.state, input);
+        let third = advance_tracking_adaptation(base_profile, second.state, input);
+
+        assert_eq!(first.profile_kind, TrackingLoopProfileKind::Nominal);
+        assert_eq!(second.profile_kind, TrackingLoopProfileKind::Nominal);
+        assert_eq!(third.profile_kind, TrackingLoopProfileKind::WeakSignal);
+        assert_eq!(third.profile.integration_ms, WEAK_SIGNAL_INTEGRATION_MS);
+        assert!(third.profile.pll_bw_hz < base_profile.pll_bw_hz, "{third:?}");
+    }
+
+    #[test]
+    fn tracking_adaptation_holds_weak_signal_until_cn0_recovers() {
+        let base_profile = TrackingLoopProfile {
+            dll_bw_hz: 2.0,
+            pll_bw_hz: 15.0,
+            fll_bw_hz: 10.0,
+            integration_ms: 1,
+        };
+        let low_cn0 = TrackingAdaptationInput {
+            cn0_dbhz: 29.0,
+            fll_error_hz: 0.0,
+            carrier_rate_hz_per_s: 0.0,
+            carrier_lock_ready: true,
+            steady_state_lock: true,
+            discriminator_stable: true,
+        };
+        let recovered_cn0 = TrackingAdaptationInput { cn0_dbhz: 36.0, ..low_cn0 };
+        let weak = advance_tracking_adaptation(
+            base_profile,
+            advance_tracking_adaptation(
+                base_profile,
+                advance_tracking_adaptation(
+                    base_profile,
+                    TrackingAdaptationState::default(),
+                    low_cn0,
+                )
+                .state,
+                low_cn0,
+            )
+            .state,
+            low_cn0,
+        );
+        let first_recovery = advance_tracking_adaptation(base_profile, weak.state, recovered_cn0);
+        let second_recovery =
+            advance_tracking_adaptation(base_profile, first_recovery.state, recovered_cn0);
+        let third_recovery =
+            advance_tracking_adaptation(base_profile, second_recovery.state, recovered_cn0);
+        let fourth_recovery =
+            advance_tracking_adaptation(base_profile, third_recovery.state, recovered_cn0);
+
+        assert_eq!(weak.profile_kind, TrackingLoopProfileKind::WeakSignal);
+        assert_eq!(first_recovery.profile_kind, TrackingLoopProfileKind::WeakSignal);
+        assert_eq!(third_recovery.profile_kind, TrackingLoopProfileKind::WeakSignal);
+        assert_eq!(fourth_recovery.profile_kind, TrackingLoopProfileKind::Nominal);
     }
 
     #[test]
