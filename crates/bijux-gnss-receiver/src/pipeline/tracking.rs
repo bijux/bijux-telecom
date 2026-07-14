@@ -800,6 +800,25 @@ fn carrier_phase_transition_source_for_prompt(
     }
 }
 
+fn secondary_code_sync_provenance(
+    signal_model: &TrackingSignalModel,
+    sync: Option<SecondaryCodeSyncResult>,
+) -> Option<String> {
+    secondary_code_sync_component(signal_model)?;
+    Some(match sync {
+        Some(sync) => format!(
+            " secondary_code_sync={} secondary_code_phase_periods={} secondary_code_sync_confidence={:.6} secondary_code_best_likelihood={:.6} secondary_code_next_likelihood={:.6} secondary_code_observed_periods={}",
+            if sync.accepted { "accepted" } else { "rejected" },
+            sync.phase_periods,
+            sync.confidence,
+            sync.best_likelihood,
+            sync.next_best_likelihood,
+            sync.observed_periods
+        ),
+        None => " secondary_code_sync=insufficient".to_string(),
+    })
+}
+
 #[derive(Debug, Clone, Copy)]
 struct TrackingEpochCorrelation {
     primary: CorrelatorOutput,
@@ -2114,6 +2133,12 @@ impl Tracking {
                         code_rate_reference_label(&self.config, &channel.signal_model, epoch.carrier_hz.0),
                         carrier_aiding_doppler_window_hz(&self.config),
                     ));
+                    if let Some(secondary_code_sync_provenance) = secondary_code_sync_provenance(
+                        &channel.signal_model,
+                        channel.state.secondary_code_sync,
+                    ) {
+                        epoch.tracking_provenance.push_str(&secondary_code_sync_provenance);
+                    }
                     if runtime_tracking_provenance.starts_with("vector_tracking=applied") {
                         epoch.tracking_provenance.push(' ');
                         epoch.tracking_provenance.push_str(&runtime_tracking_provenance);
@@ -4191,6 +4216,51 @@ mod tests {
         assert!(sync.is_none());
         assert!(state.secondary_code_sync.is_none());
         assert!(state.secondary_code_prompt_history.is_empty());
+    }
+
+    #[test]
+    fn secondary_code_sync_provenance_reports_accepted_phase() {
+        let config = ReceiverPipelineConfig::default();
+        let signal_model = super::TrackingSignalModel::for_sat_signal_band(
+            &config,
+            SatId { constellation: Constellation::Gps, prn: 18 },
+            SignalBand::L5,
+            SignalCode::L5I,
+            None,
+        );
+        let sync = super::SecondaryCodeSyncResult {
+            phase_periods: 7,
+            confidence: 0.5,
+            best_likelihood: 1.0,
+            next_best_likelihood: 0.5,
+            observed_periods: 20,
+            accepted: true,
+        };
+
+        let provenance = super::secondary_code_sync_provenance(&signal_model, Some(sync))
+            .expect("secondary-code provenance");
+
+        assert!(provenance.contains("secondary_code_sync=accepted"));
+        assert!(provenance.contains("secondary_code_phase_periods=7"));
+        assert!(provenance.contains("secondary_code_sync_confidence=0.500000"));
+        assert!(provenance.contains("secondary_code_observed_periods=20"));
+    }
+
+    #[test]
+    fn secondary_code_sync_provenance_reports_insufficient_evidence() {
+        let config = ReceiverPipelineConfig::default();
+        let signal_model = super::TrackingSignalModel::for_sat_signal_band(
+            &config,
+            SatId { constellation: Constellation::Gps, prn: 18 },
+            SignalBand::L5,
+            SignalCode::L5I,
+            None,
+        );
+
+        let provenance =
+            super::secondary_code_sync_provenance(&signal_model, None).expect("provenance");
+
+        assert_eq!(provenance, " secondary_code_sync=insufficient");
     }
 
     #[cfg(feature = "nav")]
