@@ -6,6 +6,7 @@
 //! a single namespace without deep paths.
 
 pub mod acquisition;
+pub mod acquisition_assistance;
 pub(crate) mod acquisition_components;
 pub(crate) mod acquisition_symbol_hypotheses;
 pub mod doppler;
