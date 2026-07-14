@@ -110,8 +110,8 @@ pub fn resolve_acquisition_search_bounds(
             code_phase_uncertainty_samples,
         )
         .unwrap_or((0, samples_per_code));
-    let search_domain_reduced =
-        doppler_search_hz < request.doppler_search_hz.max(0) || code_phase_search_bins < samples_per_code;
+    let search_domain_reduced = doppler_search_hz < request.doppler_search_hz.max(0)
+        || code_phase_search_bins < samples_per_code;
 
     ResolvedAcquisitionSearchBounds {
         doppler_search_hz,
@@ -146,7 +146,8 @@ fn derive_code_phase_uncertainty_samples(
     let time_uncertainty_from_position_s =
         assistance_bounds.position_uncertainty_m / SPEED_OF_LIGHT_MPS;
     Some(
-        (assistance_bounds.time_uncertainty_s + time_uncertainty_from_position_s) * sampling_freq_hz,
+        (assistance_bounds.time_uncertainty_s + time_uncertainty_from_position_s)
+            * sampling_freq_hz,
     )
 }
 
@@ -182,7 +183,8 @@ fn quantized_doppler_search_hz(
         return 0;
     }
     let step_hz = doppler_step_hz.max(1) as f64;
-    let quantized_search_hz = (doppler_uncertainty_hz / step_hz).ceil() as i32 * doppler_step_hz.max(1);
+    let quantized_search_hz =
+        (doppler_uncertainty_hz / step_hz).ceil() as i32 * doppler_step_hz.max(1);
     quantized_search_hz.min(full_search_hz)
 }
 
@@ -199,15 +201,14 @@ fn assisted_code_phase_search_window(
         return None;
     }
     let radius_samples = code_phase_uncertainty_samples.ceil() as usize;
-    let bounded_bins = radius_samples
-        .saturating_mul(2)
-        .saturating_add(1)
-        .min(samples_per_code);
+    let bounded_bins = radius_samples.saturating_mul(2).saturating_add(1).min(samples_per_code);
     if bounded_bins >= samples_per_code {
         return Some((0, samples_per_code));
     }
-    let center_sample = expected_code_phase_samples.round().rem_euclid(samples_per_code as f64) as usize;
-    let start_sample = (center_sample + samples_per_code - radius_samples % samples_per_code) % samples_per_code;
+    let center_sample =
+        expected_code_phase_samples.round().rem_euclid(samples_per_code as f64) as usize;
+    let start_sample =
+        (center_sample + samples_per_code - radius_samples % samples_per_code) % samples_per_code;
     Some((start_sample, bounded_bins))
 }
 
@@ -473,11 +474,12 @@ mod tests {
     };
     use crate::engine::receiver_config::ReceiverPipelineConfig;
     use bijux_gnss_core::api::{
-        AcqAssistanceBounds, AcqHypothesis, AcqRequest, AcqResult, AcqUncertainty,
-        Constellation,
-        GPS_L1_CA_CARRIER_HZ, Hertz, ReceiverSampleTrace, SatId, SignalBand, SignalCode,
+        AcqAssistanceBounds, AcqHypothesis, AcqRequest, AcqResult, AcqUncertainty, Constellation,
+        Hertz, ReceiverSampleTrace, SatId, SignalBand, SignalCode, GPS_L1_CA_CARRIER_HZ,
     };
-    use bijux_gnss_signal::api::{shared_path_doppler_hz, signal_spec_gps_l1_ca, signal_spec_gps_l5_i, AcquisitionSignalModel};
+    use bijux_gnss_signal::api::{
+        shared_path_doppler_hz, signal_spec_gps_l1_ca, signal_spec_gps_l5_i, AcquisitionSignalModel,
+    };
 
     #[test]
     fn resolves_assisted_search_bounds_from_uncertainty_contract() {
@@ -716,12 +718,9 @@ mod tests {
 
         assert_eq!(follow_up_requests.len(), 1);
         let follow_up = &follow_up_requests[0];
-        let expected_doppler_hz = shared_path_doppler_hz(
-            -1_250.0,
-            signal_spec_gps_l1_ca(),
-            signal_spec_gps_l5_i(),
-        )
-        .expect("scaled same-satellite Doppler");
+        let expected_doppler_hz =
+            shared_path_doppler_hz(-1_250.0, signal_spec_gps_l1_ca(), signal_spec_gps_l5_i())
+                .expect("scaled same-satellite Doppler");
 
         assert_eq!(follow_up.request_index, 1);
         assert_eq!(follow_up.source_request_index, 0);
@@ -729,9 +728,7 @@ mod tests {
         assert_eq!(follow_up.source_signal_code, SignalCode::Ca);
         assert!((follow_up.estimated_signal_doppler_hz - expected_doppler_hz).abs() <= 1.0e-12);
         assert!((follow_up.transferred_code_phase_samples - 321.0).abs() <= 1.0e-12);
-        assert!(
-            (follow_up.request.doppler_center_hz - expected_doppler_hz).abs() <= 1.0e-12
-        );
+        assert!((follow_up.request.doppler_center_hz - expected_doppler_hz).abs() <= 1.0e-12);
         let bounds = follow_up.request.assistance_bounds.expect("cross-band assistance bounds");
         assert!((bounds.expected_code_phase_samples - 321.0).abs() <= 1.0e-12);
         assert!((bounds.time_uncertainty_s - (0.5 / config.sampling_freq_hz)).abs() <= 1.0e-12);

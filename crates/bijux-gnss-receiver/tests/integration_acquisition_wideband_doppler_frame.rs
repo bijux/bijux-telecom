@@ -1,6 +1,6 @@
 #![allow(missing_docs)]
 
-use bijux_gnss_core::api::{Constellation, SignalBand, SignalCode, SatId};
+use bijux_gnss_core::api::{Constellation, SatId, SignalBand, SignalCode};
 use bijux_gnss_receiver::api::{
     sim::{validate_truth_guided_acquisition_table, SyntheticScenario, SyntheticSignalParams},
     ReceiverPipelineConfig,

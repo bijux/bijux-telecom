@@ -7,9 +7,7 @@ use bijux_gnss_receiver::api::{
     sim::{SyntheticScenario, SyntheticSignalParams, SyntheticSignalSource},
     AcquisitionEngine, ReceiverPipelineConfig, ReceiverRuntime, SignalSource,
 };
-use bijux_gnss_signal::api::{
-    shared_path_doppler_hz, signal_spec_gps_l1_ca, signal_spec_gps_l5_i,
-};
+use bijux_gnss_signal::api::{shared_path_doppler_hz, signal_spec_gps_l1_ca, signal_spec_gps_l5_i};
 
 fn signal_only_frame(
     config: &ReceiverPipelineConfig,
@@ -17,10 +15,7 @@ fn signal_only_frame(
     frame_len: usize,
 ) -> SamplesFrame {
     let mut source = SyntheticSignalSource::new_signal_only(config, scenario);
-    source
-        .next_frame(frame_len)
-        .expect("signal-only frame")
-        .expect("acquisition frame")
+    source.next_frame(frame_len).expect("signal-only frame").expect("acquisition frame")
 }
 
 fn request_for_signal(
@@ -66,12 +61,9 @@ fn same_satellite_cross_band_follow_up_marks_assisted_l5_search() {
     let config = cross_band_follow_up_config();
     let sat = SatId { constellation: Constellation::Gps, prn: 17 };
     let l1_doppler_hz = -750.0;
-    let l5_doppler_hz = shared_path_doppler_hz(
-        l1_doppler_hz,
-        signal_spec_gps_l1_ca(),
-        signal_spec_gps_l5_i(),
-    )
-    .expect("same-satellite carrier scaling");
+    let l5_doppler_hz =
+        shared_path_doppler_hz(l1_doppler_hz, signal_spec_gps_l1_ca(), signal_spec_gps_l5_i())
+            .expect("same-satellite carrier scaling");
     let scenario = SyntheticScenario {
         sample_rate_hz: config.sampling_freq_hz,
         intermediate_freq_hz: config.intermediate_freq_hz,
@@ -148,12 +140,9 @@ fn cross_band_follow_up_respects_satellite_boundaries() {
     let config = cross_band_follow_up_config();
     let l1_sat = SatId { constellation: Constellation::Gps, prn: 17 };
     let l5_sat = SatId { constellation: Constellation::Gps, prn: 18 };
-    let l5_doppler_hz = shared_path_doppler_hz(
-        -750.0,
-        signal_spec_gps_l1_ca(),
-        signal_spec_gps_l5_i(),
-    )
-    .expect("same-carrier-ratio scaling");
+    let l5_doppler_hz =
+        shared_path_doppler_hz(-750.0, signal_spec_gps_l1_ca(), signal_spec_gps_l5_i())
+            .expect("same-carrier-ratio scaling");
     let scenario = SyntheticScenario {
         sample_rate_hz: config.sampling_freq_hz,
         intermediate_freq_hz: config.intermediate_freq_hz,

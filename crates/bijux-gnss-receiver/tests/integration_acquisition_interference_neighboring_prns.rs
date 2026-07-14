@@ -2,7 +2,10 @@
 
 use bijux_gnss_core::api::{Constellation, SatId, SignalBand, SignalCode};
 use bijux_gnss_receiver::api::{
-    sim::{measure_truth_guided_acquisition_interference, SyntheticAcquisitionInterferenceCase, SyntheticSignalParams},
+    sim::{
+        measure_truth_guided_acquisition_interference, SyntheticAcquisitionInterferenceCase,
+        SyntheticSignalParams,
+    },
     ReceiverPipelineConfig,
 };
 
