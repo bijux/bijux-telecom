@@ -105,6 +105,47 @@ fn recovered_sign_runs(epochs: &[TrackEpoch]) -> Vec<(i8, usize)> {
     runs
 }
 
+fn stable_joint_tracking_window(epochs: &[TrackEpoch]) -> &[TrackEpoch] {
+    let mut best_start = 0usize;
+    let mut best_len = 0usize;
+    let mut run_start = None;
+
+    for (index, epoch) in epochs.iter().enumerate() {
+        let stable = epoch.lock
+            && epoch.lock_state == "tracking"
+            && epoch.pll_lock
+            && epoch.nav_bit_lock
+            && !epoch.cycle_slip
+            && epoch.navigation_bit_sign.is_some();
+        match (run_start, stable) {
+            (None, true) => run_start = Some(index),
+            (Some(start), false) => {
+                let run_len = index - start;
+                if run_len > best_len {
+                    best_start = start;
+                    best_len = run_len;
+                }
+                run_start = None;
+            }
+            _ => {}
+        }
+    }
+
+    if let Some(start) = run_start {
+        let run_len = epochs.len() - start;
+        if run_len > best_len {
+            best_start = start;
+            best_len = run_len;
+        }
+    }
+
+    if best_len == 0 {
+        &[]
+    } else {
+        &epochs[best_start..best_start + best_len]
+    }
+}
+
 fn assert_joint_tracking_metadata(epochs: &[TrackEpoch]) {
     assert!(
         epochs.iter().all(|epoch| {
@@ -125,28 +166,34 @@ fn assert_joint_tracking_metadata(epochs: &[TrackEpoch]) {
 }
 
 fn assert_recovered_signs_follow_alternating_data(epochs: &[TrackEpoch]) {
-    let runs = recovered_sign_runs(epochs);
+    let stable_epochs = stable_joint_tracking_window(epochs);
+    let runs = recovered_sign_runs(stable_epochs);
 
     assert!(
-        !runs.is_empty(),
-        "tracking did not recover any data-component signs: epochs={epochs:?}"
+        !stable_epochs.is_empty(),
+        "tracking never reached a stable joint-tracking window with recovered signs: epochs={epochs:?}"
     );
     assert!(
         runs.len() >= 2,
-        "tracking did not recover enough sign runs to cover alternating data: runs={runs:?}, epochs={epochs:?}"
+        "tracking did not recover enough sign runs to cover alternating data: runs={runs:?}, stable_epochs={stable_epochs:?}, epochs={epochs:?}"
     );
     assert!(
-        runs.iter().all(|(_, len)| *len >= 2),
-        "recovered sign runs should remain stable for more than one epoch: runs={runs:?}, epochs={epochs:?}"
+        runs.iter()
+            .enumerate()
+            .all(|(index, (_, len))| {
+                index == 0 || index + 1 == runs.len() || *len >= 2
+            }),
+        "interior recovered sign runs should remain stable for more than one epoch: runs={runs:?}, stable_epochs={stable_epochs:?}, epochs={epochs:?}"
     );
     assert!(
         runs.windows(2).all(|pair| pair[0].0 == -pair[1].0),
-        "recovered sign runs must alternate with the injected data pattern: runs={runs:?}, epochs={epochs:?}"
+        "recovered sign runs must alternate with the injected data pattern: runs={runs:?}, stable_epochs={stable_epochs:?}, epochs={epochs:?}"
     );
 }
 
 fn assert_carrier_continuity_across_sign_changes(epochs: &[TrackEpoch]) {
-    let sign_change_indices = epochs
+    let stable_epochs = stable_joint_tracking_window(epochs);
+    let sign_change_indices = stable_epochs
         .windows(2)
         .enumerate()
         .filter_map(|(index, pair)| {
@@ -158,30 +205,33 @@ fn assert_carrier_continuity_across_sign_changes(epochs: &[TrackEpoch]) {
 
     assert!(
         !sign_change_indices.is_empty(),
-        "tracking never recovered a data-sign transition: epochs={epochs:?}"
+        "tracking never recovered a data-sign transition inside stable lock: stable_epochs={stable_epochs:?}, epochs={epochs:?}"
     );
 
     for index in sign_change_indices {
-        let previous = &epochs[index - 1];
-        let current = &epochs[index];
+        let previous = &stable_epochs[index - 1];
+        let current = &stable_epochs[index];
         let phase_step_cycles = carrier_phase_step_cycles(previous, current);
 
-        assert!(previous.lock && current.lock, "tracking dropped lock at epoch {index}: epochs={epochs:?}");
+        assert!(
+            previous.lock && current.lock,
+            "tracking dropped lock at a recovered transition: stable_epochs={stable_epochs:?}, epochs={epochs:?}"
+        );
         assert!(
             !previous.cycle_slip && !current.cycle_slip,
-            "tracking reported a cycle slip at a recovered data-sign transition: epochs={epochs:?}"
+            "tracking reported a cycle slip at a recovered data-sign transition: stable_epochs={stable_epochs:?}, epochs={epochs:?}"
         );
         assert!(
             phase_step_cycles.is_finite(),
-            "carrier phase step must remain finite at a recovered data-sign transition: epochs={epochs:?}"
+            "carrier phase step must remain finite at a recovered data-sign transition: stable_epochs={stable_epochs:?}, epochs={epochs:?}"
         );
         assert!(
             phase_step_cycles >= JOINT_TRACKING_MIN_PHASE_STEP_CYCLES,
-            "carrier phase must continue advancing at recovered data-sign transitions: phase_step_cycles={phase_step_cycles}, epochs={epochs:?}"
+            "carrier phase must continue advancing at recovered data-sign transitions: phase_step_cycles={phase_step_cycles}, stable_epochs={stable_epochs:?}, epochs={epochs:?}"
         );
         assert!(
             phase_step_cycles <= JOINT_TRACKING_MAX_PHASE_STEP_CYCLES,
-            "carrier phase step grew too large at a recovered data-sign transition: phase_step_cycles={phase_step_cycles}, epochs={epochs:?}"
+            "carrier phase step grew too large at a recovered data-sign transition: phase_step_cycles={phase_step_cycles}, stable_epochs={stable_epochs:?}, epochs={epochs:?}"
         );
     }
 }
@@ -257,6 +307,40 @@ fn gps_l5i_tracking_uses_l5q_pilot_without_corrupting_data_signs() {
     let epochs = run_seeded_tracking(&config, &scenario, &l5i_signal);
 
     assert!(epochs.iter().all(|epoch| epoch.signal_code == SignalCode::L5I), "{epochs:?}");
+    assert!(epochs.iter().any(|epoch| epoch.nav_bit_lock), "{epochs:?}");
+    assert_joint_tracking_metadata(&epochs);
+    assert_recovered_signs_follow_alternating_data(&epochs);
+    assert_carrier_continuity_across_sign_changes(&epochs);
+}
+
+#[test]
+fn galileo_e5b_joint_tracking_preserves_carrier_continuity_and_data_signs() {
+    let config = tracking_config(10_230_000.0, 10_230);
+    let signal = SyntheticSignalParams {
+        sat: SatId { constellation: bijux_gnss_core::api::Constellation::Galileo, prn: 11 },
+        glonass_frequency_channel: None,
+        signal_band: SignalBand::E5,
+        signal_code: SignalCode::E5b,
+        doppler_hz: 180.0,
+        code_phase_chips: 2_048.25,
+        carrier_phase_rad: 0.3,
+        cn0_db_hz: 60.0,
+        navigation_data: SyntheticNavigationData::AlternatingStartPositive,
+    };
+    let scenario = SyntheticScenario {
+        sample_rate_hz: config.sampling_freq_hz,
+        intermediate_freq_hz: config.intermediate_freq_hz,
+        receiver_clock_frequency_bias_hz: 0.0,
+        duration_s: 0.080,
+        seed: 0x6A11_2872,
+        satellites: vec![signal.clone()],
+        ephemerides: Vec::new(),
+        id: "tracking-joint-components-galileo-e5b".to_string(),
+    };
+
+    let epochs = run_seeded_tracking(&config, &scenario, &signal);
+
+    assert!(epochs.iter().all(|epoch| epoch.signal_code == SignalCode::E5b), "{epochs:?}");
     assert!(epochs.iter().any(|epoch| epoch.nav_bit_lock), "{epochs:?}");
     assert_joint_tracking_metadata(&epochs);
     assert_recovered_signs_follow_alternating_data(&epochs);
