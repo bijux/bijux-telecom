@@ -346,3 +346,36 @@ fn galileo_e5b_joint_tracking_preserves_carrier_continuity_and_data_signs() {
     assert_recovered_signs_follow_alternating_data(&epochs);
     assert_carrier_continuity_across_sign_changes(&epochs);
 }
+
+#[test]
+fn galileo_e5a_seeded_tracking_reports_joint_component_provenance() {
+    let config = tracking_config(10_230_000.0, 10_230);
+    let signal = SyntheticSignalParams {
+        sat: SatId { constellation: bijux_gnss_core::api::Constellation::Galileo, prn: 19 },
+        glonass_frequency_channel: None,
+        signal_band: SignalBand::E5,
+        signal_code: SignalCode::E5a,
+        doppler_hz: 180.0,
+        code_phase_chips: 2_048.25,
+        carrier_phase_rad: 0.3,
+        cn0_db_hz: 60.0,
+        navigation_data: SyntheticNavigationData::AlternatingStartPositive,
+    };
+    let scenario = SyntheticScenario {
+        sample_rate_hz: config.sampling_freq_hz,
+        intermediate_freq_hz: config.intermediate_freq_hz,
+        receiver_clock_frequency_bias_hz: 0.0,
+        duration_s: 0.080,
+        seed: 0x6A11_2873,
+        satellites: vec![signal.clone()],
+        ephemerides: Vec::new(),
+        id: "tracking-joint-components-galileo-e5a".to_string(),
+    };
+
+    let epochs = run_seeded_tracking(&config, &scenario, &signal);
+
+    assert!(epochs.iter().all(|epoch| epoch.signal_code == SignalCode::E5a), "{epochs:?}");
+    assert!(epochs.iter().any(|epoch| epoch.nav_bit_lock), "{epochs:?}");
+    assert_joint_tracking_metadata(&epochs);
+    assert!(epochs.iter().any(|epoch| epoch.navigation_bit_sign.is_some()), "{epochs:?}");
+}
