@@ -21,18 +21,15 @@ use bijux_gnss_signal::api::samples_per_code;
 use bijux_gnss_signal::api::{
     advance_tracking_adaptation, anti_false_lock_detected as signal_anti_false_lock_detected,
     apply_carrier_tracking_loop as signal_apply_carrier_tracking_loop,
-    apply_code_loop as signal_apply_code_loop, carrier_frequency_error_hz_from_phase_delta,
-    carrier_phase_offset_radians, code_value_at_phase,
+    apply_code_loop as signal_apply_code_loop, calibrated_lock_detector_thresholds,
+    carrier_frequency_error_hz_from_phase_delta, carrier_phase_offset_radians, code_value_at_phase,
     coherent_integration_seconds as signal_coherent_integration_seconds,
     correlate_early_prompt_late, default_local_code_model_for_signal, discriminators,
-    dll_hold_threshold as signal_dll_hold_threshold,
-    dll_lock_threshold as signal_dll_lock_threshold, double_delta_dll_discriminator,
-    epoch_start_code_phase_samples_from_receiver_phase, estimate_cn0_dbhz,
-    estimate_tracking_uncertainty as signal_estimate_tracking_uncertainty,
-    fll_lock_threshold_hz as signal_fll_lock_threshold_hz, galileo_e5a_q_epoch_symbol,
-    galileo_e5a_q_secondary_code, galileo_e5b_q_epoch_symbol, galileo_e5b_q_secondary_code,
-    generate_galileo_e5a_q_code, generate_galileo_e5b_q_code, generate_gps_l2c_cl_code,
-    gps_l5_q_epoch_symbol, normalize_dll_discriminator,
+    double_delta_dll_discriminator, epoch_start_code_phase_samples_from_receiver_phase,
+    estimate_cn0_dbhz, estimate_tracking_uncertainty as signal_estimate_tracking_uncertainty,
+    galileo_e5a_q_epoch_symbol, galileo_e5a_q_secondary_code, galileo_e5b_q_epoch_symbol,
+    galileo_e5b_q_secondary_code, generate_galileo_e5a_q_code, generate_galileo_e5b_q_code,
+    generate_gps_l2c_cl_code, gps_l5_q_epoch_symbol, normalize_dll_discriminator,
     prompt_power_ratio as signal_prompt_power_ratio,
     push_tracking_uncertainty_sample as signal_push_tracking_uncertainty_sample,
     refresh_lock_reference_cn0_dbhz as signal_refresh_lock_reference_cn0_dbhz,
@@ -40,8 +37,8 @@ use bijux_gnss_signal::api::{
     resolved_signal_registry_entry, shared_path_code_rate_hz,
     update_windowed_tracking_cn0_estimate as signal_update_windowed_tracking_cn0_estimate,
     wrap_code_phase_samples, wrap_phase_cycles_signed, wrapped_code_phase_delta_samples,
-    wrapped_phase_delta_cycles, LocalCodeModel,
-    TrackingAdaptationInput as SignalTrackingAdaptationInput,
+    wrapped_phase_delta_cycles, LocalCodeModel, LockDetectorCalibrationInput,
+    LockDetectorThresholds, TrackingAdaptationInput as SignalTrackingAdaptationInput,
     TrackingAdaptationState as SignalTrackingAdaptationState,
     TrackingLoopProfile as SignalTrackingLoopProfile, TrackingQualityClass,
     TrackingUncertaintyInputs as SignalTrackingUncertaintyInputs,
@@ -68,8 +65,9 @@ const NAV_BIT_PHASE_STEP_TOLERANCE_CYCLES: f64 = 0.2;
 // a nav-bit edge. This keeps smaller non-nav slips from being mistaken for
 // half-cycle data-bit transitions.
 const NAV_BIT_PHASE_MIN_IMPROVEMENT_CYCLES: f64 = 0.25;
-const PLL_LOCK_MAX_PHASE_ERROR_RAD: f32 = 0.35;
-const PLL_HOLD_MAX_PHASE_ERROR_RAD: f32 = 0.45;
+const DLL_FALSE_UNLOCK_PROBABILITY: f64 = 1.0e-6;
+const PLL_FALSE_UNLOCK_PROBABILITY: f64 = 1.0e-6;
+const FLL_FALSE_UNLOCK_PROBABILITY: f64 = 1.0e-6;
 const PROMPT_POWER_DROP_RATIO_THRESHOLD: f32 = 0.2;
 const DISCRIMINATOR_INSTABILITY_MIN_PROMPT_POWER_RATIO: f32 = 0.5;
 const DISCRIMINATOR_INSTABILITY_REQUIRED_EPOCHS: u8 = 2;
@@ -2626,28 +2624,33 @@ impl Tracking {
         let fll_err_hz =
             if use_nav_bit_aware_fll { nav_bit_aware_fll_err_hz } else { raw_fll_err_hz } as f32;
         let from_state = state.state;
-        let raw_dll_lock = dll_err.abs()
-            < dll_lock_threshold(samples_per_chip, tracking_params.early_late_spacing_chips);
+        let lock_detector_thresholds = tracking_lock_detector_thresholds(
+            cn0_dbhz,
+            coherent_integration_s,
+            samples_per_chip,
+            tracking_params,
+            state.carrier_rate_hz_per_s,
+        );
+        let raw_dll_lock = dll_err.abs() < lock_detector_thresholds.dll_lock;
         let subcarrier_ambiguity =
             subcarrier_ambiguity_detected(correlation.subcarrier_ambiguity_guard);
         let subcarrier_code_phase_unambiguous =
             !signal_model.discriminator_family.requires_unambiguous_code_lock()
                 || state.subcarrier_code_phase_refined;
         let fll_enabled = fll_bw > f64::EPSILON;
-        let raw_pll_lock = pll_err.abs() < PLL_LOCK_MAX_PHASE_ERROR_RAD;
+        let raw_pll_lock = pll_err.abs() < lock_detector_thresholds.pll_lock_rad;
         let raw_fll_lock =
-            !fll_enabled || (fll_err_hz as f64).abs() <= fll_lock_threshold_hz(fll_bw);
+            !fll_enabled || (fll_err_hz as f64).abs() <= lock_detector_thresholds.fll_lock_hz;
         let sustained_dll_lock = raw_dll_lock
             || (matches!(
                 from_state,
                 ChannelState::PullIn | ChannelState::Tracking | ChannelState::Degraded
-            ) && dll_err.abs()
-                < dll_hold_threshold(samples_per_chip, tracking_params.early_late_spacing_chips));
+            ) && dll_err.abs() < lock_detector_thresholds.dll_hold);
         let sustained_pll_lock = raw_pll_lock
             || (matches!(
                 from_state,
                 ChannelState::PullIn | ChannelState::Tracking | ChannelState::Degraded
-            ) && pll_err.abs() < PLL_HOLD_MAX_PHASE_ERROR_RAD);
+            ) && pll_err.abs() < lock_detector_thresholds.pll_hold_rad);
         let anti_false_lock = anti_false_lock_detected(
             primary_correlator.early,
             primary_correlator.prompt,
@@ -2994,6 +2997,7 @@ impl Tracking {
                 " subcarrier_code_phase_handoff=coarse"
             });
         }
+        tracking_provenance.push_str(&lock_detector_provenance(lock_detector_thresholds));
 
         out.push(TrackEpoch {
             lock: channel_locked,
@@ -4042,16 +4046,36 @@ fn coherent_integration_seconds(epoch_len_samples: usize, sample_rate_hz: f64) -
     signal_coherent_integration_seconds(epoch_len_samples, sample_rate_hz)
 }
 
-fn fll_lock_threshold_hz(fll_bw_hz: f64) -> f64 {
-    signal_fll_lock_threshold_hz(fll_bw_hz)
+fn tracking_lock_detector_thresholds(
+    cn0_dbhz: f64,
+    coherent_integration_s: f64,
+    samples_per_chip: f64,
+    tracking_params: TrackingParams,
+    carrier_rate_hz_per_s: f64,
+) -> LockDetectorThresholds {
+    calibrated_lock_detector_thresholds(LockDetectorCalibrationInput {
+        cn0_dbhz,
+        coherent_integration_s,
+        samples_per_chip,
+        early_late_spacing_chips: tracking_params.early_late_spacing_chips,
+        dll_false_unlock_probability: DLL_FALSE_UNLOCK_PROBABILITY,
+        pll_false_unlock_probability: PLL_FALSE_UNLOCK_PROBABILITY,
+        fll_false_unlock_probability: FLL_FALSE_UNLOCK_PROBABILITY,
+        dynamic_stress_hz: carrier_rate_hz_per_s.abs() * coherent_integration_s.max(0.0),
+    })
 }
 
-fn dll_lock_threshold(samples_per_chip: f64, early_late_spacing_chips: f64) -> f32 {
-    signal_dll_lock_threshold(samples_per_chip, early_late_spacing_chips)
-}
-
-fn dll_hold_threshold(samples_per_chip: f64, early_late_spacing_chips: f64) -> f32 {
-    signal_dll_hold_threshold(samples_per_chip, early_late_spacing_chips)
+fn lock_detector_provenance(thresholds: LockDetectorThresholds) -> String {
+    format!(
+        " lock_detector=statistical lock_detector_coherent_snr={:.6} dll_lock_threshold={:.6} dll_hold_threshold={:.6} pll_lock_threshold_rad={:.6} pll_hold_threshold_rad={:.6} fll_lock_threshold_hz={:.6} fll_sigma_hz={:.6}",
+        thresholds.distributions.coherent_snr_linear,
+        thresholds.dll_lock,
+        thresholds.dll_hold,
+        thresholds.pll_lock_rad,
+        thresholds.pll_hold_rad,
+        thresholds.fll_lock_hz,
+        thresholds.distributions.fll_sigma_hz,
+    )
 }
 
 fn low_resolution_code_lock(
@@ -6927,9 +6951,22 @@ mod tests {
     }
 
     #[test]
-    fn dll_lock_threshold_relaxes_for_subsample_early_late_spacing() {
-        assert_eq!(super::dll_lock_threshold(1.0, 0.5), 0.6);
-        assert_eq!(super::dll_lock_threshold(4.0, 0.5), 0.2);
+    fn tracking_lock_detector_thresholds_derive_from_spacing_and_dynamics() {
+        let tracking_params = super::TrackingParams {
+            early_late_spacing_chips: 0.5,
+            dll_bw_hz: 2.0,
+            pll_bw_hz: 15.0,
+            fll_bw_hz: 10.0,
+            integration_ms: 1,
+        };
+        let high_resolution =
+            super::tracking_lock_detector_thresholds(45.0, 0.001, 4.0, tracking_params, 0.0);
+        let low_resolution =
+            super::tracking_lock_detector_thresholds(45.0, 0.001, 1.0, tracking_params, 25_000.0);
+
+        assert!(low_resolution.dll_lock > high_resolution.dll_lock);
+        assert!(low_resolution.fll_lock_hz > high_resolution.fll_lock_hz);
+        assert!(high_resolution.pll_hold_rad > high_resolution.pll_lock_rad);
     }
 
     #[test]
