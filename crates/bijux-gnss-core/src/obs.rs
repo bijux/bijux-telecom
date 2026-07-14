@@ -1444,10 +1444,9 @@ mod tests {
         trackable_acq_tracking_seeds, AcqCodePhaseRefinement, AcqComponentCombinationMode,
         AcqComponentProvenance, AcqComponentStatistic, AcqEvidence, AcqHypothesis, AcqResult,
         AcqSearchSummary, AcqUncertainty, AcqUncertaintyCovariance, Constellation, Cycles,
-        GlonassFrequencyChannel, Hertz, LeapSeconds, LockFlags, NavLifecycleState,
-        NavQualityFlag, ObservationEpochDecision, ObservationStatus, ReceiverRole,
-        ReceiverSampleTrace, SatId, SignalBand, SignalCode, SignalComponentRole, SolutionStatus,
-        UtcTime,
+        GlonassFrequencyChannel, Hertz, LeapSeconds, LockFlags, NavLifecycleState, NavQualityFlag,
+        ObservationEpochDecision, ObservationStatus, ReceiverRole, ReceiverSampleTrace, SatId,
+        SignalBand, SignalCode, SignalComponentRole, SolutionStatus, UtcTime,
     };
     use crate::time::utc_to_gps;
 

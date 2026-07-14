@@ -309,7 +309,7 @@ fn acquire_report_exposes_refined_doppler_for_fractional_synthetic_truth() {
     let scenario_path = temp.join("fractional_acquisition_refinement.toml");
     fs::write(
         &scenario_path,
-r#"id = "fractional_acquisition_refinement"
+        r#"id = "fractional_acquisition_refinement"
 sample_rate_hz = 4092000.0
 intermediate_freq_hz = 0.0
 duration_s = 0.08
@@ -357,7 +357,7 @@ navigation_data = "constant_positive"
     let acquire_config_path = temp.join("receiver_acquisition_refinement.toml");
     fs::write(
         &acquire_config_path,
-r#"schema_version = 1
+        r#"schema_version = 1
 sample_rate_hz = 4_092_000.0
 intermediate_freq_hz = 0.0
 quantization_bits = 16
