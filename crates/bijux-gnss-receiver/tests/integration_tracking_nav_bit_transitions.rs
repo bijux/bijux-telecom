@@ -355,6 +355,8 @@ fn tracking_recovers_navigation_bit_signs_from_prompt_history() {
         (epochs.len() / GPS_L1CA_NAV_BIT_PERIOD_MS) * GPS_L1CA_NAV_BIT_PERIOD_MS;
     let recovered_blocks =
         recovered_epochs.chunks_exact(GPS_L1CA_NAV_BIT_PERIOD_MS).collect::<Vec<_>>();
+    let synchronized_epochs =
+        epochs.iter().filter(|epoch| epoch.navigation_bit_sign.is_some()).collect::<Vec<_>>();
 
     assert!(
         !recovered_epochs.is_empty(),
@@ -380,5 +382,15 @@ fn tracking_recovers_navigation_bit_signs_from_prompt_history() {
     assert!(
         recovered_blocks.windows(2).all(|pair| pair[0][0].1 == -pair[1][0].1),
         "adjacent recovered navigation-bit blocks must flip sign in the alternating synthetic scenario: recovered_epochs={recovered_epochs:?}, epochs={epochs:?}"
+    );
+    assert!(
+        synchronized_epochs.iter().all(|epoch| epoch.nav_bit_lock),
+        "recovered navigation-bit signs must be emitted with nav-bit lock: synchronized_epochs={synchronized_epochs:?}, epochs={epochs:?}"
+    );
+    assert!(
+        synchronized_epochs.iter().all(|epoch| epoch
+            .tracking_provenance
+            .contains("nav_symbol_sync=confident")),
+        "recovered navigation-bit signs must report synchronization provenance: synchronized_epochs={synchronized_epochs:?}, epochs={epochs:?}"
     );
 }
