@@ -86,7 +86,7 @@ fn run_tracking_case(
 }
 
 #[test]
-fn gps_l5q_tracking_reports_pilot_metadata_without_navigation_bit_lock() {
+fn gps_l5q_tracking_reports_joint_component_metadata() {
     let config = wideband_tracking_config();
     let sat = SatId { constellation: Constellation::Gps, prn: 24 };
     let scenario = SyntheticScenario {
@@ -122,18 +122,21 @@ fn gps_l5q_tracking_reports_pilot_metadata_without_navigation_bit_lock() {
         "{tracking:#?}"
     );
     assert!(
-        tracking.epochs.iter().all(|epoch| !epoch.nav_bit_lock),
+        tracking.epochs.iter().any(|epoch| epoch.nav_bit_lock),
         "{tracking:#?}"
     );
     assert!(
-        tracking.epochs.iter().all(|epoch| epoch.navigation_bit_sign.is_none()),
+        tracking.epochs.iter().any(|epoch| epoch.navigation_bit_sign.is_some()),
         "{tracking:#?}"
     );
     assert!(
         tracking.epochs.iter().all(|epoch| {
             epoch.tracking_assumptions
                 .as_ref()
-                .is_some_and(|assumptions| assumptions.discriminator_family == "early_prompt_late")
+                .is_some_and(|assumptions| {
+                    assumptions.discriminator_family == "early_prompt_late"
+                        && assumptions.aiding_mode == "pilot_carrier"
+                })
         }),
         "{tracking:#?}"
     );
@@ -141,6 +144,9 @@ fn gps_l5q_tracking_reports_pilot_metadata_without_navigation_bit_lock() {
         tracking.epochs.iter().all(|epoch| {
             epoch.tracking_provenance.contains("track_component_role=Pilot")
                 && epoch.tracking_provenance.contains("phase_transition_source=secondary_code")
+                && epoch.tracking_provenance.contains("aiding_mode=pilot_carrier")
+                && epoch.tracking_provenance.contains("pilot_component=false")
+                && epoch.tracking_provenance.contains("data_symbol_component=true")
                 && epoch.tracking_provenance.contains("nominal_carrier_hz=1176450000.000")
         }),
         "{tracking:#?}"
