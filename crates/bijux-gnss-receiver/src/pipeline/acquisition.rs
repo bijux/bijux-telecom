@@ -11,8 +11,8 @@ use bijux_gnss_core::api::{
     acq_result_stability_key, stable_acq_result_keys, AcqAssumptions, AcqCodePhaseRefinement,
     AcqComponentCombinationMode, AcqComponentProvenance, AcqComponentStatistic,
     AcqDopplerRefinement, AcqEvidence, AcqExplain, AcqExplainCandidate, AcqHypothesis, AcqRequest,
-    AcqResult, AcqThresholdProvenance, AcqUncertainty, Hertz, ReceiverSampleTrace, SamplesFrame,
-    SatId, SignalBand, SignalCode, SignalComponentRole,
+    AcqResult, AcqThresholdProvenance, AcqUncertainty, AcqUncertaintyCovariance, Hertz,
+    ReceiverSampleTrace, SamplesFrame, SatId, SignalBand, SignalCode, SignalComponentRole,
 };
 use num_complex::Complex;
 use rustfft::{num_traits::Zero, FftPlanner};
@@ -76,9 +76,7 @@ const SUB_SAMPLE_CODE_PHASE_REFINEMENT_METHOD: &str = "parabolic_code_peak";
 const SUB_SAMPLE_CODE_PHASE_REFINEMENT_MAX_OFFSET_SAMPLES: f64 = 0.5;
 const SUB_SAMPLE_CODE_PHASE_REFINEMENT_EPSILON: f64 = 1e-12;
 const SUB_SAMPLE_CODE_PHASE_REFINEMENT_MIN_ABS_OFFSET_SAMPLES: f64 = 0.05;
-const ACQUISITION_UNCERTAINTY_MIN_RESOLUTION_FRACTION: f64 = 0.05;
-const ACQUISITION_UNCERTAINTY_REFERENCE_RESOLUTION_FRACTION: f64 = 0.25;
-const ACQUISITION_UNCERTAINTY_MAX_RESOLUTION_FRACTION: f64 = 0.5;
+const ACQUISITION_UNCERTAINTY_LOG_RESPONSE_FLOOR_RATIO: f64 = 1.0e-6;
 const FALSE_ALARM_CALIBRATION_SEARCH_ITERATIONS: usize = 7;
 const MULTIPATH_SECONDARY_GUARD_CHIPS: usize = 2;
 const WRONG_PRN_DOMINANCE_RATIO_MIN: f32 = 4.0;
@@ -428,6 +426,11 @@ struct LocalAcquisitionLikelihoodSurface {
     doppler_cross_section: [f32; 3],
     code_phase_cross_section: [f32; 3],
     values: [[f32; 3]; 3],
+}
+
+#[derive(Debug, Clone, Copy)]
+struct LocalAcquisitionLikelihoodVolume {
+    values: [[[f32; 3]; 3]; 3],
 }
 
 fn unique_strategy_components(
@@ -1604,8 +1607,15 @@ impl Acquisition {
                                 ),
                             });
                         candidate.uncertainty = estimate_acquisition_uncertainty(
+                            &self.config,
+                            frame,
+                            &signal_model,
                             candidate,
+                            request.coherent_ms,
+                            request.noncoherent,
                             request.doppler_step_hz.max(1),
+                            request.doppler_rate_search_hz_per_s.max(0),
+                            request.doppler_rate_step_hz_per_s.max(1),
                         );
                     }
                 }
@@ -3415,82 +3425,91 @@ fn refine_acquisition_candidates(
 }
 
 fn estimate_acquisition_uncertainty(
+    config: &ReceiverPipelineConfig,
+    frame: &SamplesFrame,
+    signal_model: &AcquisitionSignalModel,
     candidate: &AcqResult,
+    coherent_ms: u32,
+    noncoherent: u32,
     doppler_step_hz: i32,
+    doppler_rate_search_hz_per_s: i32,
+    doppler_rate_step_hz_per_s: i32,
 ) -> Option<AcqUncertainty> {
     if !matches!(candidate.hypothesis, AcqHypothesis::Accepted) {
         return None;
     }
-    Some(AcqUncertainty {
-        doppler_hz: estimate_doppler_uncertainty_hz(candidate, doppler_step_hz)?,
-        code_phase_samples: estimate_code_phase_uncertainty_samples(candidate)?,
-    })
-}
-
-fn estimate_doppler_uncertainty_hz(candidate: &AcqResult, doppler_step_hz: i32) -> Option<f64> {
-    let step_hz = doppler_step_hz.unsigned_abs() as f64;
-    if step_hz <= f64::EPSILON {
-        return None;
-    }
-    let uncertainty_bins = candidate
-        .doppler_refinement
-        .as_ref()
-        .and_then(|refinement| {
-            curvature_based_resolution_fraction(
-                refinement.left_peak_mean_ratio as f64,
-                refinement.center_peak_mean_ratio as f64,
-                refinement.right_peak_mean_ratio as f64,
-                1.0 + refinement.offset_bins.abs(),
+    let code_phase_center_samples = candidate.resolved_code_phase_samples().round() as usize;
+    let covariance = if doppler_rate_search_hz_per_s > 0 {
+        measure_local_acquisition_likelihood_volume(
+            config,
+            signal_model,
+            frame,
+            candidate.sat,
+            candidate.carrier_hz.0,
+            candidate.doppler_rate_hz_per_s,
+            code_phase_center_samples,
+            doppler_step_hz as f64,
+            doppler_rate_step_hz_per_s as f64,
+            coherent_ms,
+            noncoherent,
+        )
+        .and_then(|volume| {
+            estimate_log_likelihood_covariance_3x3(
+                &volume,
+                candidate.mean as f64,
+                doppler_step_hz as f64,
+                1.0,
+                doppler_rate_step_hz_per_s as f64,
             )
         })
-        .unwrap_or(ACQUISITION_UNCERTAINTY_MAX_RESOLUTION_FRACTION);
-    Some(uncertainty_bins * step_hz)
-}
+    } else {
+        None
+    }
+    .or_else(|| {
+        measure_local_acquisition_likelihood_surface(
+            config,
+            signal_model,
+            frame,
+            candidate.sat,
+            candidate.carrier_hz.0,
+            candidate.doppler_rate_hz_per_s,
+            code_phase_center_samples,
+            doppler_step_hz as f64,
+            coherent_ms,
+            noncoherent,
+        )
+        .and_then(|surface| {
+            estimate_log_likelihood_covariance_2x2(
+                &surface,
+                candidate.mean as f64,
+                doppler_step_hz as f64,
+                1.0,
+            )
+        })
+    })
+    .or_else(|| {
+        estimate_log_likelihood_covariance_from_refinement_axes(
+            candidate,
+            candidate.mean as f64,
+            doppler_step_hz as f64,
+        )
+    })?;
 
-fn estimate_code_phase_uncertainty_samples(candidate: &AcqResult) -> Option<f64> {
-    Some(
-        candidate
-            .code_phase_refinement
-            .as_ref()
-            .and_then(|refinement| {
-                curvature_based_resolution_fraction(
-                    refinement.left_correlation_norm as f64,
-                    refinement.center_correlation_norm as f64,
-                    refinement.right_correlation_norm as f64,
-                    1.0 + refinement.offset_samples.abs(),
-                )
-            })
-            .unwrap_or(ACQUISITION_UNCERTAINTY_MAX_RESOLUTION_FRACTION),
-    )
-}
-
-fn curvature_based_resolution_fraction(
-    left_metric: f64,
-    center_metric: f64,
-    right_metric: f64,
-    offset_penalty: f64,
-) -> Option<f64> {
-    if !left_metric.is_finite()
-        || !center_metric.is_finite()
-        || !right_metric.is_finite()
-        || !offset_penalty.is_finite()
-        || center_metric <= f64::EPSILON
+    let doppler_hz = covariance.doppler_variance_hz2.sqrt();
+    let code_phase_samples = covariance.code_phase_variance_samples2.sqrt();
+    let doppler_rate_hz_per_s =
+        covariance.doppler_rate_variance_hz2_per_s2.map(f64::sqrt);
+    if !doppler_hz.is_finite()
+        || !code_phase_samples.is_finite()
+        || doppler_hz <= f64::EPSILON
+        || code_phase_samples <= f64::EPSILON
+        || doppler_rate_hz_per_s
+            .is_some_and(|rate_sigma| !rate_sigma.is_finite() || rate_sigma <= f64::EPSILON)
     {
         return None;
     }
-    let normalized_curvature = ((2.0 * center_metric) - left_metric - right_metric).max(0.0)
-        / center_metric.max(f64::EPSILON);
-    if normalized_curvature <= f64::EPSILON {
-        return Some(ACQUISITION_UNCERTAINTY_MAX_RESOLUTION_FRACTION);
-    }
-    Some(
-        ((ACQUISITION_UNCERTAINTY_REFERENCE_RESOLUTION_FRACTION / normalized_curvature.sqrt())
-            * offset_penalty)
-            .clamp(
-                ACQUISITION_UNCERTAINTY_MIN_RESOLUTION_FRACTION,
-                ACQUISITION_UNCERTAINTY_MAX_RESOLUTION_FRACTION,
-            ),
-    )
+
+    Some(AcqUncertainty { doppler_hz, code_phase_samples, doppler_rate_hz_per_s, covariance: Some(covariance) })
 }
 
 fn estimate_acquisition_doppler_refinement(
@@ -3612,6 +3631,470 @@ fn measure_local_acquisition_likelihood_surface(
         code_phase_cross_section: values[1],
         values,
     })
+}
+
+fn measure_local_acquisition_likelihood_volume(
+    config: &ReceiverPipelineConfig,
+    signal_model: &AcquisitionSignalModel,
+    frame: &SamplesFrame,
+    sat: SatId,
+    coarse_carrier_hz: f64,
+    coarse_doppler_rate_hz_per_s: f64,
+    coarse_code_phase_samples: usize,
+    doppler_step_hz: f64,
+    doppler_rate_step_hz_per_s: f64,
+    coherent_ms: u32,
+    noncoherent: u32,
+) -> Option<LocalAcquisitionLikelihoodVolume> {
+    if !doppler_step_hz.is_finite()
+        || doppler_step_hz <= f64::EPSILON
+        || !doppler_rate_step_hz_per_s.is_finite()
+        || doppler_rate_step_hz_per_s <= f64::EPSILON
+    {
+        return None;
+    }
+    let samples_per_code = signal_model.samples_per_code(config.sampling_freq_hz);
+    if samples_per_code < 3 {
+        return None;
+    }
+
+    let center_index = coarse_code_phase_samples % samples_per_code;
+    let left_index = (center_index + samples_per_code - 1) % samples_per_code;
+    let right_index = (center_index + 1) % samples_per_code;
+    let mut values = [[[0.0f32; 3]; 3]; 3];
+    let doppler_rates = [
+        coarse_doppler_rate_hz_per_s - doppler_rate_step_hz_per_s,
+        coarse_doppler_rate_hz_per_s,
+        coarse_doppler_rate_hz_per_s + doppler_rate_step_hz_per_s,
+    ];
+    let carriers = [
+        coarse_carrier_hz - doppler_step_hz,
+        coarse_carrier_hz,
+        coarse_carrier_hz + doppler_step_hz,
+    ];
+
+    for (rate_index, doppler_rate_hz_per_s) in doppler_rates.into_iter().enumerate() {
+        for (doppler_index, carrier_hz) in carriers.into_iter().enumerate() {
+            let profile = measure_code_phase_profile(
+                config,
+                signal_model,
+                frame,
+                sat,
+                carrier_hz,
+                doppler_rate_hz_per_s,
+                coherent_ms,
+                noncoherent,
+            )?;
+            values[rate_index][doppler_index] =
+                [profile[left_index], profile[center_index], profile[right_index]];
+        }
+    }
+
+    let center = values[1][1][1];
+    let center_neighbors = [
+        values[1][0][1],
+        values[1][2][1],
+        values[1][1][0],
+        values[1][1][2],
+        values[0][1][1],
+        values[2][1][1],
+    ];
+    if center_neighbors.into_iter().any(|neighbor| center < neighbor) {
+        return None;
+    }
+
+    Some(LocalAcquisitionLikelihoodVolume { values })
+}
+
+fn estimate_log_likelihood_covariance_2x2(
+    surface: &LocalAcquisitionLikelihoodSurface,
+    noise_floor: f64,
+    doppler_step_hz: f64,
+    code_phase_step_samples: f64,
+) -> Option<AcqUncertaintyCovariance> {
+    let fallback = || {
+        Some(AcqUncertaintyCovariance {
+            doppler_variance_hz2: estimate_log_likelihood_axis_variance(
+                surface.values[0][1] as f64,
+                surface.values[1][1] as f64,
+                surface.values[2][1] as f64,
+                noise_floor,
+                doppler_step_hz,
+            )?,
+            doppler_code_phase_covariance_hz_samples: 0.0,
+            code_phase_variance_samples2: estimate_log_likelihood_axis_variance(
+                surface.values[1][0] as f64,
+                surface.values[1][1] as f64,
+                surface.values[1][2] as f64,
+                noise_floor,
+                code_phase_step_samples,
+            )?,
+            doppler_rate_variance_hz2_per_s2: None,
+            doppler_doppler_rate_covariance_hz2_per_s: None,
+            code_phase_doppler_rate_covariance_samples_hz_per_s: None,
+        })
+    };
+    let phi = log_likelihood_surface_values_2x2(&surface.values, noise_floor)?;
+    let hessian = [
+        [
+            centered_second_derivative(phi[0][1], phi[1][1], phi[2][1], doppler_step_hz)?,
+            centered_mixed_derivative(
+                phi[0][0],
+                phi[0][2],
+                phi[2][0],
+                phi[2][2],
+                doppler_step_hz,
+                code_phase_step_samples,
+            )?,
+        ],
+        [
+            centered_mixed_derivative(
+                phi[0][0],
+                phi[0][2],
+                phi[2][0],
+                phi[2][2],
+                doppler_step_hz,
+                code_phase_step_samples,
+            )?,
+            centered_second_derivative(
+                phi[1][0],
+                phi[1][1],
+                phi[1][2],
+                code_phase_step_samples,
+            )?,
+        ],
+    ];
+    let Some(covariance) = invert_2x2(hessian) else {
+        return fallback();
+    };
+    if covariance[0][0] <= f64::EPSILON || covariance[1][1] <= f64::EPSILON {
+        return fallback();
+    }
+    Some(AcqUncertaintyCovariance {
+        doppler_variance_hz2: covariance[0][0],
+        doppler_code_phase_covariance_hz_samples: covariance[0][1],
+        code_phase_variance_samples2: covariance[1][1],
+        doppler_rate_variance_hz2_per_s2: None,
+        doppler_doppler_rate_covariance_hz2_per_s: None,
+        code_phase_doppler_rate_covariance_samples_hz_per_s: None,
+    })
+}
+
+fn estimate_log_likelihood_covariance_3x3(
+    volume: &LocalAcquisitionLikelihoodVolume,
+    noise_floor: f64,
+    doppler_step_hz: f64,
+    code_phase_step_samples: f64,
+    doppler_rate_step_hz_per_s: f64,
+) -> Option<AcqUncertaintyCovariance> {
+    let fallback = || {
+        let center_surface = LocalAcquisitionLikelihoodSurface {
+            doppler_cross_section: [
+                volume.values[1][0][1],
+                volume.values[1][1][1],
+                volume.values[1][2][1],
+            ],
+            code_phase_cross_section: volume.values[1][1],
+            values: volume.values[1],
+        };
+        let mut covariance = estimate_log_likelihood_covariance_2x2(
+            &center_surface,
+            noise_floor,
+            doppler_step_hz,
+            code_phase_step_samples,
+        )?;
+        covariance.doppler_rate_variance_hz2_per_s2 = Some(estimate_log_likelihood_axis_variance(
+            volume.values[0][1][1] as f64,
+            volume.values[1][1][1] as f64,
+            volume.values[2][1][1] as f64,
+            noise_floor,
+            doppler_rate_step_hz_per_s,
+        )?);
+        covariance.doppler_doppler_rate_covariance_hz2_per_s = Some(0.0);
+        covariance.code_phase_doppler_rate_covariance_samples_hz_per_s = Some(0.0);
+        Some(covariance)
+    };
+    let phi = log_likelihood_surface_values_3x3(&volume.values, noise_floor)?;
+    let hessian = [
+        [
+            centered_second_derivative(phi[1][0][1], phi[1][1][1], phi[1][2][1], doppler_step_hz)?,
+            centered_mixed_derivative(
+                phi[1][0][0],
+                phi[1][0][2],
+                phi[1][2][0],
+                phi[1][2][2],
+                doppler_step_hz,
+                code_phase_step_samples,
+            )?,
+            centered_mixed_derivative(
+                phi[0][0][1],
+                phi[0][2][1],
+                phi[2][0][1],
+                phi[2][2][1],
+                doppler_step_hz,
+                doppler_rate_step_hz_per_s,
+            )?,
+        ],
+        [
+            centered_mixed_derivative(
+                phi[1][0][0],
+                phi[1][0][2],
+                phi[1][2][0],
+                phi[1][2][2],
+                doppler_step_hz,
+                code_phase_step_samples,
+            )?,
+            centered_second_derivative(
+                phi[1][1][0],
+                phi[1][1][1],
+                phi[1][1][2],
+                code_phase_step_samples,
+            )?,
+            centered_mixed_derivative(
+                phi[0][1][0],
+                phi[0][1][2],
+                phi[2][1][0],
+                phi[2][1][2],
+                code_phase_step_samples,
+                doppler_rate_step_hz_per_s,
+            )?,
+        ],
+        [
+            centered_mixed_derivative(
+                phi[0][0][1],
+                phi[0][2][1],
+                phi[2][0][1],
+                phi[2][2][1],
+                doppler_step_hz,
+                doppler_rate_step_hz_per_s,
+            )?,
+            centered_mixed_derivative(
+                phi[0][1][0],
+                phi[0][1][2],
+                phi[2][1][0],
+                phi[2][1][2],
+                code_phase_step_samples,
+                doppler_rate_step_hz_per_s,
+            )?,
+            centered_second_derivative(
+                phi[0][1][1],
+                phi[1][1][1],
+                phi[2][1][1],
+                doppler_rate_step_hz_per_s,
+            )?,
+        ],
+    ];
+    let Some(covariance) = invert_3x3(hessian) else {
+        return fallback();
+    };
+    if covariance[0][0] <= f64::EPSILON
+        || covariance[1][1] <= f64::EPSILON
+        || covariance[2][2] <= f64::EPSILON
+    {
+        return fallback();
+    }
+    Some(AcqUncertaintyCovariance {
+        doppler_variance_hz2: covariance[0][0],
+        doppler_code_phase_covariance_hz_samples: covariance[0][1],
+        code_phase_variance_samples2: covariance[1][1],
+        doppler_rate_variance_hz2_per_s2: Some(covariance[2][2]),
+        doppler_doppler_rate_covariance_hz2_per_s: Some(covariance[0][2]),
+        code_phase_doppler_rate_covariance_samples_hz_per_s: Some(covariance[1][2]),
+    })
+}
+
+fn estimate_log_likelihood_covariance_from_refinement_axes(
+    candidate: &AcqResult,
+    noise_floor: f64,
+    doppler_step_hz: f64,
+) -> Option<AcqUncertaintyCovariance> {
+    let doppler_refinement = candidate.doppler_refinement.as_ref()?;
+    let code_phase_refinement = candidate.code_phase_refinement.as_ref()?;
+    Some(AcqUncertaintyCovariance {
+        doppler_variance_hz2: estimate_log_likelihood_axis_variance(
+            doppler_refinement.left_peak_mean_ratio as f64,
+            doppler_refinement.center_peak_mean_ratio as f64,
+            doppler_refinement.right_peak_mean_ratio as f64,
+            1.0,
+            doppler_step_hz,
+        )?,
+        doppler_code_phase_covariance_hz_samples: 0.0,
+        code_phase_variance_samples2: estimate_log_likelihood_axis_variance(
+            code_phase_refinement.left_correlation_norm as f64,
+            code_phase_refinement.center_correlation_norm as f64,
+            code_phase_refinement.right_correlation_norm as f64,
+            noise_floor,
+            1.0,
+        )?,
+        doppler_rate_variance_hz2_per_s2: None,
+        doppler_doppler_rate_covariance_hz2_per_s: None,
+        code_phase_doppler_rate_covariance_samples_hz_per_s: None,
+    })
+}
+
+fn log_likelihood_surface_values_2x2(
+    values: &[[f32; 3]; 3],
+    noise_floor: f64,
+) -> Option<[[f64; 3]; 3]> {
+    let center_excess = excess_likelihood_response(values[1][1] as f64, noise_floor, None)?;
+    let floor = Some(center_excess);
+    let mut phi = [[0.0_f64; 3]; 3];
+    for doppler_index in 0..3 {
+        for code_index in 0..3 {
+            phi[doppler_index][code_index] = negative_log_likelihood_response(
+                values[doppler_index][code_index] as f64,
+                noise_floor,
+                center_excess,
+                floor,
+            )?;
+        }
+    }
+    Some(phi)
+}
+
+fn log_likelihood_surface_values_3x3(
+    values: &[[[f32; 3]; 3]; 3],
+    noise_floor: f64,
+) -> Option<[[[f64; 3]; 3]; 3]> {
+    let center_excess = excess_likelihood_response(values[1][1][1] as f64, noise_floor, None)?;
+    let floor = Some(center_excess);
+    let mut phi = [[[0.0_f64; 3]; 3]; 3];
+    for rate_index in 0..3 {
+        for doppler_index in 0..3 {
+            for code_index in 0..3 {
+                phi[rate_index][doppler_index][code_index] = negative_log_likelihood_response(
+                    values[rate_index][doppler_index][code_index] as f64,
+                    noise_floor,
+                    center_excess,
+                    floor,
+                )?;
+            }
+        }
+    }
+    Some(phi)
+}
+
+fn negative_log_likelihood_response(
+    value: f64,
+    noise_floor: f64,
+    center_excess: f64,
+    floor_reference: Option<f64>,
+) -> Option<f64> {
+    let excess = excess_likelihood_response(value, noise_floor, floor_reference)?;
+    let normalized = excess / center_excess;
+    if !normalized.is_finite() || normalized <= 0.0 {
+        return None;
+    }
+    Some(-normalized.ln())
+}
+
+fn excess_likelihood_response(
+    value: f64,
+    noise_floor: f64,
+    floor_reference: Option<f64>,
+) -> Option<f64> {
+    if !value.is_finite() || !noise_floor.is_finite() {
+        return None;
+    }
+    let epsilon = floor_reference
+        .map(|reference| reference * ACQUISITION_UNCERTAINTY_LOG_RESPONSE_FLOOR_RATIO)
+        .unwrap_or(1.0e-12);
+    let excess = (value - noise_floor).max(epsilon);
+    if !excess.is_finite() || excess <= 0.0 {
+        return None;
+    }
+    Some(excess)
+}
+
+fn estimate_log_likelihood_axis_variance(
+    left: f64,
+    center: f64,
+    right: f64,
+    noise_floor: f64,
+    step: f64,
+) -> Option<f64> {
+    let center_excess = excess_likelihood_response(center, noise_floor, None)?;
+    let floor = Some(center_excess);
+    let phi_left = negative_log_likelihood_response(left, noise_floor, center_excess, floor)?;
+    let phi_center = negative_log_likelihood_response(center, noise_floor, center_excess, floor)?;
+    let phi_right = negative_log_likelihood_response(right, noise_floor, center_excess, floor)?;
+    let curvature = centered_second_derivative(phi_left, phi_center, phi_right, step)?;
+    let variance = 1.0 / curvature;
+    (variance.is_finite() && variance > f64::EPSILON).then_some(variance)
+}
+
+fn centered_second_derivative(left: f64, center: f64, right: f64, step: f64) -> Option<f64> {
+    if !left.is_finite()
+        || !center.is_finite()
+        || !right.is_finite()
+        || !step.is_finite()
+        || step <= f64::EPSILON
+    {
+        return None;
+    }
+    let derivative = (left - (2.0 * center) + right) / step.powi(2);
+    (derivative.is_finite() && derivative > SUB_BIN_DOPPLER_REFINEMENT_EPSILON).then_some(derivative)
+}
+
+fn centered_mixed_derivative(
+    lower_lower: f64,
+    lower_upper: f64,
+    upper_lower: f64,
+    upper_upper: f64,
+    step_a: f64,
+    step_b: f64,
+) -> Option<f64> {
+    if !lower_lower.is_finite()
+        || !lower_upper.is_finite()
+        || !upper_lower.is_finite()
+        || !upper_upper.is_finite()
+        || !step_a.is_finite()
+        || !step_b.is_finite()
+        || step_a <= f64::EPSILON
+        || step_b <= f64::EPSILON
+    {
+        return None;
+    }
+    let derivative =
+        (upper_upper - upper_lower - lower_upper + lower_lower) / (4.0 * step_a * step_b);
+    derivative.is_finite().then_some(derivative)
+}
+
+fn invert_2x2(matrix: [[f64; 2]; 2]) -> Option<[[f64; 2]; 2]> {
+    let determinant = matrix[0][0] * matrix[1][1] - matrix[0][1] * matrix[1][0];
+    if !determinant.is_finite() || determinant.abs() <= SUB_BIN_DOPPLER_REFINEMENT_EPSILON {
+        return None;
+    }
+    Some([
+        [matrix[1][1] / determinant, -matrix[0][1] / determinant],
+        [-matrix[1][0] / determinant, matrix[0][0] / determinant],
+    ])
+}
+
+fn invert_3x3(matrix: [[f64; 3]; 3]) -> Option<[[f64; 3]; 3]> {
+    let determinant = matrix[0][0] * (matrix[1][1] * matrix[2][2] - matrix[1][2] * matrix[2][1])
+        - matrix[0][1] * (matrix[1][0] * matrix[2][2] - matrix[1][2] * matrix[2][0])
+        + matrix[0][2] * (matrix[1][0] * matrix[2][1] - matrix[1][1] * matrix[2][0]);
+    if !determinant.is_finite() || determinant.abs() <= SUB_BIN_DOPPLER_REFINEMENT_EPSILON {
+        return None;
+    }
+    Some([
+        [
+            (matrix[1][1] * matrix[2][2] - matrix[1][2] * matrix[2][1]) / determinant,
+            (matrix[0][2] * matrix[2][1] - matrix[0][1] * matrix[2][2]) / determinant,
+            (matrix[0][1] * matrix[1][2] - matrix[0][2] * matrix[1][1]) / determinant,
+        ],
+        [
+            (matrix[1][2] * matrix[2][0] - matrix[1][0] * matrix[2][2]) / determinant,
+            (matrix[0][0] * matrix[2][2] - matrix[0][2] * matrix[2][0]) / determinant,
+            (matrix[0][2] * matrix[1][0] - matrix[0][0] * matrix[1][2]) / determinant,
+        ],
+        [
+            (matrix[1][0] * matrix[2][1] - matrix[1][1] * matrix[2][0]) / determinant,
+            (matrix[0][1] * matrix[2][0] - matrix[0][0] * matrix[2][1]) / determinant,
+            (matrix[0][0] * matrix[1][1] - matrix[0][1] * matrix[1][0]) / determinant,
+        ],
+    ])
 }
 
 fn estimate_quadratic_surface_peak_offsets(
@@ -4597,58 +5080,89 @@ mod tests {
     }
 
     #[test]
-    fn curvature_based_resolution_fraction_shrinks_for_sharper_peaks() {
-        let broad = curvature_based_resolution_fraction(14.0, 16.0, 15.0, 1.0).expect("broad");
-        let sharp = curvature_based_resolution_fraction(9.0, 16.0, 12.0, 1.0).expect("sharp");
+    fn log_likelihood_covariance_tightens_for_sharper_surfaces() {
+        let broad = estimate_log_likelihood_covariance_2x2(
+            &LocalAcquisitionLikelihoodSurface {
+                doppler_cross_section: [14.0, 16.0, 15.0],
+                code_phase_cross_section: [14.0, 16.0, 15.0],
+                values: [[13.0, 14.0, 13.5], [14.0, 16.0, 15.0], [13.5, 15.0, 14.0]],
+            },
+            1.0,
+            250.0,
+            1.0,
+        )
+        .expect("broad covariance");
+        let sharp = estimate_log_likelihood_covariance_2x2(
+            &LocalAcquisitionLikelihoodSurface {
+                doppler_cross_section: [9.0, 16.0, 12.0],
+                code_phase_cross_section: [9.0, 16.0, 12.0],
+                values: [[8.0, 9.0, 8.5], [9.0, 16.0, 12.0], [8.5, 12.0, 10.0]],
+            },
+            1.0,
+            250.0,
+            1.0,
+        )
+        .expect("sharp covariance");
 
-        assert!(sharp < broad, "sharp={sharp:?} broad={broad:?}");
-        assert!(sharp >= ACQUISITION_UNCERTAINTY_MIN_RESOLUTION_FRACTION);
-        assert!(broad <= ACQUISITION_UNCERTAINTY_MAX_RESOLUTION_FRACTION);
+        assert!(sharp.doppler_variance_hz2 < broad.doppler_variance_hz2, "{sharp:?} {broad:?}");
+        assert!(
+            sharp.code_phase_variance_samples2 < broad.code_phase_variance_samples2,
+            "{sharp:?} {broad:?}"
+        );
     }
 
     #[test]
-    fn estimate_acquisition_uncertainty_reports_positive_values_for_accepted_candidate() {
-        let sat = SatId { constellation: Constellation::Gps, prn: 1 };
-        let uncertainty = estimate_acquisition_uncertainty(
-            &AcqResult {
-                hypothesis: AcqHypothesis::Accepted,
-                doppler_refinement: Some(AcqDopplerRefinement {
-                    method: "parabolic_peak".to_string(),
-                    coarse_carrier_hz: Hertz(250.0),
-                    offset_hz: 20.0,
-                    offset_bins: 0.08,
-                    left_peak_mean_ratio: 9.0,
-                    center_peak_mean_ratio: 16.0,
-                    right_peak_mean_ratio: 12.0,
-                }),
-                code_phase_refinement: Some(AcqCodePhaseRefinement {
-                    method: "parabolic_code_peak".to_string(),
-                    offset_samples: 0.2,
-                    refined_code_phase_samples: 1500.2,
-                    left_correlation_norm: 10.0,
-                    center_correlation_norm: 16.0,
-                    right_correlation_norm: 13.0,
-                }),
-                ..candidate_for_search_window_test(sat, 250.0, 16.0)
+    fn log_likelihood_covariance_reports_rate_variance_when_rate_axis_is_available() {
+        let covariance = estimate_log_likelihood_covariance_3x3(
+            &LocalAcquisitionLikelihoodVolume {
+                values: [
+                    [[3.0, 4.0, 3.0], [5.0, 7.0, 5.0], [3.0, 4.0, 3.0]],
+                    [[4.0, 6.0, 4.0], [8.0, 16.0, 8.0], [4.0, 6.0, 4.0]],
+                    [[3.0, 4.0, 3.0], [5.0, 7.0, 5.0], [3.0, 4.0, 3.0]],
+                ],
             },
-            250,
+            1.0,
+            250.0,
+            1.0,
+            5_000.0,
         )
-        .expect("acquisition uncertainty");
+        .expect("rate-aware covariance");
 
-        assert!(uncertainty.doppler_hz > 0.0);
-        assert!(uncertainty.doppler_hz < 125.0);
-        assert!(uncertainty.code_phase_samples > 0.0);
-        assert!(uncertainty.code_phase_samples < 0.5);
+        assert!(covariance.doppler_variance_hz2 > 0.0);
+        assert!(covariance.code_phase_variance_samples2 > 0.0);
+        assert!(
+            covariance
+                .doppler_rate_variance_hz2_per_s2
+                .is_some_and(|variance| variance > 0.0),
+            "{covariance:?}"
+        );
     }
 
     #[test]
     fn estimate_acquisition_uncertainty_skips_ambiguous_candidate() {
         let sat = SatId { constellation: Constellation::Gps, prn: 1 };
+        let config = ReceiverPipelineConfig::default();
+        let signal_model = AcquisitionSignalModel::for_sat_signal(
+            sat,
+            Some(SignalBand::L1),
+            SignalCode::Ca,
+            None,
+        )
+        .expect("signal model lookup")
+        .expect("gps l1ca signal model");
+        let frame = noise_only_frame(config.sampling_freq_hz, signal_model.samples_per_code(config.sampling_freq_hz), 0xA11CE);
         let uncertainty = estimate_acquisition_uncertainty(
+            &config,
+            &frame,
+            &signal_model,
             &AcqResult {
                 hypothesis: AcqHypothesis::Ambiguous,
                 ..candidate_for_search_window_test(sat, 0.0, 4.0)
             },
+            1,
+            1,
+            250,
+            0,
             250,
         );
 

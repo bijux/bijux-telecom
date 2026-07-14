@@ -46,7 +46,7 @@ fn acquisition_reports_uncertainty_for_accepted_candidate() {
 }
 
 #[test]
-fn acquisition_uncertainty_stays_within_search_resolution_bounds() {
+fn acquisition_uncertainty_reports_covariance_consistent_with_marginals() {
     let sat = gps_l1_ca_satellite();
     let config = uncertainty_profile();
     let frame = accepted_signal_frame(&config, sat, 0x2407_4601);
@@ -58,13 +58,28 @@ fn acquisition_uncertainty_stays_within_search_resolution_bounds() {
         .uncertainty
         .as_ref()
         .unwrap_or_else(|| panic!("accepted acquisition uncertainty missing: {results:?}"));
+    let covariance = uncertainty
+        .covariance
+        .as_ref()
+        .unwrap_or_else(|| panic!("accepted acquisition covariance missing: {results:?}"));
 
     assert_eq!(best.hypothesis.to_string(), "accepted", "{results:?}");
+    assert!(covariance.doppler_variance_hz2.is_finite() && covariance.doppler_variance_hz2 > 0.0);
     assert!(
-        uncertainty.doppler_hz <= config.acquisition_doppler_step_hz as f64 / 2.0 + f64::EPSILON,
+        covariance.code_phase_variance_samples2.is_finite()
+            && covariance.code_phase_variance_samples2 > 0.0
+    );
+    assert!(covariance.doppler_code_phase_covariance_hz_samples.is_finite(), "{results:?}");
+    assert_eq!(covariance.doppler_rate_variance_hz2_per_s2, None, "{results:?}");
+    assert!(
+        (uncertainty.doppler_hz - covariance.doppler_variance_hz2.sqrt()).abs() <= 1.0e-9,
         "{results:?}"
     );
-    assert!(uncertainty.code_phase_samples <= 0.5 + f64::EPSILON, "{results:?}");
+    assert!(
+        (uncertainty.code_phase_samples - covariance.code_phase_variance_samples2.sqrt()).abs()
+            <= 1.0e-9,
+        "{results:?}"
+    );
 }
 
 #[test]
