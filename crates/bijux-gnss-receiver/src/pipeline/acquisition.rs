@@ -2234,12 +2234,27 @@ fn multipath_candidate_reason(
 }
 
 fn competing_candidate_ratio(candidates: &[AcqResult]) -> f32 {
-    match (candidates.first(), candidates.get(1)) {
-        (Some(best), Some(competing)) if competing.peak_mean_ratio > f32::EPSILON => {
-            best.peak_mean_ratio / competing.peak_mean_ratio
-        }
-        _ => f32::INFINITY,
-    }
+    let Some(best) = candidates.first() else {
+        return f32::INFINITY;
+    };
+
+    candidates
+        .iter()
+        .skip(1)
+        .find(|candidate| {
+            !same_acquisition_hypothesis(best, candidate)
+                && candidate.peak_mean_ratio > f32::EPSILON
+        })
+        .map_or(f32::INFINITY, |competing| best.peak_mean_ratio / competing.peak_mean_ratio)
+}
+
+fn same_acquisition_hypothesis(left: &AcqResult, right: &AcqResult) -> bool {
+    left.sat == right.sat
+        && left.signal_band == right.signal_band
+        && left.signal_code == right.signal_code
+        && left.glonass_frequency_channel == right.glonass_frequency_channel
+        && left.code_phase_samples == right.code_phase_samples
+        && (left.carrier_hz.0 - right.carrier_hz.0).abs() <= f64::EPSILON
 }
 
 fn refine_acquisition_candidates(
@@ -2515,13 +2530,17 @@ fn find_candidate_by_carrier_hz(candidates: &[AcqResult], carrier_hz: f64) -> Op
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::engine::runtime::ReceiverRuntime;
+    use crate::sim::synthetic::{
+        generate_l1_ca, SyntheticScenario, SyntheticSignalParams, SyntheticSignalSource,
+    };
     use bijux_gnss_core::api::{
         AcqComponentCombinationMode, AcqComponentProvenance, AcqComponentStatistic, Constellation,
         GlonassFrequencyChannel, ReceiverSampleTrace, SampleTime, SamplesFrame, SatId, Seconds,
         SignalComponentRole, GPS_L1_CA_CARRIER_HZ,
     };
     use bijux_gnss_signal::api::{
-        glonass_l1_carrier_hz, sample_glonass_l1_st_code, samples_per_code,
+        glonass_l1_carrier_hz, sample_glonass_l1_st_code, samples_per_code, SignalSource,
     };
 
     fn acquisition_component_plan_for_signal(
@@ -4030,6 +4049,210 @@ mod tests {
         assert_eq!(result.signal_code, SignalCode::E5b);
         assert_eq!(result.hypothesis.to_string(), AcqHypothesis::Deferred.to_string());
         assert_eq!(run.explains[0].selected_reason, "insufficient_frame");
+    }
+
+    #[test]
+    fn galileo_e1_cboc_profile_reports_side_peak_geometry() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 4_092_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 4092,
+            acquisition_integration_ms: 20,
+            acquisition_noncoherent: 1,
+            ..ReceiverPipelineConfig::default()
+        };
+        let sat = SatId { constellation: Constellation::Galileo, prn: 11 };
+        let frame = generate_l1_ca(
+            &config,
+            SyntheticSignalParams {
+                sat,
+                glonass_frequency_channel: None,
+                signal_band: SignalBand::E1,
+                signal_code: SignalCode::E1B,
+                doppler_hz: 0.0,
+                code_phase_chips: 321.0,
+                carrier_phase_rad: 0.25,
+                cn0_db_hz: 60.0,
+                navigation_data: false.into(),
+            },
+            0x6A11_E175,
+            0.020,
+        );
+        let signal_model =
+            acquisition_signal_model_for_sat(&config, sat, SignalBand::E1, SignalCode::E1B, None);
+        let profile = measure_code_phase_profile(
+            &config,
+            &signal_model,
+            &frame,
+            sat,
+            signal_model.search_center_hz(config.intermediate_freq_hz),
+            config.acquisition_integration_ms,
+            config.acquisition_noncoherent,
+        )
+        .expect("Galileo E1 correlation profile");
+        let metrics = correlation_metrics(&profile);
+        let diagnostic = delayed_secondary_peak_diagnostic(
+            &profile,
+            metrics.peak_idx,
+            signal_model.samples_per_code(config.sampling_freq_hz),
+            signal_model.code_length,
+        );
+        let delayed_peak = diagnostic
+            .as_ref()
+            .map(|value| profile[value.secondary_code_phase_samples])
+            .unwrap_or_default();
+        let delayed_peak_mean_ratio = delayed_peak / (metrics.mean + 1.0e-6);
+
+        assert!(metrics.peak > delayed_peak);
+        assert!(diagnostic.is_some(), "{metrics:?}");
+        assert!(
+            delayed_peak_mean_ratio > config.acquisition_peak_mean_threshold,
+            "delayed local peak should still look acquisition-worthy: {delayed_peak_mean_ratio}"
+        );
+    }
+
+    #[test]
+    fn galileo_e1_strategy_candidates_prefer_pilot_cboc_acquisition() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 4_092_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 4092,
+            acquisition_doppler_search_hz: 500,
+            acquisition_doppler_step_hz: 500,
+            acquisition_integration_ms: 20,
+            acquisition_noncoherent: 1,
+            ..ReceiverPipelineConfig::default()
+        };
+        let sat = SatId { constellation: Constellation::Galileo, prn: 11 };
+        let frame = generate_l1_ca(
+            &config,
+            SyntheticSignalParams {
+                sat,
+                glonass_frequency_channel: None,
+                signal_band: SignalBand::E1,
+                signal_code: SignalCode::E1B,
+                doppler_hz: 0.0,
+                code_phase_chips: 321.0,
+                carrier_phase_rad: 0.25,
+                cn0_db_hz: 60.0,
+                navigation_data: false.into(),
+            },
+            0x6A11_E176,
+            0.020,
+        );
+        let request = AcqRequest {
+            sat,
+            glonass_frequency_channel: None,
+            signal_band: SignalBand::E1,
+            signal_code: SignalCode::E1B,
+            doppler_search_hz: config.acquisition_doppler_search_hz,
+            doppler_step_hz: config.acquisition_doppler_step_hz,
+            coherent_ms: config.acquisition_integration_ms,
+            noncoherent: config.acquisition_noncoherent,
+        };
+        let run = Acquisition::new(config, ReceiverRuntime::default())
+            .run_fft_topn_for_requests_with_explain(&frame, &[request], 4);
+        let selected = run.results[0].first().expect("selected Galileo E1 candidate");
+        let provenance =
+            selected.component_provenance().expect("selected Galileo E1 component provenance");
+
+        assert_eq!(selected.hypothesis.to_string(), "accepted", "{run:?}");
+        assert_eq!(run.explains[0].selected_reason, "accepted_by_ratio_thresholds", "{run:?}");
+        assert_eq!(provenance.combination_mode, AcqComponentCombinationMode::SingleComponent);
+        assert_eq!(
+            provenance.components.iter().map(|component| component.role).collect::<Vec<_>>(),
+            vec![SignalComponentRole::Pilot]
+        );
+        assert_eq!(provenance.components[0].secondary_code_phase_periods, Some(0), "{run:?}");
+        assert_eq!(
+            selected
+                .uncertainty
+                .as_ref()
+                .expect("Galileo E1 accepted candidate uncertainty")
+                .code_phase_samples,
+            0.5
+        );
+    }
+
+    #[test]
+    fn competing_candidate_ratio_ignores_strategy_variants_of_same_hypothesis() {
+        let sat = SatId { constellation: Constellation::Galileo, prn: 11 };
+        let best = candidate_for_search_window_test(sat, 0.0, 12.0);
+        let same_hypothesis_variant = candidate_for_search_window_test(sat, 0.0, 10.0);
+        let competing = candidate_for_search_window_test(sat, 500.0, 4.0);
+
+        assert!(
+            (competing_candidate_ratio(&[best, same_hypothesis_variant, competing]) - 3.0).abs()
+                <= f32::EPSILON
+        );
+    }
+
+    #[test]
+    fn galileo_e1_signal_only_streaming_frame_returns_explicit_ambiguity() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 4_092_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 4092,
+            acquisition_doppler_search_hz: 500,
+            acquisition_doppler_step_hz: 500,
+            acquisition_integration_ms: 20,
+            acquisition_noncoherent: 1,
+            ..ReceiverPipelineConfig::default()
+        };
+        let sat = SatId { constellation: Constellation::Galileo, prn: 11 };
+        let scenario = SyntheticScenario {
+            sample_rate_hz: config.sampling_freq_hz,
+            intermediate_freq_hz: config.intermediate_freq_hz,
+            receiver_clock_frequency_bias_hz: 0.0,
+            duration_s: 0.080,
+            seed: 0x6A11_E100,
+            satellites: vec![SyntheticSignalParams {
+                sat,
+                glonass_frequency_channel: None,
+                signal_band: SignalBand::L1,
+                signal_code: SignalCode::Unknown,
+                doppler_hz: 0.0,
+                code_phase_chips: 321.0,
+                carrier_phase_rad: 0.25,
+                cn0_db_hz: 60.0,
+                navigation_data: false.into(),
+            }],
+            ephemerides: Vec::new(),
+            id: "galileo-e1-streaming-candidate-shape".to_string(),
+        };
+        let mut source = SyntheticSignalSource::new_signal_only(&config, &scenario);
+        let frame = source
+            .next_frame(81_840)
+            .expect("signal-only frame")
+            .expect("signal-only acquisition frame");
+        let request = AcqRequest {
+            sat,
+            glonass_frequency_channel: None,
+            signal_band: SignalBand::E1,
+            signal_code: SignalCode::E1B,
+            doppler_search_hz: config.acquisition_doppler_search_hz,
+            doppler_step_hz: config.acquisition_doppler_step_hz,
+            coherent_ms: config.acquisition_integration_ms,
+            noncoherent: config.acquisition_noncoherent,
+        };
+        let run = Acquisition::new(config, ReceiverRuntime::default())
+            .run_fft_topn_for_requests_with_explain(&frame, &[request], 4);
+        let selected = run.results[0].first().expect("selected Galileo E1 signal-only candidate");
+        let provenance = selected
+            .component_provenance()
+            .expect("selected Galileo E1 signal-only component provenance");
+
+        assert_eq!(selected.hypothesis.to_string(), "ambiguous", "{run:?}");
+        assert_eq!(run.explains[0].selected_reason, "ambiguous_ratio_thresholds", "{run:?}");
+        assert_eq!(provenance.combination_mode, AcqComponentCombinationMode::SingleComponent);
+        assert_eq!(
+            provenance.components.iter().map(|component| component.role).collect::<Vec<_>>(),
+            vec![SignalComponentRole::Pilot]
+        );
+        assert!(selected.uncertainty.is_none(), "{run:?}");
     }
 
     fn candidate_for_search_window_test(
