@@ -370,6 +370,8 @@ fn dynamic_stress_requested(
 ) -> bool {
     let fll_error_hz = input.fll_error_hz.abs();
     let carrier_rate_hz_per_s = input.carrier_rate_hz_per_s.abs();
+    let reliable_dynamic_evidence =
+        input.cn0_dbhz.is_finite() && input.cn0_dbhz >= WEAK_SIGNAL_EXIT_CN0_DBHZ;
     let (fll_threshold_hz, carrier_rate_threshold_hz_per_s) =
         if active_profile == TrackingLoopProfileKind::DynamicStress {
             (DYNAMIC_STRESS_EXIT_FLL_ERROR_HZ, DYNAMIC_STRESS_EXIT_CARRIER_RATE_HZ_PER_S)
@@ -377,8 +379,9 @@ fn dynamic_stress_requested(
             (DYNAMIC_STRESS_ENTRY_FLL_ERROR_HZ, DYNAMIC_STRESS_ENTRY_CARRIER_RATE_HZ_PER_S)
         };
 
-    fll_error_hz >= fll_threshold_hz
-        || carrier_rate_hz_per_s >= carrier_rate_threshold_hz_per_s
+    (reliable_dynamic_evidence
+        && (fll_error_hz >= fll_threshold_hz
+            || carrier_rate_hz_per_s >= carrier_rate_threshold_hz_per_s))
         || (!input.discriminator_stable
             && !input.steady_state_lock
             && input.cn0_dbhz.is_finite()
@@ -2093,6 +2096,34 @@ mod tests {
             assert_eq!(decision.profile_kind, TrackingLoopProfileKind::Nominal);
             assert_eq!(decision.profile.integration_ms, base_profile.integration_ms);
         }
+    }
+
+    #[test]
+    fn tracking_adaptation_does_not_treat_weak_signal_fll_noise_as_dynamic_stress() {
+        let base_profile = TrackingLoopProfile {
+            dll_bw_hz: 2.0,
+            pll_bw_hz: 15.0,
+            fll_bw_hz: 10.0,
+            integration_ms: 1,
+        };
+        let noisy_weak_signal = TrackingAdaptationInput {
+            cn0_dbhz: 30.5,
+            fll_error_hz: 80.0,
+            carrier_rate_hz_per_s: 40.0,
+            carrier_lock_ready: true,
+            steady_state_lock: true,
+            discriminator_stable: true,
+        };
+        let first = advance_tracking_adaptation(
+            base_profile,
+            TrackingAdaptationState::default(),
+            noisy_weak_signal,
+        );
+        let second = advance_tracking_adaptation(base_profile, first.state, noisy_weak_signal);
+
+        assert_eq!(first.profile_kind, TrackingLoopProfileKind::Nominal);
+        assert_eq!(second.profile_kind, TrackingLoopProfileKind::WeakSignal);
+        assert!(second.profile.pll_bw_hz < base_profile.pll_bw_hz, "{second:?}");
     }
 
     #[test]
