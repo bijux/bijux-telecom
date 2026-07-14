@@ -14,6 +14,7 @@ const DLL_LOCK_MAX_CODE_ERROR: f32 = 0.2;
 const DLL_HOLD_MAX_CODE_ERROR: f32 = 0.4;
 const DLL_LOW_RESOLUTION_LOCK_MAX_CODE_ERROR: f32 = 0.6;
 const DLL_REFERENCE_EARLY_LATE_SPACING_CHIPS: f64 = 0.5;
+const DOUBLE_DELTA_OUTER_WEIGHT: f32 = 0.5;
 const ANTI_FALSE_LOCK_MAX_EARLY_LATE_TO_PROMPT_RATIO: f32 = 0.9;
 const FLL_PULL_IN_MAX_CORRECTION_BW_MULTIPLIER: f64 = 4.0;
 const TRACKING_UNCERTAINTY_MIN_CODE_PHASE_SAMPLES: f64 = 0.01;
@@ -891,10 +892,8 @@ pub fn discriminators(
     late: Complex<f32>,
     prev_prompt: Option<Complex<f32>>,
 ) -> (f32, f32, f32, bool) {
-    let e = early.norm();
-    let l = late.norm();
     let p = prompt.norm();
-    let dll = if e + l > 0.0 { (e - l) / (e + l) } else { 0.0 };
+    let dll = dll_discriminator_from_early_late(early, late);
     let pll = prompt.im.atan2(prompt.re);
     let fll = if let Some(prev) = prev_prompt {
         let dot = prompt.re * prev.re + prompt.im * prev.im;
@@ -905,6 +904,29 @@ pub fn discriminators(
     };
     let lock = p > 0.1 && dll.abs() < 0.5;
     (dll, pll, fll, lock)
+}
+
+/// Noncoherent early-minus-late DLL discriminator.
+pub fn dll_discriminator_from_early_late(early: Complex<f32>, late: Complex<f32>) -> f32 {
+    let early_norm = early.norm();
+    let late_norm = late.norm();
+    if early_norm + late_norm > 0.0 {
+        (early_norm - late_norm) / (early_norm + late_norm)
+    } else {
+        0.0
+    }
+}
+
+/// Double-delta DLL discriminator using inner and outer early/late pairs.
+pub fn double_delta_dll_discriminator(
+    inner_early: Complex<f32>,
+    inner_late: Complex<f32>,
+    outer_early: Complex<f32>,
+    outer_late: Complex<f32>,
+) -> f32 {
+    let inner = dll_discriminator_from_early_late(inner_early, inner_late);
+    let outer = dll_discriminator_from_early_late(outer_early, outer_late);
+    (inner - DOUBLE_DELTA_OUTER_WEIGHT * outer).clamp(-1.0, 1.0)
 }
 
 /// Normalize a noncoherent early-minus-late DLL discriminator to the legacy 0.5-chip loop gain.
@@ -2204,6 +2226,32 @@ mod tests {
             "narrow spacing must compensate discriminator gain: standard={standard} narrow={narrow}",
         );
         assert!((narrow - 0.116_666_67).abs() <= f32::EPSILON);
+    }
+
+    #[test]
+    fn dll_discriminator_from_early_late_matches_tracking_discriminators() {
+        let early = Complex::new(3.0, 4.0);
+        let prompt = Complex::new(10.0, 0.0);
+        let late = Complex::new(1.0, 0.0);
+
+        let (dll, _, _, _) = super::discriminators(early, prompt, late, None);
+
+        assert_eq!(dll, super::dll_discriminator_from_early_late(early, late));
+    }
+
+    #[test]
+    fn double_delta_dll_discriminator_suppresses_outer_lobe_bias() {
+        let inner_early = Complex::new(8.0, 0.0);
+        let inner_late = Complex::new(4.0, 0.0);
+        let outer_early = Complex::new(6.0, 0.0);
+        let outer_late = Complex::new(2.0, 0.0);
+
+        let early_late = super::dll_discriminator_from_early_late(inner_early, inner_late);
+        let double_delta =
+            super::double_delta_dll_discriminator(inner_early, inner_late, outer_early, outer_late);
+
+        assert!(double_delta.abs() < early_late.abs());
+        assert!((double_delta - 0.083_333_34).abs() <= f32::EPSILON);
     }
 
     #[test]
