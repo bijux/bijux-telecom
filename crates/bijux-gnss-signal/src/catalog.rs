@@ -239,6 +239,25 @@ pub fn shared_path_doppler_hz(
     )
 }
 
+pub fn shared_path_code_doppler_hz(
+    reference_doppler_hz: f64,
+    reference_signal: SignalSpec,
+    target_signal: SignalSpec,
+) -> Option<f64> {
+    scaled_code_quantity_hz(reference_doppler_hz, reference_signal.carrier_hz, target_signal)
+}
+
+pub fn shared_path_code_rate_hz(
+    reference_doppler_hz: f64,
+    reference_signal: SignalSpec,
+    target_signal: SignalSpec,
+) -> Option<f64> {
+    let code_doppler_hz =
+        shared_path_code_doppler_hz(reference_doppler_hz, reference_signal, target_signal)?;
+    let code_rate_hz = target_signal.code_rate_hz + code_doppler_hz;
+    code_rate_hz.is_finite().then_some(code_rate_hz)
+}
+
 pub fn first_order_ionosphere_code_delay_m(
     reference_delay_m: Meters,
     reference_signal: SignalSpec,
@@ -300,6 +319,26 @@ fn scaled_carrier_quantity_hz(
     }
 
     let scaled_quantity_hz = reference_quantity_hz * target_carrier_hz / reference_carrier_hz;
+    scaled_quantity_hz.is_finite().then_some(scaled_quantity_hz)
+}
+
+fn scaled_code_quantity_hz(
+    reference_quantity_hz: f64,
+    reference_carrier_hz: FreqHz,
+    target_signal: SignalSpec,
+) -> Option<f64> {
+    let reference_carrier_hz = reference_carrier_hz.value();
+    let target_code_rate_hz = target_signal.code_rate_hz;
+    if !reference_quantity_hz.is_finite()
+        || !reference_carrier_hz.is_finite()
+        || !target_code_rate_hz.is_finite()
+        || reference_carrier_hz <= 0.0
+        || target_code_rate_hz <= 0.0
+    {
+        return None;
+    }
+
+    let scaled_quantity_hz = reference_quantity_hz * target_code_rate_hz / reference_carrier_hz;
     scaled_quantity_hz.is_finite().then_some(scaled_quantity_hz)
 }
 
@@ -663,11 +702,13 @@ mod tests {
     use super::{
         carrier_wavelength_m, default_acquisition_signal, first_order_ionosphere_code_delay_m,
         first_order_ionosphere_phase_advance_m, glonass_l1_carrier_hz,
-        registered_signal_registry_entries, signal_cycles_to_meters, signal_id_cycles_to_meters,
-        signal_id_meters_to_cycles, signal_id_wavelength_m, signal_meters_to_cycles,
-        signal_registry, signal_spec_beidou_b2i, signal_spec_galileo_e1b, signal_spec_glonass_l1,
-        signal_spec_gps_l1_ca, signal_spec_gps_l2_py, signal_spec_gps_l2c, signal_spec_gps_l5_i,
-        signal_spec_gps_l5_q, signal_wavelength_m, shared_path_doppler_hz, SignalSpec,
+        registered_signal_registry_entries, shared_path_code_doppler_hz,
+        shared_path_code_rate_hz, shared_path_doppler_hz, signal_cycles_to_meters,
+        signal_id_cycles_to_meters, signal_id_meters_to_cycles, signal_id_wavelength_m,
+        signal_meters_to_cycles, signal_registry, signal_spec_beidou_b2i,
+        signal_spec_galileo_e1b, signal_spec_glonass_l1, signal_spec_gps_l1_ca,
+        signal_spec_gps_l2_py, signal_spec_gps_l2c, signal_spec_gps_l5_i,
+        signal_spec_gps_l5_q, signal_wavelength_m, SignalSpec,
     };
     use bijux_gnss_core::api::{
         Constellation, Cycles, FreqHz, GlonassFrequencyChannel, GlonassL1FdmaSignal, GlonassSlot,
@@ -854,6 +895,51 @@ mod tests {
         };
 
         assert!(shared_path_doppler_hz(500.0, invalid, signal_spec_gps_l5_i()).is_none());
+    }
+
+    #[test]
+    fn shared_path_code_doppler_uses_target_code_rate_over_reference_carrier() {
+        let l1 = signal_spec_gps_l1_ca();
+        let l5 = signal_spec_gps_l5_i();
+        let transferred =
+            shared_path_code_doppler_hz(-1_250.0, l1, l5).expect("scaled code Doppler");
+        let expected = -1_250.0 * l5.code_rate_hz / l1.carrier_hz.value();
+
+        assert!((transferred - expected).abs() < 1.0e-12);
+    }
+
+    #[test]
+    fn shared_path_code_rate_adds_target_nominal_code_rate() {
+        let l1 = signal_spec_gps_l1_ca();
+        let l5 = signal_spec_gps_l5_i();
+        let code_rate_hz = shared_path_code_rate_hz(2_000.0, l1, l5).expect("aided code rate");
+        let expected = l5.code_rate_hz + (2_000.0 * l5.code_rate_hz / l1.carrier_hz.value());
+
+        assert!((code_rate_hz - expected).abs() < 1.0e-12);
+    }
+
+    #[test]
+    fn shared_path_code_doppler_rejects_invalid_reference_or_target_inputs() {
+        let invalid_reference = SignalSpec {
+            constellation: Constellation::Gps,
+            band: SignalBand::L1,
+            code: SignalCode::Ca,
+            code_rate_hz: 1_023_000.0,
+            carrier_hz: FreqHz::new(0.0),
+        };
+        let invalid_target = SignalSpec {
+            constellation: Constellation::Gps,
+            band: SignalBand::L5,
+            code: SignalCode::L5I,
+            code_rate_hz: 0.0,
+            carrier_hz: signal_spec_gps_l5_i().carrier_hz,
+        };
+
+        assert!(
+            shared_path_code_doppler_hz(500.0, invalid_reference, signal_spec_gps_l5_i()).is_none()
+        );
+        assert!(shared_path_code_doppler_hz(500.0, signal_spec_gps_l1_ca(), invalid_target).is_none());
+        assert!(shared_path_code_rate_hz(500.0, signal_spec_gps_l1_ca(), invalid_target).is_none());
     }
 
     #[test]
