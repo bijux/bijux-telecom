@@ -4394,6 +4394,7 @@ mod tests {
     struct DelayedPathProfile {
         delay_chips: f64,
         relative_amplitude: f32,
+        carrier_phase_rad: f32,
     }
 
     fn multipath_tracking_config() -> ReceiverPipelineConfig {
@@ -4439,7 +4440,11 @@ mod tests {
             .into_iter()
             .zip(reflected)
             .map(|(direct, reflected)| {
-                Complex::new(direct + delayed_path.relative_amplitude * reflected, 0.0)
+                let phase = Complex::new(
+                    delayed_path.carrier_phase_rad.cos(),
+                    delayed_path.carrier_phase_rad.sin(),
+                );
+                Complex::new(direct, 0.0) + phase * delayed_path.relative_amplitude * reflected
             })
             .collect();
         SamplesFrame::new(
@@ -4499,7 +4504,11 @@ mod tests {
             &config,
             sat,
             direct_code_phase_chips,
-            DelayedPathProfile { delay_chips: 0.0, relative_amplitude: 0.0 },
+            DelayedPathProfile {
+                delay_chips: 0.0,
+                relative_amplitude: 0.0,
+                carrier_phase_rad: 0.0,
+            },
         );
         let clean_standard_zero = measured_code_zero_crossing_chips(
             &config,
@@ -4518,8 +4527,16 @@ mod tests {
             0.25,
         );
         let delayed_paths = [
-            DelayedPathProfile { delay_chips: 0.45, relative_amplitude: 0.35 },
-            DelayedPathProfile { delay_chips: 0.65, relative_amplitude: 0.35 },
+            DelayedPathProfile {
+                delay_chips: 0.45,
+                relative_amplitude: 0.35,
+                carrier_phase_rad: 0.0,
+            },
+            DelayedPathProfile {
+                delay_chips: 0.65,
+                relative_amplitude: 0.35,
+                carrier_phase_rad: 0.0,
+            },
         ];
 
         for delayed_path in delayed_paths {
