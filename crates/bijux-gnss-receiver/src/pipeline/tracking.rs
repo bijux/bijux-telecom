@@ -88,8 +88,6 @@ const TRACKING_CN0_MIN_WINDOW_EPOCHS: usize = 4;
 const TRACKING_UNCERTAINTY_WINDOW_EPOCHS: usize = 8;
 const SAMPLE_RATE_MISMATCH_CATASTROPHIC_PHASE_STEP_MULTIPLIER: f64 = 8.0;
 const LOW_RESOLUTION_DLL_MIN_SAMPLE_SEPARATION: f64 = 1.0;
-const JOINT_COMPONENT_MIN_PROMPT_RATIO: f32 = 0.35;
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChannelState {
     Idle,
@@ -798,16 +796,15 @@ fn select_carrier_prompt(
     let Some(pilot_prompt) = pilot_prompt else {
         return primary_prompt;
     };
-    let primary_norm = primary_prompt.norm();
     let pilot_norm = pilot_prompt.norm();
-    if primary_norm <= f32::EPSILON {
+    if !pilot_norm.is_finite() || pilot_norm <= f32::EPSILON {
+        return primary_prompt;
+    }
+    let primary_norm = primary_prompt.norm();
+    if !primary_norm.is_finite() || primary_norm <= f32::EPSILON {
         return pilot_prompt;
     }
-    if pilot_norm >= primary_norm * JOINT_COMPONENT_MIN_PROMPT_RATIO {
-        pilot_prompt
-    } else {
-        primary_prompt
-    }
+    pilot_prompt
 }
 
 pub(crate) fn supports_tracking_signal(
@@ -5458,6 +5455,17 @@ mod tests {
         );
 
         assert_eq!(selected, Complex::new(0.60, -0.10));
+    }
+
+    #[test]
+    fn select_carrier_prompt_keeps_using_pilot_when_primary_is_stronger() {
+        let selected = super::select_carrier_prompt(
+            Complex::new(0.90, 0.20),
+            Some(Complex::new(0.20, -0.05)),
+            super::TrackingAidingMode::PilotCarrier,
+        );
+
+        assert_eq!(selected, Complex::new(0.20, -0.05));
     }
 
     #[test]
