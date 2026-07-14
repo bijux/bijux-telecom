@@ -102,6 +102,8 @@ const SECONDARY_CODE_SYNC_MIN_CONFIDENCE: f64 = 0.02;
 const SECONDARY_CODE_SYNC_MIN_OBSERVED_CHIPS: usize = 4;
 const CARRIER_AID_MIN_DOPPLER_WINDOW_HZ: f64 = 25_000.0;
 const CARRIER_AID_DOPPLER_WINDOW_MARGIN_HZ: f64 = 500.0;
+const SUBCARRIER_AMBIGUITY_MIN_PROMPT_RELATIVE_POWER: f32 = 0.95;
+const SUBCARRIER_AMBIGUITY_GUARD_OFFSETS_CHIPS: [f64; 2] = [-0.5, 0.5];
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChannelState {
     Idle,
@@ -866,12 +868,28 @@ struct TrackingEpochCorrelation {
     carrier_prompt_source: CarrierPromptSource,
     data_prompt: Option<Complex<f32>>,
     secondary_code_prompt_period_index: usize,
+    subcarrier_ambiguity_guard: Option<SubcarrierAmbiguityGuard>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum CarrierPromptSource {
     Primary,
     Pilot,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct SubcarrierAmbiguityGuard {
+    prompt_power: f32,
+    strongest_alternate_power: f32,
+    strongest_alternate_offset_chips: f64,
+    prompt_dominance_ratio: f32,
+}
+
+impl SubcarrierAmbiguityGuard {
+    fn detected(self) -> bool {
+        !self.prompt_dominance_ratio.is_finite()
+            || self.prompt_dominance_ratio < SUBCARRIER_AMBIGUITY_MIN_PROMPT_RELATIVE_POWER
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -888,6 +906,10 @@ impl TrackingDiscriminatorFamily {
             Self::BocEarlyPromptLate => "boc_early_prompt_late",
             Self::CbocEarlyPromptLate => "cboc_early_prompt_late",
         }
+    }
+
+    fn requires_unambiguous_code_lock(self) -> bool {
+        matches!(self, Self::BocEarlyPromptLate | Self::CbocEarlyPromptLate)
     }
 }
 
@@ -1266,6 +1288,82 @@ fn tracking_discriminator_family(subcarrier: SignalSubcarrierSpec) -> TrackingDi
         SignalSubcarrierSpec::Boc { .. } => TrackingDiscriminatorFamily::BocEarlyPromptLate,
         SignalSubcarrierSpec::Cboc { .. } => TrackingDiscriminatorFamily::CbocEarlyPromptLate,
     }
+}
+
+fn subcarrier_ambiguity_guard(
+    signal_model: &TrackingSignalModel,
+    samples: &[Complex<f32>],
+    sample_rate_hz: f64,
+    carrier_freq_hz: f64,
+    carrier_phase_cycles: f64,
+    base_chip_phase: f64,
+    tracked_chips_per_sample: f64,
+    epoch_primary_code_period_index: usize,
+    prompt: Complex<f32>,
+) -> Option<SubcarrierAmbiguityGuard> {
+    if !signal_model.discriminator_family.requires_unambiguous_code_lock() {
+        return None;
+    }
+
+    let prompt_power = prompt.norm_sqr();
+    if !prompt_power.is_finite() {
+        return Some(SubcarrierAmbiguityGuard {
+            prompt_power,
+            strongest_alternate_power: f32::INFINITY,
+            strongest_alternate_offset_chips: 0.0,
+            prompt_dominance_ratio: 0.0,
+        });
+    }
+
+    let mut strongest_alternate_power = 0.0_f32;
+    let mut strongest_alternate_offset_chips = 0.0_f64;
+    for offset_chips in SUBCARRIER_AMBIGUITY_GUARD_OFFSETS_CHIPS {
+        let alternate = correlate_early_prompt_late(
+            samples,
+            sample_rate_hz,
+            carrier_freq_hz,
+            carrier_phase_offset_radians(carrier_phase_cycles),
+            base_chip_phase + offset_chips,
+            tracked_chips_per_sample,
+            0.0,
+            |chip_phase| signal_model.value_at_phase(chip_phase, epoch_primary_code_period_index),
+        )
+        .prompt;
+        let alternate_power = alternate.norm_sqr();
+        if alternate_power.is_finite() && alternate_power > strongest_alternate_power {
+            strongest_alternate_power = alternate_power;
+            strongest_alternate_offset_chips = offset_chips;
+        }
+    }
+
+    let prompt_dominance_ratio = if strongest_alternate_power > f32::EPSILON {
+        prompt_power / strongest_alternate_power
+    } else if prompt_power.is_finite() {
+        f32::INFINITY
+    } else {
+        0.0
+    };
+
+    Some(SubcarrierAmbiguityGuard {
+        prompt_power,
+        strongest_alternate_power,
+        strongest_alternate_offset_chips,
+        prompt_dominance_ratio,
+    })
+}
+
+fn subcarrier_ambiguity_detected(guard: Option<SubcarrierAmbiguityGuard>) -> bool {
+    guard.is_some_and(SubcarrierAmbiguityGuard::detected)
+}
+
+fn subcarrier_ambiguity_provenance(guard: Option<SubcarrierAmbiguityGuard>) -> Option<String> {
+    let guard = guard?;
+    Some(format!(
+        " subcarrier_ambiguity_guard=side_peak_guard prompt_dominance_ratio={:.6} strongest_alternate_offset_chips={:.6} strongest_alternate_power={:.6}",
+        guard.prompt_dominance_ratio,
+        guard.strongest_alternate_offset_chips,
+        guard.strongest_alternate_power,
+    ))
 }
 
 fn tracking_phase_transition_source(
@@ -1650,6 +1748,17 @@ impl Tracking {
             early_late_spacing_chips,
             |chip_phase| signal_model.value_at_phase(chip_phase, epoch_primary_code_period_index),
         );
+        let subcarrier_ambiguity_guard = subcarrier_ambiguity_guard(
+            signal_model,
+            samples,
+            sample_rate_hz,
+            carrier_freq_hz,
+            carrier_phase_cycles,
+            base_chip_phase,
+            tracked_chips_per_sample,
+            epoch_primary_code_period_index,
+            primary.prompt,
+        );
         let pilot_prompt = signal_model.pilot_component.as_ref().map(|component| {
             correlate_early_prompt_late(
                 samples,
@@ -1711,6 +1820,7 @@ impl Tracking {
             carrier_prompt_source,
             data_prompt,
             secondary_code_prompt_period_index,
+            subcarrier_ambiguity_guard,
         }
     }
 
@@ -2189,6 +2299,13 @@ impl Tracking {
                     if runtime_tracking_provenance.starts_with("vector_tracking=applied") {
                         epoch.tracking_provenance.push(' ');
                         epoch.tracking_provenance.push_str(&runtime_tracking_provenance);
+                    } else if let Some(subcarrier_ambiguity_provenance) =
+                        runtime_tracking_provenance.find("subcarrier_ambiguity_guard=").map(
+                            |start| runtime_tracking_provenance[start..].to_string(),
+                        )
+                    {
+                        epoch.tracking_provenance.push(' ');
+                        epoch.tracking_provenance.push_str(&subcarrier_ambiguity_provenance);
                     }
                 }
                 self.apply_sample_rate_mismatch_diagnostic(
@@ -2393,8 +2510,11 @@ impl Tracking {
         let fll_err_hz =
             if use_nav_bit_aware_fll { nav_bit_aware_fll_err_hz } else { raw_fll_err_hz } as f32;
         let from_state = state.state;
-        let raw_dll_lock = dll_err.abs()
+        let dll_error_lock = dll_err.abs()
             < dll_lock_threshold(samples_per_chip, tracking_params.early_late_spacing_chips);
+        let subcarrier_ambiguity =
+            subcarrier_ambiguity_detected(correlation.subcarrier_ambiguity_guard);
+        let raw_dll_lock = dll_error_lock && !subcarrier_ambiguity;
         let fll_enabled = fll_bw > f64::EPSILON;
         let raw_pll_lock = pll_err.abs() < PLL_LOCK_MAX_PHASE_ERROR_RAD;
         let raw_fll_lock =
@@ -2404,17 +2524,19 @@ impl Tracking {
                 from_state,
                 ChannelState::PullIn | ChannelState::Tracking | ChannelState::Degraded
             ) && dll_err.abs()
-                < dll_hold_threshold(samples_per_chip, tracking_params.early_late_spacing_chips));
+                < dll_hold_threshold(samples_per_chip, tracking_params.early_late_spacing_chips)
+                && !subcarrier_ambiguity);
         let sustained_pll_lock = raw_pll_lock
             || (matches!(
                 from_state,
                 ChannelState::PullIn | ChannelState::Tracking | ChannelState::Degraded
             ) && pll_err.abs() < PLL_HOLD_MAX_PHASE_ERROR_RAD);
-        let anti_false_lock = anti_false_lock_detected(
+        let anti_false_lock = (anti_false_lock_detected(
             primary_correlator.early,
             primary_correlator.prompt,
             primary_correlator.late,
-        ) && !sustained_pll_lock;
+        ) && !sustained_pll_lock)
+            || subcarrier_ambiguity;
         state.prompt_power_reference = refresh_prompt_power_reference(
             state.prompt_power_reference,
             prompt_power,
@@ -2736,6 +2858,13 @@ impl Tracking {
             epoch_assumptions.aiding_mode = vector_tracking_aiding_mode_label(signal_model);
         }
         let vector_provenance = vector_application.map(vector_tracking_provenance);
+        let mut tracking_provenance =
+            vector_provenance.unwrap_or_else(|| track_epoch.tracking_provenance.clone());
+        if let Some(subcarrier_ambiguity_provenance) =
+            subcarrier_ambiguity_provenance(correlation.subcarrier_ambiguity_guard)
+        {
+            tracking_provenance.push_str(&subcarrier_ambiguity_provenance);
+        }
 
         out.push(TrackEpoch {
             lock: channel_locked,
@@ -2756,8 +2885,7 @@ impl Tracking {
             cycle_slip_reason,
             lock_state,
             lock_state_reason,
-            tracking_provenance: vector_provenance
-                .unwrap_or_else(|| track_epoch.tracking_provenance.clone()),
+            tracking_provenance,
             tracking_assumptions: Some(epoch_assumptions),
             signal_delay_alignment: state.signal_delay_alignment.clone(),
             tracking_uncertainty,
@@ -4112,7 +4240,8 @@ mod tests {
     use bijux_gnss_signal::api::{
         advance_code_phase_seconds, delay_lock_loop_coefficients, discriminators,
         first_order_angular_loop_coefficients, phase_lock_loop_coefficients, sample_ca_code,
-        samples_per_code, shared_path_code_rate_hz, signal_spec_gps_l5_i, LocalCodeModel, Prn,
+        sample_galileo_e1_cboc, samples_per_code, shared_path_code_rate_hz, signal_spec_gps_l5_i,
+        LocalCodeModel, Prn,
     };
     use num_complex::Complex;
     use serde::Deserialize;
@@ -4142,6 +4271,75 @@ mod tests {
             fll_locked: true,
             channel_state: ChannelState::Tracking,
         }
+    }
+
+    fn galileo_e1_subcarrier_guard_config() -> ReceiverPipelineConfig {
+        ReceiverPipelineConfig {
+            sampling_freq_hz: 4_092_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 4092,
+            channels: 1,
+            early_late_spacing_chips: 0.5,
+            dll_bw_hz: 2.0,
+            pll_bw_hz: 15.0,
+            fll_bw_hz: 10.0,
+            ..ReceiverPipelineConfig::default()
+        }
+    }
+
+    fn galileo_e1_subcarrier_guard_for_seed(
+        config: &ReceiverPipelineConfig,
+        sat: SatId,
+        code_phase_chips: f64,
+        seed_offset_chips: f64,
+    ) -> super::SubcarrierAmbiguityGuard {
+        let sample_count = samples_per_code(
+            config.sampling_freq_hz,
+            config.code_freq_basis_hz,
+            config.code_length,
+        );
+        let frame = SamplesFrame::new(
+            SampleTime { sample_index: 0, sample_rate_hz: config.sampling_freq_hz },
+            Seconds(1.0 / config.sampling_freq_hz),
+            sample_galileo_e1_cboc(
+                sat.prn,
+                config.sampling_freq_hz,
+                code_phase_chips,
+                sample_count,
+                0,
+                1,
+            )
+            .expect("Galileo E1 CBOC samples")
+            .into_iter()
+            .map(|value| Complex::new(value, 0.0))
+            .collect(),
+        );
+        let signal_model = super::TrackingSignalModel::for_sat_signal_band(
+            config,
+            sat,
+            SignalBand::E1,
+            SignalCode::E1B,
+            None,
+        );
+        let tracking = Tracking::new(config.clone(), ReceiverRuntime::default());
+        let samples_per_chip = config.sampling_freq_hz / config.code_freq_basis_hz;
+        let code_phase_samples = (code_phase_chips + seed_offset_chips) * samples_per_chip;
+        tracking
+            .tracking_epoch_correlation(
+                &frame,
+                0,
+                frame.len(),
+                0,
+                &signal_model,
+                0.0,
+                0.0,
+                config.code_freq_basis_hz,
+                code_phase_samples,
+                config.early_late_spacing_chips,
+            )
+            .subcarrier_ambiguity_guard
+            .expect("Galileo E1 requires subcarrier ambiguity guard")
     }
 
     fn gps_l5q_secondary_code_component() -> super::TrackingComponentModel {
@@ -7162,6 +7360,34 @@ mod tests {
         assert_eq!(
             signal_model.phase_transition_source,
             super::TrackingPhaseTransitionSource::DataSymbol
+        );
+    }
+
+    #[test]
+    fn galileo_e1_subcarrier_guard_accepts_main_lobe_prompt() {
+        let config = galileo_e1_subcarrier_guard_config();
+        let sat = SatId { constellation: Constellation::Galileo, prn: 11 };
+        let code_phase_chips = 321.375;
+        let guard = galileo_e1_subcarrier_guard_for_seed(&config, sat, code_phase_chips, 0.0);
+
+        assert!(!guard.detected(), "guard={guard:?}");
+        assert!(
+            guard.prompt_dominance_ratio >= super::SUBCARRIER_AMBIGUITY_MIN_PROMPT_RELATIVE_POWER,
+            "guard={guard:?}",
+        );
+    }
+
+    #[test]
+    fn galileo_e1_subcarrier_guard_rejects_half_chip_side_lobe_prompt() {
+        let config = galileo_e1_subcarrier_guard_config();
+        let sat = SatId { constellation: Constellation::Galileo, prn: 11 };
+        let code_phase_chips = 321.375;
+        let guard = galileo_e1_subcarrier_guard_for_seed(&config, sat, code_phase_chips, 0.5);
+
+        assert!(guard.detected(), "guard={guard:?}");
+        assert!(
+            guard.strongest_alternate_power > guard.prompt_power,
+            "guard should find stronger half-chip evidence than the side-lobe prompt: {guard:?}",
         );
     }
 
