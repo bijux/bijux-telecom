@@ -60,6 +60,10 @@ pub struct ReceiverPipelineConfig {
     pub acquisition_doppler_search_hz: i32,
     /// Doppler bin spacing used by acquisition, in Hz.
     pub acquisition_doppler_step_hz: i32,
+    /// Doppler-rate search range used by acquisition, in Hz/s.
+    pub acquisition_doppler_rate_search_hz_per_s: i32,
+    /// Doppler-rate bin spacing used by acquisition, in Hz/s.
+    pub acquisition_doppler_rate_step_hz_per_s: i32,
     /// Coherent integration used by acquisition, in milliseconds.
     pub acquisition_integration_ms: u32,
     /// Noncoherent integration used by acquisition.
@@ -126,6 +130,8 @@ impl Default for ReceiverPipelineConfig {
             channels: 12,
             acquisition_doppler_search_hz: 10_000,
             acquisition_doppler_step_hz: 500,
+            acquisition_doppler_rate_search_hz_per_s: 0,
+            acquisition_doppler_rate_step_hz_per_s: 250,
             acquisition_integration_ms: 1,
             acquisition_noncoherent: 1,
             acquisition_peak_mean_threshold: 2.5,
@@ -330,6 +336,12 @@ pub struct AcquisitionConfig {
     pub doppler_search_hz: i32,
     /// Doppler bin spacing, in Hz.
     pub doppler_step_hz: i32,
+    /// Doppler-rate search range, in Hz/s.
+    #[serde(default)]
+    pub doppler_rate_search_hz_per_s: i32,
+    /// Doppler-rate bin spacing, in Hz/s.
+    #[serde(default)]
+    pub doppler_rate_step_hz_per_s: i32,
     /// Coherent integration length, in ms.
     pub integration_ms: u32,
     /// Noncoherent integration count.

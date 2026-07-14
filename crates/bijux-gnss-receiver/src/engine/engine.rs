@@ -735,10 +735,13 @@ fn default_acquisition_requests_for_source(
                 signal_band: signal.signal_band,
                 signal_code: signal.signal_code,
                 doppler_center_hz: 0.0,
+                doppler_rate_center_hz_per_s: 0.0,
                 expected_line_of_sight_doppler_hz: None,
                 assistance_bounds: None,
                 doppler_search_hz: config.acquisition_doppler_search_hz,
                 doppler_step_hz: config.acquisition_doppler_step_hz.max(1),
+                doppler_rate_search_hz_per_s: config.acquisition_doppler_rate_search_hz_per_s,
+                doppler_rate_step_hz_per_s: config.acquisition_doppler_rate_step_hz_per_s.max(1),
                 coherent_ms: config.acquisition_integration_ms,
                 noncoherent: config.acquisition_noncoherent,
             })
@@ -774,10 +777,13 @@ fn acquisition_requests_for_satellite(
             signal_band: signal.signal_band,
             signal_code: signal.signal_code,
             doppler_center_hz: 0.0,
+            doppler_rate_center_hz_per_s: 0.0,
             expected_line_of_sight_doppler_hz: None,
             assistance_bounds: None,
             doppler_search_hz: config.acquisition_doppler_search_hz,
             doppler_step_hz: config.acquisition_doppler_step_hz.max(1),
+            doppler_rate_search_hz_per_s: config.acquisition_doppler_rate_search_hz_per_s,
+            doppler_rate_step_hz_per_s: config.acquisition_doppler_rate_step_hz_per_s.max(1),
             coherent_ms: config.acquisition_integration_ms,
             noncoherent: config.acquisition_noncoherent,
         })
@@ -988,6 +994,9 @@ mod tests {
                 ),
                 signal_code: bijux_gnss_core::api::SignalCode::Unknown,
                 doppler_center_hz: 0.0,
+                doppler_rate_center_hz_per_s: 0.0,
+                doppler_rate_search_hz_per_s: 0,
+                doppler_rate_step_hz_per_s: 250,
                 expected_line_of_sight_doppler_hz: None,
                 assistance_bounds: None,
                 doppler_search_hz: 0,
@@ -1003,6 +1012,9 @@ mod tests {
                 ),
                 signal_code: bijux_gnss_core::api::SignalCode::Unknown,
                 doppler_center_hz: 0.0,
+                doppler_rate_center_hz_per_s: 0.0,
+                doppler_rate_search_hz_per_s: 0,
+                doppler_rate_step_hz_per_s: 250,
                 expected_line_of_sight_doppler_hz: None,
                 assistance_bounds: None,
                 doppler_search_hz: 0,
@@ -1035,6 +1047,9 @@ mod tests {
                 ),
                 signal_code: bijux_gnss_core::api::SignalCode::Unknown,
                 doppler_center_hz: 0.0,
+                doppler_rate_center_hz_per_s: 0.0,
+                doppler_rate_search_hz_per_s: 0,
+                doppler_rate_step_hz_per_s: 250,
                 expected_line_of_sight_doppler_hz: None,
                 assistance_bounds: None,
                 doppler_search_hz: 0,
@@ -1050,6 +1065,9 @@ mod tests {
                 ),
                 signal_code: bijux_gnss_core::api::SignalCode::Unknown,
                 doppler_center_hz: 0.0,
+                doppler_rate_center_hz_per_s: 0.0,
+                doppler_rate_search_hz_per_s: 0,
+                doppler_rate_step_hz_per_s: 250,
                 expected_line_of_sight_doppler_hz: None,
                 assistance_bounds: None,
                 doppler_search_hz: 0,
@@ -1114,7 +1132,11 @@ mod tests {
         assert_eq!(
             requests
                 .iter()
-                .map(|request| (request.sat.constellation, request.signal_band, request.signal_code))
+                .map(|request| (
+                    request.sat.constellation,
+                    request.signal_band,
+                    request.signal_code
+                ))
                 .collect::<Vec<_>>(),
             vec![
                 (Constellation::Gps, SignalBand::L5, SignalCode::L5I),

@@ -288,6 +288,9 @@ pub fn build_common_oscillator_bias_follow_up_requests(
             expected_line_of_sight_doppler_hz + estimate.estimated_bias_hz;
         let follow_up_request = AcqRequest {
             doppler_center_hz: estimated_signal_doppler_hz,
+            doppler_rate_center_hz_per_s: 0.0,
+            doppler_rate_search_hz_per_s: 0,
+            doppler_rate_step_hz_per_s: 250,
             doppler_search_hz: narrowed_search_hz,
             ..request
         };
@@ -483,6 +486,9 @@ mod tests {
             signal_band: SignalBand::L1,
             signal_code: SignalCode::Ca,
             doppler_center_hz,
+            doppler_rate_center_hz_per_s: 0.0,
+            doppler_rate_search_hz_per_s: 0,
+            doppler_rate_step_hz_per_s: 250,
             expected_line_of_sight_doppler_hz,
             assistance_bounds: None,
             doppler_search_hz,
@@ -503,6 +509,9 @@ mod tests {
             signal_band: SignalBand::L1,
             signal_code: SignalCode::Ca,
             doppler_center_hz: 0.0,
+            doppler_rate_center_hz_per_s: 0.0,
+            doppler_rate_search_hz_per_s: 0,
+            doppler_rate_step_hz_per_s: 250,
             expected_line_of_sight_doppler_hz: Some(0.0),
             assistance_bounds,
             doppler_search_hz,
@@ -522,6 +531,7 @@ mod tests {
             candidate_rank: 1,
             is_primary_candidate: true,
             doppler_hz: Hertz(doppler_hz),
+            doppler_rate_hz_per_s: 0.0,
             carrier_hz: Hertz(doppler_hz),
             code_phase_samples: 0,
             peak: 0.0,

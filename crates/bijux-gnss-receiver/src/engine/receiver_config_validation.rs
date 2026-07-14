@@ -303,6 +303,8 @@ impl ReceiverConfig {
             channels: self.tracking.max_channels,
             acquisition_doppler_search_hz: self.acquisition.doppler_search_hz,
             acquisition_doppler_step_hz: self.acquisition.doppler_step_hz,
+            acquisition_doppler_rate_search_hz_per_s: self.acquisition.doppler_rate_search_hz_per_s,
+            acquisition_doppler_rate_step_hz_per_s: self.acquisition.doppler_rate_step_hz_per_s,
             acquisition_integration_ms: self.acquisition.integration_ms,
             acquisition_noncoherent: self.acquisition.noncoherent_integration,
             acquisition_peak_mean_threshold: self.acquisition.peak_mean_threshold,
