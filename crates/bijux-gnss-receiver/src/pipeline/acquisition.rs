@@ -1,6 +1,7 @@
 #![allow(missing_docs)]
 
 use std::collections::HashMap;
+use std::f64::consts::TAU;
 use std::sync::Mutex;
 
 use crate::engine::signal_selection::{
@@ -16,9 +17,9 @@ use bijux_gnss_core::api::{
 use num_complex::Complex;
 use rustfft::{num_traits::Zero, FftPlanner};
 
-use crate::engine::receiver_config::ReceiverPipelineConfig;
 use crate::engine::receiver_config::{
     acquisition_integration_ms_is_supported, supported_acquisition_integration_ms_csv,
+    AcquisitionThresholdMode, ReceiverPipelineConfig,
 };
 use crate::engine::runtime::{ReceiverRuntime, TraceRecord};
 use crate::pipeline::acquisition_components::{
@@ -40,6 +41,7 @@ pub struct Acquisition {
     doppler_search_hz: i32,
     doppler_step_hz: i32,
     cache: Mutex<CodeFftCache>,
+    threshold_cache: Mutex<ThresholdResolutionCache>,
     stats: Mutex<AcquisitionStats>,
 }
 
@@ -146,6 +148,8 @@ impl CacheMissReason {
 }
 
 type CodeFftCache = HashMap<CodeFftCacheKey, Vec<Complex<f32>>>;
+type ThresholdResolutionCache =
+    HashMap<AcquisitionThresholdCacheKey, ResolvedAcquisitionThresholds>;
 
 #[cfg(test)]
 fn fallback_acquisition_signal_model(
@@ -237,20 +241,113 @@ fn threshold_provenance_for_request(
     config: &ReceiverPipelineConfig,
     request: AcqRequest,
 ) -> AcqThresholdProvenance {
+    let threshold_policy = &config.acquisition_threshold_policy;
+    let (mode, false_alarm_probability, calibration_trial_count, calibration_confidence_level) =
+        match threshold_policy.mode {
+            AcquisitionThresholdMode::FixedRatio => ("fixed_ratio", None, None, None),
+            AcquisitionThresholdMode::CalibratedFalseAlarm => (
+                "calibrated_false_alarm",
+                Some(threshold_policy.false_alarm_probability),
+                Some(threshold_policy.calibration_trial_count),
+                Some(threshold_policy.confidence_level),
+            ),
+        };
     AcqThresholdProvenance {
-        mode: "fixed_ratio".to_string(),
+        mode: mode.to_string(),
         coherent_ms: request.coherent_ms,
         noncoherent: request.noncoherent,
         doppler_search_hz: request.doppler_search_hz,
         doppler_step_hz: request.doppler_step_hz.max(1),
         peak_mean_threshold: config.acquisition_peak_mean_threshold,
         peak_second_threshold: config.acquisition_peak_second_threshold,
-        false_alarm_probability: None,
-        calibration_trial_count: None,
-        calibration_confidence_level: None,
+        false_alarm_probability,
+        calibration_trial_count,
+        calibration_confidence_level,
         calibration_false_alarm_rate: None,
         calibration_false_alarm_interval_low: None,
         calibration_false_alarm_interval_high: None,
+    }
+}
+
+#[derive(Debug, Clone)]
+struct ResolvedAcquisitionThresholds {
+    peak_mean_threshold: f32,
+    peak_second_threshold: f32,
+    provenance: AcqThresholdProvenance,
+}
+
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+struct AcquisitionThresholdCacheKey {
+    sat: SatId,
+    signal_band: SignalBand,
+    signal_code: SignalCode,
+    glonass_frequency_channel: Option<bijux_gnss_core::api::GlonassFrequencyChannel>,
+    coherent_ms: u32,
+    noncoherent: u32,
+    doppler_search_hz: i32,
+    doppler_step_hz: i32,
+    samples_per_code: usize,
+}
+
+impl AcquisitionThresholdCacheKey {
+    fn from_request(
+        request: AcqRequest,
+        signal_band: SignalBand,
+        signal_code: SignalCode,
+        samples_per_code: usize,
+    ) -> Self {
+        Self {
+            sat: request.sat,
+            signal_band,
+            signal_code,
+            glonass_frequency_channel: request.glonass_frequency_channel,
+            coherent_ms: request.coherent_ms,
+            noncoherent: request.noncoherent,
+            doppler_search_hz: request.doppler_search_hz,
+            doppler_step_hz: request.doppler_step_hz.max(1),
+            samples_per_code,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct FalseAlarmRateMeasurement {
+    false_alarm_rate: f64,
+    confidence_interval_low: f64,
+    confidence_interval_high: f64,
+}
+
+#[derive(Debug, Clone)]
+struct XorShift64 {
+    state: u64,
+}
+
+impl XorShift64 {
+    fn new(seed: u64) -> Self {
+        let seed = if seed == 0 { 0xDEADBEEFCAFEBABE } else { seed };
+        Self { state: seed }
+    }
+
+    fn next_u64(&mut self) -> u64 {
+        let mut x = self.state;
+        x ^= x << 13;
+        x ^= x >> 7;
+        x ^= x << 17;
+        self.state = x;
+        x
+    }
+
+    fn next_f32(&mut self) -> f32 {
+        let val = (self.next_u64() >> 40) as u32;
+        val as f32 / (u32::MAX as f32)
+    }
+
+    fn next_gaussian(&mut self) -> f32 {
+        let u1 = self.next_f32().max(1.0e-12);
+        let u2 = self.next_f32();
+        let r = (-2.0 * u1.ln()).sqrt();
+        let theta = (TAU as f32) * u2;
+        r * theta.cos()
     }
 }
 
@@ -477,6 +574,7 @@ impl Acquisition {
             doppler_search_hz: config.acquisition_doppler_search_hz,
             doppler_step_hz,
             cache: Mutex::new(HashMap::new()),
+            threshold_cache: Mutex::new(HashMap::new()),
             stats: Mutex::new(AcquisitionStats::default()),
         }
     }
@@ -536,6 +634,191 @@ impl Acquisition {
             .copied()
             .map(|sat| self.default_request(sat, coherent_ms, noncoherent))
             .collect()
+    }
+
+    fn resolve_thresholds_for_request(
+        &self,
+        request: AcqRequest,
+        signal_model: &AcquisitionSignalModel,
+    ) -> ResolvedAcquisitionThresholds {
+        match self.config.acquisition_threshold_policy.mode {
+            AcquisitionThresholdMode::FixedRatio => self.fixed_thresholds_for_request(request),
+            AcquisitionThresholdMode::CalibratedFalseAlarm => {
+                self.calibrated_thresholds_for_request(request, signal_model)
+            }
+        }
+    }
+
+    fn fixed_thresholds_for_request(&self, request: AcqRequest) -> ResolvedAcquisitionThresholds {
+        let mut provenance = threshold_provenance_for_request(&self.config, request);
+        provenance.mode = "fixed_ratio".to_string();
+        provenance.peak_mean_threshold = self.config.acquisition_peak_mean_threshold;
+        provenance.peak_second_threshold = self.config.acquisition_peak_second_threshold;
+        provenance.false_alarm_probability = None;
+        provenance.calibration_trial_count = None;
+        provenance.calibration_confidence_level = None;
+        provenance.calibration_false_alarm_rate = None;
+        provenance.calibration_false_alarm_interval_low = None;
+        provenance.calibration_false_alarm_interval_high = None;
+        ResolvedAcquisitionThresholds {
+            peak_mean_threshold: self.config.acquisition_peak_mean_threshold,
+            peak_second_threshold: self.config.acquisition_peak_second_threshold,
+            provenance,
+        }
+    }
+
+    fn calibrated_thresholds_for_request(
+        &self,
+        request: AcqRequest,
+        signal_model: &AcquisitionSignalModel,
+    ) -> ResolvedAcquisitionThresholds {
+        let signal_code = resolved_request_signal_code(request);
+        let cache_key = AcquisitionThresholdCacheKey::from_request(
+            request,
+            signal_model.signal_band,
+            signal_code,
+            signal_model.samples_per_code(self.config.sampling_freq_hz),
+        );
+        if let Some(cached) =
+            self.threshold_cache.lock().ok().and_then(|cache| cache.get(&cache_key).cloned())
+        {
+            return cached;
+        }
+        let resolved = self.calibrate_thresholds_for_request(request, signal_model);
+        if let Ok(mut cache) = self.threshold_cache.lock() {
+            cache.insert(cache_key, resolved.clone());
+        }
+        resolved
+    }
+
+    fn calibrate_thresholds_for_request(
+        &self,
+        request: AcqRequest,
+        signal_model: &AcquisitionSignalModel,
+    ) -> ResolvedAcquisitionThresholds {
+        let policy = &self.config.acquisition_threshold_policy;
+        let target_false_alarm_probability = policy.false_alarm_probability;
+        let trial_count = policy.calibration_trial_count;
+        let confidence_level = policy.confidence_level;
+        let mut lower = 1.0_f32;
+        let mut upper = self.config.acquisition_peak_mean_threshold.max(lower + 1.0);
+        let mut upper_measurement = self.measure_noise_only_false_alarm_rate(
+            request,
+            signal_model,
+            upper,
+            trial_count,
+            confidence_level,
+        );
+        while upper_measurement.false_alarm_rate > target_false_alarm_probability && upper < 64.0 {
+            lower = upper;
+            upper = (upper * 2.0).min(64.0);
+            upper_measurement = self.measure_noise_only_false_alarm_rate(
+                request,
+                signal_model,
+                upper,
+                trial_count,
+                confidence_level,
+            );
+        }
+
+        for _ in 0..10 {
+            let midpoint = (lower + upper) * 0.5;
+            let midpoint_measurement = self.measure_noise_only_false_alarm_rate(
+                request,
+                signal_model,
+                midpoint,
+                trial_count,
+                confidence_level,
+            );
+            if midpoint_measurement.false_alarm_rate <= target_false_alarm_probability {
+                upper = midpoint;
+                upper_measurement = midpoint_measurement;
+            } else {
+                lower = midpoint;
+            }
+        }
+
+        self.runtime.trace.record(TraceRecord {
+            name: "acquisition_threshold_calibration",
+            fields: vec![
+                ("constellation", format!("{:?}", request.sat.constellation)),
+                ("prn", request.sat.prn.to_string()),
+                ("signal_band", format!("{:?}", signal_model.signal_band)),
+                ("signal_code", format!("{:?}", resolved_request_signal_code(request))),
+                ("trial_count", trial_count.to_string()),
+                ("target_false_alarm_probability", format!("{target_false_alarm_probability:.9}")),
+                ("peak_mean_threshold", format!("{upper:.6}")),
+                ("measured_false_alarm_rate", format!("{:.9}", upper_measurement.false_alarm_rate)),
+                (
+                    "confidence_interval_low",
+                    format!("{:.9}", upper_measurement.confidence_interval_low),
+                ),
+                (
+                    "confidence_interval_high",
+                    format!("{:.9}", upper_measurement.confidence_interval_high),
+                ),
+            ],
+        });
+
+        let mut provenance = threshold_provenance_for_request(&self.config, request);
+        provenance.mode = "calibrated_false_alarm".to_string();
+        provenance.peak_mean_threshold = upper;
+        provenance.peak_second_threshold = self.config.acquisition_peak_second_threshold;
+        provenance.false_alarm_probability = Some(target_false_alarm_probability);
+        provenance.calibration_trial_count = Some(trial_count);
+        provenance.calibration_confidence_level = Some(confidence_level);
+        provenance.calibration_false_alarm_rate = Some(upper_measurement.false_alarm_rate);
+        provenance.calibration_false_alarm_interval_low =
+            Some(upper_measurement.confidence_interval_low);
+        provenance.calibration_false_alarm_interval_high =
+            Some(upper_measurement.confidence_interval_high);
+
+        ResolvedAcquisitionThresholds {
+            peak_mean_threshold: upper,
+            peak_second_threshold: self.config.acquisition_peak_second_threshold,
+            provenance,
+        }
+    }
+
+    fn measure_noise_only_false_alarm_rate(
+        &self,
+        request: AcqRequest,
+        signal_model: &AcquisitionSignalModel,
+        peak_mean_threshold: f32,
+        trial_count: usize,
+        confidence_level: f64,
+    ) -> FalseAlarmRateMeasurement {
+        let mut calibration_config = self.config.clone();
+        calibration_config.acquisition_peak_mean_threshold = peak_mean_threshold;
+        calibration_config.acquisition_threshold_policy.mode = AcquisitionThresholdMode::FixedRatio;
+        let calibration_engine = Self::new(calibration_config, ReceiverRuntime::default());
+        let required_samples = required_samples_for_request(
+            &self.config,
+            signal_model,
+            request.coherent_ms,
+            request.noncoherent,
+        );
+        let calibration_seed = calibration_seed(request, signal_model, peak_mean_threshold);
+        let false_alarm_count = (0..trial_count)
+            .filter(|trial_index| {
+                let frame = noise_only_frame(
+                    self.config.sampling_freq_hz,
+                    required_samples,
+                    mix_seed(calibration_seed, *trial_index as u64),
+                );
+                calibration_engine
+                    .run_fft_for_requests(&frame, &[request])
+                    .into_iter()
+                    .any(|result| matches!(result.hypothesis, AcqHypothesis::Accepted))
+            })
+            .count();
+        let (confidence_interval_low, confidence_interval_high) =
+            wilson_confidence_interval(false_alarm_count, trial_count, confidence_level);
+        FalseAlarmRateMeasurement {
+            false_alarm_rate: false_alarm_rate(false_alarm_count, trial_count),
+            confidence_interval_low,
+            confidence_interval_high,
+        }
     }
 
     /// Perform satellite acquisition on a buffer that spans the configured integration window.
@@ -654,7 +937,8 @@ impl Acquisition {
         let mut sat_evaluations = Vec::new();
         for &request in requests {
             let sat = request.sat;
-            let threshold_provenance = threshold_provenance_for_request(&self.config, request);
+            let requested_threshold_provenance =
+                threshold_provenance_for_request(&self.config, request);
             let signal_code = resolved_request_signal_code(request);
             let strategies = match acquisition_strategies_for_signal(
                 sat,
@@ -670,7 +954,7 @@ impl Acquisition {
                         candidates: acquisition_request_error_candidates(
                             &self.config,
                             request,
-                            &threshold_provenance,
+                            &requested_threshold_provenance,
                             ReceiverSampleTrace::from_sample_time(frame.t0),
                             frame.len(),
                             error,
@@ -688,7 +972,7 @@ impl Acquisition {
                         candidates: acquisition_request_error_candidates(
                             &self.config,
                             request,
-                            &threshold_provenance,
+                            &requested_threshold_provenance,
                             ReceiverSampleTrace::from_sample_time(frame.t0),
                             frame.len(),
                             unsupported_acquisition_signal_error(
@@ -730,7 +1014,7 @@ impl Acquisition {
                         signal_code,
                         request.glonass_frequency_channel,
                         &assumptions,
-                        &threshold_provenance,
+                        &requested_threshold_provenance,
                         search_center_hz,
                         ReceiverSampleTrace::from_sample_time(frame.t0),
                         request.coherent_ms,
@@ -750,7 +1034,7 @@ impl Acquisition {
                             signal_code,
                             request.glonass_frequency_channel,
                             &assumptions,
-                            &threshold_provenance,
+                            &requested_threshold_provenance,
                             search_center_hz,
                             ReceiverSampleTrace::from_sample_time(frame.t0),
                             request.coherent_ms,
@@ -772,7 +1056,7 @@ impl Acquisition {
                         signal_code,
                         request.glonass_frequency_channel,
                         &assumptions,
-                        &threshold_provenance,
+                        &requested_threshold_provenance,
                         search_center_hz,
                         ReceiverSampleTrace::from_sample_time(frame.t0),
                         frame.len(),
@@ -782,6 +1066,7 @@ impl Acquisition {
                 });
                 continue;
             }
+            let resolved_thresholds = self.resolve_thresholds_for_request(request, &signal_model);
             self.runtime.trace.record(TraceRecord {
                 name: "acquisition_sat_start",
                 fields: vec![
@@ -912,7 +1197,7 @@ impl Acquisition {
                             mean: correlation_metrics.mean,
                             component_provenance: Some(component_provenance),
                         }],
-                        threshold_provenance: Some(threshold_provenance.clone()),
+                        threshold_provenance: Some(resolved_thresholds.provenance.clone()),
                         explain_selection_reason: None,
                         doppler_refinement: None,
                         code_phase_refinement: None,
@@ -929,7 +1214,7 @@ impl Acquisition {
                 search_center_hz,
                 request.doppler_search_hz,
                 request.doppler_step_hz.max(1),
-                self.config.acquisition_peak_mean_threshold,
+                resolved_thresholds.peak_mean_threshold,
             );
 
             let mut ranked_candidates = grid_candidates.clone();
@@ -996,7 +1281,7 @@ impl Acquisition {
                             candidate.peak_second_ratio,
                             local_peak_separation_ratio,
                             competing_peak_ratio,
-                            &self.config,
+                            &resolved_thresholds,
                         );
                         let multipath_diagnostic = if candidate_uses_data_sign_hypotheses(
                             candidate,
@@ -1018,6 +1303,7 @@ impl Acquisition {
                                 candidate.peak_mean_ratio,
                                 candidate.peak_second_ratio,
                                 competing_peak_ratio,
+                                &resolved_thresholds,
                             )
                         };
                         let decision =
@@ -1047,7 +1333,7 @@ impl Acquisition {
                                     candidate.peak_mean_ratio,
                                     local_peak_separation_ratio,
                                     competing_peak_ratio,
-                                    &self.config,
+                                    &resolved_thresholds,
                                 ),
                             });
                         candidate.uncertainty = estimate_acquisition_uncertainty(
@@ -1428,6 +1714,132 @@ impl Acquisition {
             right_correlation_norm,
         })
     }
+}
+
+fn required_samples_for_request(
+    config: &ReceiverPipelineConfig,
+    signal_model: &AcquisitionSignalModel,
+    coherent_ms: u32,
+    noncoherent: u32,
+) -> usize {
+    let samples_per_code = signal_model.samples_per_code(config.sampling_freq_hz);
+    let coherent_periods = signal_model.coherent_periods(coherent_ms).unwrap_or(1).max(1) as usize;
+    samples_per_code.saturating_mul(coherent_periods).saturating_mul(noncoherent.max(1) as usize)
+}
+
+fn calibration_seed(
+    request: AcqRequest,
+    signal_model: &AcquisitionSignalModel,
+    peak_mean_threshold: f32,
+) -> u64 {
+    let mut seed = 0xA11C_9A7E_4D35_2B61_u64;
+    seed = mix_seed(seed, request.sat.prn as u64);
+    seed = mix_seed(seed, request.sat.constellation as u64);
+    seed = mix_seed(seed, request.signal_band as u64);
+    seed = mix_seed(seed, resolved_request_signal_code(request) as u64);
+    seed = mix_seed(seed, request.coherent_ms as u64);
+    seed = mix_seed(seed, request.noncoherent as u64);
+    seed = mix_seed(seed, request.doppler_search_hz as i64 as u64);
+    seed = mix_seed(seed, request.doppler_step_hz.max(1) as i64 as u64);
+    seed = mix_seed(seed, signal_model.code_length as u64);
+    seed = mix_seed(seed, signal_model.code_rate_hz.to_bits());
+    seed = mix_seed(seed, peak_mean_threshold.to_bits() as u64);
+    if let Some(channel) = request.glonass_frequency_channel {
+        seed = mix_seed(seed, channel.value() as i64 as u64);
+    }
+    seed
+}
+
+fn mix_seed(seed: u64, value: u64) -> u64 {
+    let mixed = seed ^ value.wrapping_add(0x9E37_79B9_7F4A_7C15);
+    mixed.rotate_left(27).wrapping_mul(0x94D0_49BB_1331_11EB)
+}
+
+fn noise_only_frame(sampling_freq_hz: f64, sample_count: usize, seed: u64) -> SamplesFrame {
+    let mut rng = XorShift64::new(seed);
+    let iq = (0..sample_count)
+        .map(|_| Complex::new(rng.next_gaussian(), rng.next_gaussian()))
+        .collect::<Vec<_>>();
+    SamplesFrame::new(
+        bijux_gnss_core::api::SampleTime { sample_index: 0, sample_rate_hz: sampling_freq_hz },
+        bijux_gnss_core::api::Seconds(1.0 / sampling_freq_hz),
+        iq,
+    )
+}
+
+fn false_alarm_rate(false_alarm_count: usize, trial_count: usize) -> f64 {
+    if trial_count == 0 {
+        return 0.0;
+    }
+    false_alarm_count as f64 / trial_count as f64
+}
+
+fn wilson_confidence_interval(
+    false_alarm_count: usize,
+    trial_count: usize,
+    confidence_level: f64,
+) -> (f64, f64) {
+    if trial_count == 0 {
+        return (0.0, 0.0);
+    }
+    let p_hat = false_alarm_rate(false_alarm_count, trial_count);
+    let z = inverse_standard_normal_cdf(0.5 + (confidence_level * 0.5));
+    let n = trial_count as f64;
+    let z2 = z * z;
+    let denominator = 1.0 + (z2 / n);
+    let center = (p_hat + (z2 / (2.0 * n))) / denominator;
+    let margin = (z * ((p_hat * (1.0 - p_hat) / n) + (z2 / (4.0 * n * n))).sqrt()) / denominator;
+    ((center - margin).max(0.0), (center + margin).min(1.0))
+}
+
+fn inverse_standard_normal_cdf(p: f64) -> f64 {
+    debug_assert!(p > 0.0 && p < 1.0);
+    const A: [f64; 6] = [
+        -3.969_683_028_665_376e1,
+        2.209_460_984_245_205e2,
+        -2.759_285_104_469_687e2,
+        1.383_577_518_672_69e2,
+        -3.066_479_806_614_716e1,
+        2.506_628_277_459_239,
+    ];
+    const B: [f64; 5] = [
+        -5.447_609_879_822_406e1,
+        1.615_858_368_580_409e2,
+        -1.556_989_798_598_866e2,
+        6.680_131_188_771_972e1,
+        -1.328_068_155_288_572e1,
+    ];
+    const C: [f64; 6] = [
+        -7.784_894_002_430_293e-3,
+        -3.223_964_580_411_365e-1,
+        -2.400_758_277_161_838,
+        -2.549_732_539_343_734,
+        4.374_664_141_464_968,
+        2.938_163_982_698_783,
+    ];
+    const D: [f64; 4] = [
+        7.784_695_709_041_462e-3,
+        3.224_671_290_700_398e-1,
+        2.445_134_137_142_996,
+        3.754_408_661_907_416,
+    ];
+    const LOW: f64 = 0.02425;
+    const HIGH: f64 = 1.0 - LOW;
+
+    if p < LOW {
+        let q = (-2.0 * p.ln()).sqrt();
+        return (((((C[0] * q + C[1]) * q + C[2]) * q + C[3]) * q + C[4]) * q + C[5])
+            / ((((D[0] * q + D[1]) * q + D[2]) * q + D[3]) * q + 1.0);
+    }
+    if p > HIGH {
+        let q = (-2.0 * (1.0 - p).ln()).sqrt();
+        return -(((((C[0] * q + C[1]) * q + C[2]) * q + C[3]) * q + C[4]) * q + C[5])
+            / ((((D[0] * q + D[1]) * q + D[2]) * q + D[3]) * q + 1.0);
+    }
+    let q = p - 0.5;
+    let r = q * q;
+    (((((A[0] * r + A[1]) * r + A[2]) * r + A[3]) * r + A[4]) * r + A[5]) * q
+        / (((((B[0] * r + B[1]) * r + B[2]) * r + B[3]) * r + B[4]) * r + 1.0)
 }
 
 fn doppler_bin_count(search_hz: i32, step_hz: i32) -> u64 {
@@ -1872,9 +2284,9 @@ fn acquisition_decision(
     peak_second_ratio: f32,
     local_peak_separation_ratio: f32,
     competing_peak_ratio: f32,
-    config: &ReceiverPipelineConfig,
+    thresholds: &ResolvedAcquisitionThresholds,
 ) -> AcquisitionDecision {
-    if peak_mean_ratio < config.acquisition_peak_mean_threshold {
+    if peak_mean_ratio < thresholds.peak_mean_threshold {
         return AcquisitionDecision {
             hypothesis: AcqHypothesis::Rejected,
             reason: AcquisitionDecisionReason::LowPeakMetric,
@@ -1890,9 +2302,9 @@ fn acquisition_decision(
     }
     let limiting_ratio =
         peak_second_ratio.min(local_peak_separation_ratio).min(competing_peak_ratio);
-    if peak_second_ratio < config.acquisition_peak_second_threshold
-        || local_peak_separation_ratio < config.acquisition_peak_second_threshold
-        || competing_peak_ratio < config.acquisition_peak_second_threshold
+    if peak_second_ratio < thresholds.peak_second_threshold
+        || local_peak_separation_ratio < thresholds.peak_second_threshold
+        || competing_peak_ratio < thresholds.peak_second_threshold
     {
         return AcquisitionDecision {
             hypothesis: AcqHypothesis::Ambiguous,
@@ -2025,7 +2437,7 @@ fn selected_candidate_reason(
     peak_mean_ratio: f32,
     local_peak_separation_ratio: f32,
     competing_peak_ratio: f32,
-    config: &ReceiverPipelineConfig,
+    thresholds: &ResolvedAcquisitionThresholds,
 ) -> String {
     match decision.reason {
         AcquisitionDecisionReason::AcceptedByRatioThresholds
@@ -2041,7 +2453,7 @@ fn selected_candidate_reason(
             "{}: peak_mean_ratio={:.6} below threshold {:.6}",
             decision.reason.as_str(),
             peak_mean_ratio,
-            config.acquisition_peak_mean_threshold,
+            thresholds.peak_mean_threshold,
         ),
         AcquisitionDecisionReason::MultipathSuspect => unreachable!(
             "multipath_suspect reasons must be rendered through multipath_candidate_reason"
@@ -2062,10 +2474,11 @@ fn classify_delayed_secondary_peak(
     peak_mean_ratio: f32,
     peak_second_ratio: f32,
     competing_peak_ratio: f32,
+    thresholds: &ResolvedAcquisitionThresholds,
 ) -> Option<DelayedSecondaryPeakDiagnostic> {
-    if peak_mean_ratio < config.acquisition_peak_mean_threshold
-        || peak_second_ratio >= config.acquisition_peak_second_threshold
-        || competing_peak_ratio < config.acquisition_peak_second_threshold
+    if peak_mean_ratio < thresholds.peak_mean_threshold
+        || peak_second_ratio >= thresholds.peak_second_threshold
+        || competing_peak_ratio < thresholds.peak_second_threshold
     {
         return None;
     }
@@ -2801,6 +3214,28 @@ mod tests {
         )
     }
 
+    fn resolved_thresholds(config: &ReceiverPipelineConfig) -> ResolvedAcquisitionThresholds {
+        ResolvedAcquisitionThresholds {
+            peak_mean_threshold: config.acquisition_peak_mean_threshold,
+            peak_second_threshold: config.acquisition_peak_second_threshold,
+            provenance: AcqThresholdProvenance {
+                mode: "fixed_ratio".to_string(),
+                coherent_ms: config.acquisition_integration_ms,
+                noncoherent: config.acquisition_noncoherent,
+                doppler_search_hz: config.acquisition_doppler_search_hz,
+                doppler_step_hz: config.acquisition_doppler_step_hz,
+                peak_mean_threshold: config.acquisition_peak_mean_threshold,
+                peak_second_threshold: config.acquisition_peak_second_threshold,
+                false_alarm_probability: None,
+                calibration_trial_count: None,
+                calibration_confidence_level: None,
+                calibration_false_alarm_rate: None,
+                calibration_false_alarm_interval_low: None,
+                calibration_false_alarm_interval_high: None,
+            },
+        }
+    }
+
     #[test]
     fn best_coherent_data_correlation_restores_unknown_symbol_flip_gain() {
         let per_period = vec![
@@ -2921,7 +3356,8 @@ mod tests {
     #[test]
     fn acquisition_decision_rejects_weak_primary_peak() {
         let config = ReceiverPipelineConfig::default();
-        let decision = acquisition_decision(2.0, 2.0, 2.0, 2.0, &config);
+        let thresholds = resolved_thresholds(&config);
+        let decision = acquisition_decision(2.0, 2.0, 2.0, 2.0, &thresholds);
         assert_eq!(decision.hypothesis.to_string(), "rejected");
         assert_eq!(decision.reason, AcquisitionDecisionReason::LowPeakMetric);
         assert_eq!(decision.score, 0.0);
@@ -2930,7 +3366,8 @@ mod tests {
     #[test]
     fn acquisition_decision_marks_ambiguous_on_low_peak_separation() {
         let config = ReceiverPipelineConfig::default();
-        let decision = acquisition_decision(3.0, 1.0, 1.4, 2.0, &config);
+        let thresholds = resolved_thresholds(&config);
+        let decision = acquisition_decision(3.0, 1.0, 1.4, 2.0, &thresholds);
         assert_eq!(decision.hypothesis.to_string(), "ambiguous");
         assert_eq!(decision.reason, AcquisitionDecisionReason::AmbiguousRatioThresholds);
         assert!((decision.score - 1.2).abs() < 1e-6);
@@ -2939,7 +3376,8 @@ mod tests {
     #[test]
     fn acquisition_decision_marks_ambiguous_on_comparable_competing_candidate() {
         let config = ReceiverPipelineConfig::default();
-        let decision = acquisition_decision(3.5, 2.0, 2.0, 1.4, &config);
+        let thresholds = resolved_thresholds(&config);
+        let decision = acquisition_decision(3.5, 2.0, 2.0, 1.4, &thresholds);
         assert_eq!(decision.hypothesis.to_string(), "ambiguous");
         assert_eq!(decision.reason, AcquisitionDecisionReason::AmbiguousRatioThresholds);
         assert!((decision.score - 1.435).abs() < 1e-6);
@@ -2948,7 +3386,8 @@ mod tests {
     #[test]
     fn acquisition_decision_accepts_clean_peak() {
         let config = ReceiverPipelineConfig::default();
-        let decision = acquisition_decision(3.5, 2.0, 2.5, 2.1, &config);
+        let thresholds = resolved_thresholds(&config);
+        let decision = acquisition_decision(3.5, 2.0, 2.5, 2.1, &thresholds);
         assert_eq!(decision.hypothesis.to_string(), "accepted");
         assert_eq!(decision.reason, AcquisitionDecisionReason::AcceptedByRatioThresholds);
         assert!((decision.score - 2.75).abs() < f32::EPSILON);
@@ -3231,7 +3670,8 @@ mod tests {
     #[test]
     fn acquisition_decision_accepts_absent_competing_candidate_with_strong_local_peak() {
         let config = ReceiverPipelineConfig::default();
-        let decision = acquisition_decision(12.0, 1.8, 1.8, f32::INFINITY, &config);
+        let thresholds = resolved_thresholds(&config);
+        let decision = acquisition_decision(12.0, 1.8, 1.8, f32::INFINITY, &thresholds);
 
         assert_eq!(decision.hypothesis.to_string(), "accepted");
         assert_eq!(decision.reason, AcquisitionDecisionReason::AcceptedByRatioThresholds);
@@ -3240,6 +3680,7 @@ mod tests {
     #[test]
     fn selected_candidate_reason_reports_low_peak_metric_threshold() {
         let config = ReceiverPipelineConfig::default();
+        let thresholds = resolved_thresholds(&config);
         let reason = selected_candidate_reason(
             AcquisitionDecision {
                 hypothesis: AcqHypothesis::Rejected,
@@ -3249,7 +3690,7 @@ mod tests {
             2.0,
             2.0,
             2.0,
-            &config,
+            &thresholds,
         );
 
         assert_eq!(reason, "low_peak_metric: peak_mean_ratio=2.000000 below threshold 2.500000");
