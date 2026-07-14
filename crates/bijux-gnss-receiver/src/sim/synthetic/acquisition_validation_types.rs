@@ -84,6 +84,66 @@ pub struct SyntheticAcquisitionCodePhaseRefinementReport {
     pub satellites: Vec<SyntheticAcquisitionCodePhaseRefinementSatellite>,
 }
 
+/// Per-satellite comparison between coarse acquisition bins and the joint refined estimate.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticAcquisitionJointRefinementSatellite {
+    /// Satellite identifier.
+    pub sat: SatId,
+    /// Injected Doppler shift in Hz.
+    pub injected_doppler_hz: f64,
+    /// Injected code phase at the start of the validation frame, in chips.
+    pub injected_code_phase_chips: f64,
+    /// Expected acquisition Doppler after the common receiver clock bias is applied, in Hz.
+    pub expected_measured_doppler_hz: f64,
+    /// Continuous expected acquisition-reported code phase sample.
+    pub expected_code_phase_samples: f64,
+    /// Coarse acquisition Doppler in Hz relative to the configured IF.
+    pub coarse_doppler_hz: f64,
+    /// Refined acquisition Doppler in Hz relative to the configured IF.
+    pub refined_doppler_hz: f64,
+    /// Absolute coarse Doppler error in Hz.
+    pub coarse_doppler_error_hz: f64,
+    /// Absolute refined Doppler error in Hz.
+    pub refined_doppler_error_hz: f64,
+    /// Improvement from Doppler refinement, in Hz.
+    pub doppler_improvement_hz: f64,
+    /// Coarse acquisition-reported code phase sample.
+    pub coarse_code_phase_samples: usize,
+    /// Refined acquisition-reported code phase sample.
+    pub refined_code_phase_samples: f64,
+    /// Wrapped absolute coarse code-phase error in samples.
+    pub coarse_code_phase_error_samples: f64,
+    /// Wrapped absolute refined code-phase error in samples.
+    pub refined_code_phase_error_samples: f64,
+    /// Improvement from code-phase refinement, in samples.
+    pub code_phase_improvement_samples: f64,
+    /// Effective acquisition Doppler bin width in Hz.
+    pub doppler_step_hz: i32,
+    /// Peak-to-mean ratio for the selected acquisition result.
+    pub peak_mean_ratio: f32,
+    /// Acquisition hypothesis returned by the receiver.
+    pub hypothesis: String,
+    /// Whether the joint refinement improved both axes.
+    pub pass: bool,
+}
+
+/// Truth-guided report for joint acquisition code-phase and Doppler refinement.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticAcquisitionJointRefinementReport {
+    /// Stable scenario identifier for this capture.
+    pub scenario_id: String,
+    /// Capture sample rate in Hz.
+    pub sample_rate_hz: f64,
+    /// Number of samples in one code period at the configured rate.
+    pub period_samples: usize,
+    /// Effective acquisition Doppler bin width in Hz.
+    pub doppler_step_hz: i32,
+    /// Whether every measured satellite improved both axes.
+    pub pass: bool,
+    /// Per-satellite refinement rows.
+    pub satellites: Vec<SyntheticAcquisitionJointRefinementSatellite>,
+}
+
 /// Per-satellite acquisition Doppler comparison between clean synthetic truth and receiver output.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SyntheticAcquisitionDopplerValidationSatellite {
