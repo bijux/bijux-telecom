@@ -586,6 +586,17 @@ type SyntheticSignalModel = bijux_gnss_signal::api::ReplicaCodeModel;
 
 fn synthetic_replica_model(params: &SyntheticSignalParams) -> SyntheticSignalModel {
     let signal_code = resolved_signal_code(params.sat, params.signal_band, params.signal_code);
+    match (params.sat.constellation, params.signal_band, signal_code) {
+        (bijux_gnss_core::api::Constellation::Galileo, SignalBand::E5, SignalCode::E5a) => {
+            return SyntheticSignalModel::galileo_e5a_qpsk(params.sat.prn)
+                .unwrap_or_else(|_| SyntheticSignalModel::galileo_e5a_qpsk_or_ones(params.sat.prn));
+        }
+        (bijux_gnss_core::api::Constellation::Galileo, SignalBand::E5, SignalCode::E5b) => {
+            return SyntheticSignalModel::galileo_e5b_qpsk(params.sat.prn)
+                .unwrap_or_else(|_| SyntheticSignalModel::galileo_e5b_qpsk_or_ones(params.sat.prn));
+        }
+        _ => {}
+    }
     SyntheticSignalModel::for_sat_signal(params.sat, Some(params.signal_band), signal_code)
         .ok()
         .flatten()
@@ -1603,5 +1614,52 @@ impl XorShift64 {
         let r = (-2.0 * u1.ln()).sqrt();
         let theta = TAU * u2;
         r * theta.cos()
+    }
+}
+
+#[cfg(test)]
+mod signal_generation_tests {
+    use super::{synthetic_replica_model, SyntheticNavigationData, SyntheticSignalParams};
+    use bijux_gnss_core::api::{Constellation, SatId, SignalBand, SignalCode};
+    use bijux_gnss_signal::api::ReplicaCodeModel;
+
+    fn synthetic_signal_params(
+        sat: SatId,
+        signal_band: SignalBand,
+        signal_code: SignalCode,
+    ) -> SyntheticSignalParams {
+        SyntheticSignalParams {
+            sat,
+            glonass_frequency_channel: None,
+            signal_band,
+            signal_code,
+            doppler_hz: 0.0,
+            code_phase_chips: 0.0,
+            carrier_phase_rad: 0.0,
+            cn0_db_hz: 60.0,
+            navigation_data: SyntheticNavigationData::ConstantPositive,
+        }
+    }
+
+    #[test]
+    fn synthetic_replica_model_emits_composite_galileo_e5a_signal() {
+        let model = synthetic_replica_model(&synthetic_signal_params(
+            SatId { constellation: Constellation::Galileo, prn: 11 },
+            SignalBand::E5,
+            SignalCode::E5a,
+        ));
+
+        assert!(matches!(model, ReplicaCodeModel::GalileoE5aQpsk { .. }), "{model:?}");
+    }
+
+    #[test]
+    fn synthetic_replica_model_emits_composite_galileo_e5b_signal() {
+        let model = synthetic_replica_model(&synthetic_signal_params(
+            SatId { constellation: Constellation::Galileo, prn: 11 },
+            SignalBand::E5,
+            SignalCode::E5b,
+        ));
+
+        assert!(matches!(model, ReplicaCodeModel::GalileoE5bQpsk { .. }), "{model:?}");
     }
 }
