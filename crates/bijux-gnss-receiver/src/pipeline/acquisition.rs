@@ -28,6 +28,8 @@ use crate::pipeline::acquisition_assistance::{
 use crate::pipeline::acquisition_components::{
     acquisition_strategies_for_signal, AcquisitionComponentPlan,
 };
+#[cfg(test)]
+use crate::pipeline::acquisition_symbol_hypotheses::coherent_data_sign_hypotheses;
 use crate::pipeline::acquisition_symbol_hypotheses::coherent_secondary_code_phase_hypotheses;
 use crate::pipeline::doppler::{carrier_hz_from_doppler_hz, doppler_hz_from_carrier_hz};
 use bijux_gnss_signal::api::{
