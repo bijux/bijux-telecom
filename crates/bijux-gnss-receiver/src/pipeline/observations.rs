@@ -3068,6 +3068,63 @@ mod tests {
     }
 
     #[test]
+    fn observations_preserve_degraded_doppler_uncertainty() {
+        let config = ReceiverPipelineConfig::default();
+        let sat = SatId { constellation: Constellation::Gps, prn: 14 };
+        let expected_doppler_hz = 125.0;
+        let doppler_uncertainty_hz: f64 = 180.0;
+        let carrier_hz = crate::pipeline::doppler::carrier_hz_from_doppler_hz(
+            config.intermediate_freq_hz,
+            expected_doppler_hz,
+        );
+        let uncertainty = TrackingUncertainty {
+            code_phase_samples: 0.4,
+            carrier_phase_cycles: 0.2,
+            doppler_hz: doppler_uncertainty_hz,
+            cn0_dbhz: 1.0,
+        };
+        let epoch = TrackEpoch {
+            epoch: Epoch { index: 70 },
+            sample_index: epoch_sample_index(&config, 70),
+            source_time: ReceiverSampleTrace::from_sample_index(
+                epoch_sample_index(&config, 70),
+                config.sampling_freq_hz,
+            ),
+            sat,
+            carrier_hz: Hertz(carrier_hz),
+            code_rate_hz: Hertz(config.code_freq_basis_hz),
+            lock: true,
+            pll_lock: false,
+            dll_lock: true,
+            fll_lock: false,
+            cn0_dbhz: 45.0,
+            lock_state: "degraded".to_string(),
+            lock_state_reason: Some("doppler_estimator_divergence".to_string()),
+            tracking_uncertainty: Some(uncertainty.clone()),
+            ..TrackEpoch::default()
+        };
+        let report = observations_from_tracking_results(&config, &[track_from_epoch(epoch)], 10);
+        let observation_epoch = report.output.first().expect("observation epoch");
+        let observed_sat = observation_epoch.sats.first().expect("observation satellite");
+
+        assert_eq!(observed_sat.metadata.tracking_state, "degraded");
+        assert_eq!(
+            observed_sat.metadata.observation_lock_reason.as_deref(),
+            Some("doppler_estimator_divergence")
+        );
+        assert!(!observed_sat.lock_flags.carrier_lock, "{observed_sat:?}");
+        assert!(
+            (observed_sat.doppler_hz.0 - expected_doppler_hz).abs() <= f64::EPSILON,
+            "{observed_sat:?}"
+        );
+        assert_eq!(observed_sat.metadata.tracking_uncertainty.as_ref(), Some(&uncertainty));
+        assert!(
+            (observed_sat.doppler_var_hz2 - doppler_uncertainty_hz.powi(2)).abs() <= 1.0e-12,
+            "{observed_sat:?}"
+        );
+    }
+
+    #[test]
     fn observations_inflate_pseudorange_variance_for_weaker_cn0() {
         let config = ReceiverPipelineConfig {
             sampling_freq_hz: 4_092_000.0,
