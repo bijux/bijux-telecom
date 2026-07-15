@@ -401,6 +401,9 @@ mod pvt_tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
+    const SYNTHETIC_PVT_PSEUDORANGE_SIGMA_M: f64 = 2.0;
+    const SYNTHETIC_PVT_CARRIER_PHASE_SIGMA_CYCLES: f64 = 0.1;
+    const SYNTHETIC_PVT_DOPPLER_SIGMA_HZ: f64 = 2.0;
 
     struct SyntheticPvtCase {
         obs_epoch: ObsEpoch,
@@ -416,12 +419,23 @@ mod pvt_tests {
         tgd_s: f64,
     }
 
-    #[derive(Debug, Clone, Copy, Default)]
+    #[derive(Debug, Clone, Copy)]
     struct SyntheticSatelliteAdjustment {
         pseudorange_bias_m: f64,
-        pseudorange_sigma_m: Option<f64>,
+        pseudorange_sigma_m: f64,
         cn0_dbhz: Option<f64>,
         elevation_deg: Option<f64>,
+    }
+
+    impl Default for SyntheticSatelliteAdjustment {
+        fn default() -> Self {
+            Self {
+                pseudorange_bias_m: 0.0,
+                pseudorange_sigma_m: SYNTHETIC_PVT_PSEUDORANGE_SIGMA_M,
+                cn0_dbhz: None,
+                elevation_deg: None,
+            }
+        }
     }
 
     fn sample_common_args(out: PathBuf) -> CommonArgs {
@@ -651,17 +665,16 @@ mod pvt_tests {
                 }
                 pseudorange_m += adjustment.pseudorange_bias_m;
                 let signal_travel_time_s = pseudorange_m / SPEED_OF_LIGHT_MPS;
-                let pseudorange_sigma_m = adjustment.pseudorange_sigma_m.unwrap_or(2.0);
                 ObsSatellite {
                     signal_id: SigId { sat: eph.sat, band: SignalBand::L1, code: SignalCode::Ca },
                     pseudorange_m: bijux_gnss_infra::api::core::Meters(pseudorange_m),
-                    pseudorange_var_m2: pseudorange_sigma_m.powi(2),
+                    pseudorange_var_m2: adjustment.pseudorange_sigma_m.powi(2),
                     carrier_phase_cycles: bijux_gnss_infra::api::core::Cycles(
                         1_000.0 + eph.sat.prn as f64,
                     ),
-                    carrier_phase_var_cycles2: 0.01,
+                    carrier_phase_var_cycles2: SYNTHETIC_PVT_CARRIER_PHASE_SIGMA_CYCLES.powi(2),
                     doppler_hz: bijux_gnss_infra::api::core::Hertz(-500.0),
-                    doppler_var_hz2: 4.0,
+                    doppler_var_hz2: SYNTHETIC_PVT_DOPPLER_SIGMA_HZ.powi(2),
                     cn0_dbhz: adjustment.cn0_dbhz.unwrap_or(45.0),
                     lock_flags: LockFlags {
                         code_lock: true,
@@ -1850,7 +1863,7 @@ mod pvt_tests {
                 5,
                 SyntheticSatelliteAdjustment {
                     pseudorange_bias_m: 80.0,
-                    pseudorange_sigma_m: Some(2.0),
+                    pseudorange_sigma_m: SYNTHETIC_PVT_PSEUDORANGE_SIGMA_M,
                     ..SyntheticSatelliteAdjustment::default()
                 },
             )],
@@ -1862,7 +1875,7 @@ mod pvt_tests {
                 5,
                 SyntheticSatelliteAdjustment {
                     pseudorange_bias_m: 80.0,
-                    pseudorange_sigma_m: Some(200.0),
+                    pseudorange_sigma_m: 200.0,
                     ..SyntheticSatelliteAdjustment::default()
                 },
             )],
@@ -1895,7 +1908,7 @@ mod pvt_tests {
                 5,
                 SyntheticSatelliteAdjustment {
                     pseudorange_bias_m: 40.0,
-                    pseudorange_sigma_m: Some(2.0),
+                    pseudorange_sigma_m: SYNTHETIC_PVT_PSEUDORANGE_SIGMA_M,
                     elevation_deg: Some(70.0),
                     ..SyntheticSatelliteAdjustment::default()
                 },
@@ -1908,7 +1921,7 @@ mod pvt_tests {
                 5,
                 SyntheticSatelliteAdjustment {
                     pseudorange_bias_m: 40.0,
-                    pseudorange_sigma_m: Some(2.0),
+                    pseudorange_sigma_m: SYNTHETIC_PVT_PSEUDORANGE_SIGMA_M,
                     elevation_deg: Some(15.0),
                     ..SyntheticSatelliteAdjustment::default()
                 },
