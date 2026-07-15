@@ -1,20 +1,26 @@
 #![allow(missing_docs)]
 
 use bijux_gnss_core::api::{
-    CarrierPhaseArc, Constellation, LockFlags, ObsMetadata, ObsSatellite, SatId, SigId, SignalBand,
-    SignalSpec,
+    AmbiguityId, CarrierPhaseArc, Constellation, GlonassFrequencyChannel, LockFlags, ObsMetadata,
+    ObsSatellite, SatId, SigId, SignalBand, SignalSpec,
 };
 use bijux_gnss_receiver::api::{
     build_dd, build_sd, choose_ref_sat, rtk_ambiguity_state_from_fixed_solution,
-    rtk_apply_ambiguity_fix_lifecycle, rtk_conditioned_baseline_from_fixed_ambiguities,
-    rtk_float_ambiguity_state_from_baseline_solution, rtk_lambda_integer_ambiguity_candidates,
-    rtk_select_partial_ambiguity_fix_with_evidence, rtk_transform_fixed_ambiguity_reference,
-    solve_float_baseline_dd, RtkAmbiguityFixPolicy, RtkAmbiguityFixResult, RtkAmbiguityFixState,
-    RtkAmbiguityFixStatus, RtkAmbiguityHoldAction, RtkAmbiguityHoldPolicy, RtkAmbiguityHoldState,
-    RtkAmbiguityTracker, RtkConditionedBaselineSolution, RtkDoubleDifferenceAmbiguityId,
-    RtkFixedAmbiguityHold, RtkFloatAmbiguityEstimate, RtkFloatAmbiguityState,
-    RtkFloatBaselineSolution, RtkIntegerAmbiguityCandidate, RtkPartialAmbiguitySelectionCriterion,
-    RtkRatioTestFixer,
+    rtk_apply_ambiguity_fix_lifecycle, rtk_apply_glonass_inter_frequency_bias_calibrations,
+    rtk_conditioned_baseline_from_fixed_ambiguities,
+    rtk_float_ambiguity_state_from_baseline_solution,
+    rtk_float_ambiguity_state_from_baseline_solution_with_bias_evidence,
+    rtk_glonass_inter_frequency_bias_is_integer_compatible,
+    rtk_lambda_integer_ambiguity_candidates, rtk_select_partial_ambiguity_fix_with_evidence,
+    rtk_transform_fixed_ambiguity_reference, solve_float_baseline_dd, RtkAmbiguityFixPolicy,
+    RtkAmbiguityFixResult, RtkAmbiguityFixState, RtkAmbiguityFixStatus, RtkAmbiguityHoldAction,
+    RtkAmbiguityHoldPolicy, RtkAmbiguityHoldState, RtkAmbiguityTracker,
+    RtkConditionedBaselineSolution, RtkDoubleDifferenceAmbiguityId,
+    RtkDoubleDifferenceCovarianceEvidence, RtkDoubleDifferenceObservation,
+    RtkEpochAlignmentEvidence, RtkFixedAmbiguityHold, RtkFloatAmbiguityEstimate,
+    RtkFloatAmbiguityState, RtkFloatBaselineSolution, RtkGlonassInterFrequencyBiasCalibration,
+    RtkGlonassInterFrequencyBiasEvidence, RtkGlonassInterFrequencyBiasStatus,
+    RtkIntegerAmbiguityCandidate, RtkPartialAmbiguitySelectionCriterion, RtkRatioTestFixer,
 };
 use bijux_gnss_testkit::rtk_baseline::clean_gps_l1_short_baseline_case;
 
@@ -206,6 +212,14 @@ fn gps_l1_sig(prn: u8) -> SigId {
     }
 }
 
+fn glonass_l1_sig(prn: u8) -> SigId {
+    SigId {
+        sat: SatId { constellation: Constellation::Glonass, prn },
+        band: SignalBand::L1,
+        code: bijux_gnss_core::api::SignalCode::Ca,
+    }
+}
+
 fn gps_l1_dd_id(sig_prn: u8, ref_prn: u8) -> RtkDoubleDifferenceAmbiguityId {
     let sig = SigId {
         sat: SatId { constellation: Constellation::Gps, prn: sig_prn },
@@ -231,6 +245,80 @@ fn receiver_fixed_ambiguity_reference_transform_preserves_integer_arcs() {
 
     assert_eq!(ids, vec![gps_l1_dd_id(3, 11), gps_l1_dd_id(7, 11), gps_l1_dd_id(14, 11)]);
     assert_eq!(integers, vec![-35, -15, 15]);
+}
+
+#[test]
+fn receiver_exports_glonass_bias_calibration_for_integer_ambiguity_state() {
+    let signal = glonass_l1_sig(7);
+    let reference = glonass_l1_sig(3);
+    let signal_channel = GlonassFrequencyChannel::new(5).expect("valid GLONASS channel");
+    let reference_channel = GlonassFrequencyChannel::new(-4).expect("valid GLONASS channel");
+    let uncorrected = RtkDoubleDifferenceObservation {
+        sig: signal,
+        ref_sig: reference,
+        min_cn0_dbhz: 42.0,
+        multipath_suspect: false,
+        rover_signal_pseudorange_m: 20_100_000.0,
+        rover_signal_timing: None,
+        base_signal_pseudorange_m: 20_099_950.0,
+        base_signal_timing: None,
+        rover_ref_pseudorange_m: 20_000_000.0,
+        rover_ref_signal_timing: None,
+        base_ref_pseudorange_m: 19_999_975.0,
+        base_ref_signal_timing: None,
+        epoch_alignment: RtkEpochAlignmentEvidence::default(),
+        covariance_evidence: RtkDoubleDifferenceCovarianceEvidence::default(),
+        glonass_inter_frequency_bias: RtkGlonassInterFrequencyBiasEvidence {
+            status: RtkGlonassInterFrequencyBiasStatus::CalibrationRequired,
+            signal_channel: Some(signal_channel),
+            reference_channel: Some(reference_channel),
+            code_bias_m: 0.0,
+            phase_bias_cycles: 0.0,
+        },
+        code_m: 27.5,
+        phase_cycles: 11.85,
+        doppler_hz: 0.0,
+        code_variance_m2: 4.0,
+        phase_variance_cycles2: 0.01,
+        canceled: vec![
+            AmbiguityId { sig: signal, signal: "L1".to_string() },
+            AmbiguityId { sig: signal, signal: "L1".to_string() },
+            AmbiguityId { sig: reference, signal: "L1".to_string() },
+            AmbiguityId { sig: reference, signal: "L1".to_string() },
+        ],
+    };
+    let corrected = rtk_apply_glonass_inter_frequency_bias_calibrations(
+        &[uncorrected],
+        &[RtkGlonassInterFrequencyBiasCalibration {
+            signal_channel,
+            reference_channel,
+            code_bias_m: 2.5,
+            phase_bias_cycles: -0.25,
+        }],
+    );
+    let float_solution = RtkFloatBaselineSolution {
+        enu_m: [0.0, 0.0, 0.0],
+        covariance_enu_m2: [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+        enu_ambiguity_covariance_m_cycles: vec![vec![0.0], vec![0.0], vec![0.0]],
+        float_ambiguities: vec![RtkFloatAmbiguityEstimate {
+            sig: signal,
+            ref_sig: reference,
+            float_cycles: corrected[0].phase_cycles,
+            variance_cycles2: 0.01,
+        }],
+        ambiguity_covariance_cycles2: vec![vec![0.01]],
+    };
+
+    let float_state = rtk_float_ambiguity_state_from_baseline_solution_with_bias_evidence(
+        &float_solution,
+        &corrected,
+    )
+    .expect("receiver bias-handled GLONASS ambiguity state");
+
+    assert!(rtk_glonass_inter_frequency_bias_is_integer_compatible(&corrected[0]));
+    assert!((corrected[0].code_m - 25.0).abs() < 1.0e-12);
+    assert!((corrected[0].phase_cycles - 12.1).abs() < 1.0e-12);
+    assert!(float_state.integer_compatible);
 }
 
 #[test]
