@@ -143,7 +143,8 @@ pub use crate::estimation::rtk::baseline::{
 };
 /// RTK execution, epoch alignment, and contract-adapter helpers.
 pub use crate::estimation::rtk::execution::{
-    build_dd, build_dd_per_constellation, build_sd, choose_ref_sat,
+    build_dd, build_dd_per_constellation, build_sd, build_sd_with_alignment_tolerance,
+    choose_ref_sat,
     choose_ref_sat_per_constellation, dd_covariance, double_difference, innovation_diagnostics,
     los_unit, single_difference, solve_baseline_dd, solve_float_baseline_dd, AlignmentDiagnostic,
     AlignmentReport, BaselineConfig, DdCovarianceModel, DdObservation, EpochAligner, RefSatPolicy,

@@ -6,8 +6,9 @@ use bijux_gnss_core::api::{
 use bijux_gnss_nav::api::geodetic_to_ecef;
 use bijux_gnss_receiver::api::baseline_from_ecef;
 use bijux_gnss_receiver::api::{
-    apply_fix_hold, build_dd, build_dd_per_constellation, build_sd, choose_ref_sat,
-    choose_ref_sat_per_constellation, EpochAligner,
+    apply_fix_hold, build_dd, build_dd_per_constellation, build_sd,
+    build_sd_with_alignment_tolerance, choose_ref_sat, choose_ref_sat_per_constellation,
+    EpochAligner,
 };
 
 fn make_epoch(t_rx_s: f64, prn: u8) -> ObsEpoch {
@@ -86,6 +87,19 @@ fn aligner_handles_missing_epochs() {
     let aligned = aligner.align(&base, &rover);
     assert_eq!(aligned.len(), 2);
     assert!(aligner.dropped_base > 0 || aligner.dropped_rover > 0);
+}
+
+#[test]
+fn receiver_rtk_single_differences_honor_configured_epoch_tolerance() {
+    let base = make_epoch(0.0, 1);
+    let rover = make_epoch(0.0008, 1);
+
+    assert!(build_sd(&base, &rover).is_empty());
+    let sd = build_sd_with_alignment_tolerance(&base, &rover, 0.001);
+
+    assert_eq!(sd.len(), 1);
+    assert!((sd[0].epoch_alignment.delta_s - 0.0008).abs() < 1.0e-12);
+    assert_eq!(sd[0].epoch_alignment.tolerance_s, 0.001);
 }
 
 #[test]

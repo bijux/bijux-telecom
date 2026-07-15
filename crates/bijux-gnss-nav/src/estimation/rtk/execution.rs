@@ -7,7 +7,8 @@ use crate::api::{
     choose_rtk_single_difference_reference_signal,
     choose_rtk_single_difference_reference_signals_by_constellation,
     rtk_double_differences_by_constellation, rtk_double_differences_from_single_differences,
-    rtk_float_baseline_from_double_differences, rtk_single_differences_from_obs_epochs,
+    rtk_float_baseline_from_double_differences,
+    rtk_single_differences_from_aligned_obs_epochs, rtk_single_differences_from_obs_epochs,
     GpsEphemeris, RtkDoubleDifferenceObservation, RtkFloatBaselineSolution,
     RtkSingleDifferenceObservation,
 };
@@ -163,6 +164,14 @@ pub struct SolutionSeparation {
 
 pub fn build_sd(base: &ObsEpoch, rover: &ObsEpoch) -> Vec<SdObservation> {
     rtk_single_differences_from_obs_epochs(base, rover)
+}
+
+pub fn build_sd_with_alignment_tolerance(
+    base: &ObsEpoch,
+    rover: &ObsEpoch,
+    tolerance_s: f64,
+) -> Vec<SdObservation> {
+    rtk_single_differences_from_aligned_obs_epochs(base, rover, tolerance_s)
 }
 
 pub fn choose_ref_sat(sd: &[SdObservation]) -> Option<SigId> {
