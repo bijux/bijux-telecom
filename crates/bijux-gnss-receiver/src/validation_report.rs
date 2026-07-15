@@ -21,7 +21,8 @@ use bijux_gnss_nav::api::{
     ecef_to_enu, geometry_free_diagnostics_from_obs_epochs, iono_free_code_from_obs_epochs,
     melbourne_wubbena_diagnostics_from_obs_epochs, GeometryFreeEvent, GeometryFreeThresholds,
     MelbourneWubbenaEvent, MelbourneWubbenaThresholds, PositionWeightingModel, PppConfig,
-    PppConvergenceConfig, PppMeasurementNoise, PppProcessNoise, WeightingConfig,
+    PppConvergenceConfig, PppMeasurementNoise, PppPreciseProductPolicy, PppProcessNoise,
+    WeightingConfig,
 };
 use bijux_gnss_signal::api::{
     check_dual_frequency_observations, check_inter_frequency_alignment,
@@ -1397,6 +1398,7 @@ fn build_ppp_config(profile: &ReceiverConfig) -> PppConfig {
             troposphere_residual_m: p.measurement_troposphere_residual_m,
             antenna_residual_m: p.measurement_antenna_residual_m,
         },
+        precise_product_policy: PppPreciseProductPolicy::default(),
         weighting: WeightingConfig {
             model: match profile.navigation.weighting.mode {
                 crate::engine::receiver_config::NavigationWeightingMode::Elevation => {

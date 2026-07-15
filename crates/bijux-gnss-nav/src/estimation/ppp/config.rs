@@ -12,6 +12,7 @@ use crate::corrections::phase_windup::PhaseWindupState;
 use crate::corrections::CorrectionContext;
 use crate::estimation::ekf::state::Ekf;
 use crate::estimation::position::solver::WeightingConfig;
+use crate::formats::precise_products::PreciseProductDiscontinuityKind;
 use crate::models::antenna::{ReceiverAntennaCalibrations, SatelliteAntennaCalibrations};
 use crate::models::atmosphere::TroposphereMeteorology;
 use crate::models::ocean_tide_loading::OceanTideLoadingModel;
@@ -103,6 +104,7 @@ pub struct PppConfig {
     pub satellite_antenna_calibrations: Option<SatelliteAntennaCalibrations>,
     pub process_noise: PppProcessNoise,
     pub measurement_noise: PppMeasurementNoise,
+    pub precise_product_policy: PppPreciseProductPolicy,
     pub weighting: WeightingConfig,
     pub convergence: PppConvergenceConfig,
 }
@@ -123,6 +125,58 @@ pub struct PppStochasticEvidence {
     pub atmosphere_residual_supported: bool,
     pub antenna_residual_supported: bool,
     pub process_covariance_supported: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct PppPreciseProductPolicy {
+    pub missing_satellite_action: PppPreciseProductAction,
+    pub out_of_coverage_action: PppPreciseProductAction,
+    pub insufficient_support_action: PppPreciseProductAction,
+    pub orbit_gap_action: PppPreciseProductAction,
+    pub orbit_flag_action: PppPreciseProductAction,
+    pub clock_gap_action: PppPreciseProductAction,
+    pub clock_jump_action: PppPreciseProductAction,
+    pub satellite_state_inflation: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PppPreciseProductAction {
+    BridgeWithBroadcast,
+    InflateSatelliteState,
+    ResetSatelliteState,
+    RefuseSatellite,
+}
+
+impl Default for PppPreciseProductPolicy {
+    fn default() -> Self {
+        Self {
+            missing_satellite_action: PppPreciseProductAction::BridgeWithBroadcast,
+            out_of_coverage_action: PppPreciseProductAction::BridgeWithBroadcast,
+            insufficient_support_action: PppPreciseProductAction::BridgeWithBroadcast,
+            orbit_gap_action: PppPreciseProductAction::ResetSatelliteState,
+            orbit_flag_action: PppPreciseProductAction::RefuseSatellite,
+            clock_gap_action: PppPreciseProductAction::ResetSatelliteState,
+            clock_jump_action: PppPreciseProductAction::ResetSatelliteState,
+            satellite_state_inflation: 100.0,
+        }
+    }
+}
+
+impl PppPreciseProductPolicy {
+    pub fn action_for(&self, kind: PreciseProductDiscontinuityKind) -> PppPreciseProductAction {
+        match kind {
+            PreciseProductDiscontinuityKind::MissingSatellite => self.missing_satellite_action,
+            PreciseProductDiscontinuityKind::OutOfCoverage => self.out_of_coverage_action,
+            PreciseProductDiscontinuityKind::InsufficientSupport => {
+                self.insufficient_support_action
+            }
+            PreciseProductDiscontinuityKind::OrbitGap => self.orbit_gap_action,
+            PreciseProductDiscontinuityKind::OrbitFlag => self.orbit_flag_action,
+            PreciseProductDiscontinuityKind::ClockGap => self.clock_gap_action,
+            PreciseProductDiscontinuityKind::ClockJump => self.clock_jump_action,
+        }
+    }
 }
 
 impl Default for PppConfig {
@@ -152,6 +206,7 @@ impl Default for PppConfig {
             satellite_antenna_calibrations: None,
             process_noise: PppProcessNoise::default(),
             measurement_noise: PppMeasurementNoise::default(),
+            precise_product_policy: PppPreciseProductPolicy::default(),
             weighting: WeightingConfig::default(),
             convergence: PppConvergenceConfig {
                 min_time_s: 60.0,
@@ -375,9 +430,10 @@ impl ArtifactPayloadValidate for PppSolutionEpoch {
 #[cfg(test)]
 mod tests {
     use super::{
-        PppArMode, PppConfig, PppConvergenceEvidence, PppConvergenceState, PppSolutionEpoch,
-        PppStochasticEvidence, PppTroposphereSource,
+        PppArMode, PppConfig, PppConvergenceEvidence, PppConvergenceState, PppPreciseProductAction,
+        PppPreciseProductPolicy, PppSolutionEpoch, PppStochasticEvidence, PppTroposphereSource,
     };
+    use crate::formats::precise_products::PreciseProductDiscontinuityKind;
     use crate::models::ocean_tide_loading::{
         OceanTideConstituent, OceanTideLoadingConstituent, OceanTideLoadingModel,
     };
@@ -584,6 +640,63 @@ mod tests {
         assert!(non_physical.troposphere_meteorology().is_none());
         assert_eq!(partial.troposphere_source(), PppTroposphereSource::StandardAtmosphere);
         assert_eq!(non_physical.troposphere_source(), PppTroposphereSource::StandardAtmosphere);
+    }
+
+    #[test]
+    fn ppp_precise_product_policy_defaults_are_explicit() {
+        let policy = PppPreciseProductPolicy::default();
+
+        assert_eq!(
+            policy.action_for(PreciseProductDiscontinuityKind::MissingSatellite),
+            PppPreciseProductAction::BridgeWithBroadcast
+        );
+        assert_eq!(
+            policy.action_for(PreciseProductDiscontinuityKind::OutOfCoverage),
+            PppPreciseProductAction::BridgeWithBroadcast
+        );
+        assert_eq!(
+            policy.action_for(PreciseProductDiscontinuityKind::InsufficientSupport),
+            PppPreciseProductAction::BridgeWithBroadcast
+        );
+        assert_eq!(
+            policy.action_for(PreciseProductDiscontinuityKind::OrbitGap),
+            PppPreciseProductAction::ResetSatelliteState
+        );
+        assert_eq!(
+            policy.action_for(PreciseProductDiscontinuityKind::OrbitFlag),
+            PppPreciseProductAction::RefuseSatellite
+        );
+        assert_eq!(
+            policy.action_for(PreciseProductDiscontinuityKind::ClockGap),
+            PppPreciseProductAction::ResetSatelliteState
+        );
+        assert_eq!(
+            policy.action_for(PreciseProductDiscontinuityKind::ClockJump),
+            PppPreciseProductAction::ResetSatelliteState
+        );
+        assert_eq!(policy.satellite_state_inflation, 100.0);
+    }
+
+    #[test]
+    fn ppp_precise_product_policy_supports_per_discontinuity_actions() {
+        let policy = PppPreciseProductPolicy {
+            orbit_gap_action: PppPreciseProductAction::InflateSatelliteState,
+            clock_jump_action: PppPreciseProductAction::RefuseSatellite,
+            ..PppPreciseProductPolicy::default()
+        };
+
+        assert_eq!(
+            policy.action_for(PreciseProductDiscontinuityKind::OrbitGap),
+            PppPreciseProductAction::InflateSatelliteState
+        );
+        assert_eq!(
+            policy.action_for(PreciseProductDiscontinuityKind::ClockJump),
+            PppPreciseProductAction::RefuseSatellite
+        );
+        assert_eq!(
+            policy.action_for(PreciseProductDiscontinuityKind::ClockGap),
+            PppPreciseProductAction::ResetSatelliteState
+        );
     }
 
     #[test]
