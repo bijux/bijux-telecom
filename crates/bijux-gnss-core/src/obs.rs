@@ -49,6 +49,10 @@ fn default_cycles_zero() -> Cycles {
     Cycles(0.0)
 }
 
+fn default_seconds_zero() -> Seconds {
+    Seconds(0.0)
+}
+
 pub const TRACKING_STATE_MODEL_VERSION: u32 = 1;
 pub const OBSERVATION_MODEL_VERSION: u32 = 3;
 pub const OBSERVATION_DOWNSTREAM_PROFILE_VERSION: u32 = 1;
@@ -998,6 +1002,14 @@ pub struct ObsMetadata {
     pub time_tag_sample_index: u64,
     #[serde(default)]
     pub time_tag_sample_rate_hz: f64,
+    #[serde(default = "default_seconds_zero")]
+    pub receiver_clock_bias_s: Seconds,
+    #[serde(default)]
+    pub receiver_clock_frequency_bias_hz: f64,
+    #[serde(default = "default_seconds_zero")]
+    pub receiver_clock_bias_sigma_s: Seconds,
+    #[serde(default)]
+    pub receiver_clock_source: String,
     #[serde(default)]
     pub tracking_uncertainty: Option<TrackingUncertainty>,
 }
@@ -1046,6 +1058,10 @@ impl Default for ObsMetadata {
             time_tag_source: String::new(),
             time_tag_sample_index: 0,
             time_tag_sample_rate_hz: 0.0,
+            receiver_clock_bias_s: Seconds(0.0),
+            receiver_clock_frequency_bias_hz: 0.0,
+            receiver_clock_bias_sigma_s: Seconds(0.0),
+            receiver_clock_source: String::new(),
             tracking_uncertainty: None,
         }
     }
@@ -1843,6 +1859,16 @@ mod tests {
         let metadata = ObsMetadata::default();
 
         assert_eq!(metadata.doppler_model, OBSERVATION_DOPPLER_MODEL_TRACKED_CARRIER_IF_OFFSET);
+    }
+
+    #[test]
+    fn obs_metadata_defaults_receiver_clock_contract() {
+        let metadata = ObsMetadata::default();
+
+        assert_eq!(metadata.receiver_clock_bias_s, crate::api::Seconds(0.0));
+        assert_eq!(metadata.receiver_clock_frequency_bias_hz, 0.0);
+        assert_eq!(metadata.receiver_clock_bias_sigma_s, crate::api::Seconds(0.0));
+        assert_eq!(metadata.receiver_clock_source, "");
     }
 
     #[test]

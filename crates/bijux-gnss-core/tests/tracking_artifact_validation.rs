@@ -42,6 +42,7 @@ fn sample_track_epoch() -> TrackEpoch {
         tracking_provenance: "tracking-artifact-validation".to_string(),
         tracking_assumptions: None,
         signal_delay_alignment: None,
+        transmit_time: None,
         tracking_uncertainty: Some(TrackingUncertainty {
             code_phase_samples: 0.25,
             carrier_phase_cycles: 0.05,
