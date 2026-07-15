@@ -2533,6 +2533,5 @@ fn reacquisition_secondary_code_phase_periods(
 }
 
 #[cfg(test)]
-mod tests {
-    include!("tracking/tests.rs");
-}
+#[path = "tracking/tests.rs"]
+mod tests;
