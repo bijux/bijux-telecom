@@ -6,7 +6,7 @@ use bijux_gnss_core::api::{
 use bijux_gnss_nav::api::{
     rtk_float_baseline_from_double_differences,
     rtk_float_baseline_from_double_differences_with_rover_prior, RtkDoubleDifferenceObservation,
-    RtkFloatAmbiguityEstimate, RtkFloatBaselineSolution,
+    RtkFloatAmbiguityEstimate, RtkFloatBaselineSolution, RtkSingleDifferenceCovarianceEvidence,
 };
 use bijux_gnss_signal::api::signal_id_wavelength_m;
 use bijux_gnss_testkit::rtk_baseline::clean_gps_l1_short_baseline_case;
@@ -45,9 +45,19 @@ fn retarget_double_differences_signal(
             let phase_scale = source_wavelength_m / target_wavelength_m;
             observation.phase_cycles *= phase_scale;
             observation.phase_variance_cycles2 *= phase_scale * phase_scale;
+            scale_phase_covariance(&mut observation.covariance_evidence.signal, phase_scale);
+            scale_phase_covariance(&mut observation.covariance_evidence.reference, phase_scale);
             observation
         })
         .collect()
+}
+
+fn scale_phase_covariance(evidence: &mut RtkSingleDifferenceCovarianceEvidence, phase_scale: f64) {
+    let variance_scale = phase_scale * phase_scale;
+    evidence.rover.phase_cycles2 *= variance_scale;
+    evidence.base.phase_cycles2 *= variance_scale;
+    evidence.rover_base_phase_covariance_cycles2 *= variance_scale;
+    evidence.shared_phase_covariance_cycles2 *= variance_scale;
 }
 
 fn assert_solution_matches_truth(solution: &RtkFloatBaselineSolution, truth_enu_m: [f64; 3]) {
@@ -95,6 +105,46 @@ fn rtk_float_baseline_solver_recovers_truth_and_ambiguities() {
         assert!((ambiguity.float_cycles - expected_cycles).abs() < 0.05);
         assert!(ambiguity.variance_cycles2 >= 0.0);
     }
+}
+
+#[test]
+fn rtk_float_baseline_solver_uses_differenced_covariance_coupling() {
+    let scenario = clean_gps_l1_short_baseline_case();
+    let independent_solution = rtk_float_baseline_from_double_differences(
+        &scenario.double_differences,
+        scenario.base_ecef_m,
+        &scenario.ephemerides,
+        scenario.receive_gps_time.tow_s,
+    )
+    .expect("independent covariance solution");
+
+    let mut correlated_observations = scenario.double_differences.clone();
+    for observation in &mut correlated_observations {
+        observation.covariance_evidence.signal.shared_phase_covariance_cycles2 += 2.0e-5;
+        observation.covariance_evidence.reference.shared_phase_covariance_cycles2 += 2.0e-5;
+    }
+    let correlated_solution = rtk_float_baseline_from_double_differences(
+        &correlated_observations,
+        scenario.base_ecef_m,
+        &scenario.ephemerides,
+        scenario.receive_gps_time.tow_s,
+    )
+    .expect("correlated covariance solution");
+
+    let independent_ambiguity_trace: f64 = independent_solution
+        .ambiguity_covariance_cycles2
+        .iter()
+        .enumerate()
+        .map(|(index, row)| row[index])
+        .sum();
+    let correlated_ambiguity_trace: f64 = correlated_solution
+        .ambiguity_covariance_cycles2
+        .iter()
+        .enumerate()
+        .map(|(index, row)| row[index])
+        .sum();
+    assert!((independent_ambiguity_trace - correlated_ambiguity_trace).abs() > 1.0e-8);
+    assert_solution_matches_truth(&correlated_solution, scenario.truth_enu_m);
 }
 
 #[test]
@@ -149,7 +199,7 @@ fn rtk_float_baseline_solver_supports_gps_l5_wavelengths() {
     let double_differences = retarget_double_differences_signal(
         &scenario.double_differences,
         SignalBand::L5,
-        SignalCode::Unknown,
+        SignalCode::L5I,
     );
 
     let solution = rtk_float_baseline_from_double_differences(

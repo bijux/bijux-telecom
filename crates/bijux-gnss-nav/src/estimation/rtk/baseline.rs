@@ -2,7 +2,10 @@ use bijux_gnss_core::api::{ArtifactPayloadValidate, DiagnosticEvent, DiagnosticS
 use bijux_gnss_signal::api::signal_id_wavelength_m;
 use serde::{Deserialize, Serialize};
 
-use super::double_difference::RtkDoubleDifferenceObservation;
+use super::double_difference::{
+    rtk_double_difference_code_covariance_matrix, rtk_double_difference_phase_covariance_matrix,
+    RtkDoubleDifferenceObservation,
+};
 use crate::{
     linalg::Matrix,
     orbits::gps::{sat_state_gps_l1ca_from_observation, GpsEphemeris},
@@ -162,6 +165,7 @@ pub fn rtk_float_baseline_from_double_differences_with_rover_prior(
 
     let ambiguity_count = observations.len();
     let state_dimension = 3 + ambiguity_count;
+    let measurement_covariance_m2 = measurement_covariance_m2(observations)?;
     let mut rover_ecef_m = rover_prior_ecef_m;
     let mut float_ambiguities_cycles = vec![0.0; ambiguity_count];
     let mut covariance = None;
@@ -169,7 +173,6 @@ pub fn rtk_float_baseline_from_double_differences_with_rover_prior(
     for _ in 0..SOLVER_ITERATIONS {
         let mut design = Matrix::new(ambiguity_count * 2, state_dimension, 0.0);
         let mut residuals_m = vec![0.0; ambiguity_count * 2];
-        let mut weights = vec![0.0; ambiguity_count * 2];
 
         for (index, observation) in observations.iter().enumerate() {
             let signal_ephemeris =
@@ -231,9 +234,6 @@ pub fn rtk_float_baseline_from_double_differences_with_rover_prior(
 
             let code_row = index * 2;
             residuals_m[code_row] = observation.code_m - modeled_code_m;
-            weights[code_row] = reciprocal_variance_weight(
-                observation.code_variance_m2.max(MIN_OBSERVATION_VARIANCE_M2),
-            );
             for axis in 0..3 {
                 design[(code_row, axis)] = geometry_row[axis];
             }
@@ -241,10 +241,6 @@ pub fn rtk_float_baseline_from_double_differences_with_rover_prior(
             let phase_row = code_row + 1;
             let modeled_phase_m = modeled_code_m + wavelength_m * float_ambiguities_cycles[index];
             residuals_m[phase_row] = observation.phase_cycles * wavelength_m - modeled_phase_m;
-            weights[phase_row] = reciprocal_variance_weight(
-                (observation.phase_variance_cycles2 * wavelength_m * wavelength_m)
-                    .max(MIN_OBSERVATION_VARIANCE_M2),
-            );
             for axis in 0..3 {
                 design[(phase_row, axis)] = geometry_row[axis];
             }
@@ -252,7 +248,7 @@ pub fn rtk_float_baseline_from_double_differences_with_rover_prior(
         }
 
         let (delta_state, solved_covariance) =
-            solve_weighted_normal_equation(&design, &residuals_m, &weights)?;
+            solve_generalized_least_squares(&design, &residuals_m, &measurement_covariance_m2)?;
         rover_ecef_m[0] += delta_state[0];
         rover_ecef_m[1] += delta_state[1];
         rover_ecef_m[2] += delta_state[2];
@@ -308,34 +304,62 @@ pub fn rtk_float_baseline_from_double_differences_with_rover_prior(
     })
 }
 
-fn reciprocal_variance_weight(variance_m2: f64) -> f64 {
-    if variance_m2.is_finite() && variance_m2 > 0.0 {
-        1.0 / variance_m2
-    } else {
-        0.0
+fn measurement_covariance_m2(observations: &[RtkDoubleDifferenceObservation]) -> Option<Matrix> {
+    let code_covariance_m2 = rtk_double_difference_code_covariance_matrix(observations)?;
+    let phase_covariance_cycles2 = rtk_double_difference_phase_covariance_matrix(observations)?;
+    let row_count = observations.len() * 2;
+    let mut covariance = Matrix::new(row_count, row_count, 0.0);
+    let wavelengths_m = observations
+        .iter()
+        .map(|observation| wavelength_m(observation.sig))
+        .collect::<Option<Vec<_>>>()?;
+
+    for row in 0..observations.len() {
+        if code_covariance_m2[row].len() != observations.len()
+            || phase_covariance_cycles2[row].len() != observations.len()
+        {
+            return None;
+        }
+        for col in 0..observations.len() {
+            let code_value_m2 = code_covariance_m2[row][col];
+            let phase_value_m2 =
+                phase_covariance_cycles2[row][col] * wavelengths_m[row] * wavelengths_m[col];
+            if !code_value_m2.is_finite() || !phase_value_m2.is_finite() {
+                return None;
+            }
+            covariance[(row * 2, col * 2)] = code_value_m2;
+            covariance[(row * 2 + 1, col * 2 + 1)] = phase_value_m2;
+        }
+        covariance[(row * 2, row * 2)] =
+            covariance[(row * 2, row * 2)].max(MIN_OBSERVATION_VARIANCE_M2);
+        covariance[(row * 2 + 1, row * 2 + 1)] =
+            covariance[(row * 2 + 1, row * 2 + 1)].max(MIN_OBSERVATION_VARIANCE_M2);
     }
+    Some(covariance)
 }
 
-fn solve_weighted_normal_equation(
+fn solve_generalized_least_squares(
     design: &Matrix,
     residuals_m: &[f64],
-    weights: &[f64],
+    measurement_covariance_m2: &Matrix,
 ) -> Option<(Vec<f64>, Matrix)> {
-    if design.rows() != residuals_m.len() || residuals_m.len() != weights.len() {
+    if design.rows() != residuals_m.len()
+        || measurement_covariance_m2.rows() != design.rows()
+        || measurement_covariance_m2.cols() != design.rows()
+    {
         return None;
     }
+    let information = measurement_covariance_m2.invert()?;
     let mut normal = Matrix::new(design.cols(), design.cols(), 0.0);
     let mut rhs = vec![0.0; design.cols()];
     for row in 0..design.rows() {
-        let weight = weights[row];
-        if !weight.is_finite() || weight <= 0.0 {
-            return None;
-        }
         for col in 0..design.cols() {
-            let design_value = design[(row, col)];
-            rhs[col] += design_value * residuals_m[row] * weight;
-            for inner in 0..design.cols() {
-                normal[(col, inner)] += design_value * design[(row, inner)] * weight;
+            for obs_row in 0..design.rows() {
+                rhs[col] += design[(row, col)] * information[(row, obs_row)] * residuals_m[obs_row];
+                for inner in 0..design.cols() {
+                    normal[(col, inner)] +=
+                        design[(row, col)] * information[(row, obs_row)] * design[(obs_row, inner)];
+                }
             }
         }
     }
