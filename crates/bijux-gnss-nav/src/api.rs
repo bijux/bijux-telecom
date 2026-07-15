@@ -201,7 +201,8 @@ pub use crate::formats::galileo_inav_decode::{
 };
 /// GLONASS navigation string verification and decoding.
 pub use crate::formats::glonass_navigation_decode::{
-    decode_glonass_broadcast_navigation_frame, decode_glonass_navigation_string,
+    decode_glonass_broadcast_navigation_frame,
+    decode_glonass_broadcast_navigation_frame_with_reference_day, decode_glonass_navigation_string,
     GlonassNavigationFrameRejection, GlonassNavigationFrameRejectionReason,
     GlonassNavigationString, GlonassNavigationStringRejection,
     GlonassNavigationStringRejectionReason, GlonassStringParitySummary,

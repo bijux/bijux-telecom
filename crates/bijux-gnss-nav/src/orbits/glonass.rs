@@ -91,6 +91,7 @@ pub struct GlonassImmediateNavigationData {
     pub satellite_type: GlonassSatelliteType,
     pub reported_slot: Option<GlonassSlot>,
     pub system_time: Option<GlonassSystemTime>,
+    pub resolved_day_index: Option<i64>,
     pub accuracy_code: Option<u8>,
 }
 
@@ -486,6 +487,7 @@ mod tests {
                     day_number: 864,
                     four_year_interval: Some(8),
                 }),
+                resolved_day_index: None,
                 accuracy_code: Some(2),
             },
             system_time: Some(GlonassAlmanacTimeData {

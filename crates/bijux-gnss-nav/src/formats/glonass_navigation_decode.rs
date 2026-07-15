@@ -9,6 +9,7 @@ use crate::orbits::glonass::{
     GlonassAlmanacTimeData, GlonassBroadcastNavigationFrame, GlonassFrameTime,
     GlonassImmediateHealth, GlonassImmediateNavigationData, GlonassStateVector, GlonassSystemTime,
 };
+use crate::time::{resolve_glonass_day_number, RolloverResolutionError};
 
 const GLONASS_STRING_BITS: usize = 85;
 
@@ -75,6 +76,8 @@ pub enum GlonassNavigationFrameRejectionReason {
     DuplicateString,
     InvalidFrequencyChannel,
     SlotMismatch,
+    AmbiguousDayRollover,
+    InvalidDayRollover,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -138,6 +141,22 @@ pub fn decode_glonass_broadcast_navigation_frame(
     slot: GlonassSlot,
     strings: &[GlonassNavigationString],
 ) -> Result<Option<GlonassBroadcastNavigationFrame>, GlonassNavigationFrameRejection> {
+    decode_glonass_broadcast_navigation_frame_inner(slot, strings, None)
+}
+
+pub fn decode_glonass_broadcast_navigation_frame_with_reference_day(
+    slot: GlonassSlot,
+    strings: &[GlonassNavigationString],
+    reference_day_index: i64,
+) -> Result<Option<GlonassBroadcastNavigationFrame>, GlonassNavigationFrameRejection> {
+    decode_glonass_broadcast_navigation_frame_inner(slot, strings, Some(reference_day_index))
+}
+
+fn decode_glonass_broadcast_navigation_frame_inner(
+    slot: GlonassSlot,
+    strings: &[GlonassNavigationString],
+    reference_day_index: Option<i64>,
+) -> Result<Option<GlonassBroadcastNavigationFrame>, GlonassNavigationFrameRejection> {
     let mut by_number: [Option<&GlonassNavigationString>; 16] = [None; 16];
     for string in strings {
         let index = usize::from(string.string_number);
@@ -160,6 +179,9 @@ pub fn decode_glonass_broadcast_navigation_frame(
 
     let immediate = decode_immediate_navigation(slot, string_1, string_2, string_3, string_4)?;
     let mut frame = GlonassBroadcastNavigationFrame::new(slot, immediate);
+    if let Some(reference_day_index) = reference_day_index {
+        resolve_glonass_frame_day(&mut frame, reference_day_index)?;
+    }
     frame.system_time = by_number[5].map(decode_almanac_time);
     for even_number in [6_usize, 8, 10, 12, 14] {
         if let (Some(even), Some(odd)) = (by_number[even_number], by_number[even_number + 1]) {
@@ -167,6 +189,38 @@ pub fn decode_glonass_broadcast_navigation_frame(
         }
     }
     Ok(Some(frame))
+}
+
+fn resolve_glonass_frame_day(
+    frame: &mut GlonassBroadcastNavigationFrame,
+    reference_day_index: i64,
+) -> Result<(), GlonassNavigationFrameRejection> {
+    let Some(system_time) = frame.immediate.system_time else {
+        return Ok(());
+    };
+    let resolution = resolve_glonass_day_number(system_time.day_number, reference_day_index)
+        .map_err(glonass_day_rollover_rejection)?;
+    frame.immediate.resolved_day_index = Some(resolution.day_index);
+    Ok(())
+}
+
+fn glonass_day_rollover_rejection(
+    error: RolloverResolutionError,
+) -> GlonassNavigationFrameRejection {
+    GlonassNavigationFrameRejection {
+        reason: match error {
+            RolloverResolutionError::AmbiguousReference => {
+                GlonassNavigationFrameRejectionReason::AmbiguousDayRollover
+            }
+            RolloverResolutionError::InvalidCycle
+            | RolloverResolutionError::TruncatedValueOutOfRange => {
+                GlonassNavigationFrameRejectionReason::InvalidDayRollover
+            }
+        },
+        string_number: Some(4),
+        expected_slot: None,
+        reported_slot: None,
+    }
 }
 
 fn normalize_bits(
@@ -335,6 +389,7 @@ fn decode_immediate_navigation(
             day_number: string_4.unsigned_bits(16, 26) as u16,
             four_year_interval: None,
         }),
+        resolved_day_index: None,
         accuracy_code: Some(string_4.unsigned_bits(30, 33) as u8),
     })
 }
@@ -453,9 +508,10 @@ fn unsigned_bits(bits: &[u8; GLONASS_STRING_BITS], low: usize, high: usize) -> u
 mod tests {
     use super::{
         checksum_c1, checksum_c2, checksum_c3, checksum_c4, checksum_c5, checksum_c6, checksum_c7,
-        decode_glonass_broadcast_navigation_frame, decode_glonass_navigation_string, flip_bit,
-        GlonassNavigationFrameRejectionReason, GlonassNavigationStringRejectionReason,
-        GLONASS_STRING_BITS,
+        decode_glonass_broadcast_navigation_frame,
+        decode_glonass_broadcast_navigation_frame_with_reference_day,
+        decode_glonass_navigation_string, flip_bit, GlonassNavigationFrameRejectionReason,
+        GlonassNavigationStringRejectionReason, GLONASS_STRING_BITS,
     };
     use crate::orbits::glonass::GlonassSatelliteType;
     use bijux_gnss_core::api::GlonassSlot;
@@ -602,6 +658,51 @@ mod tests {
             (frame.immediate.state_vector.vz_mps + 123_456.0 * 2f64.powi(-20) * 1_000.0).abs()
                 < 1.0e-9
         );
+    }
+
+    #[test]
+    fn broadcast_frame_resolves_day_number_across_four_year_boundary() {
+        let slot = GlonassSlot::new(8).expect("slot");
+        let mut string_4 = encoded_string(4, &[]);
+        set_unsigned_bits(&mut string_4, 16, 26, 1);
+        apply_check_bits(&mut string_4);
+        let decoded_strings =
+            [encoded_string(1, &[]), encoded_string(2, &[]), encoded_string(3, &[]), string_4]
+                .into_iter()
+                .map(|bits| decode_glonass_navigation_string(&bits).expect("decoded string"))
+                .collect::<Vec<_>>();
+
+        let frame = decode_glonass_broadcast_navigation_frame_with_reference_day(
+            slot,
+            &decoded_strings,
+            1_460,
+        )
+        .expect("frame decode")
+        .expect("complete frame");
+
+        assert_eq!(frame.immediate.system_time.expect("system time").day_number, 1);
+        assert_eq!(frame.immediate.resolved_day_index, Some(1_461));
+    }
+
+    #[test]
+    fn broadcast_frame_refuses_invalid_day_number_with_reference_day() {
+        let slot = GlonassSlot::new(8).expect("slot");
+        let decoded_strings = [
+            encoded_string(1, &[]),
+            encoded_string(2, &[]),
+            encoded_string(3, &[]),
+            encoded_string(4, &[]),
+        ]
+        .into_iter()
+        .map(|bits| decode_glonass_navigation_string(&bits).expect("decoded string"))
+        .collect::<Vec<_>>();
+
+        let rejection =
+            decode_glonass_broadcast_navigation_frame_with_reference_day(slot, &decoded_strings, 0)
+                .expect_err("invalid day rejection");
+
+        assert_eq!(rejection.reason, GlonassNavigationFrameRejectionReason::InvalidDayRollover);
+        assert_eq!(rejection.string_number, Some(4));
     }
 
     #[test]

@@ -1241,6 +1241,7 @@ mod tests {
                     day_number: 864,
                     four_year_interval: Some(8),
                 }),
+                resolved_day_index: None,
                 accuracy_code: Some(2),
             },
             system_time: Some(GlonassAlmanacTimeData {
