@@ -365,7 +365,7 @@ mod tests {
         let ephemeris = sample_gps_ephemeris(12_000.0, 8.0e-9);
         let l1 = gps_signal(7, SignalBand::L1, SignalCode::Ca);
         let l2 = gps_signal(7, SignalBand::L2, SignalCode::Py);
-        let l5 = gps_signal(7, SignalBand::L5, SignalCode::Unknown);
+        let l5 = gps_signal(7, SignalBand::L5, SignalCode::L5Q);
 
         let l1_bias_m = gps_broadcast_group_delay_code_bias_m(l1, &ephemeris).expect("L1 bias");
         let l2_bias_m = gps_broadcast_group_delay_code_bias_m(l2, &ephemeris).expect("L2 bias");
