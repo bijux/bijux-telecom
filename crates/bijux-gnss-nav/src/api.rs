@@ -187,6 +187,11 @@ pub use crate::formats::beidou_b1i_navigation_decode::{
     BeidouD1SubframeRejectionReason,
 };
 pub use crate::formats::bias_sinex::{BiasSinexProvider, BiasSinexWindow};
+/// GPS CNAV packet decoding.
+pub use crate::formats::cnav_decode::{
+    decode_gps_cnav_message, decode_gps_cnav_message_hex, GpsCnavCommon, GpsCnavMessage,
+    GpsCnavMessageRejection, GpsCnavMessageRejectionReason,
+};
 /// Format parsing and output.
 pub use crate::formats::galileo_inav_decode::{
     decode_galileo_broadcast_navigation_data, decode_galileo_broadcast_navigation_data_payloads,
