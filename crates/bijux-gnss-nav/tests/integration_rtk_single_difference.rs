@@ -1,9 +1,9 @@
 #![allow(missing_docs)]
 
 use bijux_gnss_core::api::{
-    Constellation, GpsTime, LockFlags, MeasurementErrorModel, Meters, ObsEpoch, ObsMetadata,
-    ObsSatellite, ObsSignalTiming, ObservationStatus, ReceiverRole, ReceiverSampleTrace, SatId,
-    Seconds, SigId, SignalBand, SignalSpec,
+    ArtifactPayloadValidate, Constellation, GpsTime, LockFlags, MeasurementErrorModel, Meters,
+    ObsEpoch, ObsMetadata, ObsSatellite, ObsSignalTiming, ObservationStatus, ReceiverRole,
+    ReceiverSampleTrace, SatId, Seconds, SigId, SignalBand, SignalSpec,
 };
 use bijux_gnss_nav::api::{
     choose_rtk_single_difference_reference_signals_by_constellation, geodetic_to_ecef,
@@ -307,6 +307,28 @@ fn rtk_single_difference_covariance_matrix_matches_direct_transformation() {
     assert!((covariance[1][1] - expected_variance_m2).abs() < 1.0e-12);
     assert!((covariance[0][1] - 5.25).abs() < 1.0e-12);
     assert_eq!(covariance[0][1], covariance[1][0]);
+}
+
+#[test]
+fn rtk_single_difference_covariance_matrix_refuses_invalid_evidence() {
+    let mut base = make_simple_epoch(3, Constellation::Gps, 20_000_000.0, 46.0);
+    base.role = ReceiverRole::Base;
+    let mut rover = make_simple_epoch(3, Constellation::Gps, 20_000_120.0, 46.0);
+    rover.role = ReceiverRole::Rover;
+    base.sats[0].pseudorange_var_m2 = 9.0;
+    rover.sats[0].pseudorange_var_m2 = 4.0;
+
+    let mut observations = rtk_single_differences_from_aligned_obs_epochs_with_covariance(
+        &base,
+        &rover,
+        RTK_EPOCH_ALIGNMENT_TOLERANCE_S,
+        RtkDifferencedCovarianceConfig::default(),
+    );
+    observations[0].covariance_evidence.rover_base_code_covariance_m2 = 7.0;
+
+    let diagnostics = observations[0].validate_payload();
+    assert!(diagnostics.iter().any(|event| event.code == "RTK_SD_COVARIANCE_EVIDENCE_INVALID"));
+    assert!(rtk_single_difference_code_covariance_matrix(&observations).is_none());
 }
 
 #[test]

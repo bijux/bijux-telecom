@@ -3,9 +3,9 @@
 use std::collections::BTreeMap;
 
 use bijux_gnss_core::api::{
-    Constellation, GpsTime, LockFlags, ObsEpoch, ObsMetadata, ObsSatellite, ObsSignalTiming,
-    ObservationStatus, ReceiverRole, ReceiverSampleTrace, SatId, Seconds, SigId, SignalBand,
-    SignalSpec,
+    ArtifactPayloadValidate, Constellation, GpsTime, LockFlags, ObsEpoch, ObsMetadata,
+    ObsSatellite, ObsSignalTiming, ObservationStatus, ReceiverRole, ReceiverSampleTrace, SatId,
+    Seconds, SigId, SignalBand, SignalSpec,
 };
 use bijux_gnss_nav::api::{
     choose_rtk_single_difference_reference_signal,
@@ -344,6 +344,48 @@ fn rtk_double_difference_covariance_matrix_matches_direct_transformation() {
     assert!((covariance[1][1] - 3.5).abs() < 1.0e-12);
     assert!((covariance[0][1] - 1.75).abs() < 1.0e-12);
     assert_eq!(covariance[0][1], covariance[1][0]);
+}
+
+#[test]
+fn rtk_double_difference_covariance_matrix_refuses_invalid_evidence() {
+    let mut base = make_epoch(
+        ReceiverRole::Base,
+        vec![
+            make_satellite(Constellation::Gps, 3, 20_000_000.0, 46.0),
+            make_satellite(Constellation::Gps, 7, 20_100_000.0, 42.0),
+            make_satellite(Constellation::Gps, 11, 20_200_000.0, 40.0),
+        ],
+    );
+    let mut rover = make_epoch(
+        ReceiverRole::Rover,
+        vec![
+            make_satellite(Constellation::Gps, 3, 20_000_120.0, 46.0),
+            make_satellite(Constellation::Gps, 7, 20_100_170.0, 42.0),
+            make_satellite(Constellation::Gps, 11, 20_200_215.0, 40.0),
+        ],
+    );
+    for sat in &mut base.sats {
+        sat.pseudorange_var_m2 = 9.0;
+    }
+    for sat in &mut rover.sats {
+        sat.pseudorange_var_m2 = 4.0;
+    }
+
+    let single_differences = rtk_single_differences_from_aligned_obs_epochs_with_covariance(
+        &base,
+        &rover,
+        RTK_EPOCH_ALIGNMENT_TOLERANCE_S,
+        RtkDifferencedCovarianceConfig::default(),
+    );
+    let reference =
+        choose_rtk_single_difference_reference_signal(&single_differences).expect("reference");
+    let mut double_differences =
+        rtk_double_differences_from_single_differences(&single_differences, reference);
+    double_differences[0].covariance_evidence.signal.rover_base_code_covariance_m2 = 7.0;
+
+    let diagnostics = double_differences[0].validate_payload();
+    assert!(diagnostics.iter().any(|event| event.code == "RTK_DD_COVARIANCE_EVIDENCE_INVALID"));
+    assert!(rtk_double_difference_code_covariance_matrix(&double_differences).is_none());
 }
 
 #[test]
