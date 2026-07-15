@@ -61,14 +61,15 @@ pub use crate::obs::{
     LockFlags, MeasurementErrorModel, MeasurementRejectReason, NavAssumptions, NavHealthEvent,
     NavLifecycleState, NavProvenance, NavQualityFlag, NavRefusalClass, NavUncertaintyClass,
     ObsDecisionArtifact, ObsEpoch, ObsEpochManifest, ObsMetadata, ObsSatellite, ObsSignalTiming,
-    ObservationEpochDecision, ObservationStatus, ObservationSupportClass,
-    ObservationUncertaintyClass, ReceiverRole, Sample, SamplesFrame, SatObservationDecision,
-    SignalDelayAlignment, SignalStageSupport, SignalSupportRow, SingleDifference, SolutionStatus,
-    SolutionValidity, SupportMatrix, SupportStatus, TrackEpoch, TrackTransition,
-    TrackingAssumptions, TrackingLifecycleState, TrackingTransmitTime, TrackingUncertainty,
-    NAV_OUTPUT_STABILITY_SIGNATURE_VERSION, NAV_SOLUTION_MODEL_VERSION,
-    OBSERVATION_DOPPLER_MODEL_TRACKED_CARRIER_IF_OFFSET, OBSERVATION_DOWNSTREAM_PROFILE_VERSION,
-    OBSERVATION_MODEL_VERSION, TRACKING_STATE_MODEL_VERSION,
+    ObservationCovarianceStatus, ObservationEpochDecision, ObservationMeasurementCovariance,
+    ObservationStatus, ObservationSupportClass, ObservationUncertaintyClass, ReceiverRole, Sample,
+    SamplesFrame, SatObservationDecision, SignalDelayAlignment, SignalStageSupport,
+    SignalSupportRow, SingleDifference, SolutionStatus, SolutionValidity, SupportMatrix,
+    SupportStatus, TrackEpoch, TrackTransition, TrackingAssumptions, TrackingLifecycleState,
+    TrackingTransmitTime, TrackingUncertainty, NAV_OUTPUT_STABILITY_SIGNATURE_VERSION,
+    NAV_SOLUTION_MODEL_VERSION, OBSERVATION_DOPPLER_MODEL_TRACKED_CARRIER_IF_OFFSET,
+    OBSERVATION_DOWNSTREAM_PROFILE_VERSION, OBSERVATION_MODEL_VERSION,
+    TRACKING_STATE_MODEL_VERSION,
 };
 /// Engine boundary nav epoch alias.
 pub type NavEpoch = NavSolutionEpoch;

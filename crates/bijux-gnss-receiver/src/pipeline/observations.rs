@@ -8,9 +8,10 @@
 use bijux_gnss_core::api::{
     Constellation, ConventionsConfig, Cycles, DiagnosticEvent, DiagnosticSeverity, GpsTime,
     LockFlags, Meters, ObsDecisionArtifact, ObsEpoch, ObsEpochManifest, ObsMetadata, ObsSatellite,
-    ObsSignalTiming, ObservationEpochDecision, ObservationStatus, ObservationSupportClass,
-    ObservationUncertaintyClass, ReceiverRole, ReceiverSampleTrace, SatObservationDecision,
-    Seconds, SigId, SignalBand, SignalCode, SignalSpec, TrackEpoch, GPS_L1_CA_CARRIER_HZ,
+    ObsSignalTiming, ObservationEpochDecision, ObservationMeasurementCovariance, ObservationStatus,
+    ObservationSupportClass, ObservationUncertaintyClass, ReceiverRole, ReceiverSampleTrace,
+    SatObservationDecision, Seconds, SigId, SignalBand, SignalCode, SignalSpec, TrackEpoch,
+    GPS_L1_CA_CARRIER_HZ,
 };
 
 use crate::engine::receiver_config::ReceiverPipelineConfig;
@@ -220,6 +221,7 @@ pub struct ObservationMeasurementQualitySatellite {
     pub carrier_phase_sigma_cycles: Option<f64>,
     pub doppler_sigma_hz: Option<f64>,
     pub cn0_sigma_dbhz: Option<f64>,
+    pub measurement_covariance: Option<ObservationMeasurementCovariance>,
     pub lock_flags: LockFlags,
     pub observation_lock_state: String,
     pub observation_lock_reason: Option<String>,
@@ -312,6 +314,7 @@ impl ObservationMeasurementQualitySatellite {
                 .tracking_uncertainty
                 .as_ref()
                 .and_then(|uncertainty| finite_sigma(Some(uncertainty.cn0_dbhz))),
+            measurement_covariance: sat.measurement_covariance(),
             lock_flags: sat.lock_flags,
             observation_lock_state: sat.metadata.observation_lock_state.clone(),
             observation_lock_reason: sat.metadata.observation_lock_reason.clone(),
@@ -4205,6 +4208,8 @@ mod tests {
         let report = observations_from_tracking_results(&config, &[track], 10);
         let epoch = report.output.first().expect("observation epoch");
         let sat = epoch.sats.first().expect("observation satellite");
+        let quality = observation_measurement_quality_from_epochs(&report.output);
+        let quality_sat = quality[0].sats.first().expect("measurement quality satellite");
         let meters_per_sample = SPEED_OF_LIGHT_MPS / config.sampling_freq_hz;
         let expected_pseudorange_sigma_m = uncertainty.code_phase_samples * meters_per_sample;
 
@@ -4229,6 +4234,7 @@ mod tests {
         assert_eq!(covariance_matrix[0][1], covariance_matrix[1][0]);
         assert_eq!(covariance_matrix[1][2], covariance_matrix[2][1]);
         assert!(covariance.carrier_doppler_m_hz > 0.0);
+        assert_eq!(quality_sat.measurement_covariance, Some(covariance));
     }
 
     #[test]
@@ -4264,6 +4270,7 @@ mod tests {
         assert!(quality.pseudorange_sigma_m.is_none());
         assert!(quality.carrier_phase_sigma_cycles.is_none());
         assert!(quality.doppler_sigma_hz.is_none());
+        assert!(quality.measurement_covariance.is_none());
         assert!(residual.pseudorange_m.sigma.is_none());
         assert!(residual.carrier_phase_cycles.sigma.is_none());
         assert!(residual.doppler_hz.sigma.is_none());
