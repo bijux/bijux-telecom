@@ -5,7 +5,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use bijux_gnss_core::api::{Constellation, ObsEpoch, ObsSatellite, SatId, SigId, SignalBand};
 use bijux_gnss_signal::api::signal_wavelength_m;
 
-use super::config::{PppConfig, PppFilter, PppIndices, PppStateIdentity};
+use super::config::{PppConfig, PppFilter, PppIndices, PppStateIdentity, SPEED_OF_LIGHT_MPS};
 use super::measurements::{
     iono_free_from_obs, ppp_ionosphere_delay_scale, IonoFreeCodeMeasurementObservation,
     PppIonoFreeCodeMeasurement, PppIonoFreePhaseMeasurement, PppPhaseMeasurement,
@@ -20,9 +20,7 @@ use crate::corrections::phase_windup::PhaseWindupState;
 use crate::corrections::CorrectionContext;
 use crate::estimation::ekf::state::{Ekf, EkfConfig};
 use crate::estimation::ekf::statistics::InnovationConsistencyConfig;
-use crate::estimation::position::solver::{
-    ecef_to_geodetic, elevation_azimuth_deg, position_measurement_weight,
-};
+use crate::estimation::position::solver::{ecef_to_geodetic, elevation_azimuth_deg};
 use crate::estimation::ppp::config::{
     PppConvergenceEvidence, PppConvergenceState, PppHealth, PppSolutionEpoch,
 };
@@ -230,13 +228,9 @@ impl PppFilter {
                 continue;
             }
             let troposphere_mapping = SaastamoinenModel::mapping_factor(el);
-            let weight = position_measurement_weight(
-                Some(sat.cn0_dbhz),
-                Some(el),
-                None,
-                self.config.weighting,
-            );
-            let sigma_m = (5.0 / weight.max(0.1)).max(1.0);
+            let common_range_sigma_m =
+                ppp_common_range_sigma_m(&state, troposphere_mapping, &self.config);
+            let sigma_m = ppp_code_sigma_m(sat, common_range_sigma_m, &self.config);
 
             let isb_index = self.indices.isb.get(&sat.signal_id.sat.constellation).copied();
             let iono_index = self.indices.iono.get(&sat.signal_id.sat).copied();
@@ -291,7 +285,10 @@ impl PppFilter {
                             el,
                             Some(az),
                         ),
-                        sigma_m: iono_free.code_sigma_m.max(sigma_m),
+                        sigma_m: iono_free
+                            .code_sigma_m
+                            .hypot(common_range_sigma_m)
+                            .max(self.config.measurement_noise.code_floor_m),
                         troposphere_mapping,
                         ztd_index: Some(self.indices.ztd),
                         isb_index,
@@ -321,7 +318,12 @@ impl PppFilter {
                             el,
                             Some(az),
                         ),
-                        sigma_cycles: iono_free.phase_sigma_cycles.max(0.05),
+                        sigma_cycles: ppp_iono_free_phase_sigma_cycles(
+                            iono_free.phase_sigma_cycles,
+                            iono_free.phase_wavelength_m,
+                            common_range_sigma_m,
+                            &self.config,
+                        ),
                         troposphere_mapping,
                         ztd_index: Some(self.indices.ztd),
                         isb_index,
@@ -377,7 +379,12 @@ impl PppFilter {
                         el,
                         Some(az),
                     ),
-                    sigma_cycles: 0.05,
+                    sigma_cycles: ppp_phase_sigma_cycles(
+                        sat,
+                        signal_wavelength_m(sat.metadata.signal).0,
+                        common_range_sigma_m,
+                        &self.config,
+                    ),
                     troposphere_mapping,
                     ionosphere_scale,
                     iono_index,
@@ -779,6 +786,90 @@ fn product_reference_time_s(obs: &ObsEpoch) -> f64 {
     obs.gps_time().map(|time| time.tow_s).unwrap_or(obs.t_rx_s.0)
 }
 
+fn ppp_common_range_sigma_m(
+    state: &GpsSatState,
+    troposphere_mapping: f64,
+    config: &PppConfig,
+) -> f64 {
+    let noise = &config.measurement_noise;
+    let orbit_sigma_m = state
+        .uncertainty
+        .orbit_sigma_m
+        .filter(|value| value.is_finite() && *value >= 0.0)
+        .unwrap_or(0.0)
+        * noise.orbit_sigma_scale.max(0.0);
+    let clock_sigma_m = state
+        .uncertainty
+        .clock_sigma_s
+        .filter(|value| value.is_finite() && *value >= 0.0)
+        .unwrap_or(0.0)
+        * SPEED_OF_LIGHT_MPS
+        * noise.clock_sigma_scale.max(0.0);
+    let atmosphere_sigma_m =
+        troposphere_mapping.abs() * positive_or_zero(noise.troposphere_residual_m);
+    let antenna_sigma_m = positive_or_zero(noise.antenna_residual_m);
+
+    (orbit_sigma_m.powi(2)
+        + clock_sigma_m.powi(2)
+        + atmosphere_sigma_m.powi(2)
+        + antenna_sigma_m.powi(2))
+    .sqrt()
+}
+
+fn ppp_code_sigma_m(sat: &ObsSatellite, common_range_sigma_m: f64, config: &PppConfig) -> f64 {
+    let code_sigma_m = positive_variance(sat.pseudorange_var_m2)
+        .map(f64::sqrt)
+        .unwrap_or_else(|| positive_or_zero(config.measurement_noise.code_floor_m));
+    code_sigma_m
+        .hypot(common_range_sigma_m)
+        .max(positive_or_zero(config.measurement_noise.code_floor_m))
+}
+
+fn ppp_phase_sigma_cycles(
+    sat: &ObsSatellite,
+    wavelength_m: f64,
+    common_range_sigma_m: f64,
+    config: &PppConfig,
+) -> f64 {
+    let carrier_sigma_cycles = positive_variance(sat.carrier_phase_var_cycles2)
+        .map(f64::sqrt)
+        .unwrap_or_else(|| positive_or_zero(config.measurement_noise.phase_floor_cycles));
+    ppp_iono_free_phase_sigma_cycles(
+        carrier_sigma_cycles,
+        wavelength_m,
+        common_range_sigma_m,
+        config,
+    )
+}
+
+fn ppp_iono_free_phase_sigma_cycles(
+    phase_sigma_cycles: f64,
+    wavelength_m: f64,
+    common_range_sigma_m: f64,
+    config: &PppConfig,
+) -> f64 {
+    let range_sigma_cycles = if wavelength_m.is_finite() && wavelength_m > 0.0 {
+        common_range_sigma_m / wavelength_m
+    } else {
+        0.0
+    };
+    positive_or_zero(phase_sigma_cycles)
+        .hypot(range_sigma_cycles)
+        .max(positive_or_zero(config.measurement_noise.phase_floor_cycles))
+}
+
+fn positive_variance(value: f64) -> Option<f64> {
+    (value.is_finite() && value >= 0.0).then_some(value)
+}
+
+fn positive_or_zero(value: f64) -> f64 {
+    if value.is_finite() && value >= 0.0 {
+        value
+    } else {
+        0.0
+    }
+}
+
 pub(crate) fn base_ppp_state_identities() -> Vec<PppStateIdentity> {
     vec![
         PppStateIdentity::ReceiverPositionX,
@@ -1168,16 +1259,20 @@ mod tests {
 
     use super::{
         iono_free_antenna_range_correction_m, iono_free_satellite_representatives,
-        phase_windup_cycles_for_satellite, resolved_code_bias_m, resolved_iono_free_code_bias_m,
-        single_frequency_antenna_range_correction_m, PppFilter,
+        phase_windup_cycles_for_satellite, ppp_code_sigma_m, ppp_common_range_sigma_m,
+        ppp_phase_sigma_cycles, resolved_code_bias_m, resolved_iono_free_code_bias_m,
+        single_frequency_antenna_range_correction_m, PppFilter, SPEED_OF_LIGHT_MPS,
     };
     use crate::api::{
         ecef_to_geodetic, elevation_azimuth_deg, geodetic_to_ecef, BroadcastProductsProvider,
         GpsEphemeris, GpsSatState, GpsSatelliteClockCorrection, OceanTideConstituent,
         OceanTideLoadingConstituent, OceanTideLoadingModel, PppConfig, ProductDiagnostics,
-        ProductsProvider, SatelliteStateUncertainty, SolidEarthTideModel,
+        ProductsProvider, SatelliteClockUncertaintySource, SatelliteHealthSource,
+        SatelliteHealthStatus, SatelliteOrbitUncertaintySource, SatelliteStateUncertainty,
+        SolidEarthTideModel,
     };
     use crate::corrections::biases::{CodeBias, CodeBiasProvider, SignalCodeBiases};
+    use crate::estimation::ppp::config::PppMeasurementNoise;
     use crate::estimation::ppp::measurements::iono_free_code_observation_from_obs;
     use crate::models::antenna::{
         AntennaPhaseCenterVariation, ReceiverAntennaCalibration, ReceiverAntennaCalibrations,
@@ -1498,6 +1593,75 @@ mod tests {
         assert_eq!(direct[1].signal_id, l2.signal_id);
         assert_eq!(iono_free.len(), 1);
         assert_eq!(iono_free[0].signal_id.sat, sat);
+    }
+
+    #[test]
+    fn ppp_code_sigma_combines_observation_and_declared_product_components() {
+        let sat = ppp_test_signal_satellite(
+            SatId { constellation: Constellation::Gps, prn: 7 },
+            SignalBand::L1,
+            SignalCode::Ca,
+        );
+        let state = GpsSatState {
+            x_m: 0.0,
+            y_m: 0.0,
+            z_m: 0.0,
+            vx_mps: 0.0,
+            vy_mps: 0.0,
+            vz_mps: 0.0,
+            clock_correction: GpsSatelliteClockCorrection::from_bias_s(0.0),
+            uncertainty: SatelliteStateUncertainty {
+                orbit_sigma_m: Some(3.0),
+                clock_sigma_s: Some(2.0 / SPEED_OF_LIGHT_MPS),
+                orbit_source: SatelliteOrbitUncertaintySource::Sp3Accuracy,
+                clock_source: SatelliteClockUncertaintySource::ClkSigma,
+                health_status: SatelliteHealthStatus::Healthy,
+                health_source: SatelliteHealthSource::Sp3Flags,
+            },
+        };
+        let config = PppConfig {
+            measurement_noise: PppMeasurementNoise {
+                code_floor_m: 0.3,
+                phase_floor_cycles: 0.01,
+                orbit_sigma_scale: 1.0,
+                clock_sigma_scale: 1.0,
+                troposphere_residual_m: 0.25,
+                antenna_residual_m: 0.1,
+            },
+            ..PppConfig::default()
+        };
+
+        let common_sigma_m = ppp_common_range_sigma_m(&state, 2.0, &config);
+        let sigma_m = ppp_code_sigma_m(&sat, common_sigma_m, &config);
+        let expected_common_sigma_m =
+            (3.0_f64.powi(2) + 2.0_f64.powi(2) + 0.5_f64.powi(2) + 0.1_f64.powi(2)).sqrt();
+        let expected_sigma_m = (sat.pseudorange_var_m2 + expected_common_sigma_m.powi(2)).sqrt();
+
+        assert!((common_sigma_m - expected_common_sigma_m).abs() < 1.0e-12);
+        assert!((sigma_m - expected_sigma_m).abs() < 1.0e-12);
+    }
+
+    #[test]
+    fn ppp_phase_sigma_maps_range_components_to_cycles() {
+        let mut sat = ppp_test_signal_satellite(
+            SatId { constellation: Constellation::Gps, prn: 7 },
+            SignalBand::L2,
+            SignalCode::Py,
+        );
+        sat.carrier_phase_var_cycles2 = 0.04;
+        let wavelength_m = signal_wavelength_m(sat.metadata.signal).0;
+        let config = PppConfig {
+            measurement_noise: PppMeasurementNoise {
+                phase_floor_cycles: 0.01,
+                ..PppMeasurementNoise::default()
+            },
+            ..PppConfig::default()
+        };
+
+        let sigma_cycles = ppp_phase_sigma_cycles(&sat, wavelength_m, 1.5, &config);
+        let expected_sigma_cycles = (0.04_f64 + (1.5 / wavelength_m).powi(2)).sqrt();
+
+        assert!((sigma_cycles - expected_sigma_cycles).abs() < 1.0e-12);
     }
 
     #[test]

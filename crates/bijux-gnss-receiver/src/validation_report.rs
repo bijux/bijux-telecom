@@ -1386,6 +1386,7 @@ fn build_ppp_config(profile: &ReceiverConfig) -> PppConfig {
             ambiguity_cycles: p.noise_ambiguity,
             ..PppProcessNoise::default()
         },
+        measurement_noise: Default::default(),
         weighting: WeightingConfig {
             model: match profile.navigation.weighting.mode {
                 crate::engine::receiver_config::NavigationWeightingMode::Elevation => {

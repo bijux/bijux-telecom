@@ -55,6 +55,29 @@ pub struct PppConvergenceConfig {
 }
 
 #[derive(Debug, Clone)]
+pub struct PppMeasurementNoise {
+    pub code_floor_m: f64,
+    pub phase_floor_cycles: f64,
+    pub orbit_sigma_scale: f64,
+    pub clock_sigma_scale: f64,
+    pub troposphere_residual_m: f64,
+    pub antenna_residual_m: f64,
+}
+
+impl Default for PppMeasurementNoise {
+    fn default() -> Self {
+        Self {
+            code_floor_m: 0.3,
+            phase_floor_cycles: 0.01,
+            orbit_sigma_scale: 1.0,
+            clock_sigma_scale: 1.0,
+            troposphere_residual_m: 0.05,
+            antenna_residual_m: 0.01,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct PppConfig {
     pub enable_iono_state: bool,
     pub use_iono_free: bool,
@@ -79,6 +102,7 @@ pub struct PppConfig {
     pub receiver_antenna_calibrations: Option<ReceiverAntennaCalibrations>,
     pub satellite_antenna_calibrations: Option<SatelliteAntennaCalibrations>,
     pub process_noise: PppProcessNoise,
+    pub measurement_noise: PppMeasurementNoise,
     pub weighting: WeightingConfig,
     pub convergence: PppConvergenceConfig,
 }
@@ -116,6 +140,7 @@ impl Default for PppConfig {
             receiver_antenna_calibrations: None,
             satellite_antenna_calibrations: None,
             process_noise: PppProcessNoise::default(),
+            measurement_noise: PppMeasurementNoise::default(),
             weighting: WeightingConfig::default(),
             convergence: PppConvergenceConfig {
                 min_time_s: 60.0,
