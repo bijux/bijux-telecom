@@ -2,7 +2,8 @@
 
 use bijux_gnss_core::api::{Constellation, SatId, SigId, SignalBand};
 use bijux_gnss_nav::api::{
-    rtk_ambiguity_state_from_fixed_solution, rtk_conditioned_baseline_from_fixed_ambiguities,
+    rtk_ambiguity_state_from_fixed_solution, rtk_conditioned_baseline_from_fix_result,
+    rtk_conditioned_baseline_from_fixed_ambiguities,
     rtk_float_ambiguity_state_from_baseline_solution, rtk_float_baseline_from_double_differences,
     rtk_integer_ambiguity_candidates, rtk_lambda_decorrelate,
     rtk_lambda_integer_ambiguity_candidates, rtk_select_partial_ambiguity_fix_with_evidence,
@@ -496,4 +497,51 @@ fn rtk_ratio_test_fixer_conditions_baseline_for_high_confidence_integer_fix() {
     assert!(conditioned.covariance_enu_m2[0][0] < float_solution.covariance_enu_m2[0][0]);
     assert!(conditioned.covariance_enu_m2[1][1] < float_solution.covariance_enu_m2[1][1]);
     assert!(conditioned.covariance_enu_m2[2][2] < float_solution.covariance_enu_m2[2][2]);
+}
+
+#[test]
+fn rtk_fix_result_conditioning_uses_only_selected_partial_ambiguities() {
+    let selected_id = gps_l1_dd_id(7, 3);
+    let excluded_id = gps_l1_dd_id(11, 3);
+    let float_solution = RtkFloatBaselineSolution {
+        enu_m: [1.0, 2.0, 3.0],
+        covariance_enu_m2: [[1.0, 0.0, 0.0], [0.0, 1.2, 0.0], [0.0, 0.0, 1.5]],
+        enu_ambiguity_covariance_m_cycles: vec![vec![0.004, 5.0], vec![0.0, 7.0], vec![0.0, 11.0]],
+        float_ambiguities: vec![
+            RtkFloatAmbiguityEstimate {
+                sig: selected_id.sig,
+                ref_sig: selected_id.ref_sig,
+                float_cycles: 0.01,
+                variance_cycles2: 0.01,
+            },
+            RtkFloatAmbiguityEstimate {
+                sig: excluded_id.sig,
+                ref_sig: excluded_id.ref_sig,
+                float_cycles: 0.01,
+                variance_cycles2: 100.0,
+            },
+        ],
+        ambiguity_covariance_cycles2: vec![vec![0.01, 0.0], vec![0.0, 100.0]],
+    };
+    let float_state =
+        rtk_float_ambiguity_state_from_baseline_solution(&float_solution).expect("float state");
+    let fixer = RtkRatioTestFixer::new(RtkAmbiguityFixPolicy {
+        ratio_threshold: 3.0,
+        consecutive_required: 1,
+    });
+
+    let (result, audit) =
+        fixer.fix_with_state(9, &float_state, &mut RtkAmbiguityFixState::default());
+    let conditioned =
+        rtk_conditioned_baseline_from_fix_result(&float_solution, &result).expect("partial fix");
+    let selection = result.partial_selection.as_ref().expect("partial selection");
+
+    assert_eq!(result.status, RtkAmbiguityFixStatus::Fixed, "result={result:?}");
+    assert_eq!(audit.status, RtkAmbiguityFixStatus::Fixed, "audit={audit:?}");
+    assert_eq!(selection.selected_ids, vec![selected_id]);
+    assert_eq!(selection.excluded_ids, vec![excluded_id]);
+    assert_eq!(result.selected_integers, Some(vec![0]));
+    assert!((conditioned.enu_m[0] - 0.996).abs() < 1.0e-12);
+    assert!((conditioned.enu_m[1] - 2.0).abs() < 1.0e-12);
+    assert!((conditioned.enu_m[2] - 3.0).abs() < 1.0e-12);
 }

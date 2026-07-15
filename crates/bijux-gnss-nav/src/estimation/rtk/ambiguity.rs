@@ -456,6 +456,14 @@ pub fn rtk_ambiguity_state_from_fixed_solution(
     Some((selected_ids, selected_integers))
 }
 
+pub fn rtk_conditioned_baseline_from_fix_result(
+    solution: &RtkFloatBaselineSolution,
+    result: &RtkAmbiguityFixResult,
+) -> Option<RtkConditionedBaselineSolution> {
+    let (fixed_ids, fixed_integers) = rtk_ambiguity_state_from_fixed_solution(result)?;
+    rtk_conditioned_baseline_from_fixed_ambiguities(solution, &fixed_ids, &fixed_integers)
+}
+
 /// Transform fixed double-difference integer ambiguities to a different reference signal.
 pub fn rtk_transform_fixed_ambiguity_reference(
     fixed_ids: &[RtkDoubleDifferenceAmbiguityId],

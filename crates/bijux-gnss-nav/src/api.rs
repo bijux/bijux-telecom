@@ -128,7 +128,7 @@ pub use crate::estimation::ppp::measurements::ppp_ionosphere_delay_scale;
 /// RTK float-baseline helpers.
 pub use crate::estimation::rtk::ambiguity::{
     rtk_ambiguity_state_from_fixed_solution, rtk_candidate_ratio,
-    rtk_conditioned_baseline_from_fixed_ambiguities,
+    rtk_conditioned_baseline_from_fix_result, rtk_conditioned_baseline_from_fixed_ambiguities,
     rtk_float_ambiguity_state_from_baseline_solution, rtk_float_ambiguity_state_from_filter_state,
     rtk_integer_ambiguity_candidates, rtk_lambda_decorrelate,
     rtk_lambda_integer_ambiguity_candidates, rtk_ratio_test_acceptance,
