@@ -249,6 +249,19 @@ impl GlonassNavigationAge {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct GlonassTransmitTime {
+    pub transmit_gps_tow_s: f64,
+    pub gps_minus_glonass_s: f64,
+    pub transmit_seconds_of_day: f64,
+    pub transmit_day_index: Option<i64>,
+    pub frame_seconds_of_day: f64,
+    pub frame_day_index: Option<i64>,
+    pub ephemeris_reference_time_s: f64,
+    pub ephemeris_day_index: Option<i64>,
+    pub delta_time_s: f64,
+}
+
 pub fn glonass_satellite_type_from_word(word: u8) -> GlonassSatelliteType {
     match word {
         0 => GlonassSatelliteType::Glonass,
@@ -311,6 +324,44 @@ pub fn glonass_navigation_age(
         age_s: wrap_glonass_time_delta_s(transmit_glonass_time_s - ephemeris_reference_time_s)
             .abs(),
         max_age_s: GLONASS_MAX_NAVIGATION_AGE_S,
+    })
+}
+
+pub fn glonass_transmit_time(
+    navigation: &GlonassBroadcastNavigationFrame,
+    transmit_gps_tow_s: f64,
+) -> Option<GlonassTransmitTime> {
+    let gps_minus_glonass_s = glonass_gps_minus_glonass_s(navigation)?;
+    let transmit_seconds_of_day =
+        glonass_time_of_day_from_gps_tow_s(transmit_gps_tow_s, gps_minus_glonass_s);
+    let frame_seconds_of_day = f64::from(navigation.immediate.frame_time.seconds_of_day());
+    let ephemeris_reference_time_s = f64::from(navigation.immediate.ephemeris_reference_time_s);
+    let frame_day_index = navigation.immediate.resolved_day_index;
+    let transmit_day_index = frame_day_index.map(|day_index| {
+        glonass_day_index_near_time(day_index, frame_seconds_of_day, transmit_seconds_of_day)
+    });
+    let ephemeris_day_index = frame_day_index.map(|day_index| {
+        glonass_day_index_near_time(day_index, frame_seconds_of_day, ephemeris_reference_time_s)
+    });
+    let delta_time_s = match (transmit_day_index, ephemeris_day_index) {
+        (Some(transmit_day_index), Some(ephemeris_day_index)) => {
+            (transmit_day_index - ephemeris_day_index) as f64 * GLONASS_DAY_S
+                + transmit_seconds_of_day
+                - ephemeris_reference_time_s
+        }
+        _ => wrap_glonass_time_delta_s(transmit_seconds_of_day - ephemeris_reference_time_s),
+    };
+
+    Some(GlonassTransmitTime {
+        transmit_gps_tow_s,
+        gps_minus_glonass_s,
+        transmit_seconds_of_day,
+        transmit_day_index,
+        frame_seconds_of_day,
+        frame_day_index,
+        ephemeris_reference_time_s,
+        ephemeris_day_index,
+        delta_time_s,
     })
 }
 
@@ -440,6 +491,21 @@ fn glonass_time_of_day_from_gps_tow_s(transmit_gps_tow_s: f64, gps_minus_glonass
     (transmit_gps_tow_s - gps_minus_glonass_s).rem_euclid(GLONASS_DAY_S)
 }
 
+fn glonass_day_index_near_time(
+    reference_day_index: i64,
+    reference_seconds_of_day: f64,
+    target_seconds_of_day: f64,
+) -> i64 {
+    let delta_t_s = target_seconds_of_day - reference_seconds_of_day;
+    if delta_t_s > GLONASS_DAY_S / 2.0 {
+        reference_day_index - 1
+    } else if delta_t_s < -GLONASS_DAY_S / 2.0 {
+        reference_day_index + 1
+    } else {
+        reference_day_index
+    }
+}
+
 fn wrap_glonass_time_delta_s(delta_t_s: f64) -> f64 {
     let mut wrapped = delta_t_s;
     let half_day_s = GLONASS_DAY_S / 2.0;
@@ -555,11 +621,12 @@ fn glonass_inertial_dynamics(state: [f64; 6], luni_solar_acceleration_mps2: [f64
 mod tests {
     use super::{
         glonass_navigation_age, glonass_satellite_clock_correction,
-        glonass_slot_channel_association, glonass_utc_relation, sat_state_glonass_l1,
-        GlonassAlmanacEntry, GlonassAlmanacTimeData, GlonassBroadcastNavigationFrame,
-        GlonassFrameTime, GlonassImmediateHealth, GlonassImmediateNavigationData,
-        GlonassLeapSecondAnnouncement, GlonassSatelliteType, GlonassStateVector, GlonassSystemTime,
-        PZ90_02_TO_ITRF2000_X_M, PZ90_02_TO_ITRF2000_Y_M, PZ90_02_TO_ITRF2000_Z_M,
+        glonass_slot_channel_association, glonass_transmit_time, glonass_utc_relation,
+        sat_state_glonass_l1, GlonassAlmanacEntry, GlonassAlmanacTimeData,
+        GlonassBroadcastNavigationFrame, GlonassFrameTime, GlonassImmediateHealth,
+        GlonassImmediateNavigationData, GlonassLeapSecondAnnouncement, GlonassSatelliteType,
+        GlonassStateVector, GlonassSystemTime, PZ90_02_TO_ITRF2000_X_M, PZ90_02_TO_ITRF2000_Y_M,
+        PZ90_02_TO_ITRF2000_Z_M,
     };
     use bijux_gnss_core::api::{Constellation, GlonassFrequencyChannel, GlonassSlot, SatId};
 
@@ -721,6 +788,38 @@ mod tests {
         assert_eq!(association.expected_slot, GlonassSlot::new(14));
         assert_eq!(association.reported_slot, GlonassSlot::new(13));
         assert!(!association.is_slot_consistent);
+    }
+
+    #[test]
+    fn glonass_transmit_time_resolves_midnight_ephemeris_day() {
+        let mut navigation = sample_navigation();
+        navigation.immediate.frame_time =
+            GlonassFrameTime { hour: 23, minute: 59, half_minute: true };
+        navigation.immediate.ephemeris_reference_time_s = 0;
+        navigation.immediate.resolved_day_index = Some(864);
+        navigation.system_time.as_mut().expect("system time").gps_minus_glonass_s = 0.0;
+
+        let transmit_time = glonass_transmit_time(&navigation, 5.0).expect("transmit time");
+
+        assert_eq!(transmit_time.frame_day_index, Some(864));
+        assert_eq!(transmit_time.transmit_day_index, Some(865));
+        assert_eq!(transmit_time.ephemeris_day_index, Some(865));
+        assert_eq!(transmit_time.transmit_seconds_of_day, 5.0);
+        assert_eq!(transmit_time.ephemeris_reference_time_s, 0.0);
+        assert_eq!(transmit_time.delta_time_s, 5.0);
+    }
+
+    #[test]
+    fn glonass_transmit_time_falls_back_to_wrapped_time_without_day_reference() {
+        let navigation = sample_navigation();
+
+        let transmit_time = glonass_transmit_time(&navigation, 504_918.0).expect("transmit time");
+
+        assert_eq!(transmit_time.frame_day_index, None);
+        assert_eq!(transmit_time.transmit_day_index, None);
+        assert_eq!(transmit_time.ephemeris_day_index, None);
+        assert_eq!(transmit_time.transmit_seconds_of_day, 83_700.0);
+        assert_eq!(transmit_time.delta_time_s, 0.0);
     }
 
     #[test]
