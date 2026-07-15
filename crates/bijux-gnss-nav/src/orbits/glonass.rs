@@ -14,6 +14,8 @@ const GLONASS_EARTH_RADIUS_M: f64 = 6_378_136.0;
 const GLONASS_C20: f64 = -1_082.63e-6;
 const GLONASS_OMEGA_E_DOT: f64 = 7.292_115e-5;
 const GLONASS_DAY_S: f64 = 86_400.0;
+const GLONASS_DAY_SECONDS: u32 = 86_400;
+const GLONASS_STRING_DURATION_S: u32 = 2;
 const GLONASS_MAX_NAVIGATION_AGE_S: f64 = 900.0;
 const GLONASS_INTEGRATION_STEP_S: f64 = 60.0;
 const PZ90_02_TO_ITRF2000_X_M: f64 = -0.36;
@@ -34,6 +36,32 @@ impl GlonassFrameTime {
             + u32::from(self.minute) * 60
             + if self.half_minute { 30 } else { 0 }
     }
+
+    pub fn string_timing(self, string_number: u8) -> Option<GlonassStringTiming> {
+        if !(1..=15).contains(&string_number) {
+            return None;
+        }
+        let frame_start_s = self.seconds_of_day();
+        let string_offset_s = u32::from(string_number - 1) * GLONASS_STRING_DURATION_S;
+        let string_start_s = frame_start_s + string_offset_s;
+        let string_end_s = string_start_s + GLONASS_STRING_DURATION_S;
+        Some(GlonassStringTiming {
+            string_number,
+            start_day_offset: (string_start_s / GLONASS_DAY_SECONDS) as i8,
+            start_seconds_of_day: string_start_s % GLONASS_DAY_SECONDS,
+            end_day_offset: (string_end_s / GLONASS_DAY_SECONDS) as i8,
+            end_seconds_of_day: string_end_s % GLONASS_DAY_SECONDS,
+        })
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GlonassStringTiming {
+    pub string_number: u8,
+    pub start_day_offset: i8,
+    pub start_seconds_of_day: u32,
+    pub end_day_offset: i8,
+    pub end_seconds_of_day: u32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -509,6 +537,35 @@ mod tests {
         assert_eq!(age.ephemeris_reference_time_s, 83_700.0);
         assert_eq!(age.age_s, 0.0);
         assert!(age.is_valid());
+    }
+
+    #[test]
+    fn glonass_frame_time_tracks_string_boundaries() {
+        let frame_time = GlonassFrameTime { hour: 12, minute: 0, half_minute: true };
+
+        let first = frame_time.string_timing(1).expect("first string timing");
+        let last = frame_time.string_timing(15).expect("last string timing");
+
+        assert_eq!(first.string_number, 1);
+        assert_eq!(first.start_day_offset, 0);
+        assert_eq!(first.start_seconds_of_day, 43_230);
+        assert_eq!(first.end_seconds_of_day, 43_232);
+        assert_eq!(last.start_seconds_of_day, 43_258);
+        assert_eq!(last.end_seconds_of_day, 43_260);
+        assert!(frame_time.string_timing(0).is_none());
+        assert!(frame_time.string_timing(16).is_none());
+    }
+
+    #[test]
+    fn glonass_string_timing_records_midnight_rollover() {
+        let frame_time = GlonassFrameTime { hour: 23, minute: 59, half_minute: true };
+
+        let last = frame_time.string_timing(15).expect("last string timing");
+
+        assert_eq!(last.start_day_offset, 0);
+        assert_eq!(last.start_seconds_of_day, 86_398);
+        assert_eq!(last.end_day_offset, 1);
+        assert_eq!(last.end_seconds_of_day, 0);
     }
 
     #[test]

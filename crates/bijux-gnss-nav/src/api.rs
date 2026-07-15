@@ -323,7 +323,8 @@ pub use crate::orbits::glonass::{
     GlonassAlmanacEntry, GlonassAlmanacTimeData, GlonassBroadcastNavigationFrame,
     GlonassEarthRotationCorrection, GlonassFrameTime, GlonassImmediateHealth,
     GlonassImmediateNavigationData, GlonassNavigationAge, GlonassSatState,
-    GlonassSatelliteClockCorrection, GlonassSatelliteType, GlonassStateVector, GlonassSystemTime,
+    GlonassSatelliteClockCorrection, GlonassSatelliteType, GlonassStateVector, GlonassStringTiming,
+    GlonassSystemTime,
 };
 /// Broadcast ephemeris and satellite state.
 pub use crate::orbits::gps::{
