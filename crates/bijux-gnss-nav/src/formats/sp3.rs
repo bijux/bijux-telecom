@@ -16,6 +16,21 @@ pub struct Sp3Record {
     pub y_m: f64,
     pub z_m: f64,
     pub clock_bias_s: Option<f64>,
+    pub velocity_mps: Option<[f64; 3]>,
+    pub clock_rate_s_per_s: Option<f64>,
+    pub accuracy: Sp3RecordAccuracy,
+    pub flags: Sp3RecordFlags,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Sp3State {
+    pub epoch_s: f64,
+    pub x_m: f64,
+    pub y_m: f64,
+    pub z_m: f64,
+    pub clock_bias_s: Option<f64>,
+    pub velocity_mps: Option<[f64; 3]>,
+    pub clock_rate_s_per_s: Option<f64>,
     pub accuracy: Sp3RecordAccuracy,
     pub flags: Sp3RecordFlags,
 }
@@ -61,6 +76,22 @@ impl Sp3Provider {
                 let epoch_s = current_epoch.ok_or("SP3 record without epoch")?;
                 let record = parse_sp3_position_record(line, stripped, epoch_s)?;
                 records.entry(record.0).or_default().push(record.1);
+            } else if let Some(stripped) = line.strip_prefix('V') {
+                let epoch_s = current_epoch.ok_or("SP3 velocity record without epoch")?;
+                let (sat, velocity_mps, clock_rate_s_per_s) =
+                    parse_sp3_velocity_record(line, stripped)?;
+                let sat_records = records
+                    .get_mut(&sat)
+                    .ok_or_else(|| format!("SP3 velocity record for {sat:?} without position"))?;
+                let record = sat_records
+                    .iter_mut()
+                    .rev()
+                    .find(|record| (record.epoch_s - epoch_s).abs() <= f64::EPSILON)
+                    .ok_or_else(|| {
+                        format!("SP3 velocity record for {sat:?} without matching position epoch")
+                    })?;
+                record.velocity_mps = Some(velocity_mps);
+                record.clock_rate_s_per_s = clock_rate_s_per_s;
             }
         }
         normalize_records(&mut records);
@@ -75,6 +106,23 @@ impl Sp3Provider {
     }
 
     pub fn sat_state(&self, sat: SatId, t_s: f64) -> Option<GpsSatState> {
+        let state = self.precise_state(sat, t_s)?;
+        Some(GpsSatState {
+            x_m: state.x_m,
+            y_m: state.y_m,
+            z_m: state.z_m,
+            clock_correction: GpsSatelliteClockCorrection {
+                bias_s: state.clock_bias_s.unwrap_or(0.0),
+                drift_s_per_s: state.clock_rate_s_per_s.unwrap_or(0.0),
+                drift_rate_s_per_s2: 0.0,
+                base_bias_s: state.clock_bias_s.unwrap_or(0.0),
+                relativistic_s: 0.0,
+                group_delay_s: 0.0,
+            },
+        })
+    }
+
+    pub fn precise_state(&self, sat: SatId, t_s: f64) -> Option<Sp3State> {
         let list = self.records.get(&sat)?;
         if let Some(record) =
             list.iter().find(|record| (record.epoch_s - t_s).abs() <= f64::EPSILON)
@@ -169,7 +217,44 @@ fn parse_sp3_position_record(
         parts.get(4).map(|field| parse_sp3_clock_bias_s(field)).transpose()?.flatten();
     let accuracy = parse_sp3_record_accuracy(&parts);
     let flags = parse_sp3_record_flags(line, &parts);
-    Ok((sat, Sp3Record { epoch_s, x_m, y_m, z_m, clock_bias_s, accuracy, flags }))
+    Ok((
+        sat,
+        Sp3Record {
+            epoch_s,
+            x_m,
+            y_m,
+            z_m,
+            clock_bias_s,
+            velocity_mps: None,
+            clock_rate_s_per_s: None,
+            accuracy,
+            flags,
+        },
+    ))
+}
+
+fn parse_sp3_velocity_record(
+    line: &str,
+    stripped: &str,
+) -> Result<(SatId, [f64; 3], Option<f64>), String> {
+    let sat = parse_sat_id(line)?;
+    let parts: Vec<&str> = stripped.split_whitespace().collect();
+    if parts.len() < 4 {
+        return Err("invalid SP3 velocity record".to_string());
+    }
+    let vx_dmps = parse_sp3_coordinate_km(parts[1])?;
+    let vy_dmps = parse_sp3_coordinate_km(parts[2])?;
+    let vz_dmps = parse_sp3_coordinate_km(parts[3])?;
+    let Some((vx_mps, vy_mps, vz_mps)) = vx_dmps
+        .zip(vy_dmps)
+        .zip(vz_dmps)
+        .map(|((vx_dmps, vy_dmps), vz_dmps)| (vx_dmps * 0.1, vy_dmps * 0.1, vz_dmps * 0.1))
+    else {
+        return Err(format!("SP3 velocity record for {sat:?} contains missing components"));
+    };
+    let clock_rate_s_per_s =
+        parts.get(4).map(|field| parse_sp3_clock_rate_s_per_s(field)).transpose()?.flatten();
+    Ok((sat, [vx_mps, vy_mps, vz_mps], clock_rate_s_per_s))
 }
 
 fn parse_sp3_coordinate_km(field: &str) -> Result<Option<f64>, String> {
@@ -180,6 +265,11 @@ fn parse_sp3_coordinate_km(field: &str) -> Result<Option<f64>, String> {
 fn parse_sp3_clock_bias_s(field: &str) -> Result<Option<f64>, String> {
     let value = field.parse::<f64>().map_err(|_| format!("invalid SP3 clock '{field}'"))?;
     Ok((value.abs() < SP3_MISSING_ABS_THRESHOLD).then_some(value * 1.0e-6))
+}
+
+fn parse_sp3_clock_rate_s_per_s(field: &str) -> Result<Option<f64>, String> {
+    let value = field.parse::<f64>().map_err(|_| format!("invalid SP3 clock rate '{field}'"))?;
+    Ok((value.abs() < SP3_MISSING_ABS_THRESHOLD).then_some(value * 1.0e-10))
 }
 
 fn parse_sp3_record_accuracy(parts: &[&str]) -> Sp3RecordAccuracy {
@@ -208,7 +298,7 @@ fn parse_sp3_record_flags(line: &str, parts: &[&str]) -> Sp3RecordFlags {
         orbit_maneuver: fixed_char_is_flagged(line, 78),
         orbit_prediction: fixed_char_is_flagged(line, 79),
     };
-    for token in parts.iter().skip(9) {
+    for token in parts.iter().skip(5) {
         flags.clock_event |= token.contains('E');
         flags.clock_prediction |= token.contains('P');
         flags.orbit_maneuver |= token.contains('M');
@@ -243,23 +333,42 @@ fn normalize_records(records: &mut BTreeMap<SatId, Vec<Sp3Record>>) {
     }
 }
 
-fn interpolate_record_state(records: &[Sp3Record], t_s: f64) -> Option<GpsSatState> {
+fn interpolate_record_state(records: &[Sp3Record], t_s: f64) -> Option<Sp3State> {
     let first_epoch_s = records.first()?.epoch_s;
     let last_epoch_s = records.last()?.epoch_s;
     if t_s < first_epoch_s || t_s > last_epoch_s {
         return None;
     }
 
-    let support = interpolation_support_records(records, t_s, None);
+    let support = interpolation_support_records(records, t_s, None)?;
     if support.is_empty() {
         return None;
     }
 
-    Some(GpsSatState {
+    let clock_bias_s = optional_lagrange(&support, t_s, |record| record.clock_bias_s);
+    let velocity_mps = support
+        .iter()
+        .all(|record| record.velocity_mps.is_some())
+        .then(|| {
+            Some([
+                lagrange_coordinate(&support, t_s, |record| record.velocity_mps.unwrap()[0])?,
+                lagrange_coordinate(&support, t_s, |record| record.velocity_mps.unwrap()[1])?,
+                lagrange_coordinate(&support, t_s, |record| record.velocity_mps.unwrap()[2])?,
+            ])
+        })
+        .flatten();
+    let clock_rate_s_per_s = optional_lagrange(&support, t_s, |record| record.clock_rate_s_per_s);
+
+    Some(Sp3State {
+        epoch_s: t_s,
         x_m: lagrange_coordinate(&support, t_s, |record| record.x_m)?,
         y_m: lagrange_coordinate(&support, t_s, |record| record.y_m)?,
         z_m: lagrange_coordinate(&support, t_s, |record| record.z_m)?,
-        clock_correction: GpsSatelliteClockCorrection::from_bias_s(0.0),
+        clock_bias_s,
+        velocity_mps,
+        clock_rate_s_per_s,
+        accuracy: merged_accuracy(&support),
+        flags: merged_flags(&support),
     })
 }
 
@@ -267,7 +376,15 @@ fn interpolation_support_records<'a>(
     records: &'a [Sp3Record],
     t_s: f64,
     skip_index: Option<usize>,
-) -> Vec<&'a Sp3Record> {
+) -> Option<Vec<&'a Sp3Record>> {
+    if skip_index.is_none() {
+        let bracket_index = records.partition_point(|record| record.epoch_s < t_s);
+        let previous = records.get(bracket_index.checked_sub(1)?)?;
+        let next = records.get(bracket_index)?;
+        if !is_valid_interpolation_interval(records, previous.epoch_s, next.epoch_s) {
+            return None;
+        }
+    }
     let mut support = records
         .iter()
         .enumerate()
@@ -280,7 +397,34 @@ fn interpolation_support_records<'a>(
     });
     support.truncate(4);
     support.sort_by(|(_, left), (_, right)| left.epoch_s.total_cmp(&right.epoch_s));
-    support.into_iter().map(|(_, record)| record).collect()
+    let support = support.into_iter().map(|(_, record)| record).collect::<Vec<_>>();
+    (!support.iter().any(|record| record.flags.invalid_for_interpolation())).then_some(support)
+}
+
+fn is_valid_interpolation_interval(
+    records: &[Sp3Record],
+    left_epoch_s: f64,
+    right_epoch_s: f64,
+) -> bool {
+    if right_epoch_s <= left_epoch_s {
+        return false;
+    }
+    let nominal_step_s = nominal_epoch_step_s(records).unwrap_or(right_epoch_s - left_epoch_s);
+    right_epoch_s - left_epoch_s <= nominal_step_s * 1.5 + 1.0
+}
+
+fn nominal_epoch_step_s(records: &[Sp3Record]) -> Option<f64> {
+    records
+        .windows(2)
+        .map(|window| window[1].epoch_s - window[0].epoch_s)
+        .filter(|step_s| *step_s > f64::EPSILON)
+        .min_by(f64::total_cmp)
+}
+
+impl Sp3RecordFlags {
+    fn invalid_for_interpolation(self) -> bool {
+        self.clock_event || self.clock_prediction || self.orbit_maneuver || self.orbit_prediction
+    }
 }
 
 fn lagrange_coordinate(
@@ -306,6 +450,18 @@ fn lagrange_coordinate(
     Some(value)
 }
 
+fn optional_lagrange(
+    support: &[&Sp3Record],
+    t_s: f64,
+    value: impl Fn(&Sp3Record) -> Option<f64>,
+) -> Option<f64> {
+    support
+        .iter()
+        .all(|record| value(record).is_some())
+        .then(|| lagrange_coordinate(support, t_s, |record| value(record).unwrap()))
+        .flatten()
+}
+
 fn summarize_interpolation_errors(records: &[Sp3Record]) -> Option<Sp3InterpolationSummary> {
     let errors = records
         .iter()
@@ -325,7 +481,7 @@ fn summarize_interpolation_errors(records: &[Sp3Record]) -> Option<Sp3Interpolat
 
 fn interpolate_position_error_m(records: &[Sp3Record], index: usize) -> Option<f64> {
     let target = records.get(index)?;
-    let support = interpolation_support_records(records, target.epoch_s, Some(index));
+    let support = interpolation_support_records(records, target.epoch_s, Some(index))?;
     let first_epoch_s = support.first()?.epoch_s;
     let last_epoch_s = support.last()?.epoch_s;
     if target.epoch_s <= first_epoch_s || target.epoch_s >= last_epoch_s {
@@ -342,15 +498,41 @@ fn interpolate_position_error_m(records: &[Sp3Record], index: usize) -> Option<f
     Some((dx_m * dx_m + dy_m * dy_m + dz_m * dz_m).sqrt())
 }
 
-fn record_state(record: &Sp3Record) -> GpsSatState {
-    GpsSatState {
+fn record_state(record: &Sp3Record) -> Sp3State {
+    Sp3State {
+        epoch_s: record.epoch_s,
         x_m: record.x_m,
         y_m: record.y_m,
         z_m: record.z_m,
-        clock_correction: GpsSatelliteClockCorrection::from_bias_s(
-            record.clock_bias_s.unwrap_or(0.0),
-        ),
+        clock_bias_s: record.clock_bias_s,
+        velocity_mps: record.velocity_mps,
+        clock_rate_s_per_s: record.clock_rate_s_per_s,
+        accuracy: record.accuracy,
+        flags: record.flags,
     }
+}
+
+fn merged_accuracy(support: &[&Sp3Record]) -> Sp3RecordAccuracy {
+    Sp3RecordAccuracy {
+        x_m: max_optional_accuracy(support.iter().filter_map(|record| record.accuracy.x_m)),
+        y_m: max_optional_accuracy(support.iter().filter_map(|record| record.accuracy.y_m)),
+        z_m: max_optional_accuracy(support.iter().filter_map(|record| record.accuracy.z_m)),
+        clock_s: max_optional_accuracy(support.iter().filter_map(|record| record.accuracy.clock_s)),
+    }
+}
+
+fn max_optional_accuracy(values: impl Iterator<Item = f64>) -> Option<f64> {
+    values.reduce(f64::max)
+}
+
+fn merged_flags(support: &[&Sp3Record]) -> Sp3RecordFlags {
+    support.iter().fold(Sp3RecordFlags::default(), |mut flags, record| {
+        flags.clock_event |= record.flags.clock_event;
+        flags.clock_prediction |= record.flags.clock_prediction;
+        flags.orbit_maneuver |= record.flags.orbit_maneuver;
+        flags.orbit_prediction |= record.flags.orbit_prediction;
+        flags
+    })
 }
 
 fn days_from_civil(year: i32, month: u32, day: u32) -> i64 {
@@ -438,6 +620,56 @@ PG01  999999.999999  20000.000000  30000.000000  0.000000
 ";
 
         assert!(data.parse::<Sp3Provider>().is_err());
+    }
+
+    #[test]
+    fn velocity_records_preserve_velocity_and_clock_rate() {
+        let data = "\
+* 2020 01 01 00 00 00.000000
+PG01  10000.000000  20000.000000  30000.000000    12.500000
+VG01     10.000000     -20.000000      30.000000    -4.000000
+";
+        let provider: Sp3Provider = data.parse().expect("parse SP3 with velocity");
+        let sat = SatId { constellation: Constellation::Gps, prn: 1 };
+        let precise_state = provider.precise_state(sat, 0.0).expect("precise state");
+        let state = provider.sat_state(sat, 0.0).expect("GPS state");
+
+        assert_eq!(precise_state.velocity_mps, Some([1.0, -2.0, 3.0]));
+        assert_eq!(precise_state.clock_rate_s_per_s, Some(-4.0e-10));
+        assert_eq!(state.clock_correction.drift_s_per_s, -4.0e-10);
+    }
+
+    #[test]
+    fn interpolation_refuses_large_product_gaps() {
+        let data = "\
+* 2020 01 01 00 00 00.000000
+PG01  0.000000  0.000000  0.000000  0.000000
+* 2020 01 01 00 15 00.000000
+PG01  9.000000  1.000000  1.000000  0.000000
+* 2020 01 01 01 00 00.000000
+PG01  36.000000  4.000000  4.000000  0.000000
+";
+        let provider: Sp3Provider = data.parse().expect("parse SP3 with gap");
+        let sat = SatId { constellation: Constellation::Gps, prn: 1 };
+
+        assert!(provider.sat_state(sat, 2_700.0).is_none());
+    }
+
+    #[test]
+    fn interpolation_refuses_flagged_support_records() {
+        let data = "\
+* 2020 01 01 00 00 00.000000
+PG01  0.000000  0.000000  0.000000  0.000000
+* 2020 01 01 00 15 00.000000
+PG01  9.000000  1.000000  1.000000  0.000000                    M
+* 2020 01 01 00 30 00.000000
+PG01  36.000000  4.000000  4.000000  0.000000
+";
+        let provider: Sp3Provider = data.parse().expect("parse flagged SP3");
+        let sat = SatId { constellation: Constellation::Gps, prn: 1 };
+
+        assert!(provider.sat_state(sat, 1_350.0).is_none());
+        assert!(provider.sat_state(sat, 900.0).is_some());
     }
 
     #[test]
