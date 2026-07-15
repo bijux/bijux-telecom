@@ -10,8 +10,8 @@ use crate::engine::signal_selection::{
 use bijux_gnss_core::api::AcqThresholdProvenance;
 use bijux_gnss_core::api::{
     acq_result_stability_key, stable_acq_result_keys, AcqAssumptions, AcqCodePhaseRefinement,
-    AcqDopplerRefinement, AcqEvidence, AcqExplain, AcqExplainCandidate, AcqHypothesis, AcqRequest,
-    AcqResult, AcqUncertainty, Hertz, ReceiverSampleTrace, SamplesFrame, SatId, SignalCode,
+    AcqEvidence, AcqExplain, AcqExplainCandidate, AcqHypothesis, AcqRequest, AcqResult,
+    AcqUncertainty, Hertz, ReceiverSampleTrace, SamplesFrame, SatId, SignalCode,
 };
 use num_complex::Complex;
 use rustfft::FftPlanner;
@@ -29,7 +29,7 @@ use crate::pipeline::acquisition_components::{
 };
 #[cfg(test)]
 use crate::pipeline::acquisition_symbol_hypotheses::coherent_data_sign_hypotheses;
-use crate::pipeline::doppler::{carrier_hz_from_doppler_hz, doppler_hz_from_carrier_hz};
+use crate::pipeline::doppler::carrier_hz_from_doppler_hz;
 #[cfg(test)]
 use bijux_gnss_signal::api::SignalError;
 use bijux_gnss_signal::api::{measure_iq_front_end_metrics, AcquisitionSignalModel};
@@ -51,6 +51,7 @@ use candidate_failures::{
     unsupported_coherent_integration_candidates,
 };
 use candidate_ranking::competing_candidate_ratio;
+use candidate_refinement::refine_acquisition_candidates;
 use code_phase_profile::{
     estimate_parabolic_code_phase_offset_samples, measure_code_phase_profile,
     wrap_acquisition_code_phase_samples,
@@ -63,6 +64,7 @@ use correlation_accumulation::{
     best_coherent_data_correlation, best_coherent_secondary_code_phase_correlation,
     coherent_correlation_with_signs,
 };
+#[cfg(test)]
 use doppler_refinement::estimate_acquisition_doppler_refinement;
 use false_alarm_calibration::{
     calibration_seed, false_alarm_rate, mix_seed, noise_only_frame, wilson_confidence_interval,
@@ -115,6 +117,7 @@ mod cache;
 mod candidate_decision;
 mod candidate_failures;
 mod candidate_ranking;
+mod candidate_refinement;
 mod code_phase_profile;
 mod correlation_accumulation;
 mod doppler_refinement;
@@ -155,7 +158,6 @@ pub struct AcquisitionStats {
     pub deferred_count: u64,
 }
 
-const JOINT_ACQUISITION_REFINEMENT_METHOD: &str = "quadratic_likelihood_surface";
 const SUB_SAMPLE_CODE_PHASE_REFINEMENT_METHOD: &str = "parabolic_code_peak";
 const SUB_SAMPLE_CODE_PHASE_REFINEMENT_MIN_ABS_OFFSET_SAMPLES: f64 = 0.05;
 const FALSE_ALARM_CALIBRATION_SEARCH_ITERATIONS: usize = 7;
@@ -1580,79 +1582,6 @@ fn classify_delayed_secondary_peak(
         samples_per_code,
         signal_model.code_length,
     )
-}
-
-fn refine_acquisition_candidates(
-    acquisition: &Acquisition,
-    frame: &SamplesFrame,
-    signal_model: &AcquisitionSignalModel,
-    sat: SatId,
-    candidates: &mut [AcqResult],
-    grid_candidates: &[AcqResult],
-    doppler_step_hz: i32,
-    coherent_ms: u32,
-    noncoherent: u32,
-) {
-    let search_center_hz = signal_model.search_center_hz(acquisition.config.intermediate_freq_hz);
-    for candidate in candidates {
-        let coarse_carrier_hz = candidate.carrier_hz.0;
-        if let Some(refinement) = acquisition.estimate_joint_acquisition_refinement(
-            frame,
-            signal_model,
-            sat,
-            coarse_carrier_hz,
-            candidate.doppler_rate_hz_per_s,
-            candidate.code_phase_samples,
-            doppler_step_hz,
-            coherent_ms,
-            noncoherent,
-        ) {
-            candidate.carrier_hz = Hertz(
-                coarse_carrier_hz + (refinement.doppler_offset_bins * doppler_step_hz as f64),
-            );
-            candidate.doppler_hz =
-                Hertz(doppler_hz_from_carrier_hz(search_center_hz, candidate.carrier_hz.0));
-            candidate.doppler_refinement = Some(AcqDopplerRefinement {
-                method: JOINT_ACQUISITION_REFINEMENT_METHOD.to_string(),
-                coarse_carrier_hz: Hertz(coarse_carrier_hz),
-                offset_hz: refinement.doppler_offset_bins * doppler_step_hz as f64,
-                offset_bins: refinement.doppler_offset_bins,
-                left_peak_mean_ratio: refinement.doppler_cross_section[0],
-                center_peak_mean_ratio: refinement.doppler_cross_section[1],
-                right_peak_mean_ratio: refinement.doppler_cross_section[2],
-            });
-            candidate.code_phase_refinement = Some(AcqCodePhaseRefinement {
-                method: JOINT_ACQUISITION_REFINEMENT_METHOD.to_string(),
-                offset_samples: refinement.code_phase_offset_samples,
-                refined_code_phase_samples: refinement.refined_code_phase_samples,
-                left_correlation_norm: refinement.code_phase_cross_section[0],
-                center_correlation_norm: refinement.code_phase_cross_section[1],
-                right_correlation_norm: refinement.code_phase_cross_section[2],
-            });
-            continue;
-        }
-        if let Some(refinement) = estimate_acquisition_doppler_refinement(
-            coarse_carrier_hz,
-            candidate.doppler_rate_hz_per_s,
-            grid_candidates,
-            doppler_step_hz,
-        ) {
-            candidate.carrier_hz = Hertz(coarse_carrier_hz + refinement.offset_hz);
-            candidate.doppler_hz =
-                Hertz(doppler_hz_from_carrier_hz(search_center_hz, candidate.carrier_hz.0));
-            candidate.doppler_refinement = Some(refinement);
-        }
-        candidate.code_phase_refinement = acquisition.estimate_acquisition_code_phase_refinement(
-            frame,
-            signal_model,
-            sat,
-            candidate.carrier_hz.0,
-            candidate.doppler_rate_hz_per_s,
-            candidate.code_phase_samples,
-            coherent_ms,
-            noncoherent,
-        );
-    }
 }
 
 fn estimate_acquisition_uncertainty(
