@@ -8,11 +8,12 @@ use bijux_gnss_nav::api::{
     rtk_float_baseline_from_double_differences,
     rtk_float_baseline_from_double_differences_with_rover_prior,
     rtk_float_baseline_from_double_differences_with_satellite_states,
-    rtk_switch_double_difference_reference, rtk_transform_float_baseline_reference,
-    solve_baseline_dd_with_satellite_states, solve_float_baseline_dd_with_satellite_states,
-    RtkConstellationTimeScale, RtkDoubleDifferenceCovarianceEvidence,
-    RtkDoubleDifferenceObservation, RtkDoubleDifferenceSatelliteStates, RtkEpochAlignmentEvidence,
-    RtkFloatAmbiguityEstimate, RtkFloatBaselineSolution, RtkGlonassInterFrequencyBiasEvidence,
+    rtk_float_baseline_reference_signals_by_constellation, rtk_switch_double_difference_reference,
+    rtk_transform_float_baseline_reference, solve_baseline_dd_with_satellite_states,
+    solve_float_baseline_dd_with_satellite_states, RtkConstellationTimeScale,
+    RtkDoubleDifferenceCovarianceEvidence, RtkDoubleDifferenceObservation,
+    RtkDoubleDifferenceSatelliteStates, RtkEpochAlignmentEvidence, RtkFloatAmbiguityEstimate,
+    RtkFloatBaselineSolution, RtkGlonassInterFrequencyBiasEvidence,
     RtkGlonassInterFrequencyBiasStatus, RtkSatelliteStateEvidence,
     RtkSingleDifferenceCovarianceEvidence,
 };
@@ -371,6 +372,13 @@ fn rtk_float_baseline_solver_combines_constellation_aware_double_differences() {
 
     assert_solution_matches_truth(&solution, truth_enu_m);
     assert_eq!(solution.float_ambiguities.len(), observations.len());
+    let references = rtk_float_baseline_reference_signals_by_constellation(&solution)
+        .expect("constellation references");
+    assert_eq!(references.len(), 4);
+    assert_eq!(
+        references[&Constellation::Glonass],
+        sig(Constellation::Glonass, 4, SignalBand::L1, SignalCode::Unknown)
+    );
     assert!(solution
         .float_ambiguities
         .iter()
@@ -709,6 +717,7 @@ fn rtk_float_baseline_artifact_validation_rejects_invalid_values() {
         event.code == "RTK_FLOAT_AMBIGUITY_COVARIANCE_NUMERIC_INVALID"
             || event.code == "RTK_FLOAT_AMBIGUITY_COVARIANCE_SHAPE_INVALID"
     }));
+    assert!(rtk_float_baseline_reference_signals_by_constellation(&solution).is_none());
 }
 
 #[test]

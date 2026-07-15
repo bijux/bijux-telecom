@@ -138,6 +138,7 @@ pub use bijux_gnss_nav::api::{
     rtk_float_ambiguity_state_from_baseline_solution,
     rtk_float_ambiguity_state_from_baseline_solution_with_bias_evidence,
     rtk_float_ambiguity_state_from_filter_state,
+    rtk_float_baseline_reference_signals_by_constellation,
     rtk_glonass_inter_frequency_bias_is_integer_compatible, rtk_integer_ambiguity_candidates,
     rtk_lambda_decorrelate, rtk_lambda_integer_ambiguity_candidates,
     rtk_monitor_fixed_ambiguity_hold, rtk_ratio_test_acceptance, rtk_select_partial_ambiguity_fix,

@@ -150,8 +150,9 @@ pub use crate::estimation::rtk::baseline::{
     rtk_float_baseline_from_double_differences_with_rover_prior,
     rtk_float_baseline_from_double_differences_with_satellite_states,
     rtk_float_baseline_from_double_differences_with_satellite_states_and_rover_prior,
-    RtkConstellationTimeScale, RtkDoubleDifferenceSatelliteStates, RtkFloatAmbiguityEstimate,
-    RtkFloatBaselineSolution, RtkSatelliteStateEvidence,
+    rtk_float_baseline_reference_signals_by_constellation, RtkConstellationTimeScale,
+    RtkDoubleDifferenceSatelliteStates, RtkFloatAmbiguityEstimate, RtkFloatBaselineSolution,
+    RtkSatelliteStateEvidence,
 };
 /// RTK execution, epoch alignment, and contract-adapter helpers.
 pub use crate::estimation::rtk::execution::{

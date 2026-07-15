@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use bijux_gnss_core::api::{
     ArtifactPayloadValidate, Constellation, DiagnosticEvent, DiagnosticSeverity, ReceiverRole,
     SigId,
@@ -188,6 +190,25 @@ impl ArtifactPayloadValidate for RtkFloatBaselineSolution {
         }
         events
     }
+}
+
+/// Return the unique reference signal used by each constellation in a float baseline solution.
+pub fn rtk_float_baseline_reference_signals_by_constellation(
+    solution: &RtkFloatBaselineSolution,
+) -> Option<BTreeMap<Constellation, SigId>> {
+    let mut references = BTreeMap::new();
+    for ambiguity in &solution.float_ambiguities {
+        if ambiguity.sig.sat.constellation != ambiguity.ref_sig.sat.constellation {
+            return None;
+        }
+        let constellation = ambiguity.sig.sat.constellation;
+        if let Some(existing) = references.insert(constellation, ambiguity.ref_sig) {
+            if existing != ambiguity.ref_sig {
+                return None;
+            }
+        }
+    }
+    Some(references)
 }
 
 /// Estimate a float RTK baseline from double-difference code and carrier observations.
