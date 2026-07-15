@@ -2,7 +2,13 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::orbits::beidou::{BeidouIonosphericCorrection, BeidouSignalHealth, BeidouSystemTime};
+use bijux_gnss_core::api::{Constellation, SatId};
+
+use crate::orbits::beidou::{
+    BeidouBroadcastNavigationData, BeidouClockCorrection, BeidouEphemeris,
+    BeidouIonosphericCorrection, BeidouSignalHealth, BeidouSystemTime,
+};
+use crate::time::{resolve_beidou_week_rollover, RolloverResolutionError};
 
 const BEIDOU_D2_PAGE_BITS: usize = 300;
 const BEIDOU_D2_PREAMBLE: u16 = 0b111_0001_0010;
@@ -85,6 +91,23 @@ pub enum BeidouD2EphemerisRejectionReason {
 pub struct BeidouD2EphemerisRejection {
     pub reason: BeidouD2EphemerisRejectionReason,
     pub page_number: u8,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BeidouD2NavigationRejectionReason {
+    InvalidSatelliteId,
+    DuplicatePage,
+    AmbiguousWeekRollover,
+    InvalidWeekRollover,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BeidouD2NavigationRejection {
+    pub reason: BeidouD2NavigationRejectionReason,
+    pub sat: Option<SatId>,
+    pub page_number: Option<u8>,
+    pub incoming_sow_s: Option<u32>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -203,6 +226,42 @@ pub fn decode_beidou_d2_ephemeris_pages(
         builder.merge(page)?;
     }
     Ok(builder.try_build())
+}
+
+pub fn decode_beidou_d2_broadcast_navigation_data(
+    sat: SatId,
+    pages: &[BeidouD2Page],
+) -> Result<Option<BeidouBroadcastNavigationData>, BeidouD2NavigationRejection> {
+    decode_beidou_d2_broadcast_navigation_data_inner(sat, pages, None)
+}
+
+pub fn decode_beidou_d2_broadcast_navigation_data_with_reference_week(
+    sat: SatId,
+    pages: &[BeidouD2Page],
+    reference_week: u32,
+) -> Result<Option<BeidouBroadcastNavigationData>, BeidouD2NavigationRejection> {
+    decode_beidou_d2_broadcast_navigation_data_inner(sat, pages, Some(reference_week))
+}
+
+fn decode_beidou_d2_broadcast_navigation_data_inner(
+    sat: SatId,
+    pages: &[BeidouD2Page],
+    reference_week: Option<u32>,
+) -> Result<Option<BeidouBroadcastNavigationData>, BeidouD2NavigationRejection> {
+    if sat.constellation != Constellation::Beidou {
+        return Err(BeidouD2NavigationRejection {
+            reason: BeidouD2NavigationRejectionReason::InvalidSatelliteId,
+            sat: Some(sat),
+            page_number: None,
+            incoming_sow_s: None,
+        });
+    }
+
+    let mut builder = BeidouD2NavigationBuilder::new(sat).with_reference_week(reference_week);
+    for page in pages {
+        builder.merge(page)?;
+    }
+    builder.try_build_checked()
 }
 
 fn normalize_bits(bits: &[u8]) -> Result<[u8; BEIDOU_D2_PAGE_BITS], BeidouD2PageRejection> {
@@ -476,6 +535,164 @@ fn duplicate_ephemeris_page(page_number: u8) -> BeidouD2EphemerisRejection {
     }
 }
 
+#[derive(Debug, Default, Clone)]
+struct BeidouD2NavigationBuilder {
+    sat: Option<SatId>,
+    reference_week: Option<u32>,
+    seen_pages: [bool; 11],
+    clock_status: Option<BeidouD2ClockStatusPage>,
+    ionosphere: Option<BeidouD2IonosphericPage>,
+    clock_correction: Option<BeidouD2ClockCorrectionPage>,
+    clock_continuation: Option<BeidouD2ClockContinuationPage>,
+    pages: Vec<BeidouD2Page>,
+}
+
+impl BeidouD2NavigationBuilder {
+    fn new(sat: SatId) -> Self {
+        Self { sat: Some(sat), ..Self::default() }
+    }
+
+    fn with_reference_week(mut self, reference_week: Option<u32>) -> Self {
+        self.reference_week = reference_week;
+        self
+    }
+
+    fn merge(&mut self, page: &BeidouD2Page) -> Result<(), BeidouD2NavigationRejection> {
+        if self.seen_pages[usize::from(page.page_number)] {
+            return Err(BeidouD2NavigationRejection {
+                reason: BeidouD2NavigationRejectionReason::DuplicatePage,
+                sat: self.sat,
+                page_number: Some(page.page_number),
+                incoming_sow_s: Some(page.sow_s),
+            });
+        }
+        self.seen_pages[usize::from(page.page_number)] = true;
+
+        match page.page_number {
+            1 => self.clock_status = decode_beidou_d2_clock_status_page(page),
+            2 => self.ionosphere = decode_beidou_d2_ionospheric_page(page),
+            3 => self.clock_correction = decode_beidou_d2_clock_correction_page(page),
+            4 => self.clock_continuation = decode_beidou_d2_clock_continuation_page(page),
+            _ => {}
+        }
+        self.pages.push(page.clone());
+        Ok(())
+    }
+
+    fn try_build_checked(
+        &self,
+    ) -> Result<Option<BeidouBroadcastNavigationData>, BeidouD2NavigationRejection> {
+        let Some(sat) = self.sat else {
+            return Ok(None);
+        };
+        let Some(clock_status) = self.clock_status else {
+            return Ok(None);
+        };
+        let Some(ionosphere) = self.ionosphere else {
+            return Ok(None);
+        };
+        let Some(clock_correction) = self.clock_correction else {
+            return Ok(None);
+        };
+        let Some(clock_continuation) = self.clock_continuation else {
+            return Ok(None);
+        };
+        let ephemeris = decode_beidou_d2_ephemeris_pages(&self.pages).map_err(|error| {
+            BeidouD2NavigationRejection {
+                reason: BeidouD2NavigationRejectionReason::DuplicatePage,
+                sat: self.sat,
+                page_number: Some(error.page_number),
+                incoming_sow_s: None,
+            }
+        })?;
+        let Some(ephemeris) = ephemeris else {
+            return Ok(None);
+        };
+
+        let bdt = self.resolved_bdt(clock_status)?;
+        let af1_raw = (u64::from(clock_correction.af1_msb4) << 18)
+            | (u64::from(clock_continuation.af1_middle6) << 12)
+            | u64::from(clock_continuation.af1_lsb12);
+        let clock = BeidouClockCorrection {
+            toc_s: clock_status.toc_s,
+            aodc: clock_status.aodc,
+            af0: clock_correction.af0,
+            af1: signed_from_unsigned(af1_raw, 22) as f64 * 2f64.powi(-50),
+            af2: clock_continuation.af2,
+            tgd1_s: clock_status.tgd1_s,
+            tgd2_s: clock_status.tgd2_s,
+        };
+
+        Ok(Some(BeidouBroadcastNavigationData {
+            sat,
+            bdt,
+            urai: clock_status.urai,
+            signal_health: clock_status.signal_health,
+            clock,
+            ephemeris: BeidouEphemeris {
+                sat,
+                aode: ephemeris.aode,
+                toe_s: ephemeris.toe_s,
+                sqrt_a: ephemeris.sqrt_a,
+                e: ephemeris.e,
+                i0: ephemeris.i0,
+                idot: ephemeris.idot,
+                omega0: ephemeris.omega0,
+                omegadot: ephemeris.omegadot,
+                w: ephemeris.w,
+                m0: ephemeris.m0,
+                delta_n: ephemeris.delta_n,
+                cuc: ephemeris.cuc,
+                cus: ephemeris.cus,
+                crc: ephemeris.crc,
+                crs: ephemeris.crs,
+                cic: ephemeris.cic,
+                cis: ephemeris.cis,
+            },
+            ionosphere: ionosphere.ionosphere,
+        }))
+    }
+
+    fn resolved_bdt(
+        &self,
+        clock_status: BeidouD2ClockStatusPage,
+    ) -> Result<BeidouSystemTime, BeidouD2NavigationRejection> {
+        let Some(reference_week) = self.reference_week else {
+            return Ok(clock_status.bdt);
+        };
+        let resolution = resolve_beidou_week_rollover(clock_status.bdt.week, reference_week)
+            .map_err(|error| self.week_rollover_rejection(error, clock_status.bdt.sow_s))?;
+        let Ok(week) = u16::try_from(resolution.week) else {
+            return Err(self.week_rollover_rejection(
+                RolloverResolutionError::TruncatedValueOutOfRange,
+                clock_status.bdt.sow_s,
+            ));
+        };
+        Ok(BeidouSystemTime { week, sow_s: clock_status.bdt.sow_s })
+    }
+
+    fn week_rollover_rejection(
+        &self,
+        error: RolloverResolutionError,
+        incoming_sow_s: u32,
+    ) -> BeidouD2NavigationRejection {
+        BeidouD2NavigationRejection {
+            reason: match error {
+                RolloverResolutionError::AmbiguousReference => {
+                    BeidouD2NavigationRejectionReason::AmbiguousWeekRollover
+                }
+                RolloverResolutionError::InvalidCycle
+                | RolloverResolutionError::TruncatedValueOutOfRange => {
+                    BeidouD2NavigationRejectionReason::InvalidWeekRollover
+                }
+            },
+            sat: self.sat,
+            page_number: Some(1),
+            incoming_sow_s: Some(incoming_sow_s),
+        }
+    }
+}
+
 fn set_unsigned_bits(bits: &mut [u8; BEIDOU_D2_PAGE_BITS], start: usize, len: usize, value: u64) {
     for offset in 0..len {
         let shift = len - offset - 1;
@@ -489,6 +706,7 @@ mod tests {
         bch_syndrome, decode_beidou_d2_page, set_unsigned_bits, BeidouD2PageRejectionReason,
         BEIDOU_D2_PAGE_BITS, BEIDOU_D2_PREAMBLE,
     };
+    use bijux_gnss_core::api::{Constellation, SatId};
 
     fn set_common_header(bits: &mut [u8; BEIDOU_D2_PAGE_BITS], page_number: u8, sow_s: u32) {
         set_unsigned_bits(bits, 1, 11, u64::from(BEIDOU_D2_PREAMBLE));
@@ -558,8 +776,60 @@ mod tests {
         bits
     }
 
+    fn clock_status_page_bits() -> [u8; BEIDOU_D2_PAGE_BITS] {
+        let mut bits = [0_u8; BEIDOU_D2_PAGE_BITS];
+        set_common_header(&mut bits, 1, 345_678);
+        set_unsigned_bits(&mut bits, 47, 1, 0);
+        set_unsigned_bits(&mut bits, 48, 5, 17);
+        set_unsigned_bits(&mut bits, 61, 4, 5);
+        set_unsigned_bits(&mut bits, 65, 13, 1_234);
+        set_unsigned_bits(&mut bits, 78, 5, 0b10_101);
+        set_unsigned_bits(&mut bits, 91, 12, 0x5A5);
+        set_signed_bits(&mut bits, 103, 10, -77);
+        set_signed_bits(&mut bits, 121, 10, 55);
+        apply_bch_parity(&mut bits);
+        bits
+    }
+
+    fn ionospheric_page_bits() -> [u8; BEIDOU_D2_PAGE_BITS] {
+        let mut bits = [0_u8; BEIDOU_D2_PAGE_BITS];
+        set_common_header(&mut bits, 2, 345_681);
+        set_split_signed_bits(&mut bits, &[(47, 6), (61, 2)], -12);
+        set_signed_bits(&mut bits, 63, 8, 23);
+        set_signed_bits(&mut bits, 71, 8, -34);
+        set_split_signed_bits(&mut bits, &[(79, 4), (91, 4)], 45);
+        set_signed_bits(&mut bits, 95, 8, -56);
+        set_signed_bits(&mut bits, 103, 8, 67);
+        set_split_signed_bits(&mut bits, &[(111, 2), (121, 6)], -78);
+        set_signed_bits(&mut bits, 127, 8, 89);
+        apply_bch_parity(&mut bits);
+        bits
+    }
+
+    fn clock_correction_page_bits() -> [u8; BEIDOU_D2_PAGE_BITS] {
+        let mut bits = [0_u8; BEIDOU_D2_PAGE_BITS];
+        set_common_header(&mut bits, 3, 345_684);
+        set_split_signed_bits(&mut bits, &[(91, 12), (121, 12)], -0x12_345);
+        set_unsigned_bits(&mut bits, 133, 4, 0b1010);
+        apply_bch_parity(&mut bits);
+        bits
+    }
+
     fn decoded_page(bits: &[u8; BEIDOU_D2_PAGE_BITS]) -> super::BeidouD2Page {
         decode_beidou_d2_page(bits).expect("valid D2 page")
+    }
+
+    fn decoded_navigation_pages() -> Vec<super::BeidouD2Page> {
+        let mut pages = vec![
+            decoded_page(&clock_status_page_bits()),
+            decoded_page(&ionospheric_page_bits()),
+            decoded_page(&clock_correction_page_bits()),
+            decoded_page(&clock_continuation_page_bits()),
+        ];
+        for page_number in 5..=10 {
+            pages.push(decoded_page(&ephemeris_page_bits(page_number)));
+        }
+        pages
     }
 
     fn clock_continuation_page_bits() -> [u8; BEIDOU_D2_PAGE_BITS] {
@@ -683,17 +953,7 @@ mod tests {
 
     #[test]
     fn clock_status_page_decodes_bdt_clock_and_delays() {
-        let mut bits = [0_u8; BEIDOU_D2_PAGE_BITS];
-        set_common_header(&mut bits, 1, 345_678);
-        set_unsigned_bits(&mut bits, 47, 1, 0);
-        set_unsigned_bits(&mut bits, 48, 5, 17);
-        set_unsigned_bits(&mut bits, 61, 4, 5);
-        set_unsigned_bits(&mut bits, 65, 13, 1_234);
-        set_unsigned_bits(&mut bits, 78, 5, 0b10_101);
-        set_unsigned_bits(&mut bits, 91, 12, 0x5A5);
-        set_signed_bits(&mut bits, 103, 10, -77);
-        set_signed_bits(&mut bits, 121, 10, 55);
-        apply_bch_parity(&mut bits);
+        let bits = clock_status_page_bits();
         let page = decode_beidou_d2_page(&bits).expect("valid clock page");
 
         let clock = super::decode_beidou_d2_clock_status_page(&page).expect("page 1");
@@ -710,17 +970,7 @@ mod tests {
 
     #[test]
     fn ionospheric_page_decodes_broadcast_coefficients() {
-        let mut bits = [0_u8; BEIDOU_D2_PAGE_BITS];
-        set_common_header(&mut bits, 2, 345_681);
-        set_split_signed_bits(&mut bits, &[(47, 6), (61, 2)], -12);
-        set_signed_bits(&mut bits, 63, 8, 23);
-        set_signed_bits(&mut bits, 71, 8, -34);
-        set_split_signed_bits(&mut bits, &[(79, 4), (91, 4)], 45);
-        set_signed_bits(&mut bits, 95, 8, -56);
-        set_signed_bits(&mut bits, 103, 8, 67);
-        set_split_signed_bits(&mut bits, &[(111, 2), (121, 6)], -78);
-        set_signed_bits(&mut bits, 127, 8, 89);
-        apply_bch_parity(&mut bits);
+        let bits = ionospheric_page_bits();
         let page = decode_beidou_d2_page(&bits).expect("valid ionosphere page");
 
         let ionosphere = super::decode_beidou_d2_ionospheric_page(&page).expect("page 2");
@@ -737,11 +987,7 @@ mod tests {
 
     #[test]
     fn clock_correction_page_decodes_af0_and_af1_high_bits() {
-        let mut bits = [0_u8; BEIDOU_D2_PAGE_BITS];
-        set_common_header(&mut bits, 3, 345_684);
-        set_split_signed_bits(&mut bits, &[(91, 12), (121, 12)], -0x12_345);
-        set_unsigned_bits(&mut bits, 133, 4, 0b1010);
-        apply_bch_parity(&mut bits);
+        let bits = clock_correction_page_bits();
         let page = decode_beidou_d2_page(&bits).expect("valid clock correction page");
 
         let correction = super::decode_beidou_d2_clock_correction_page(&page).expect("page 3");
@@ -852,5 +1098,91 @@ mod tests {
 
         assert_eq!(rejection.reason, super::BeidouD2EphemerisRejectionReason::DuplicatePage);
         assert_eq!(rejection.page_number, 5);
+    }
+
+    #[test]
+    fn broadcast_navigation_assembles_complete_d2_record() {
+        let sat = SatId { constellation: Constellation::Beidou, prn: 3 };
+        let pages = decoded_navigation_pages();
+
+        let navigation = super::decode_beidou_d2_broadcast_navigation_data(sat, &pages)
+            .expect("navigation assembly")
+            .expect("complete navigation");
+
+        let af1_raw = (0b1010_u64 << 18) | (0b10_1010_u64 << 12) | 0x5A5;
+
+        assert_eq!(navigation.sat, sat);
+        assert_eq!(navigation.bdt.week, 1_234);
+        assert_eq!(navigation.bdt.sow_s, 345_678);
+        assert_eq!(navigation.urai, 5);
+        assert!(navigation.signal_health.autonomous_satellite_good);
+        assert_eq!(navigation.clock.aodc, 17);
+        assert_eq!(navigation.clock.af0, -0x12_345_i64 as f64 * 2f64.powi(-33));
+        assert_eq!(
+            navigation.clock.af1,
+            super::signed_from_unsigned(af1_raw, 22) as f64 * 2f64.powi(-50)
+        );
+        assert_eq!(navigation.clock.af2, -321.0 * 2f64.powi(-66));
+        assert_eq!(navigation.clock.tgd1_s, -77.0e-10);
+        assert!((navigation.clock.tgd2_s - 55.0e-10).abs() < 1.0e-18);
+        assert_eq!(navigation.ephemeris.sat, sat);
+        assert_eq!(navigation.ephemeris.aode, 19);
+        assert_eq!(navigation.ephemeris.toe_s, 0x1_2345_u64 as f64 * 8.0);
+        assert_eq!(navigation.ionosphere.alpha0, -12.0 * 2f64.powi(-30));
+    }
+
+    #[test]
+    fn broadcast_navigation_waits_for_complete_d2_page_set() {
+        let sat = SatId { constellation: Constellation::Beidou, prn: 3 };
+        let mut pages = decoded_navigation_pages();
+        pages.pop();
+
+        let navigation = super::decode_beidou_d2_broadcast_navigation_data(sat, &pages)
+            .expect("incomplete navigation");
+
+        assert!(navigation.is_none());
+    }
+
+    #[test]
+    fn broadcast_navigation_rejects_duplicate_d2_page() {
+        let sat = SatId { constellation: Constellation::Beidou, prn: 3 };
+        let mut pages = decoded_navigation_pages();
+        pages.push(decoded_page(&ephemeris_page_bits(7)));
+
+        let rejection = super::decode_beidou_d2_broadcast_navigation_data(sat, &pages)
+            .expect_err("duplicate page rejection");
+
+        assert_eq!(rejection.reason, super::BeidouD2NavigationRejectionReason::DuplicatePage);
+        assert_eq!(rejection.page_number, Some(7));
+    }
+
+    #[test]
+    fn broadcast_navigation_rejects_non_beidou_satellite_id() {
+        let sat = SatId { constellation: Constellation::Gps, prn: 3 };
+        let pages = decoded_navigation_pages();
+
+        let rejection = super::decode_beidou_d2_broadcast_navigation_data(sat, &pages)
+            .expect_err("satellite rejection");
+
+        assert_eq!(rejection.reason, super::BeidouD2NavigationRejectionReason::InvalidSatelliteId);
+        assert_eq!(rejection.sat, Some(sat));
+    }
+
+    #[test]
+    fn broadcast_navigation_resolves_truncated_beidou_week() {
+        let sat = SatId { constellation: Constellation::Beidou, prn: 3 };
+        let mut pages = decoded_navigation_pages();
+        let mut page_bits = clock_status_page_bits();
+        set_unsigned_bits(&mut page_bits, 65, 13, 4);
+        apply_bch_parity(&mut page_bits);
+        pages[0] = decoded_page(&page_bits);
+
+        let navigation = super::decode_beidou_d2_broadcast_navigation_data_with_reference_week(
+            sat, &pages, 8_190,
+        )
+        .expect("navigation assembly")
+        .expect("complete navigation");
+
+        assert_eq!(navigation.bdt.week, 8_196);
     }
 }
