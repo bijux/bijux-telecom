@@ -2309,6 +2309,17 @@ mod tests {
         assert!(sats.iter().all(|sat| sat["carrier_phase_sigma_cycles"].as_f64().is_some()));
         assert!(sats.iter().all(|sat| sat["doppler_sigma_hz"].as_f64().is_some()));
         assert!(sats.iter().all(|sat| sat["cn0_sigma_dbhz"].as_f64().is_some()));
+        assert!(sats.iter().all(|sat| {
+            let covariance = &sat["measurement_covariance"];
+            covariance["status"].as_str() == Some("positive_semidefinite")
+                && covariance["code_phase_m2"].as_f64().is_some_and(|value| value > 0.0)
+                && covariance["carrier_phase_m2"].as_f64().is_some_and(|value| value > 0.0)
+                && covariance["doppler_hz2"].as_f64().is_some_and(|value| value > 0.0)
+                && covariance["code_carrier_m2"].as_f64()
+                    == covariance["carrier_code_m2"].as_f64()
+                && covariance["carrier_doppler_m_hz"].as_f64()
+                    == covariance["doppler_carrier_hz_m"].as_f64()
+        }));
         assert!(sats.iter().all(|sat| sat["observation_lock_state"]
             .as_str()
             .is_some_and(|state| !state.is_empty())));

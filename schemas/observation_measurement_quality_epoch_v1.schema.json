@@ -72,6 +72,33 @@
         "cycle_slip": { "type": "boolean" }
       }
     },
+    "ObservationMeasurementCovariance": {
+      "type": "object",
+      "required": [
+        "code_phase_m2",
+        "code_carrier_m2",
+        "code_doppler_m_hz",
+        "carrier_code_m2",
+        "carrier_phase_m2",
+        "carrier_doppler_m_hz",
+        "doppler_code_hz_m",
+        "doppler_carrier_hz_m",
+        "doppler_hz2",
+        "status"
+      ],
+      "properties": {
+        "code_phase_m2": { "type": "number", "exclusiveMinimum": 0 },
+        "code_carrier_m2": { "type": "number" },
+        "code_doppler_m_hz": { "type": "number" },
+        "carrier_code_m2": { "type": "number" },
+        "carrier_phase_m2": { "type": "number", "exclusiveMinimum": 0 },
+        "carrier_doppler_m_hz": { "type": "number" },
+        "doppler_code_hz_m": { "type": "number" },
+        "doppler_carrier_hz_m": { "type": "number" },
+        "doppler_hz2": { "type": "number", "exclusiveMinimum": 0 },
+        "status": { "type": "string", "const": "positive_semidefinite" }
+      }
+    },
     "ObservationMeasurementQualitySatellite": {
       "type": "object",
       "required": [
@@ -84,6 +111,7 @@
         "carrier_phase_sigma_cycles",
         "doppler_sigma_hz",
         "cn0_sigma_dbhz",
+        "measurement_covariance",
         "lock_flags",
         "observation_lock_state",
         "observation_lock_reason",
@@ -104,6 +132,12 @@
         "carrier_phase_sigma_cycles": { "type": ["number", "null"], "minimum": 0 },
         "doppler_sigma_hz": { "type": ["number", "null"], "minimum": 0 },
         "cn0_sigma_dbhz": { "type": ["number", "null"], "minimum": 0 },
+        "measurement_covariance": {
+          "anyOf": [
+            { "$ref": "#/definitions/ObservationMeasurementCovariance" },
+            { "type": "null" }
+          ]
+        },
         "lock_flags": { "$ref": "#/definitions/LockFlags" },
         "observation_lock_state": { "type": "string" },
         "observation_lock_reason": { "type": ["string", "null"] },

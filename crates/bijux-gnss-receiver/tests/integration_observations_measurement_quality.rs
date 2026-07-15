@@ -210,6 +210,16 @@ fn measurement_quality_reports_supported_signal_bands() {
         assert!(sat.carrier_phase_sigma_cycles.is_some_and(|sigma| sigma > 0.0), "{sat:?}");
         assert!(sat.doppler_sigma_hz.is_some_and(|sigma| sigma > 0.0), "{sat:?}");
         assert!(sat.cn0_sigma_dbhz.is_some_and(|sigma| sigma > 0.0), "{sat:?}");
+        let covariance = sat.measurement_covariance.expect("measurement covariance");
+        assert_eq!(
+            covariance.status,
+            bijux_gnss_core::api::ObservationCovarianceStatus::PositiveSemidefinite
+        );
+        assert!(covariance.code_phase_m2 > 0.0, "{covariance:?}");
+        assert!(covariance.carrier_phase_m2 > 0.0, "{covariance:?}");
+        assert!(covariance.doppler_hz2 > 0.0, "{covariance:?}");
+        assert_eq!(covariance.code_carrier_m2, covariance.carrier_code_m2);
+        assert_eq!(covariance.carrier_doppler_m_hz, covariance.doppler_carrier_hz_m);
         assert!(!sat.observation_lock_state.is_empty(), "{sat:?}");
     }
 
