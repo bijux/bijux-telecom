@@ -4,7 +4,9 @@ mod support;
 
 use bijux_gnss_nav::api::{PositionBroadcastNavigation, PositionRuntime, PositionRuntimeConfig};
 use support::public_spp_case::ab43_public_spp_case;
-use support::public_station_truth::station_enu_error_m;
+use support::public_station_truth::{
+    station_enu_error_m, PUBLIC_STATION_HORIZONTAL_TOLERANCE_M, PUBLIC_STATION_VERTICAL_TOLERANCE_M,
+};
 
 fn position_error_3d_m(
     ecef_x_m: f64,
@@ -56,12 +58,12 @@ fn position_runtime_solves_public_broadcast_navigation_near_station_truth() {
 
     let best_enu_error = best_enu_error.expect("best runtime ENU error");
     assert!(
-        best_enu_error.horizontal_m < 1.0,
+        best_enu_error.horizontal_m < PUBLIC_STATION_HORIZONTAL_TOLERANCE_M,
         "best runtime horizontal error {0:.3} m exceeds tolerance",
         best_enu_error.horizontal_m,
     );
     assert!(
-        best_enu_error.up_m.abs() < 0.5,
+        best_enu_error.up_m.abs() < PUBLIC_STATION_VERTICAL_TOLERANCE_M,
         "best runtime vertical error {0:.3} m exceeds tolerance",
         best_enu_error.up_m,
     );

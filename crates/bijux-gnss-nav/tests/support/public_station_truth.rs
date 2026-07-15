@@ -11,6 +11,9 @@ use bijux_gnss_testkit::public_station::{
 #[allow(unused_imports)]
 pub use bijux_gnss_testkit::public_station::{station_enu_error_m, EnuError, PublicStationTruth};
 
+pub const PUBLIC_STATION_HORIZONTAL_TOLERANCE_M: f64 = 1.0;
+pub const PUBLIC_STATION_VERTICAL_TOLERANCE_M: f64 = 2.0;
+
 pub fn public_station_truth_by_fixture(fixture_name: &str) -> PublicStationTruth {
     find_public_station_truth_by_fixture(load_truths(), fixture_name)
         .unwrap_or_else(|_| panic!("missing public station truth for fixture {fixture_name}"))

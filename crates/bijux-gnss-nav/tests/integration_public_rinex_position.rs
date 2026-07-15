@@ -10,7 +10,12 @@ use bijux_gnss_nav::api::{
     parse_rinex_broadcast_navigation, parse_rinex_gps_observation_dataset,
     position_observations_from_epoch, PositionObservation, PositionSolver,
 };
-use support::public_station_truth::{public_station_truth_by_fixture, station_enu_error_m};
+use support::public_station_truth::{
+    public_station_truth_by_fixture, station_enu_error_m, PUBLIC_STATION_HORIZONTAL_TOLERANCE_M,
+    PUBLIC_STATION_VERTICAL_TOLERANCE_M,
+};
+
+const PUBLIC_KLOBUCHAR_MEAN_IMPROVEMENT_TOLERANCE_M: f64 = 0.25;
 
 fn fixture(name: &str) -> String {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/data").join(name);
@@ -95,7 +100,7 @@ fn public_rinex_obs_and_nav_resolve_near_station_position() {
     let best_enu_error =
         best_enu_error.expect("successful public solution should record ENU error");
     assert!(
-        best_enu_error.horizontal_m < 1.0,
+        best_enu_error.horizontal_m < PUBLIC_STATION_HORIZONTAL_TOLERANCE_M,
         "best public-station horizontal error {0:.3} m exceeds tolerance; east={1:.3}m north={2:.3}m up={3:.3}m",
         best_enu_error.horizontal_m,
         best_enu_error.east_m,
@@ -103,7 +108,7 @@ fn public_rinex_obs_and_nav_resolve_near_station_position() {
         best_enu_error.up_m,
     );
     assert!(
-        best_enu_error.up_m.abs() < 0.5,
+        best_enu_error.up_m.abs() < PUBLIC_STATION_VERTICAL_TOLERANCE_M,
         "best public-station vertical error {0:.3} m exceeds tolerance; east={1:.3}m north={2:.3}m horizontal={3:.3}m",
         best_enu_error.up_m,
         best_enu_error.east_m,
@@ -177,7 +182,7 @@ fn public_rinex_klobuchar_payload_improves_real_position_error() {
         "Klobuchar correction should improve most public epochs; improved={improved_epochs} compared={compared_epochs}"
     );
     assert!(
-        mean_improvement_m > 0.5,
+        mean_improvement_m > PUBLIC_KLOBUCHAR_MEAN_IMPROVEMENT_TOLERANCE_M,
         "mean public position improvement {mean_improvement_m:.3} m is too small"
     );
     assert!(

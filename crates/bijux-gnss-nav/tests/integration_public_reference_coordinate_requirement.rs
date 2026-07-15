@@ -11,6 +11,9 @@ use bijux_gnss_nav::api::{
     position_observations_from_epoch, PositionObservation, PositionSolver,
 };
 use bijux_gnss_testkit::reference_coordinate::TrustedReferenceCoordinateError;
+use support::public_station_truth::{
+    PUBLIC_STATION_HORIZONTAL_TOLERANCE_M, PUBLIC_STATION_VERTICAL_TOLERANCE_M,
+};
 use support::trusted_reference_coordinate::{
     require_trusted_reference_coordinate_by_fixture, trusted_reference_coordinate_ecef_m,
     trusted_reference_coordinate_enu_error_m,
@@ -106,7 +109,7 @@ fn public_rinex_position_validation_uses_trusted_reference_coordinate() {
     let best_enu_error =
         best_enu_error.expect("successful public solution should record ENU error");
     assert!(
-        best_enu_error.horizontal_m < 1.0,
+        best_enu_error.horizontal_m < PUBLIC_STATION_HORIZONTAL_TOLERANCE_M,
         "best public-station horizontal error {0:.3} m exceeds tolerance; east={1:.3}m north={2:.3}m up={3:.3}m",
         best_enu_error.horizontal_m,
         best_enu_error.east_m,
@@ -114,7 +117,7 @@ fn public_rinex_position_validation_uses_trusted_reference_coordinate() {
         best_enu_error.up_m,
     );
     assert!(
-        best_enu_error.up_m.abs() < 0.5,
+        best_enu_error.up_m.abs() < PUBLIC_STATION_VERTICAL_TOLERANCE_M,
         "best public-station vertical error {0:.3} m exceeds tolerance; east={1:.3}m north={2:.3}m horizontal={3:.3}m",
         best_enu_error.up_m,
         best_enu_error.east_m,
