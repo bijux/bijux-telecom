@@ -4,8 +4,9 @@ use std::collections::BTreeMap;
 
 use bijux_gnss_core::api::{AmbiguityId, ObsEpoch, ObsSatellite, ObservationStatus, SigId};
 use bijux_gnss_nav::api::{
-    RtkDoubleDifferenceObservation, RtkEpochAlignmentEvidence, RtkSingleDifferenceObservation,
-    RTK_EPOCH_ALIGNMENT_TOLERANCE_S,
+    RtkDoubleDifferenceObservation, RtkEpochAlignmentEvidence,
+    RtkSingleDifferenceCovarianceEvidence, RtkSingleDifferenceObservation,
+    RtkSourceObservationVariance, RTK_EPOCH_ALIGNMENT_TOLERANCE_S,
 };
 
 pub(crate) fn single_differences_from_epochs(
@@ -52,6 +53,7 @@ pub(crate) fn single_differences_from_epochs(
                 delta_s,
                 tolerance_s: RTK_EPOCH_ALIGNMENT_TOLERANCE_S,
             },
+            covariance_evidence: covariance_evidence(rover_observation, base_observation),
             code_m: rover_observation.pseudorange_m.0 - base_observation.pseudorange_m.0,
             phase_cycles: rover_observation.carrier_phase_cycles.0
                 - base_observation.carrier_phase_cycles.0,
@@ -143,6 +145,36 @@ fn usable_for_single_difference(observation: &ObsSatellite) -> bool {
         && observation.pseudorange_m.0.is_finite()
         && observation.carrier_phase_cycles.0.is_finite()
         && observation.doppler_hz.0.is_finite()
+}
+
+fn covariance_evidence(
+    rover_observation: &ObsSatellite,
+    base_observation: &ObsSatellite,
+) -> RtkSingleDifferenceCovarianceEvidence {
+    RtkSingleDifferenceCovarianceEvidence {
+        rover: source_variance(rover_observation),
+        base: source_variance(base_observation),
+        rover_base_code_covariance_m2: 0.0,
+        rover_base_phase_covariance_cycles2: 0.0,
+        rover_base_doppler_covariance_hz2: 0.0,
+        shared_code_covariance_m2: 0.0,
+        shared_phase_covariance_cycles2: 0.0,
+        shared_doppler_covariance_hz2: 0.0,
+    }
+}
+
+fn source_variance(observation: &ObsSatellite) -> RtkSourceObservationVariance {
+    RtkSourceObservationVariance {
+        code_m2: observation.pseudorange_var_m2,
+        phase_cycles2: observation.carrier_phase_var_cycles2,
+        doppler_hz2: observation.doppler_var_hz2,
+        shared_clock_code_m2: observation
+            .error_model
+            .as_ref()
+            .map(|model| model.clock_error_m.0.powi(2))
+            .filter(|variance| variance.is_finite() && *variance >= 0.0)
+            .unwrap_or(0.0),
+    }
 }
 
 fn ambiguity_id(observation: &ObsSatellite) -> AmbiguityId {

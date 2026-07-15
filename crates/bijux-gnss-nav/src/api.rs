@@ -161,11 +161,15 @@ pub use crate::estimation::rtk::quality::{
 pub use crate::estimation::rtk::single_difference::{
     choose_rtk_single_difference_reference_signal,
     choose_rtk_single_difference_reference_signals_by_constellation, rtk_epoch_alignment_evidence,
-    rtk_single_difference_residual_metrics,
+    rtk_single_difference_code_covariance_matrix, rtk_single_difference_doppler_covariance_matrix,
+    rtk_single_difference_phase_covariance_matrix, rtk_single_difference_residual_metrics,
     rtk_single_difference_residual_metrics_with_antenna_corrections,
-    rtk_single_differences_from_aligned_obs_epochs, rtk_single_differences_from_obs_epochs,
-    RtkEpochAlignmentEvidence, RtkSingleDifferenceObservation, RtkSingleDifferenceResidualMetrics,
-    RTK_EPOCH_ALIGNMENT_TOLERANCE_S,
+    rtk_single_differences_from_aligned_obs_epochs,
+    rtk_single_differences_from_aligned_obs_epochs_with_covariance,
+    rtk_single_differences_from_obs_epochs, RtkDifferencedCovarianceConfig,
+    RtkEpochAlignmentEvidence, RtkSingleDifferenceCovarianceEvidence,
+    RtkSingleDifferenceObservation, RtkSingleDifferenceResidualMetrics,
+    RtkSourceObservationVariance, RTK_EPOCH_ALIGNMENT_TOLERANCE_S,
 };
 /// RTK double-difference helpers.
 pub use crate::estimation::rtk::{

@@ -1,15 +1,17 @@
 #![allow(missing_docs)]
 
 use bijux_gnss_core::api::{
-    Constellation, GpsTime, LockFlags, ObsEpoch, ObsMetadata, ObsSatellite, ObsSignalTiming,
-    ObservationStatus, ReceiverRole, ReceiverSampleTrace, SatId, Seconds, SigId, SignalBand,
-    SignalSpec,
+    Constellation, GpsTime, LockFlags, MeasurementErrorModel, Meters, ObsEpoch, ObsMetadata,
+    ObsSatellite, ObsSignalTiming, ObservationStatus, ReceiverRole, ReceiverSampleTrace, SatId,
+    Seconds, SigId, SignalBand, SignalSpec,
 };
 use bijux_gnss_nav::api::{
     choose_rtk_single_difference_reference_signals_by_constellation, geodetic_to_ecef,
-    rtk_single_difference_residual_metrics, rtk_single_differences_from_aligned_obs_epochs,
+    rtk_single_difference_code_covariance_matrix, rtk_single_difference_residual_metrics,
+    rtk_single_differences_from_aligned_obs_epochs,
+    rtk_single_differences_from_aligned_obs_epochs_with_covariance,
     rtk_single_differences_from_obs_epochs, sat_state_gps_l1ca_at_receive_time, GpsEphemeris,
-    RTK_EPOCH_ALIGNMENT_TOLERANCE_S,
+    RtkDifferencedCovarianceConfig, RTK_EPOCH_ALIGNMENT_TOLERANCE_S,
 };
 
 const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
@@ -267,6 +269,47 @@ fn rtk_single_difference_builder_records_bounded_epoch_alignment() {
 }
 
 #[test]
+fn rtk_single_difference_covariance_matrix_matches_direct_transformation() {
+    let mut base = make_simple_epoch(3, Constellation::Gps, 20_000_000.0, 46.0);
+    base.role = ReceiverRole::Base;
+    let mut extra_base = make_simple_epoch(7, Constellation::Gps, 20_100_000.0, 42.0);
+    base.sats.push(extra_base.sats.remove(0));
+    let mut rover = make_simple_epoch(3, Constellation::Gps, 20_000_120.0, 46.0);
+    rover.role = ReceiverRole::Rover;
+    let mut extra_rover = make_simple_epoch(7, Constellation::Gps, 20_100_170.0, 42.0);
+    rover.sats.push(extra_rover.sats.remove(0));
+    for sat in &mut base.sats {
+        sat.pseudorange_var_m2 = 9.0;
+        sat.error_model = Some(shared_clock_model(1.0));
+    }
+    for sat in &mut rover.sats {
+        sat.pseudorange_var_m2 = 4.0;
+        sat.error_model = Some(shared_clock_model(2.0));
+    }
+
+    let observations = rtk_single_differences_from_aligned_obs_epochs_with_covariance(
+        &base,
+        &rover,
+        RTK_EPOCH_ALIGNMENT_TOLERANCE_S,
+        RtkDifferencedCovarianceConfig {
+            rover_base_code_correlation: 0.5,
+            shared_environment_code_m2: 0.25,
+            ..RtkDifferencedCovarianceConfig::default()
+        },
+    );
+    let covariance =
+        rtk_single_difference_code_covariance_matrix(&observations).expect("SD covariance");
+
+    assert_eq!(observations.len(), 2);
+    let rover_base_covariance_m2 = 0.5 * (4.0_f64 * 9.0).sqrt();
+    let expected_variance_m2 = 4.0 + 9.0 - 2.0 * rover_base_covariance_m2;
+    assert!((covariance[0][0] - expected_variance_m2).abs() < 1.0e-12);
+    assert!((covariance[1][1] - expected_variance_m2).abs() < 1.0e-12);
+    assert!((covariance[0][1] - 5.25).abs() < 1.0e-12);
+    assert_eq!(covariance[0][1], covariance[1][0]);
+}
+
+#[test]
 fn rtk_single_difference_residuals_use_carried_satellite_timing() {
     let base = geodetic_to_ecef(37.0, -122.0, 10.0);
     let rover = geodetic_to_ecef(37.0001, -121.9999, 12.0);
@@ -330,6 +373,15 @@ fn rtk_single_difference_residuals_use_carried_satellite_timing() {
         timed_metrics.residual_rms_m,
         uncorrected_metrics.residual_rms_m
     );
+}
+
+fn shared_clock_model(clock_error_m: f64) -> MeasurementErrorModel {
+    MeasurementErrorModel {
+        thermal_noise_m: Meters(0.0),
+        tracking_jitter_m: Meters(0.0),
+        multipath_proxy_m: Meters(0.0),
+        clock_error_m: Meters(clock_error_m),
+    }
 }
 
 #[test]

@@ -26,6 +26,57 @@ pub struct RtkEpochAlignmentEvidence {
     pub tolerance_s: f64,
 }
 
+/// Per-receiver measurement variance evidence used before differencing.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq)]
+pub struct RtkSourceObservationVariance {
+    /// Code variance in square meters.
+    pub code_m2: f64,
+    /// Carrier phase variance in square cycles.
+    pub phase_cycles2: f64,
+    /// Doppler variance in square hertz.
+    pub doppler_hz2: f64,
+    /// Receiver-clock code covariance shared by same-receiver satellites.
+    pub shared_clock_code_m2: f64,
+}
+
+/// Configurable covariance terms applied when forming rover-minus-base differences.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq)]
+pub struct RtkDifferencedCovarianceConfig {
+    /// Correlation coefficient between rover and base code errors for the same signal.
+    pub rover_base_code_correlation: f64,
+    /// Correlation coefficient between rover and base carrier-phase errors for the same signal.
+    pub rover_base_phase_correlation: f64,
+    /// Correlation coefficient between rover and base Doppler errors for the same signal.
+    pub rover_base_doppler_correlation: f64,
+    /// Code covariance shared between different single differences, such as residual atmosphere.
+    pub shared_environment_code_m2: f64,
+    /// Carrier-phase covariance shared between different single differences.
+    pub shared_environment_phase_cycles2: f64,
+    /// Doppler covariance shared between different single differences.
+    pub shared_environment_doppler_hz2: f64,
+}
+
+/// Source and covariance evidence for one rover-minus-base single difference.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq)]
+pub struct RtkSingleDifferenceCovarianceEvidence {
+    /// Rover source variance evidence.
+    pub rover: RtkSourceObservationVariance,
+    /// Base source variance evidence.
+    pub base: RtkSourceObservationVariance,
+    /// Rover/base code covariance subtracted by the single difference.
+    pub rover_base_code_covariance_m2: f64,
+    /// Rover/base phase covariance subtracted by the single difference.
+    pub rover_base_phase_covariance_cycles2: f64,
+    /// Rover/base Doppler covariance subtracted by the single difference.
+    pub rover_base_doppler_covariance_hz2: f64,
+    /// Cross-satellite code covariance shared by single differences in this epoch.
+    pub shared_code_covariance_m2: f64,
+    /// Cross-satellite phase covariance shared by single differences in this epoch.
+    pub shared_phase_covariance_cycles2: f64,
+    /// Cross-satellite Doppler covariance shared by single differences in this epoch.
+    pub shared_doppler_covariance_hz2: f64,
+}
+
 /// RTK single-difference observation formed as rover minus base for one signal.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RtkSingleDifferenceObservation {
@@ -46,6 +97,9 @@ pub struct RtkSingleDifferenceObservation {
     /// Base/rover epoch alignment evidence used before differencing.
     #[serde(default)]
     pub epoch_alignment: RtkEpochAlignmentEvidence,
+    /// Source covariance evidence used to form the single-difference variances.
+    #[serde(default)]
+    pub covariance_evidence: RtkSingleDifferenceCovarianceEvidence,
     /// Single-difference code observation in meters.
     pub code_m: f64,
     /// Single-difference carrier phase observation in cycles.
@@ -104,6 +158,13 @@ impl ArtifactPayloadValidate for RtkSingleDifferenceObservation {
                 "single-difference base/rover epoch alignment is invalid",
             ));
         }
+        if !single_difference_covariance_evidence_is_valid(&self.covariance_evidence) {
+            events.push(DiagnosticEvent::new(
+                DiagnosticSeverity::Error,
+                "RTK_SD_COVARIANCE_EVIDENCE_INVALID",
+                "single-difference covariance evidence is invalid",
+            ));
+        }
         if self.code_variance_m2 < 0.0 || self.phase_variance_cycles2 < 0.0 {
             events.push(DiagnosticEvent::new(
                 DiagnosticSeverity::Error,
@@ -135,9 +196,27 @@ pub fn rtk_single_differences_from_aligned_obs_epochs(
     rover: &ObsEpoch,
     tolerance_s: f64,
 ) -> Vec<RtkSingleDifferenceObservation> {
+    rtk_single_differences_from_aligned_obs_epochs_with_covariance(
+        base,
+        rover,
+        tolerance_s,
+        RtkDifferencedCovarianceConfig::default(),
+    )
+}
+
+/// Build RTK single differences with explicit covariance correlation terms.
+pub fn rtk_single_differences_from_aligned_obs_epochs_with_covariance(
+    base: &ObsEpoch,
+    rover: &ObsEpoch,
+    tolerance_s: f64,
+    covariance_config: RtkDifferencedCovarianceConfig,
+) -> Vec<RtkSingleDifferenceObservation> {
     let Some(epoch_alignment) = epoch_alignment_evidence(base, rover, tolerance_s) else {
         return Vec::new();
     };
+    if !differenced_covariance_config_is_valid(&covariance_config) {
+        return Vec::new();
+    }
 
     let mut base_by_signal: BTreeMap<SigId, &ObsSatellite> = BTreeMap::new();
     for sat in &base.sats {
@@ -155,14 +234,8 @@ pub fn rtk_single_differences_from_aligned_obs_epochs(
             continue;
         }
 
-        let rover_code_variance_m2 =
-            observed_or_modeled_variance_m2(rover_sat, MeasurementKind::Code);
-        let base_code_variance_m2 =
-            observed_or_modeled_variance_m2(base_sat, MeasurementKind::Code);
-        let rover_phase_variance_cycles2 =
-            observed_or_modeled_variance_m2(rover_sat, MeasurementKind::Phase);
-        let base_phase_variance_cycles2 =
-            observed_or_modeled_variance_m2(base_sat, MeasurementKind::Phase);
+        let covariance_evidence =
+            single_difference_covariance_evidence(rover_sat, base_sat, &covariance_config);
 
         out.push(RtkSingleDifferenceObservation {
             sig: rover_sat.signal_id,
@@ -173,11 +246,12 @@ pub fn rtk_single_differences_from_aligned_obs_epochs(
             base_pseudorange_m: base_sat.pseudorange_m.0,
             base_signal_timing: base_sat.timing,
             epoch_alignment,
+            covariance_evidence,
             code_m: rover_sat.pseudorange_m.0 - base_sat.pseudorange_m.0,
             phase_cycles: rover_sat.carrier_phase_cycles.0 - base_sat.carrier_phase_cycles.0,
             doppler_hz: rover_sat.doppler_hz.0 - base_sat.doppler_hz.0,
-            code_variance_m2: rover_code_variance_m2 + base_code_variance_m2,
-            phase_variance_cycles2: rover_phase_variance_cycles2 + base_phase_variance_cycles2,
+            code_variance_m2: single_difference_code_variance_m2(&covariance_evidence),
+            phase_variance_cycles2: single_difference_phase_variance_cycles2(&covariance_evidence),
             ambiguity_rover: ambiguity_id_from_satellite(rover_sat),
             ambiguity_base: ambiguity_id_from_satellite(base_sat),
         });
@@ -379,12 +453,228 @@ fn observed_or_modeled_variance_m2(sat: &ObsSatellite, measurement: MeasurementK
     let observed = match measurement {
         MeasurementKind::Code => sat.pseudorange_var_m2,
         MeasurementKind::Phase => sat.carrier_phase_var_cycles2,
+        MeasurementKind::Doppler => sat.doppler_var_hz2,
     };
     if observed > 0.0 {
         observed
     } else {
         modeled_variance_m2(sat.cn0_dbhz, sat.elevation_deg, measurement)
     }
+}
+
+/// Build the code covariance matrix for an ordered set of single differences.
+pub fn rtk_single_difference_code_covariance_matrix(
+    observations: &[RtkSingleDifferenceObservation],
+) -> Option<Vec<Vec<f64>>> {
+    single_difference_covariance_matrix(observations, MeasurementKind::Code)
+}
+
+/// Build the carrier-phase covariance matrix for an ordered set of single differences.
+pub fn rtk_single_difference_phase_covariance_matrix(
+    observations: &[RtkSingleDifferenceObservation],
+) -> Option<Vec<Vec<f64>>> {
+    single_difference_covariance_matrix(observations, MeasurementKind::Phase)
+}
+
+/// Build the Doppler covariance matrix for an ordered set of single differences.
+pub fn rtk_single_difference_doppler_covariance_matrix(
+    observations: &[RtkSingleDifferenceObservation],
+) -> Option<Vec<Vec<f64>>> {
+    single_difference_covariance_matrix(observations, MeasurementKind::Doppler)
+}
+
+fn single_difference_covariance_evidence(
+    rover_sat: &ObsSatellite,
+    base_sat: &ObsSatellite,
+    config: &RtkDifferencedCovarianceConfig,
+) -> RtkSingleDifferenceCovarianceEvidence {
+    let rover = source_observation_variance(rover_sat);
+    let base = source_observation_variance(base_sat);
+    RtkSingleDifferenceCovarianceEvidence {
+        rover,
+        base,
+        rover_base_code_covariance_m2: correlated_covariance(
+            config.rover_base_code_correlation,
+            rover.code_m2,
+            base.code_m2,
+        ),
+        rover_base_phase_covariance_cycles2: correlated_covariance(
+            config.rover_base_phase_correlation,
+            rover.phase_cycles2,
+            base.phase_cycles2,
+        ),
+        rover_base_doppler_covariance_hz2: correlated_covariance(
+            config.rover_base_doppler_correlation,
+            rover.doppler_hz2,
+            base.doppler_hz2,
+        ),
+        shared_code_covariance_m2: config.shared_environment_code_m2,
+        shared_phase_covariance_cycles2: config.shared_environment_phase_cycles2,
+        shared_doppler_covariance_hz2: config.shared_environment_doppler_hz2,
+    }
+}
+
+fn source_observation_variance(sat: &ObsSatellite) -> RtkSourceObservationVariance {
+    RtkSourceObservationVariance {
+        code_m2: observed_or_modeled_variance_m2(sat, MeasurementKind::Code),
+        phase_cycles2: observed_or_modeled_variance_m2(sat, MeasurementKind::Phase),
+        doppler_hz2: observed_or_modeled_variance_m2(sat, MeasurementKind::Doppler),
+        shared_clock_code_m2: sat
+            .error_model
+            .as_ref()
+            .map(|model| model.clock_error_m.0.powi(2))
+            .filter(|variance| variance.is_finite() && *variance >= 0.0)
+            .unwrap_or(0.0),
+    }
+}
+
+fn single_difference_code_variance_m2(evidence: &RtkSingleDifferenceCovarianceEvidence) -> f64 {
+    (evidence.rover.code_m2 + evidence.base.code_m2 - 2.0 * evidence.rover_base_code_covariance_m2)
+        .max(0.0)
+}
+
+fn single_difference_phase_variance_cycles2(
+    evidence: &RtkSingleDifferenceCovarianceEvidence,
+) -> f64 {
+    (evidence.rover.phase_cycles2 + evidence.base.phase_cycles2
+        - 2.0 * evidence.rover_base_phase_covariance_cycles2)
+        .max(0.0)
+}
+
+fn single_difference_doppler_variance_hz2(evidence: &RtkSingleDifferenceCovarianceEvidence) -> f64 {
+    (evidence.rover.doppler_hz2 + evidence.base.doppler_hz2
+        - 2.0 * evidence.rover_base_doppler_covariance_hz2)
+        .max(0.0)
+}
+
+fn single_difference_covariance_matrix(
+    observations: &[RtkSingleDifferenceObservation],
+    measurement: MeasurementKind,
+) -> Option<Vec<Vec<f64>>> {
+    let mut matrix = vec![vec![0.0; observations.len()]; observations.len()];
+    for (row, left) in observations.iter().enumerate() {
+        if !single_difference_covariance_evidence_is_valid(&left.covariance_evidence) {
+            return None;
+        }
+        for (col, right) in observations.iter().enumerate() {
+            if !single_difference_covariance_evidence_is_valid(&right.covariance_evidence) {
+                return None;
+            }
+            matrix[row][col] = if row == col {
+                single_difference_variance(&left.covariance_evidence, measurement)
+            } else {
+                shared_single_difference_covariance(
+                    &left.covariance_evidence,
+                    &right.covariance_evidence,
+                    measurement,
+                )
+            };
+        }
+    }
+    Some(matrix)
+}
+
+fn single_difference_variance(
+    evidence: &RtkSingleDifferenceCovarianceEvidence,
+    measurement: MeasurementKind,
+) -> f64 {
+    match measurement {
+        MeasurementKind::Code => single_difference_code_variance_m2(evidence),
+        MeasurementKind::Phase => single_difference_phase_variance_cycles2(evidence),
+        MeasurementKind::Doppler => single_difference_doppler_variance_hz2(evidence),
+    }
+}
+
+fn shared_single_difference_covariance(
+    left: &RtkSingleDifferenceCovarianceEvidence,
+    right: &RtkSingleDifferenceCovarianceEvidence,
+    measurement: MeasurementKind,
+) -> f64 {
+    match measurement {
+        MeasurementKind::Code => {
+            let rover_shared =
+                left.rover.shared_clock_code_m2.min(right.rover.shared_clock_code_m2);
+            let base_shared = left.base.shared_clock_code_m2.min(right.base.shared_clock_code_m2);
+            rover_shared
+                + base_shared
+                + left.shared_code_covariance_m2.min(right.shared_code_covariance_m2)
+        }
+        MeasurementKind::Phase => {
+            left.shared_phase_covariance_cycles2.min(right.shared_phase_covariance_cycles2)
+        }
+        MeasurementKind::Doppler => {
+            left.shared_doppler_covariance_hz2.min(right.shared_doppler_covariance_hz2)
+        }
+    }
+}
+
+fn differenced_covariance_config_is_valid(config: &RtkDifferencedCovarianceConfig) -> bool {
+    correlation_is_valid(config.rover_base_code_correlation)
+        && correlation_is_valid(config.rover_base_phase_correlation)
+        && correlation_is_valid(config.rover_base_doppler_correlation)
+        && nonnegative_finite(config.shared_environment_code_m2)
+        && nonnegative_finite(config.shared_environment_phase_cycles2)
+        && nonnegative_finite(config.shared_environment_doppler_hz2)
+}
+
+fn single_difference_covariance_evidence_is_valid(
+    evidence: &RtkSingleDifferenceCovarianceEvidence,
+) -> bool {
+    source_variance_is_valid(&evidence.rover)
+        && source_variance_is_valid(&evidence.base)
+        && covariance_is_bounded(
+            evidence.rover_base_code_covariance_m2,
+            evidence.rover.code_m2,
+            evidence.base.code_m2,
+        )
+        && covariance_is_bounded(
+            evidence.rover_base_phase_covariance_cycles2,
+            evidence.rover.phase_cycles2,
+            evidence.base.phase_cycles2,
+        )
+        && covariance_is_bounded(
+            evidence.rover_base_doppler_covariance_hz2,
+            evidence.rover.doppler_hz2,
+            evidence.base.doppler_hz2,
+        )
+        && nonnegative_finite(evidence.shared_code_covariance_m2)
+        && nonnegative_finite(evidence.shared_phase_covariance_cycles2)
+        && nonnegative_finite(evidence.shared_doppler_covariance_hz2)
+}
+
+fn source_variance_is_valid(source: &RtkSourceObservationVariance) -> bool {
+    nonnegative_finite(source.code_m2)
+        && nonnegative_finite(source.phase_cycles2)
+        && nonnegative_finite(source.doppler_hz2)
+        && nonnegative_finite(source.shared_clock_code_m2)
+        && source.shared_clock_code_m2 <= source.code_m2
+}
+
+fn correlated_covariance(correlation: f64, left_variance: f64, right_variance: f64) -> f64 {
+    if !correlation_is_valid(correlation) {
+        return 0.0;
+    }
+    covariance_bound(left_variance, right_variance).map(|bound| correlation * bound).unwrap_or(0.0)
+}
+
+fn covariance_is_bounded(covariance: f64, left_variance: f64, right_variance: f64) -> bool {
+    let Some(bound) = covariance_bound(left_variance, right_variance) else {
+        return covariance == 0.0;
+    };
+    covariance.is_finite() && covariance.abs() <= bound + 1.0e-12
+}
+
+fn covariance_bound(left_variance: f64, right_variance: f64) -> Option<f64> {
+    (nonnegative_finite(left_variance) && nonnegative_finite(right_variance))
+        .then_some((left_variance * right_variance).sqrt())
+}
+
+fn correlation_is_valid(value: f64) -> bool {
+    value.is_finite() && (-1.0..=1.0).contains(&value)
+}
+
+fn nonnegative_finite(value: f64) -> bool {
+    value.is_finite() && value >= 0.0
 }
 
 #[cfg(test)]
@@ -396,7 +686,8 @@ mod tests {
     use super::{
         geometric_range_m, rtk_single_difference_residual_metrics,
         rtk_single_difference_residual_metrics_with_antenna_corrections, RtkEpochAlignmentEvidence,
-        RtkSingleDifferenceObservation, RTK_EPOCH_ALIGNMENT_TOLERANCE_S, SPEED_OF_LIGHT_MPS,
+        RtkSingleDifferenceCovarianceEvidence, RtkSingleDifferenceObservation,
+        RtkSourceObservationVariance, RTK_EPOCH_ALIGNMENT_TOLERANCE_S, SPEED_OF_LIGHT_MPS,
     };
     use crate::estimation::rtk::antenna::modeled_pseudorange_with_antenna_corrections_m;
     use crate::estimation::rtk::antenna::RtkAntennaCorrectionConfig;
@@ -532,6 +823,26 @@ mod tests {
                 delta_s: 0.0,
                 tolerance_s: RTK_EPOCH_ALIGNMENT_TOLERANCE_S,
             },
+            covariance_evidence: RtkSingleDifferenceCovarianceEvidence {
+                rover: RtkSourceObservationVariance {
+                    code_m2: 0.5,
+                    phase_cycles2: 0.5,
+                    doppler_hz2: 1.0,
+                    shared_clock_code_m2: 0.0,
+                },
+                base: RtkSourceObservationVariance {
+                    code_m2: 0.5,
+                    phase_cycles2: 0.5,
+                    doppler_hz2: 1.0,
+                    shared_clock_code_m2: 0.0,
+                },
+                rover_base_code_covariance_m2: 0.0,
+                rover_base_phase_covariance_cycles2: 0.0,
+                rover_base_doppler_covariance_hz2: 0.0,
+                shared_code_covariance_m2: 0.0,
+                shared_phase_covariance_cycles2: 0.0,
+                shared_doppler_covariance_hz2: 0.0,
+            },
             code_m: rover_modeled - base_modeled,
             phase_cycles: 0.0,
             doppler_hz: 0.0,
@@ -590,6 +901,7 @@ fn modeled_variance_m2(
     let nominal_sigma = match measurement {
         MeasurementKind::Code => 10.0,
         MeasurementKind::Phase => 0.02,
+        MeasurementKind::Doppler => 5.0,
     };
     let sigma = nominal_sigma / (cn0_linear.sqrt() * elevation_weight);
     sigma * sigma
@@ -606,6 +918,7 @@ fn timing_is_invalid(timing: Option<ObsSignalTiming>) -> bool {
 enum MeasurementKind {
     Code,
     Phase,
+    Doppler,
 }
 
 fn modeled_pseudorange_m(
