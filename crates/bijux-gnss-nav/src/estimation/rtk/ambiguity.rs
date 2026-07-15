@@ -332,6 +332,219 @@ pub struct RtkConditionedBaselineSolution {
     pub covariance_enu_m2: [[f64; 3]; 3],
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct RtkAmbiguityHoldPolicy {
+    pub max_hold_age_epochs: u64,
+    pub max_float_integer_residual_cycles: f64,
+    pub max_normalized_residual: f64,
+    pub max_baseline_shift_m: f64,
+}
+
+impl Default for RtkAmbiguityHoldPolicy {
+    fn default() -> Self {
+        Self {
+            max_hold_age_epochs: 5,
+            max_float_integer_residual_cycles: 0.25,
+            max_normalized_residual: 3.0,
+            max_baseline_shift_m: 0.25,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RtkFixedAmbiguityHold {
+    pub accepted_epoch_idx: u64,
+    pub updated_epoch_idx: u64,
+    pub fixed_ids: Vec<RtkDoubleDifferenceAmbiguityId>,
+    pub fixed_integers: Vec<i64>,
+    pub ratio: Option<f64>,
+    pub conditioned_baseline: RtkConditionedBaselineSolution,
+    pub partial_selection: Option<RtkPartialAmbiguitySelection>,
+}
+
+impl ArtifactPayloadValidate for RtkFixedAmbiguityHold {
+    fn validate_payload(&self) -> Vec<DiagnosticEvent> {
+        let mut events = Vec::new();
+        if self.fixed_ids.is_empty() || self.fixed_ids.len() != self.fixed_integers.len() {
+            events.push(DiagnosticEvent::new(
+                DiagnosticSeverity::Error,
+                "RTK_FIXED_AMBIGUITY_HOLD_SHAPE_INVALID",
+                "held RTK fixed ambiguity IDs and integers must be nonempty and aligned",
+            ));
+        }
+        if let Some(ratio) = self.ratio {
+            if !ratio.is_finite() {
+                events.push(DiagnosticEvent::new(
+                    DiagnosticSeverity::Error,
+                    "RTK_FIXED_AMBIGUITY_HOLD_RATIO_INVALID",
+                    "held RTK fixed ambiguity ratio contains NaN/Inf",
+                ));
+            }
+        }
+        if !self.conditioned_baseline.enu_m.iter().all(|value| value.is_finite())
+            || !self
+                .conditioned_baseline
+                .covariance_enu_m2
+                .iter()
+                .flat_map(|row| row.iter())
+                .all(|value| value.is_finite())
+        {
+            events.push(DiagnosticEvent::new(
+                DiagnosticSeverity::Error,
+                "RTK_FIXED_AMBIGUITY_HOLD_BASELINE_INVALID",
+                "held RTK conditioned baseline contains NaN/Inf",
+            ));
+        }
+        if let Some(selection) = &self.partial_selection {
+            events.extend(selection.validate_payload());
+            if selection.selected_ids != self.fixed_ids {
+                events.push(DiagnosticEvent::new(
+                    DiagnosticSeverity::Error,
+                    "RTK_FIXED_AMBIGUITY_HOLD_SELECTION_MISMATCH",
+                    "held RTK partial selection must match fixed ambiguity IDs",
+                ));
+            }
+        }
+        events
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RtkAmbiguityHoldMonitor {
+    pub accepted: bool,
+    pub age_epochs: u64,
+    pub checked_count: usize,
+    pub missing_ids: Vec<RtkDoubleDifferenceAmbiguityId>,
+    pub max_abs_float_integer_residual_cycles: Option<f64>,
+    pub max_normalized_residual: Option<f64>,
+    pub baseline_shift_m: Option<f64>,
+    pub reasons: Vec<String>,
+}
+
+impl ArtifactPayloadValidate for RtkAmbiguityHoldMonitor {
+    fn validate_payload(&self) -> Vec<DiagnosticEvent> {
+        let mut events = Vec::new();
+        if let Some(residual) = self.max_abs_float_integer_residual_cycles {
+            if !residual.is_finite() || residual < 0.0 {
+                events.push(DiagnosticEvent::new(
+                    DiagnosticSeverity::Error,
+                    "RTK_HOLD_MONITOR_RESIDUAL_INVALID",
+                    "RTK hold monitor residual contains an invalid value",
+                ));
+            }
+        }
+        if let Some(residual) = self.max_normalized_residual {
+            if !residual.is_finite() || residual < 0.0 {
+                events.push(DiagnosticEvent::new(
+                    DiagnosticSeverity::Error,
+                    "RTK_HOLD_MONITOR_NORMALIZED_RESIDUAL_INVALID",
+                    "RTK hold monitor normalized residual contains an invalid value",
+                ));
+            }
+        }
+        if let Some(shift_m) = self.baseline_shift_m {
+            if !shift_m.is_finite() || shift_m < 0.0 {
+                events.push(DiagnosticEvent::new(
+                    DiagnosticSeverity::Error,
+                    "RTK_HOLD_MONITOR_BASELINE_SHIFT_INVALID",
+                    "RTK hold monitor baseline shift contains an invalid value",
+                ));
+            }
+        }
+        if !self.accepted && self.reasons.is_empty() {
+            events.push(DiagnosticEvent::new(
+                DiagnosticSeverity::Error,
+                "RTK_HOLD_MONITOR_REJECTION_REASON_MISSING",
+                "rejected RTK ambiguity hold monitor result must include a reason",
+            ));
+        }
+        events
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RtkAmbiguityHoldAction {
+    Float,
+    HoldStarted,
+    HoldContinued,
+    HoldRefreshed,
+    RolledBack,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RtkAppliedAmbiguityBaseline {
+    pub status: RtkAmbiguityFixStatus,
+    pub enu_m: [f64; 3],
+    pub covariance_enu_m2: [[f64; 3]; 3],
+}
+
+impl RtkAppliedAmbiguityBaseline {
+    fn float(solution: &RtkFloatBaselineSolution) -> Self {
+        Self {
+            status: RtkAmbiguityFixStatus::Float,
+            enu_m: solution.enu_m,
+            covariance_enu_m2: solution.covariance_enu_m2,
+        }
+    }
+
+    fn fixed(solution: RtkConditionedBaselineSolution) -> Self {
+        Self {
+            status: RtkAmbiguityFixStatus::Fixed,
+            enu_m: solution.enu_m,
+            covariance_enu_m2: solution.covariance_enu_m2,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RtkAmbiguityHoldUpdate {
+    pub epoch_idx: u64,
+    pub action: RtkAmbiguityHoldAction,
+    pub baseline: RtkAppliedAmbiguityBaseline,
+    pub held_fix: Option<RtkFixedAmbiguityHold>,
+    pub monitor: Option<RtkAmbiguityHoldMonitor>,
+    pub reasons: Vec<String>,
+}
+
+impl ArtifactPayloadValidate for RtkAmbiguityHoldUpdate {
+    fn validate_payload(&self) -> Vec<DiagnosticEvent> {
+        let mut events = Vec::new();
+        if !self.baseline.enu_m.iter().all(|value| value.is_finite())
+            || !self
+                .baseline
+                .covariance_enu_m2
+                .iter()
+                .flat_map(|row| row.iter())
+                .all(|value| value.is_finite())
+        {
+            events.push(DiagnosticEvent::new(
+                DiagnosticSeverity::Error,
+                "RTK_HOLD_UPDATE_BASELINE_INVALID",
+                "RTK ambiguity hold update baseline contains NaN/Inf",
+            ));
+        }
+        if matches!(self.action, RtkAmbiguityHoldAction::RolledBack) && self.reasons.is_empty() {
+            events.push(DiagnosticEvent::new(
+                DiagnosticSeverity::Error,
+                "RTK_HOLD_UPDATE_ROLLBACK_REASON_MISSING",
+                "RTK ambiguity hold rollback must include a reason",
+            ));
+        }
+        if let Some(hold) = &self.held_fix {
+            events.extend(hold.validate_payload());
+        }
+        if let Some(monitor) = &self.monitor {
+            events.extend(monitor.validate_payload());
+        }
+        events
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct RtkAmbiguityHoldState {
+    pub held_fix: Option<RtkFixedAmbiguityHold>,
+}
+
 /// Receiver-owned tracker for per-signal ambiguity state before double differencing.
 #[derive(Debug, Clone)]
 pub struct RtkAmbiguityTracker {

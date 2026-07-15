@@ -135,8 +135,10 @@ pub use crate::estimation::rtk::ambiguity::{
     rtk_select_partial_ambiguity_fix, rtk_select_partial_ambiguity_fix_with_evidence,
     rtk_transform_fixed_ambiguity_reference, rtk_transform_float_ambiguity_reference,
     rtk_transform_float_baseline_reference, RtkAmbiguityFixAudit, RtkAmbiguityFixPolicy,
-    RtkAmbiguityFixResult, RtkAmbiguityFixState, RtkAmbiguityFixStatus, RtkAmbiguityTracker,
-    RtkConditionedBaselineSolution, RtkDecorrelatedAmbiguityState, RtkDoubleDifferenceAmbiguityId,
+    RtkAmbiguityFixResult, RtkAmbiguityFixState, RtkAmbiguityFixStatus, RtkAmbiguityHoldAction,
+    RtkAmbiguityHoldMonitor, RtkAmbiguityHoldPolicy, RtkAmbiguityHoldState, RtkAmbiguityHoldUpdate,
+    RtkAmbiguityTracker, RtkAppliedAmbiguityBaseline, RtkConditionedBaselineSolution,
+    RtkDecorrelatedAmbiguityState, RtkDoubleDifferenceAmbiguityId, RtkFixedAmbiguityHold,
     RtkFloatAmbiguityState, RtkIntegerAmbiguityCandidate, RtkPartialAmbiguitySelection,
     RtkPartialAmbiguitySelectionCriterion, RtkRatioTestFixer,
 };

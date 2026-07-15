@@ -1,5 +1,6 @@
 #![allow(missing_docs)]
 
+use bijux_gnss_core::api::ArtifactPayloadValidate;
 use bijux_gnss_core::api::{Constellation, SatId, SigId, SignalBand};
 use bijux_gnss_nav::api::{
     rtk_ambiguity_state_from_fixed_solution, rtk_conditioned_baseline_from_fix_result,
@@ -10,8 +11,9 @@ use bijux_gnss_nav::api::{
     rtk_transform_fixed_ambiguity_reference, rtk_transform_float_ambiguity_reference,
     rtk_transform_float_baseline_reference, RtkAmbiguityFixPolicy, RtkAmbiguityFixResult,
     RtkAmbiguityFixState, RtkAmbiguityFixStatus, RtkDoubleDifferenceAmbiguityId,
-    RtkFloatAmbiguityEstimate, RtkFloatAmbiguityState, RtkFloatBaselineSolution,
-    RtkIntegerAmbiguityCandidate, RtkPartialAmbiguitySelectionCriterion, RtkRatioTestFixer,
+    RtkFixedAmbiguityHold, RtkFloatAmbiguityEstimate, RtkFloatAmbiguityState,
+    RtkFloatBaselineSolution, RtkIntegerAmbiguityCandidate, RtkPartialAmbiguitySelectionCriterion,
+    RtkRatioTestFixer,
 };
 use bijux_gnss_testkit::rtk_baseline::clean_gps_l1_short_baseline_case;
 
@@ -544,4 +546,39 @@ fn rtk_fix_result_conditioning_uses_only_selected_partial_ambiguities() {
     assert!((conditioned.enu_m[0] - 0.996).abs() < 1.0e-12);
     assert!((conditioned.enu_m[1] - 2.0).abs() < 1.0e-12);
     assert!((conditioned.enu_m[2] - 3.0).abs() < 1.0e-12);
+}
+
+#[test]
+fn rtk_fixed_ambiguity_hold_validation_requires_consistent_fixed_state() {
+    let hold = RtkFixedAmbiguityHold {
+        accepted_epoch_idx: 4,
+        updated_epoch_idx: 4,
+        fixed_ids: vec![gps_l1_dd_id(7, 3)],
+        fixed_integers: vec![0],
+        ratio: Some(f64::NAN),
+        conditioned_baseline: bijux_gnss_nav::api::RtkConditionedBaselineSolution {
+            enu_m: [f64::INFINITY, 2.0, 3.0],
+            covariance_enu_m2: [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+        },
+        partial_selection: Some(bijux_gnss_nav::api::RtkPartialAmbiguitySelection {
+            criterion: RtkPartialAmbiguitySelectionCriterion::LowestVariance,
+            requested_count: 1,
+            selected_count: 1,
+            excluded_count: 0,
+            selected_indices: vec![0],
+            excluded_indices: Vec::new(),
+            selected_ids: vec![gps_l1_dd_id(11, 3)],
+            excluded_ids: Vec::new(),
+            selected_variance_cycles2: vec![0.01],
+            excluded_variance_cycles2: Vec::new(),
+            max_selected_variance_cycles2: Some(0.01),
+            min_excluded_variance_cycles2: None,
+        }),
+    };
+
+    let events = hold.validate_payload();
+
+    assert!(events.iter().any(|event| event.code == "RTK_FIXED_AMBIGUITY_HOLD_RATIO_INVALID"));
+    assert!(events.iter().any(|event| event.code == "RTK_FIXED_AMBIGUITY_HOLD_BASELINE_INVALID"));
+    assert!(events.iter().any(|event| event.code == "RTK_FIXED_AMBIGUITY_HOLD_SELECTION_MISMATCH"));
 }
