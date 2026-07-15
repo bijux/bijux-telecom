@@ -11,7 +11,8 @@ use bijux_gnss_receiver::api::{
 };
 
 use support::tracking_truth::{
-    epoch_indices_with_lock_state, epoch_indices_with_lock_state_reason,
+    carrier_frequency_error_hz, code_phase_error_samples, epoch_indices_with_lock_state,
+    epoch_indices_with_lock_state_reason,
 };
 
 const REACQUISITION_PRELOCK_CN0_DBHZ: f32 = 60.0;
@@ -133,6 +134,33 @@ fn tracking_reacquires_after_bounded_signal_interruption() {
     assert!(
         stable_tracking_epochs >= REACQUISITION_STABLE_TRACKING_EPOCHS,
         "reacquisition must return to a stable tracking window after interruption: stable_tracking_epochs={stable_tracking_epochs}, epochs={epochs:?}"
+    );
+
+    let stable_reacquired_epochs = epochs[reacquired_index..]
+        .iter()
+        .filter(|epoch| {
+            epoch.sample_index >= interruption_end_sample
+                && epoch.lock_state == "tracking"
+                && epoch.pll_lock
+                && epoch.fll_lock
+                && !epoch.cycle_slip
+        })
+        .collect::<Vec<_>>();
+    let max_code_error_samples = stable_reacquired_epochs
+        .iter()
+        .map(|epoch| code_phase_error_samples(&config, epoch, 0.0))
+        .fold(0.0_f64, f64::max);
+    let max_carrier_error_hz = stable_reacquired_epochs
+        .iter()
+        .map(|epoch| carrier_frequency_error_hz(epoch, 0.0))
+        .fold(0.0_f64, f64::max);
+    assert!(
+        max_code_error_samples <= 2.0,
+        "reacquisition must settle on the returned signal code phase: max_code_error_samples={max_code_error_samples}, stable_reacquired_epochs={stable_reacquired_epochs:?}"
+    );
+    assert!(
+        max_carrier_error_hz <= 250.0,
+        "reacquisition must settle on the returned signal carrier: max_carrier_error_hz={max_carrier_error_hz}, stable_reacquired_epochs={stable_reacquired_epochs:?}"
     );
 }
 
