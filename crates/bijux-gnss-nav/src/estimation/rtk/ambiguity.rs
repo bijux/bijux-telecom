@@ -277,19 +277,49 @@ impl RtkAmbiguityTracker {
                 sig: sat.signal_id,
                 signal: format!("{:?}", sat.metadata.signal.band),
             };
+            let valid_arc_id = sat
+                .metadata
+                .carrier_phase_arc
+                .as_ref()
+                .filter(|arc| arc.valid_for_ambiguity)
+                .map(|arc| arc.id.clone());
+            let carrier_phase_usable =
+                sat.lock_flags.carrier_lock && !sat.lock_flags.cycle_slip && valid_arc_id.is_some();
             let state = self.states.entry(id.clone()).or_insert(AmbiguityState {
                 id,
                 float_cycles: sat.carrier_phase_cycles,
                 variance: 100.0,
-                status: AmbiguityStatus::Float,
+                status: if carrier_phase_usable {
+                    AmbiguityStatus::Float
+                } else {
+                    AmbiguityStatus::Unknown
+                },
                 last_update_epoch: epoch_idx,
+                carrier_phase_arc_id: valid_arc_id.clone(),
+                valid_for_carrier_phase_arc: carrier_phase_usable,
             });
-            if sat.lock_flags.cycle_slip || !sat.lock_flags.carrier_lock {
+            let arc_changed = state.carrier_phase_arc_id != valid_arc_id;
+            if !carrier_phase_usable {
                 state.status = AmbiguityStatus::Unknown;
                 state.float_cycles = sat.carrier_phase_cycles;
                 state.variance = 100.0;
-            } else {
+                state.carrier_phase_arc_id = valid_arc_id;
+                state.valid_for_carrier_phase_arc = false;
+                state.last_update_epoch = epoch_idx;
+            } else if arc_changed {
+                state.status = AmbiguityStatus::Float;
                 state.float_cycles = sat.carrier_phase_cycles;
+                state.variance = 100.0;
+                state.carrier_phase_arc_id = valid_arc_id;
+                state.valid_for_carrier_phase_arc = true;
+                state.last_update_epoch = epoch_idx;
+            } else {
+                if state.status == AmbiguityStatus::Unknown {
+                    state.status = AmbiguityStatus::Float;
+                    state.variance = 100.0;
+                }
+                state.float_cycles = sat.carrier_phase_cycles;
+                state.valid_for_carrier_phase_arc = true;
                 state.last_update_epoch = epoch_idx;
             }
         }

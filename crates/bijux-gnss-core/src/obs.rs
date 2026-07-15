@@ -1190,6 +1190,8 @@ pub struct AmbiguityState {
     pub variance: f64,
     pub status: AmbiguityStatus,
     pub last_update_epoch: u64,
+    pub carrier_phase_arc_id: Option<String>,
+    pub valid_for_carrier_phase_arc: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
