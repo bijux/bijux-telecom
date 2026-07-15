@@ -7,8 +7,8 @@
 
 use bijux_gnss_core::api::{
     CodeCarrierDivergence, DiagnosticEvent, DiagnosticSeverity, GpsTime, LockFlags, Meters,
-    ObsDecisionArtifact, ObsEpoch, ObsEpochManifest, ObsMetadata, ObsSatellite,
-    ObservationEpochDecision, ReceiverRole, SatObservationDecision, Seconds, SigId, TrackEpoch,
+    ObsEpoch, ObsEpochManifest, ObsMetadata, ObsSatellite, ObservationEpochDecision, ReceiverRole,
+    Seconds, SigId, TrackEpoch,
 };
 
 use crate::engine::receiver_config::ReceiverPipelineConfig;
@@ -95,6 +95,7 @@ mod carrier_phase;
 mod code_carrier_divergence;
 mod code_period_ambiguity;
 mod cycle_slip_fusion;
+mod decision_artifacts;
 mod labels;
 mod lock_state;
 mod measurement_quality;
@@ -111,6 +112,7 @@ use code_period_ambiguity::{
     resolve_integer_code_period_ambiguities, CODE_PERIOD_AMBIGUITY_EPS_S,
     CODE_PERIOD_AMBIGUITY_NON_UNIQUE,
 };
+pub use decision_artifacts::observation_decisions_from_epochs;
 pub use measurement_quality::{
     ObservationMeasurementQualityEpochReport, ObservationMeasurementQualitySatellite,
 };
@@ -702,44 +704,6 @@ pub fn observation_artifacts_from_tracking_results_with_gps_anchor(
         events: diagnostics,
         stats: StepStats::default(),
     }
-}
-
-pub fn observation_decisions_from_epochs(epochs: &[ObsEpoch]) -> Vec<ObsDecisionArtifact> {
-    epochs
-        .iter()
-        .map(|epoch| {
-            let artifact_id = epoch
-                .manifest
-                .as_ref()
-                .map(|manifest| manifest.artifact_id.clone())
-                .unwrap_or_else(|| format!("obs-epoch-{:010}", epoch.epoch_idx));
-            let mut reasons = Vec::new();
-            if let Some(reason) = &epoch.decision_reason {
-                reasons.push(reason.clone());
-            }
-            for sat in &epoch.sats {
-                reasons.extend(sat.observation_reject_reasons.clone());
-            }
-            reasons.sort();
-            reasons.dedup();
-            let accepted_sats = epoch
-                .sats
-                .iter()
-                .map(|sat| SatObservationDecision {
-                    sat: sat.signal_id.sat,
-                    status: sat.observation_status,
-                    reasons: sat.observation_reject_reasons.clone(),
-                })
-                .collect();
-            ObsDecisionArtifact {
-                artifact_id,
-                epoch_idx: epoch.epoch_idx,
-                decision: epoch.decision,
-                reasons,
-                accepted_sats,
-            }
-        })
-        .collect()
 }
 
 #[cfg(test)]
