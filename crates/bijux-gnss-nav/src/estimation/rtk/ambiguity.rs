@@ -436,7 +436,24 @@ pub fn rtk_float_ambiguity_state_from_baseline_solution(
 pub fn rtk_ambiguity_state_from_fixed_solution(
     result: &RtkAmbiguityFixResult,
 ) -> Option<(Vec<RtkDoubleDifferenceAmbiguityId>, Vec<i64>)> {
-    Some((result.selected_ids.clone()?, result.selected_integers.clone()?))
+    if result.status != RtkAmbiguityFixStatus::Fixed {
+        return None;
+    }
+    let selected_ids = result.selected_ids.clone()?;
+    let selected_integers = result.selected_integers.clone()?;
+    if selected_ids.is_empty()
+        || selected_ids.len() != selected_integers.len()
+        || selected_ids.len() != result.fixed_count
+    {
+        return None;
+    }
+    if let Some(selection) = &result.partial_selection {
+        if selection.selected_ids != selected_ids || selection.selected_count != selected_ids.len()
+        {
+            return None;
+        }
+    }
+    Some((selected_ids, selected_integers))
 }
 
 /// Transform fixed double-difference integer ambiguities to a different reference signal.

@@ -7,10 +7,10 @@ use bijux_gnss_nav::api::{
     rtk_integer_ambiguity_candidates, rtk_lambda_decorrelate,
     rtk_lambda_integer_ambiguity_candidates, rtk_select_partial_ambiguity_fix_with_evidence,
     rtk_transform_fixed_ambiguity_reference, rtk_transform_float_ambiguity_reference,
-    rtk_transform_float_baseline_reference, RtkAmbiguityFixPolicy, RtkAmbiguityFixState,
-    RtkAmbiguityFixStatus, RtkDoubleDifferenceAmbiguityId, RtkFloatAmbiguityEstimate,
-    RtkFloatAmbiguityState, RtkFloatBaselineSolution, RtkPartialAmbiguitySelectionCriterion,
-    RtkRatioTestFixer,
+    rtk_transform_float_baseline_reference, RtkAmbiguityFixPolicy, RtkAmbiguityFixResult,
+    RtkAmbiguityFixState, RtkAmbiguityFixStatus, RtkDoubleDifferenceAmbiguityId,
+    RtkFloatAmbiguityEstimate, RtkFloatAmbiguityState, RtkFloatBaselineSolution,
+    RtkIntegerAmbiguityCandidate, RtkPartialAmbiguitySelectionCriterion, RtkRatioTestFixer,
 };
 use bijux_gnss_testkit::rtk_baseline::clean_gps_l1_short_baseline_case;
 
@@ -304,6 +304,36 @@ fn rtk_ratio_test_fixer_reports_partial_fix_without_constraining_excluded_ambigu
     assert_eq!(selection.criterion, RtkPartialAmbiguitySelectionCriterion::LowestVariance);
     assert_eq!(audit.reason, "partial_fix");
     assert_eq!(audit.partial_selection, result.partial_selection);
+}
+
+#[test]
+fn rtk_fixed_solution_extraction_rejects_inconsistent_partial_selection() {
+    let float_state = RtkFloatAmbiguityState {
+        ids: vec![gps_l1_dd_id(7, 3), gps_l1_dd_id(11, 3)],
+        float_cycles: vec![0.01, 0.01],
+        covariance_cycles2: vec![vec![0.01, 0.0], vec![0.0, 100.0]],
+    };
+    let (_partial, selection) =
+        rtk_select_partial_ambiguity_fix_with_evidence(&float_state, 1).expect("partial selection");
+
+    let mismatched = RtkAmbiguityFixResult {
+        candidates: vec![RtkIntegerAmbiguityCandidate { integers: vec![0], cost: 0.01 }],
+        ratio: Some(100.0),
+        status: RtkAmbiguityFixStatus::Fixed,
+        fixed_count: 1,
+        selected_ids: Some(vec![gps_l1_dd_id(11, 3)]),
+        selected_integers: Some(vec![0]),
+        partial_selection: Some(selection.clone()),
+    };
+    let wrong_length = RtkAmbiguityFixResult {
+        selected_ids: Some(selection.selected_ids.clone()),
+        selected_integers: Some(vec![0, 1]),
+        partial_selection: Some(selection),
+        ..mismatched.clone()
+    };
+
+    assert!(rtk_ambiguity_state_from_fixed_solution(&mismatched).is_none());
+    assert!(rtk_ambiguity_state_from_fixed_solution(&wrong_length).is_none());
 }
 
 #[test]
