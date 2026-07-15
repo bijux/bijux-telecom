@@ -7,10 +7,10 @@ use bijux_gnss_core::api::{
 use bijux_gnss_receiver::api::{
     build_dd, build_sd, choose_ref_sat, rtk_ambiguity_state_from_fixed_solution,
     rtk_conditioned_baseline_from_fixed_ambiguities,
-    rtk_float_ambiguity_state_from_baseline_solution, rtk_transform_fixed_ambiguity_reference,
-    solve_float_baseline_dd, RtkAmbiguityFixPolicy, RtkAmbiguityFixState, RtkAmbiguityTracker,
-    RtkDoubleDifferenceAmbiguityId, RtkFloatAmbiguityEstimate, RtkFloatBaselineSolution,
-    RtkRatioTestFixer,
+    rtk_float_ambiguity_state_from_baseline_solution, rtk_lambda_integer_ambiguity_candidates,
+    rtk_transform_fixed_ambiguity_reference, solve_float_baseline_dd, RtkAmbiguityFixPolicy,
+    RtkAmbiguityFixState, RtkAmbiguityTracker, RtkDoubleDifferenceAmbiguityId,
+    RtkFloatAmbiguityEstimate, RtkFloatAmbiguityState, RtkFloatBaselineSolution, RtkRatioTestFixer,
 };
 use bijux_gnss_testkit::rtk_baseline::clean_gps_l1_short_baseline_case;
 
@@ -227,6 +227,23 @@ fn receiver_fixed_ambiguity_reference_transform_preserves_integer_arcs() {
 
     assert_eq!(ids, vec![gps_l1_dd_id(3, 11), gps_l1_dd_id(7, 11), gps_l1_dd_id(14, 11)]);
     assert_eq!(integers, vec![-35, -15, 15]);
+}
+
+#[test]
+fn receiver_lambda_integer_candidates_preserve_original_ambiguity_coordinates() {
+    let float_state = RtkFloatAmbiguityState {
+        ids: vec![gps_l1_dd_id(7, 3), gps_l1_dd_id(11, 3)],
+        float_cycles: vec![-0.5, -0.45],
+        covariance_cycles2: vec![vec![1.0, 0.8], vec![0.8, 1.0]],
+    };
+
+    let candidates = rtk_lambda_integer_ambiguity_candidates(&float_state, 3);
+
+    assert_eq!(
+        candidates.iter().map(|candidate| candidate.integers.clone()).collect::<Vec<_>>(),
+        vec![vec![0, 0], vec![-1, -1], vec![-1, 0]]
+    );
+    assert!(candidates.windows(2).all(|pair| pair[0].cost <= pair[1].cost));
 }
 
 #[test]
