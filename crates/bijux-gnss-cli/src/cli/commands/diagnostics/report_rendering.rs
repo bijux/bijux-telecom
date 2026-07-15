@@ -1,4 +1,6 @@
-fn operator_map_report() -> serde_json::Value {
+use super::*;
+
+pub(crate) fn operator_map_report() -> serde_json::Value {
     serde_json::json!({
         "schema_version": 1,
         "operator_map": [
@@ -31,14 +33,14 @@ fn operator_map_report() -> serde_json::Value {
     })
 }
 
-fn layered_report(critical: Vec<String>, details: serde_json::Value) -> serde_json::Value {
+pub(crate) fn layered_report(critical: Vec<String>, details: serde_json::Value) -> serde_json::Value {
     serde_json::json!({
         "critical": critical,
         "details": details
     })
 }
 
-fn summarize_critical_entries(
+pub(crate) fn summarize_critical_entries(
     entries: &[bijux_gnss_infra::api::core::DiagnosticSummaryEntry],
 ) -> Vec<String> {
     let mut critical = Vec::new();
@@ -51,7 +53,7 @@ fn summarize_critical_entries(
     critical
 }
 
-fn workflow_map_report() -> serde_json::Value {
+pub(crate) fn workflow_map_report() -> serde_json::Value {
     serde_json::json!({
         "schema_version": 1,
         "workflow": [
@@ -89,7 +91,7 @@ fn workflow_map_report() -> serde_json::Value {
     })
 }
 
-fn print_operator_map_table(report: &serde_json::Value) {
+pub(crate) fn print_operator_map_table(report: &serde_json::Value) {
     println!("operator workflow map");
     if let Some(rows) = report.get("operator_map").and_then(|v| v.as_array()) {
         for row in rows {
@@ -100,7 +102,7 @@ fn print_operator_map_table(report: &serde_json::Value) {
     }
 }
 
-fn write_diagnostics_report_artifact(
+pub(crate) fn write_diagnostics_report_artifact(
     common: &CommonArgs,
     command: &str,
     report: &serde_json::Value,
@@ -116,7 +118,7 @@ fn write_diagnostics_report_artifact(
     Ok(report_path)
 }
 
-fn print_workflow_table(report: &serde_json::Value) {
+pub(crate) fn print_workflow_table(report: &serde_json::Value) {
     println!("GNSS workflow map");
     if let Some(stages) = report.get("workflow").and_then(|v| v.as_array()) {
         for stage in stages {
@@ -127,7 +129,7 @@ fn print_workflow_table(report: &serde_json::Value) {
     }
 }
 
-fn print_diagnostics_summary_table(entries: Option<&Vec<serde_json::Value>>, top: usize) {
+pub(crate) fn print_diagnostics_summary_table(entries: Option<&Vec<serde_json::Value>>, top: usize) {
     println!("Diagnostics summary (top {}):", top);
     if let Some(items) = entries {
         for entry in items.iter().take(top.max(1)) {
@@ -139,7 +141,7 @@ fn print_diagnostics_summary_table(entries: Option<&Vec<serde_json::Value>>, top
     }
 }
 
-fn print_diagnostics_explain_table(report: &serde_json::Value) {
+pub(crate) fn print_diagnostics_explain_table(report: &serde_json::Value) {
     let command = report
         .get("replay_scope")
         .and_then(|v| v.get("command"))
@@ -166,7 +168,7 @@ fn print_diagnostics_explain_table(report: &serde_json::Value) {
     println!("corrupted_files\t{corrupted}");
 }
 
-fn print_verify_repro_table(report: &serde_json::Value) {
+pub(crate) fn print_verify_repro_table(report: &serde_json::Value) {
     let audit_ok = report.get("audit_ok").and_then(|v| v.as_bool()).unwrap_or(false);
     let fingerprint =
         report.get("replay_fingerprint").and_then(|v| v.as_str()).unwrap_or("missing");
@@ -176,7 +178,7 @@ fn print_verify_repro_table(report: &serde_json::Value) {
     println!("replay_fingerprint\t{fingerprint}");
 }
 
-fn print_compare_report_table(report: &serde_json::Value) {
+pub(crate) fn print_compare_report_table(report: &serde_json::Value) {
     let fingerprint_match = report
         .get("reproducibility")
         .and_then(|v| v.get("fingerprint_match"))
@@ -209,7 +211,7 @@ fn print_compare_report_table(report: &serde_json::Value) {
     println!("mean_cn0_delta_dbhz\t{cn0_delta:.6}");
 }
 
-fn print_replay_audit_table(report: &serde_json::Value) {
+pub(crate) fn print_replay_audit_table(report: &serde_json::Value) {
     let class = report.get("classification").and_then(|v| v.as_str()).unwrap_or("unknown");
     let baseline_command =
         report.get("baseline_command").and_then(|v| v.as_str()).unwrap_or("unknown");
@@ -226,7 +228,7 @@ fn print_replay_audit_table(report: &serde_json::Value) {
     println!("reasons\t{reasons}");
 }
 
-fn print_advanced_gate_table(report: &serde_json::Value) {
+pub(crate) fn print_advanced_gate_table(report: &serde_json::Value) {
     let mode = report.get("mode").and_then(|v| v.as_str()).unwrap_or("unknown");
     let passed = report.get("gate_passed").and_then(|v| v.as_bool()).unwrap_or(false);
     let maturity = report
@@ -245,7 +247,7 @@ fn print_advanced_gate_table(report: &serde_json::Value) {
     println!("claim_guard_supported\t{evidence_supported}");
 }
 
-fn print_artifact_inventory_table(report: &serde_json::Value) {
+pub(crate) fn print_artifact_inventory_table(report: &serde_json::Value) {
     println!("artifact inventory");
     if let Some(groups) = report.get("groups").and_then(|v| v.as_object()) {
         for (group, payload) in groups {
@@ -255,7 +257,7 @@ fn print_artifact_inventory_table(report: &serde_json::Value) {
     }
 }
 
-fn print_debug_plan_table(report: &serde_json::Value) {
+pub(crate) fn print_debug_plan_table(report: &serde_json::Value) {
     println!("debug plan");
     if let Some(stages) = report.get("stages").and_then(|v| v.as_array()) {
         for stage in stages {
@@ -267,7 +269,7 @@ fn print_debug_plan_table(report: &serde_json::Value) {
     }
 }
 
-fn print_benchmark_summary_table(report: &serde_json::Value) {
+pub(crate) fn print_benchmark_summary_table(report: &serde_json::Value) {
     let nav_epochs = report
         .get("summary")
         .and_then(|v| v.get("nav_epochs"))
@@ -282,7 +284,7 @@ fn print_benchmark_summary_table(report: &serde_json::Value) {
     println!("nav_epochs\t{nav_epochs}");
 }
 
-fn print_medium_gate_table(report: &serde_json::Value) {
+pub(crate) fn print_medium_gate_table(report: &serde_json::Value) {
     let passed = report.get("gate_passed").and_then(|v| v.as_bool()).unwrap_or(false);
     println!("gate_passed\t{passed}");
     let reasons = report
@@ -293,7 +295,7 @@ fn print_medium_gate_table(report: &serde_json::Value) {
     println!("reasons\t{reasons}");
 }
 
-fn print_operator_status_table(report: &serde_json::Value) {
+pub(crate) fn print_operator_status_table(report: &serde_json::Value) {
     let mode = report
         .get("status")
         .and_then(|v| v.get("run_state"))
@@ -314,7 +316,7 @@ fn print_operator_status_table(report: &serde_json::Value) {
     println!("evidence_state\t{evidence}");
 }
 
-fn print_channel_summary_table(report: &serde_json::Value) {
+pub(crate) fn print_channel_summary_table(report: &serde_json::Value) {
     let channels = report
         .get("summary")
         .and_then(|v| v.get("channel_count"))
@@ -329,14 +331,14 @@ fn print_channel_summary_table(report: &serde_json::Value) {
     println!("obs_epochs\t{epochs}");
 }
 
-fn print_export_bundle_table(report: &serde_json::Value) {
+pub(crate) fn print_export_bundle_table(report: &serde_json::Value) {
     let path = report.get("bundle_dir").and_then(|v| v.as_str()).unwrap_or("unknown");
     let files = report.get("file_count").and_then(|v| v.as_u64()).unwrap_or(0);
     println!("bundle_dir\t{path}");
     println!("file_count\t{files}");
 }
 
-fn print_machine_catalog_table(report: &serde_json::Value) {
+pub(crate) fn print_machine_catalog_table(report: &serde_json::Value) {
     println!("machine-readable report catalog");
     if let Some(rows) = report.get("reports").and_then(|v| v.as_array()) {
         for row in rows {
@@ -347,7 +349,7 @@ fn print_machine_catalog_table(report: &serde_json::Value) {
     }
 }
 
-fn print_api_parity_table(report: &serde_json::Value) {
+pub(crate) fn print_api_parity_table(report: &serde_json::Value) {
     println!("cli/api parity");
     if let Some(rows) = report.get("workflows").and_then(|v| v.as_array()) {
         for row in rows {
@@ -359,7 +361,7 @@ fn print_api_parity_table(report: &serde_json::Value) {
     }
 }
 
-fn print_expert_guide_table(report: &serde_json::Value) {
+pub(crate) fn print_expert_guide_table(report: &serde_json::Value) {
     println!("expert guide");
     if let Some(flows) = report.get("flows").and_then(|v| v.as_array()) {
         for flow in flows {
@@ -375,7 +377,7 @@ fn print_expert_guide_table(report: &serde_json::Value) {
     }
 }
 
-fn print_history_browse_table(report: &serde_json::Value) {
+pub(crate) fn print_history_browse_table(report: &serde_json::Value) {
     println!("history browse");
     if let Some(runs) = report.get("runs").and_then(|v| v.as_array()) {
         for run in runs {
@@ -387,7 +389,7 @@ fn print_history_browse_table(report: &serde_json::Value) {
     }
 }
 
-fn print_route_explain_table(report: &serde_json::Value) {
+pub(crate) fn print_route_explain_table(report: &serde_json::Value) {
     let topic = report.get("topic").and_then(|v| v.as_str()).unwrap_or("unknown");
     println!("route topic\t{topic}");
     if let Some(steps) = report.get("steps").and_then(|v| v.as_array()) {
@@ -399,7 +401,7 @@ fn print_route_explain_table(report: &serde_json::Value) {
     }
 }
 
-fn print_operator_workflow_table(report: &serde_json::Value) {
+pub(crate) fn print_operator_workflow_table(report: &serde_json::Value) {
     let profile = report.get("profile").and_then(|v| v.as_str()).unwrap_or("unknown");
     println!("operator workflow\t{profile}");
     if let Some(steps) = report.get("steps").and_then(|v| v.as_array()) {
@@ -411,7 +413,7 @@ fn print_operator_workflow_table(report: &serde_json::Value) {
     }
 }
 
-fn print_operator_ergonomics_table(report: &serde_json::Value) {
+pub(crate) fn print_operator_ergonomics_table(report: &serde_json::Value) {
     let score = report.get("ergonomics_score").and_then(|v| v.as_f64()).unwrap_or(0.0);
     let gate = report
         .get("rigor")
@@ -428,7 +430,7 @@ fn print_operator_ergonomics_table(report: &serde_json::Value) {
     println!("evidence_state\t{evidence}");
 }
 
-fn print_audit_trail_table(report: &serde_json::Value) {
+pub(crate) fn print_audit_trail_table(report: &serde_json::Value) {
     let replay = report
         .get("replay_controls")
         .and_then(|v| v.get("deterministic"))
@@ -443,7 +445,7 @@ fn print_audit_trail_table(report: &serde_json::Value) {
     println!("policy_exceptions\t{exceptions}");
 }
 
-fn print_dependency_trace_table(report: &serde_json::Value) {
+pub(crate) fn print_dependency_trace_table(report: &serde_json::Value) {
     let toolchain = report
         .get("tooling")
         .and_then(|v| v.get("toolchain"))
@@ -461,7 +463,7 @@ fn print_dependency_trace_table(report: &serde_json::Value) {
     println!("environment_references\t{env_refs}");
 }
 
-fn print_trust_class_table(report: &serde_json::Value) {
+pub(crate) fn print_trust_class_table(report: &serde_json::Value) {
     let class = report.get("trust_class").and_then(|v| v.as_str()).unwrap_or("unknown");
     let rationale = report
         .get("rationale")
@@ -472,7 +474,7 @@ fn print_trust_class_table(report: &serde_json::Value) {
     println!("rationale\t{rationale}");
 }
 
-fn print_integrity_focus_table(report: &serde_json::Value) {
+pub(crate) fn print_integrity_focus_table(report: &serde_json::Value) {
     let class = report.get("trust_class").and_then(|v| v.as_str()).unwrap_or("unknown");
     let score = report.get("engineering_trust_score").and_then(|v| v.as_f64()).unwrap_or(0.0);
     let blockers =
@@ -481,4 +483,3 @@ fn print_integrity_focus_table(report: &serde_json::Value) {
     println!("engineering_trust_score\t{score:.2}");
     println!("blocking_findings\t{blockers}");
 }
-
