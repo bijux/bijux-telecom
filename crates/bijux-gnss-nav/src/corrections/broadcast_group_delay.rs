@@ -119,17 +119,19 @@ pub fn gps_broadcast_group_delay_code_bias_m(sig: SigId, ephemeris: &GpsEphemeri
     if sig.sat != ephemeris.sat {
         return None;
     }
-    let carrier_hz = gps_group_delay_carrier_hz(sig.band)?.value();
+    let carrier_hz = gps_group_delay_carrier_hz(sig.band, sig.code)?.value();
     let l1_hz = GPS_L1_CA_CARRIER_HZ.value();
     let scale = (l1_hz * l1_hz) / (carrier_hz * carrier_hz) - 1.0;
     Some(SPEED_OF_LIGHT_MPS * ephemeris.tgd * scale)
 }
 
-fn gps_group_delay_carrier_hz(band: SignalBand) -> Option<FreqHz> {
-    match band {
-        SignalBand::L1 => Some(GPS_L1_CA_CARRIER_HZ),
-        SignalBand::L2 => Some(GPS_L2_PY_CARRIER_HZ),
-        SignalBand::L5 => Some(GPS_L5_CARRIER_HZ),
+fn gps_group_delay_carrier_hz(band: SignalBand, code: SignalCode) -> Option<FreqHz> {
+    match (band, code) {
+        (SignalBand::L1, SignalCode::Ca | SignalCode::Unknown) => Some(GPS_L1_CA_CARRIER_HZ),
+        (SignalBand::L2, SignalCode::Py | SignalCode::L2C) => Some(GPS_L2_PY_CARRIER_HZ),
+        (SignalBand::L5, SignalCode::L5I | SignalCode::L5Q | SignalCode::Unknown) => {
+            Some(GPS_L5_CARRIER_HZ)
+        }
         _ => None,
     }
 }
@@ -401,6 +403,14 @@ mod tests {
             gps_broadcast_group_delay_code_bias_m(normalized_l5, &ephemeris),
             gps_broadcast_group_delay_code_bias_m(explicit_l5, &ephemeris)
         );
+    }
+
+    #[test]
+    fn gps_bias_rejects_ambiguous_l2_unknown_code() {
+        let ephemeris = sample_gps_ephemeris(12_000.0, 8.0e-9);
+        let ambiguous_l2 = gps_signal(7, SignalBand::L2, SignalCode::Unknown);
+
+        assert_eq!(gps_broadcast_group_delay_code_bias_m(ambiguous_l2, &ephemeris), None);
     }
 
     #[test]
