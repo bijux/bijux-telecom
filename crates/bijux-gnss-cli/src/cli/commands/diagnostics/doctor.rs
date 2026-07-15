@@ -1,4 +1,6 @@
-pub(super) fn handle_doctor(command: GnssCommand) -> Result<()> {
+use super::*;
+
+pub(crate) fn handle_doctor(command: GnssCommand) -> Result<()> {
     let GnssCommand::Doctor { common, file } = command else {
         bail!("invalid command for handler");
     };
