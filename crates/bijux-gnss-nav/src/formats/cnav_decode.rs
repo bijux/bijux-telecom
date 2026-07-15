@@ -2,12 +2,16 @@
 
 use serde::{Deserialize, Serialize};
 
+use bijux_gnss_core::api::{Constellation, SatId};
+
 const GPS_CNAV_BITS: usize = 300;
 const GPS_CNAV_DATA_BITS: usize = 276;
 const GPS_CNAV_CRC_BITS: usize = 24;
 const GPS_CNAV_PREAMBLE: u8 = 0b1000_1011;
 const CRC24Q_POLY: u32 = 0x18_64CFB;
 const CRC24Q_MASK: u32 = 0xFF_FFFF;
+const GPS_CNAV_SEMI_MAJOR_AXIS_REFERENCE_M: f64 = 26_559_710.0;
+const GPS_CNAV_OMEGADOT_REFERENCE_RAD_PER_S: f64 = -2.6e-9 * std::f64::consts::PI;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GpsCnavCommon {
@@ -110,6 +114,57 @@ pub struct GpsCnavClockCorrectionMessage {
     pub group_delay: GpsCnavGroupDelayCorrection,
     pub ionosphere: GpsCnavIonosphericCorrection,
     pub propagation_week_modulo_256: u8,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GpsCnavEphemeris {
+    pub week: u16,
+    pub top_s: f64,
+    pub toe_s: f64,
+    pub semi_major_axis_m: f64,
+    pub a_dot_mps: f64,
+    pub delta_n0_rad_per_s: f64,
+    pub delta_n0_dot_rad_per_s2: f64,
+    pub m0_rad: f64,
+    pub e: f64,
+    pub w_rad: f64,
+    pub omega0_rad: f64,
+    pub omegadot_rad_per_s: f64,
+    pub i0_rad: f64,
+    pub idot_rad_per_s: f64,
+    pub cis_rad: f64,
+    pub cic_rad: f64,
+    pub crs_m: f64,
+    pub crc_m: f64,
+    pub cus_rad: f64,
+    pub cuc_rad: f64,
+    pub uraed_index: u8,
+    pub signal_health: GpsCnavSignalHealth,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GpsCnavBroadcastNavigationData {
+    pub sat: SatId,
+    pub ephemeris: GpsCnavEphemeris,
+    pub clock: GpsCnavClockCorrection,
+    pub accuracy: GpsCnavNonElevationAccuracy,
+    pub group_delay: GpsCnavGroupDelayCorrection,
+    pub ionosphere: GpsCnavIonosphericCorrection,
+    pub propagation_week_modulo_256: u8,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GpsCnavNavigationRejectionReason {
+    MixedPrn,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GpsCnavNavigationRejection {
+    pub reason: GpsCnavNavigationRejectionReason,
+    pub expected_prn: Option<u8>,
+    pub incoming_prn: Option<u8>,
+    pub message_type: Option<u8>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -312,6 +367,78 @@ pub fn decode_gps_cnav_clock_correction_message(
     })
 }
 
+pub fn decode_gps_cnav_broadcast_navigation(
+    messages: &[GpsCnavMessage],
+) -> Result<Option<GpsCnavBroadcastNavigationData>, GpsCnavNavigationRejection> {
+    let mut prn = None;
+    let mut ephemeris_message = None;
+    let mut orbit_message = None;
+    let mut clock_message = None;
+
+    for message in messages {
+        if let Some(expected_prn) = prn {
+            if expected_prn != message.common.prn {
+                return Err(GpsCnavNavigationRejection {
+                    reason: GpsCnavNavigationRejectionReason::MixedPrn,
+                    expected_prn: Some(expected_prn),
+                    incoming_prn: Some(message.common.prn),
+                    message_type: Some(message.common.message_type),
+                });
+            }
+        } else {
+            prn = Some(message.common.prn);
+        }
+
+        match message.common.message_type {
+            10 => ephemeris_message = decode_gps_cnav_ephemeris_message(message),
+            11 => orbit_message = decode_gps_cnav_orbit_message(message),
+            30 => clock_message = decode_gps_cnav_clock_correction_message(message),
+            _ => {}
+        }
+    }
+
+    let (Some(prn), Some(ephemeris), Some(orbit), Some(clock)) =
+        (prn, ephemeris_message, orbit_message, clock_message)
+    else {
+        return Ok(None);
+    };
+
+    let sat = SatId { constellation: Constellation::Gps, prn };
+    Ok(Some(GpsCnavBroadcastNavigationData {
+        sat,
+        ephemeris: GpsCnavEphemeris {
+            week: ephemeris.week,
+            top_s: ephemeris.top_s,
+            toe_s: orbit.toe_s,
+            semi_major_axis_m: GPS_CNAV_SEMI_MAJOR_AXIS_REFERENCE_M + ephemeris.delta_a_m,
+            a_dot_mps: ephemeris.a_dot_mps,
+            delta_n0_rad_per_s: ephemeris.delta_n0_rad_per_s,
+            delta_n0_dot_rad_per_s2: ephemeris.delta_n0_dot_rad_per_s2,
+            m0_rad: ephemeris.m0_rad,
+            e: ephemeris.e,
+            w_rad: ephemeris.w_rad,
+            omega0_rad: orbit.omega0_rad,
+            omegadot_rad_per_s: GPS_CNAV_OMEGADOT_REFERENCE_RAD_PER_S
+                + orbit.delta_omegadot_rad_per_s,
+            i0_rad: orbit.i0_rad,
+            idot_rad_per_s: orbit.idot_rad_per_s,
+            cis_rad: orbit.cis_rad,
+            cic_rad: orbit.cic_rad,
+            crs_m: orbit.crs_m,
+            crc_m: orbit.crc_m,
+            cus_rad: orbit.cus_rad,
+            cuc_rad: orbit.cuc_rad,
+            uraed_index: ephemeris.uraed_index,
+            signal_health: ephemeris.signal_health,
+        },
+        clock: clock.clock,
+        accuracy: clock.accuracy,
+        group_delay: clock.group_delay,
+        ionosphere: clock.ionosphere,
+        propagation_week_modulo_256: clock.propagation_week_modulo_256,
+    }))
+}
+
 fn normalize_cnav_bits(bits: &[u8]) -> Result<Vec<u8>, GpsCnavMessageRejection> {
     if bits.len() != GPS_CNAV_BITS {
         return Err(GpsCnavMessageRejection {
@@ -368,10 +495,13 @@ fn signed_from_unsigned(value: u64, bits: usize) -> i64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        cnav_crc24q, decode_gps_cnav_clock_correction_message, decode_gps_cnav_ephemeris_message,
+        cnav_crc24q, decode_gps_cnav_broadcast_navigation,
+        decode_gps_cnav_clock_correction_message, decode_gps_cnav_ephemeris_message,
         decode_gps_cnav_message, decode_gps_cnav_orbit_message, GpsCnavMessageRejectionReason,
-        GPS_CNAV_BITS, GPS_CNAV_CRC_BITS, GPS_CNAV_DATA_BITS, GPS_CNAV_PREAMBLE,
+        GpsCnavNavigationRejectionReason, GPS_CNAV_BITS, GPS_CNAV_CRC_BITS, GPS_CNAV_DATA_BITS,
+        GPS_CNAV_PREAMBLE,
     };
+    use bijux_gnss_core::api::Constellation;
 
     fn set_bits(bits: &mut [u8], start: usize, len: usize, value: u64) {
         for offset in 0..len {
@@ -397,6 +527,68 @@ mod tests {
         set_bits(&mut bits, 15, 6, u64::from(message_type));
         set_bits(&mut bits, 21, 17, 12_345);
         set_bits(&mut bits, 38, 1, 1);
+        apply_crc(&mut bits);
+        bits
+    }
+
+    fn set_prn(bits: &mut [u8], prn: u8) {
+        set_bits(bits, 9, 6, u64::from(prn));
+        apply_crc(bits);
+    }
+
+    fn valid_ephemeris_message_bits() -> Vec<u8> {
+        let mut bits = valid_message(10);
+        set_bits(&mut bits, 39, 13, 4_321);
+        set_bits(&mut bits, 52, 3, 0b101);
+        set_bits(&mut bits, 55, 5, 17);
+        set_bits(&mut bits, 60, 11, 1_234);
+        set_bits(&mut bits, 71, 26, encode_signed(-123_456, 26));
+        set_bits(&mut bits, 97, 25, encode_signed(654_321, 25));
+        set_bits(&mut bits, 122, 17, encode_signed(-16_321, 17));
+        set_bits(&mut bits, 139, 23, encode_signed(2_001, 23));
+        set_bits(&mut bits, 162, 33, encode_signed(-0x1234_5678, 33));
+        set_bits(&mut bits, 195, 33, 0x1234_5678);
+        set_bits(&mut bits, 228, 33, encode_signed(0x1020_3040, 33));
+        apply_crc(&mut bits);
+        bits
+    }
+
+    fn valid_orbit_message_bits() -> Vec<u8> {
+        let mut bits = valid_message(11);
+        set_bits(&mut bits, 39, 11, 1_111);
+        set_bits(&mut bits, 50, 33, encode_signed(-0x0102_0304, 33));
+        set_bits(&mut bits, 83, 17, encode_signed(12_345, 17));
+        set_bits(&mut bits, 100, 33, encode_signed(0x0123_4567, 33));
+        set_bits(&mut bits, 133, 15, encode_signed(-2_001, 15));
+        set_bits(&mut bits, 148, 16, encode_signed(-432, 16));
+        set_bits(&mut bits, 164, 16, encode_signed(543, 16));
+        set_bits(&mut bits, 180, 24, encode_signed(-654_321, 24));
+        set_bits(&mut bits, 204, 24, encode_signed(765_432, 24));
+        set_bits(&mut bits, 228, 21, encode_signed(-12_345, 21));
+        set_bits(&mut bits, 249, 21, encode_signed(23_456, 21));
+        apply_crc(&mut bits);
+        bits
+    }
+
+    fn valid_clock_message_bits() -> Vec<u8> {
+        let mut bits = valid_message(30);
+        set_bits(&mut bits, 39, 11, 1_010);
+        set_bits(&mut bits, 50, 5, 17);
+        set_bits(&mut bits, 55, 3, 3);
+        set_bits(&mut bits, 58, 3, 5);
+        set_bits(&mut bits, 61, 11, 1_111);
+        set_bits(&mut bits, 72, 10, encode_signed(-123, 10));
+        set_bits(&mut bits, 82, 20, encode_signed(45_678, 20));
+        set_bits(&mut bits, 102, 26, encode_signed(-2_345_678, 26));
+        set_bits(&mut bits, 128, 13, encode_signed(-111, 13));
+        set_bits(&mut bits, 141, 13, encode_signed(222, 13));
+        set_bits(&mut bits, 154, 13, encode_signed(-333, 13));
+        set_bits(&mut bits, 167, 13, encode_signed(444, 13));
+        set_bits(&mut bits, 180, 13, encode_signed(-555, 13));
+        for (idx, value) in [-7_i64, 8, -9, 10, 11, -12, 13, -14].iter().enumerate() {
+            set_bits(&mut bits, 193 + idx * 8, 8, encode_signed(*value, 8));
+        }
+        set_bits(&mut bits, 257, 8, 211);
         apply_crc(&mut bits);
         bits
     }
@@ -447,7 +639,6 @@ mod tests {
     #[test]
     fn cnav_ephemeris_message_decodes_type_10_fields() {
         let week = 4_321_u64;
-        let health = 0b101_u64;
         let uraed = 17_u64;
         let top_raw = 1_234_u64;
         let delta_a_raw = -123_456_i64;
@@ -457,19 +648,7 @@ mod tests {
         let m0_raw = -0x1234_5678_i64;
         let e_raw = 0x1234_5678_u64;
         let w_raw = 0x1020_3040_i64;
-        let mut bits = valid_message(10);
-        set_bits(&mut bits, 39, 13, week);
-        set_bits(&mut bits, 52, 3, health);
-        set_bits(&mut bits, 55, 5, uraed);
-        set_bits(&mut bits, 60, 11, top_raw);
-        set_bits(&mut bits, 71, 26, encode_signed(delta_a_raw, 26));
-        set_bits(&mut bits, 97, 25, encode_signed(a_dot_raw, 25));
-        set_bits(&mut bits, 122, 17, encode_signed(delta_n0_raw, 17));
-        set_bits(&mut bits, 139, 23, encode_signed(delta_n0_dot_raw, 23));
-        set_bits(&mut bits, 162, 33, encode_signed(m0_raw, 33));
-        set_bits(&mut bits, 195, 33, e_raw);
-        set_bits(&mut bits, 228, 33, encode_signed(w_raw, 33));
-        apply_crc(&mut bits);
+        let bits = valid_ephemeris_message_bits();
 
         let message = decode_gps_cnav_message(&bits).expect("valid CNAV message");
         let ephemeris = decode_gps_cnav_ephemeris_message(&message).expect("type 10 message");
@@ -518,19 +697,7 @@ mod tests {
         let crc_raw = 765_432_i64;
         let cus_raw = -12_345_i64;
         let cuc_raw = 23_456_i64;
-        let mut bits = valid_message(11);
-        set_bits(&mut bits, 39, 11, toe_raw);
-        set_bits(&mut bits, 50, 33, encode_signed(omega0_raw, 33));
-        set_bits(&mut bits, 83, 17, encode_signed(delta_omegadot_raw, 17));
-        set_bits(&mut bits, 100, 33, encode_signed(i0_raw, 33));
-        set_bits(&mut bits, 133, 15, encode_signed(idot_raw, 15));
-        set_bits(&mut bits, 148, 16, encode_signed(cis_raw, 16));
-        set_bits(&mut bits, 164, 16, encode_signed(cic_raw, 16));
-        set_bits(&mut bits, 180, 24, encode_signed(crs_raw, 24));
-        set_bits(&mut bits, 204, 24, encode_signed(crc_raw, 24));
-        set_bits(&mut bits, 228, 21, encode_signed(cus_raw, 21));
-        set_bits(&mut bits, 249, 21, encode_signed(cuc_raw, 21));
-        apply_crc(&mut bits);
+        let bits = valid_orbit_message_bits();
 
         let message = decode_gps_cnav_message(&bits).expect("valid CNAV message");
         let orbit = decode_gps_cnav_orbit_message(&message).expect("type 11 message");
@@ -575,25 +742,7 @@ mod tests {
         let isc_l5i5_raw = 444_i64;
         let isc_l5q5_raw = -555_i64;
         let iono_raw = [-7_i64, 8, -9, 10, 11, -12, 13, -14];
-        let mut bits = valid_message(30);
-        set_bits(&mut bits, 39, 11, top_raw);
-        set_bits(&mut bits, 50, 5, 17);
-        set_bits(&mut bits, 55, 3, 3);
-        set_bits(&mut bits, 58, 3, 5);
-        set_bits(&mut bits, 61, 11, toc_raw);
-        set_bits(&mut bits, 72, 10, encode_signed(af2_raw, 10));
-        set_bits(&mut bits, 82, 20, encode_signed(af1_raw, 20));
-        set_bits(&mut bits, 102, 26, encode_signed(af0_raw, 26));
-        set_bits(&mut bits, 128, 13, encode_signed(tgd_raw, 13));
-        set_bits(&mut bits, 141, 13, encode_signed(isc_l1ca_raw, 13));
-        set_bits(&mut bits, 154, 13, encode_signed(isc_l2c_raw, 13));
-        set_bits(&mut bits, 167, 13, encode_signed(isc_l5i5_raw, 13));
-        set_bits(&mut bits, 180, 13, encode_signed(isc_l5q5_raw, 13));
-        for (idx, value) in iono_raw.iter().enumerate() {
-            set_bits(&mut bits, 193 + idx * 8, 8, encode_signed(*value, 8));
-        }
-        set_bits(&mut bits, 257, 8, 211);
-        apply_crc(&mut bits);
+        let bits = valid_clock_message_bits();
 
         let message = decode_gps_cnav_message(&bits).expect("valid CNAV message");
         let correction =
@@ -621,5 +770,68 @@ mod tests {
         assert_eq!(correction.ionosphere.beta2, iono_raw[6] as f64 * 2f64.powi(16));
         assert_eq!(correction.ionosphere.beta3, iono_raw[7] as f64 * 2f64.powi(16));
         assert_eq!(correction.propagation_week_modulo_256, 211);
+    }
+
+    #[test]
+    fn cnav_broadcast_navigation_assembles_valid_message_set() {
+        let messages = [
+            decode_gps_cnav_message(&valid_ephemeris_message_bits()).expect("type 10"),
+            decode_gps_cnav_message(&valid_orbit_message_bits()).expect("type 11"),
+            decode_gps_cnav_message(&valid_clock_message_bits()).expect("type 30"),
+        ];
+
+        let navigation = decode_gps_cnav_broadcast_navigation(&messages)
+            .expect("navigation assembly")
+            .expect("complete navigation");
+
+        assert_eq!(navigation.sat.constellation, Constellation::Gps);
+        assert_eq!(navigation.sat.prn, 17);
+        assert_eq!(navigation.ephemeris.week, 4_321);
+        assert_eq!(navigation.ephemeris.top_s, 1_234.0 * 300.0);
+        assert_eq!(navigation.ephemeris.toe_s, 1_111.0 * 300.0);
+        assert!(
+            (navigation.ephemeris.semi_major_axis_m - (26_559_710.0 - 123_456.0 * 2f64.powi(-9)))
+                .abs()
+                < f64::EPSILON
+        );
+        assert!(navigation.ephemeris.signal_health.l1_unhealthy);
+        assert_eq!(navigation.accuracy.uraned0_index, 17);
+        assert_eq!(navigation.clock.toc_s, 1_111.0 * 300.0);
+        assert_eq!(navigation.group_delay.isc_l2c_s, -333.0 * 2f64.powi(-35));
+        assert_eq!(navigation.ionosphere.beta3, -14.0 * 2f64.powi(16));
+        assert_eq!(navigation.propagation_week_modulo_256, 211);
+    }
+
+    #[test]
+    fn cnav_broadcast_navigation_waits_for_complete_message_set() {
+        let messages = [
+            decode_gps_cnav_message(&valid_ephemeris_message_bits()).expect("type 10"),
+            decode_gps_cnav_message(&valid_orbit_message_bits()).expect("type 11"),
+        ];
+
+        let navigation =
+            decode_gps_cnav_broadcast_navigation(&messages).expect("incomplete navigation");
+
+        assert!(navigation.is_none());
+    }
+
+    #[test]
+    fn cnav_broadcast_navigation_rejects_mixed_prn_messages() {
+        let ephemeris = valid_ephemeris_message_bits();
+        let mut orbit = valid_orbit_message_bits();
+        set_prn(&mut orbit, 18);
+        let messages = [
+            decode_gps_cnav_message(&ephemeris).expect("type 10"),
+            decode_gps_cnav_message(&orbit).expect("type 11"),
+            decode_gps_cnav_message(&valid_clock_message_bits()).expect("type 30"),
+        ];
+
+        let rejection =
+            decode_gps_cnav_broadcast_navigation(&messages).expect_err("mixed PRN rejection");
+
+        assert_eq!(rejection.reason, GpsCnavNavigationRejectionReason::MixedPrn);
+        assert_eq!(rejection.expected_prn, Some(17));
+        assert_eq!(rejection.incoming_prn, Some(18));
+        assert_eq!(rejection.message_type, Some(11));
     }
 }
