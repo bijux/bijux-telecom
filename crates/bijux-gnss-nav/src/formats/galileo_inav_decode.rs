@@ -9,6 +9,7 @@ use crate::orbits::galileo::{
     GalileoIonosphericCorrection, GalileoIonosphericDisturbanceFlags, GalileoSignalHealth,
     GalileoSystemTime,
 };
+use crate::time::{resolve_galileo_week_rollover, RolloverResolutionError};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum GalileoInavWord {
@@ -73,6 +74,8 @@ pub enum GalileoInavBatchRejectionReason {
     DecodeFailure,
     IodnavMismatch,
     SatelliteIdMismatch,
+    AmbiguousWeekRollover,
+    InvalidWeekRollover,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -83,6 +86,25 @@ pub struct GalileoInavBatchRejection {
     pub incoming_iodnav: Option<u16>,
     pub existing_svid: Option<u8>,
     pub incoming_svid: Option<u8>,
+}
+
+fn galileo_week_rollover_rejection(error: RolloverResolutionError) -> GalileoInavBatchRejection {
+    GalileoInavBatchRejection {
+        word_type: 5,
+        reason: match error {
+            RolloverResolutionError::AmbiguousReference => {
+                GalileoInavBatchRejectionReason::AmbiguousWeekRollover
+            }
+            RolloverResolutionError::InvalidCycle
+            | RolloverResolutionError::TruncatedValueOutOfRange => {
+                GalileoInavBatchRejectionReason::InvalidWeekRollover
+            }
+        },
+        existing_iodnav: None,
+        incoming_iodnav: None,
+        existing_svid: None,
+        incoming_svid: None,
+    }
 }
 
 pub fn decode_galileo_inav_word(payload: u128) -> Option<GalileoInavWord> {
@@ -116,6 +138,17 @@ pub fn decode_galileo_broadcast_navigation_data(
     Ok(builder.try_build())
 }
 
+pub fn decode_galileo_broadcast_navigation_data_with_reference_week(
+    words: &[GalileoInavWord],
+    reference_week: u32,
+) -> Result<Option<GalileoBroadcastNavigationData>, GalileoInavBatchRejection> {
+    let mut builder = GalileoInavBatchBuilder::with_reference_week(reference_week);
+    for word in words {
+        builder.merge(word)?;
+    }
+    builder.try_build_checked()
+}
+
 pub fn decode_galileo_broadcast_navigation_data_payloads(
     payloads: &[u128],
 ) -> Result<Option<GalileoBroadcastNavigationData>, GalileoInavBatchRejection> {
@@ -131,6 +164,24 @@ pub fn decode_galileo_broadcast_navigation_data_payloads(
             },
         )?;
     decode_galileo_broadcast_navigation_data(&words)
+}
+
+pub fn decode_galileo_broadcast_navigation_data_payloads_with_reference_week(
+    payloads: &[u128],
+    reference_week: u32,
+) -> Result<Option<GalileoBroadcastNavigationData>, GalileoInavBatchRejection> {
+    let words =
+        payloads.iter().copied().map(decode_galileo_inav_word).collect::<Option<Vec<_>>>().ok_or(
+            GalileoInavBatchRejection {
+                word_type: 0,
+                reason: GalileoInavBatchRejectionReason::DecodeFailure,
+                existing_iodnav: None,
+                incoming_iodnav: None,
+                existing_svid: None,
+                incoming_svid: None,
+            },
+        )?;
+    decode_galileo_broadcast_navigation_data_with_reference_week(&words, reference_week)
 }
 
 pub fn decode_galileo_inav_ephemeris_1_word(payload: u128) -> Option<GalileoInavEphemeris1Word> {
@@ -234,6 +285,7 @@ fn signed(value: u128, bits: usize) -> i64 {
 
 #[derive(Debug, Default, Clone)]
 struct GalileoInavBatchBuilder {
+    reference_week: Option<u32>,
     iodnav: Option<u16>,
     svid: Option<u8>,
     toe_s: Option<f64>,
@@ -262,6 +314,10 @@ struct GalileoInavBatchBuilder {
 }
 
 impl GalileoInavBatchBuilder {
+    fn with_reference_week(reference_week: u32) -> Self {
+        Self { reference_week: Some(reference_week), ..Self::default() }
+    }
+
     fn merge(&mut self, word: &GalileoInavWord) -> Result<(), GalileoInavBatchRejection> {
         self.check_consistency(word)?;
 
@@ -310,44 +366,106 @@ impl GalileoInavBatchBuilder {
     }
 
     fn try_build(&self) -> Option<GalileoBroadcastNavigationData> {
-        let iodnav = self.iodnav?;
-        let svid = self.svid?;
+        self.try_build_checked().ok().flatten()
+    }
+
+    fn try_build_checked(
+        &self,
+    ) -> Result<Option<GalileoBroadcastNavigationData>, GalileoInavBatchRejection> {
+        let (
+            Some(iodnav),
+            Some(svid),
+            Some(bgd_e1_e5a_s),
+            Some(bgd_e1_e5b_s),
+            Some(mut clock),
+            Some(mut gst),
+            Some(sisa_e1_e5b),
+            Some(signal_health),
+            Some(toe_s),
+            Some(sqrt_a),
+            Some(e),
+            Some(i0),
+            Some(idot),
+            Some(omega0),
+            Some(omegadot),
+            Some(w),
+            Some(m0),
+            Some(delta_n),
+            Some(cuc),
+            Some(cus),
+            Some(crc),
+            Some(crs),
+            Some(cic),
+            Some(cis),
+            Some(ionosphere),
+        ) = (
+            self.iodnav,
+            self.svid,
+            self.bgd_e1_e5a_s,
+            self.bgd_e1_e5b_s,
+            self.clock,
+            self.gst,
+            self.sisa_e1_e5b,
+            self.signal_health,
+            self.toe_s,
+            self.sqrt_a,
+            self.e,
+            self.i0,
+            self.idot,
+            self.omega0,
+            self.omegadot,
+            self.w,
+            self.m0,
+            self.delta_n,
+            self.cuc,
+            self.cus,
+            self.crc,
+            self.crs,
+            self.cic,
+            self.cis,
+            self.ionosphere.clone(),
+        )
+        else {
+            return Ok(None);
+        };
         let sat = SatId { constellation: Constellation::Galileo, prn: svid };
-        let bgd_e1_e5a_s = self.bgd_e1_e5a_s?;
-        let bgd_e1_e5b_s = self.bgd_e1_e5b_s?;
-        let mut clock = self.clock?;
         clock.bgd_e1_e5a_s = bgd_e1_e5a_s;
         clock.bgd_e1_e5b_s = bgd_e1_e5b_s;
+        if let Some(reference_week) = self.reference_week {
+            gst.week = resolve_galileo_week_rollover(gst.week, reference_week)
+                .map_err(galileo_week_rollover_rejection)?
+                .week as u16;
+        }
 
-        Some(GalileoBroadcastNavigationData {
+        Ok(Some(GalileoBroadcastNavigationData {
             sat,
             iodnav,
-            gst: self.gst?,
-            sisa_e1_e5b: self.sisa_e1_e5b?,
-            signal_health: self.signal_health?,
+            gst,
+            sisa_e1_e5b,
+            signal_health,
             clock,
             ephemeris: GalileoEphemeris {
                 sat,
                 iodnav,
-                toe_s: self.toe_s?,
-                sqrt_a: self.sqrt_a?,
-                e: self.e?,
-                i0: self.i0?,
-                idot: self.idot?,
-                omega0: self.omega0?,
-                omegadot: self.omegadot?,
-                w: self.w?,
-                m0: self.m0?,
-                delta_n: self.delta_n?,
-                cuc: self.cuc?,
-                cus: self.cus?,
-                crc: self.crc?,
-                crs: self.crs?,
-                cic: self.cic?,
-                cis: self.cis?,
+                toe_s,
+                sqrt_a,
+                e,
+                i0,
+                idot,
+                omega0,
+                omegadot,
+                w,
+                m0,
+                delta_n,
+                cuc,
+                cus,
+                crc,
+                crs,
+                cic,
+                cis,
             },
-            ionosphere: self.ionosphere.clone()?,
-        })
+            ionosphere,
+        }))
     }
 
     fn check_consistency(&self, word: &GalileoInavWord) -> Result<(), GalileoInavBatchRejection> {
@@ -416,10 +534,11 @@ fn incoming_word_type(word: &GalileoInavWord) -> u8 {
 mod tests {
     use super::{
         decode_galileo_broadcast_navigation_data,
-        decode_galileo_broadcast_navigation_data_payloads, decode_galileo_inav_clock_word,
-        decode_galileo_inav_ephemeris_1_word, decode_galileo_inav_ephemeris_2_word,
-        decode_galileo_inav_ephemeris_3_word, decode_galileo_inav_status_word,
-        decode_galileo_inav_word, GalileoInavBatchRejectionReason,
+        decode_galileo_broadcast_navigation_data_payloads,
+        decode_galileo_broadcast_navigation_data_payloads_with_reference_week,
+        decode_galileo_inav_clock_word, decode_galileo_inav_ephemeris_1_word,
+        decode_galileo_inav_ephemeris_2_word, decode_galileo_inav_ephemeris_3_word,
+        decode_galileo_inav_status_word, decode_galileo_inav_word, GalileoInavBatchRejectionReason,
     };
     use bijux_gnss_core::api::Constellation;
 
@@ -692,6 +811,32 @@ mod tests {
         assert_eq!(nav.ephemeris.iodnav, nav.iodnav);
         assert!((nav.clock.bgd_e1_e5a_s - (-12_i64) as f64 * 2f64.powi(-32)).abs() < f64::EPSILON);
         assert!((nav.clock.bgd_e1_e5b_s - 23_f64 * 2f64.powi(-32)).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn assembled_batch_resolves_galileo_week_from_reference_week() {
+        let mut payloads = sample_batch_payloads();
+        set_bits(&mut payloads[4], 74, 12, 3);
+
+        let nav =
+            decode_galileo_broadcast_navigation_data_payloads_with_reference_week(&payloads, 4094)
+                .expect("resolved batch")
+                .expect("complete batch");
+
+        assert_eq!(nav.gst.week, 4099);
+    }
+
+    #[test]
+    fn assembled_batch_refuses_ambiguous_galileo_week_reference() {
+        let mut payloads = sample_batch_payloads();
+        set_bits(&mut payloads[4], 74, 12, 2048);
+
+        let rejection =
+            decode_galileo_broadcast_navigation_data_payloads_with_reference_week(&payloads, 4096)
+                .expect_err("ambiguous GST week");
+
+        assert_eq!(rejection.reason, GalileoInavBatchRejectionReason::AmbiguousWeekRollover);
+        assert_eq!(rejection.word_type, 5);
     }
 
     #[test]

@@ -188,12 +188,14 @@ pub use crate::formats::bias_sinex::{BiasSinexProvider, BiasSinexWindow};
 /// Format parsing and output.
 pub use crate::formats::galileo_inav_decode::{
     decode_galileo_broadcast_navigation_data, decode_galileo_broadcast_navigation_data_payloads,
-    decode_galileo_inav_clock_word, decode_galileo_inav_ephemeris_1_word,
-    decode_galileo_inav_ephemeris_2_word, decode_galileo_inav_ephemeris_3_word,
-    decode_galileo_inav_status_word, decode_galileo_inav_word, decode_galileo_inav_word_bytes,
-    decode_galileo_inav_word_hex, GalileoInavBatchRejection, GalileoInavBatchRejectionReason,
-    GalileoInavClockWord, GalileoInavEphemeris1Word, GalileoInavEphemeris2Word,
-    GalileoInavEphemeris3Word, GalileoInavStatusWord, GalileoInavWord,
+    decode_galileo_broadcast_navigation_data_payloads_with_reference_week,
+    decode_galileo_broadcast_navigation_data_with_reference_week, decode_galileo_inav_clock_word,
+    decode_galileo_inav_ephemeris_1_word, decode_galileo_inav_ephemeris_2_word,
+    decode_galileo_inav_ephemeris_3_word, decode_galileo_inav_status_word,
+    decode_galileo_inav_word, decode_galileo_inav_word_bytes, decode_galileo_inav_word_hex,
+    GalileoInavBatchRejection, GalileoInavBatchRejectionReason, GalileoInavClockWord,
+    GalileoInavEphemeris1Word, GalileoInavEphemeris2Word, GalileoInavEphemeris3Word,
+    GalileoInavStatusWord, GalileoInavWord,
 };
 /// GLONASS navigation string verification and decoding.
 pub use crate::formats::glonass_navigation_decode::{
