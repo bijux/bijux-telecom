@@ -44,7 +44,6 @@ use cache::{
 use candidate_decision::{
     acquisition_decision, multipath_candidate_reason, multipath_suspect_decision,
     ranked_alternative_candidate_reason, selected_candidate_reason, selected_reason_for_candidate,
-    wrong_prn_candidate_reason,
 };
 #[cfg(test)]
 use candidate_decision::{AcquisitionDecision, AcquisitionDecisionReason};
@@ -82,6 +81,7 @@ use threshold_resolution::{
     threshold_provenance_for_request, AcquisitionThresholdCacheKey, ResolvedAcquisitionThresholds,
     ThresholdResolutionCache,
 };
+use wrong_prn_suppression::{suppress_wrong_prn_correlations, AcquisitionSatEvaluation};
 
 mod cache;
 mod candidate_decision;
@@ -91,6 +91,7 @@ mod search_window;
 mod signal_model;
 mod strategy_components;
 mod threshold_resolution;
+mod wrong_prn_suppression;
 
 /// Acquisition engine (coarse search).
 pub struct Acquisition {
@@ -128,16 +129,6 @@ const SUB_SAMPLE_CODE_PHASE_REFINEMENT_EPSILON: f64 = 1e-12;
 const SUB_SAMPLE_CODE_PHASE_REFINEMENT_MIN_ABS_OFFSET_SAMPLES: f64 = 0.05;
 const ACQUISITION_UNCERTAINTY_LOG_RESPONSE_FLOOR_RATIO: f64 = 1.0e-6;
 const FALSE_ALARM_CALIBRATION_SEARCH_ITERATIONS: usize = 7;
-const WRONG_PRN_DOMINANCE_RATIO_MIN: f32 = 4.0;
-const WRONG_PRN_PEAK_SECOND_RATIO_MAX: f32 = 1.1;
-
-#[derive(Debug, Clone)]
-struct AcquisitionSatEvaluation {
-    sat: SatId,
-    candidates: Vec<AcqResult>,
-    search_window_diagnostic: Option<SearchWindowDiagnostic>,
-}
-
 #[derive(Debug, Clone, Copy)]
 struct JointAcquisitionRefinement {
     doppler_offset_bins: f64,
@@ -2101,58 +2092,6 @@ fn signal_outside_doppler_rate_search_range(
             .partial_cmp(&right.best_peak_mean_ratio)
             .unwrap_or(std::cmp::Ordering::Equal)
     })
-}
-
-fn suppress_wrong_prn_correlations(sat_evaluations: &mut [AcquisitionSatEvaluation]) {
-    let dominant = sat_evaluations
-        .iter()
-        .filter_map(|evaluation| evaluation.candidates.first())
-        .filter(|candidate| {
-            matches!(candidate.hypothesis, AcqHypothesis::Accepted | AcqHypothesis::Ambiguous)
-        })
-        .max_by(|left, right| {
-            left.peak_mean_ratio
-                .partial_cmp(&right.peak_mean_ratio)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        })
-        .map(|candidate| (candidate.sat, candidate.peak_mean_ratio));
-
-    let Some((dominant_sat, dominant_peak_mean_ratio)) = dominant else {
-        return;
-    };
-
-    for evaluation in sat_evaluations {
-        if evaluation.search_window_diagnostic.is_some() {
-            continue;
-        }
-        let Some(candidate) = evaluation.candidates.first_mut() else {
-            continue;
-        };
-        if candidate.sat == dominant_sat
-            || !matches!(candidate.hypothesis, AcqHypothesis::Ambiguous)
-        {
-            continue;
-        }
-        if candidate.peak_second_ratio >= WRONG_PRN_PEAK_SECOND_RATIO_MAX
-            || candidate.peak_mean_ratio <= f32::EPSILON
-        {
-            continue;
-        }
-        let dominance_ratio = dominant_peak_mean_ratio / candidate.peak_mean_ratio;
-        if dominance_ratio < WRONG_PRN_DOMINANCE_RATIO_MIN {
-            continue;
-        }
-        candidate.hypothesis = AcqHypothesis::Rejected;
-        candidate.score = 0.0;
-        candidate.explain_selection_reason = Some(wrong_prn_candidate_reason(
-            candidate.sat,
-            dominant_sat,
-            candidate.peak_mean_ratio,
-            dominant_peak_mean_ratio,
-            dominance_ratio,
-            candidate.peak_second_ratio,
-        ));
-    }
 }
 
 fn classify_delayed_secondary_peak(
