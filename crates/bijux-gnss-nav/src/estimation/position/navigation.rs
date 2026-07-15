@@ -14,6 +14,7 @@ use crate::orbits::gps::{gps_ephemeris_age, sat_state_gps_l1ca};
 use crate::orbits::satellite_uncertainty::SatelliteStateUncertainty;
 use bijux_gnss_core::api::{Constellation, MeasurementRejectReason, ObsSignalTiming, SatId, SigId};
 use bijux_gnss_signal::api::{default_acquisition_signal, signal_id_wavelength_m};
+use serde::{Deserialize, Serialize};
 
 use super::solver::{PositionBroadcastNavigation, PositionObservation};
 
@@ -41,6 +42,88 @@ pub struct SatelliteState {
 }
 
 pub type PositionSatelliteState = SatelliteState;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PositionObservationCorrectionKind {
+    SatelliteClock,
+    Relativity,
+    EarthRotation,
+    BroadcastGroupDelay,
+    Ionosphere,
+    Troposphere,
+    ReceiverAntenna,
+    SatelliteAntenna,
+    EarthTide,
+    PhaseWindup,
+    ReceiverClock,
+}
+
+pub const POSITION_OBSERVATION_CORRECTION_ORDER: [PositionObservationCorrectionKind; 11] = [
+    PositionObservationCorrectionKind::SatelliteClock,
+    PositionObservationCorrectionKind::Relativity,
+    PositionObservationCorrectionKind::EarthRotation,
+    PositionObservationCorrectionKind::BroadcastGroupDelay,
+    PositionObservationCorrectionKind::Ionosphere,
+    PositionObservationCorrectionKind::Troposphere,
+    PositionObservationCorrectionKind::ReceiverAntenna,
+    PositionObservationCorrectionKind::SatelliteAntenna,
+    PositionObservationCorrectionKind::EarthTide,
+    PositionObservationCorrectionKind::PhaseWindup,
+    PositionObservationCorrectionKind::ReceiverClock,
+];
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct PositionObservationCorrectionComponent {
+    pub kind: PositionObservationCorrectionKind,
+    pub delta_m: f64,
+    pub corrected_pseudorange_m: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PositionObservationCorrectionChain {
+    pub raw_pseudorange_m: f64,
+    pub components: Vec<PositionObservationCorrectionComponent>,
+    pub corrected_pseudorange_m: f64,
+}
+
+impl PositionObservationCorrectionChain {
+    pub fn new(raw_pseudorange_m: f64) -> Self {
+        Self { raw_pseudorange_m, components: Vec::new(), corrected_pseudorange_m: raw_pseudorange_m }
+    }
+
+    pub fn push_component(
+        &mut self,
+        kind: PositionObservationCorrectionKind,
+        delta_m: f64,
+    ) {
+        self.corrected_pseudorange_m += delta_m;
+        self.components.push(PositionObservationCorrectionComponent {
+            kind,
+            delta_m,
+            corrected_pseudorange_m: self.corrected_pseudorange_m,
+        });
+    }
+
+    pub fn reconstructed_pseudorange_m(&self) -> f64 {
+        self.components
+            .iter()
+            .fold(self.raw_pseudorange_m, |pseudorange_m, component| {
+                pseudorange_m + component.delta_m
+            })
+    }
+
+    pub fn reconstruction_error_m(&self) -> f64 {
+        self.corrected_pseudorange_m - self.reconstructed_pseudorange_m()
+    }
+
+    pub fn component_delta_m(&self, kind: PositionObservationCorrectionKind) -> f64 {
+        self.components
+            .iter()
+            .filter(|component| component.kind == kind)
+            .map(|component| component.delta_m)
+            .sum()
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct ObservationConsistencyMetrics {
@@ -653,7 +736,9 @@ mod tests {
     use super::{
         default_position_signal_id, observation_consistency_metrics, position_signal_id,
         resolve_position_inputs, satellite_state_at_time, select_valid_navigation,
-        PositionBroadcastNavigation, PositionObservation, SPEED_OF_LIGHT_MPS,
+        PositionBroadcastNavigation, PositionObservation, PositionObservationCorrectionChain,
+        PositionObservationCorrectionKind, POSITION_OBSERVATION_CORRECTION_ORDER,
+        SPEED_OF_LIGHT_MPS,
     };
     use crate::estimation::position::solver::geodetic_to_ecef;
     use crate::orbits::beidou::{
@@ -857,6 +942,47 @@ mod tests {
             }),
             almanac_entries: Vec::new(),
         }
+    }
+
+    #[test]
+    fn observation_correction_order_names_each_solver_component_once() {
+        assert_eq!(
+            POSITION_OBSERVATION_CORRECTION_ORDER,
+            [
+                PositionObservationCorrectionKind::SatelliteClock,
+                PositionObservationCorrectionKind::Relativity,
+                PositionObservationCorrectionKind::EarthRotation,
+                PositionObservationCorrectionKind::BroadcastGroupDelay,
+                PositionObservationCorrectionKind::Ionosphere,
+                PositionObservationCorrectionKind::Troposphere,
+                PositionObservationCorrectionKind::ReceiverAntenna,
+                PositionObservationCorrectionKind::SatelliteAntenna,
+                PositionObservationCorrectionKind::EarthTide,
+                PositionObservationCorrectionKind::PhaseWindup,
+                PositionObservationCorrectionKind::ReceiverClock,
+            ]
+        );
+    }
+
+    #[test]
+    fn observation_correction_chain_reconstructs_signed_components() {
+        let mut chain = PositionObservationCorrectionChain::new(24_000_000.0);
+
+        chain.push_component(PositionObservationCorrectionKind::SatelliteClock, 12_500.0);
+        chain.push_component(PositionObservationCorrectionKind::BroadcastGroupDelay, -2.4);
+        chain.push_component(PositionObservationCorrectionKind::Ionosphere, -4.8);
+        chain.push_component(PositionObservationCorrectionKind::Troposphere, -2.1);
+        chain.push_component(PositionObservationCorrectionKind::ReceiverClock, -9_000.0);
+
+        assert_eq!(
+            chain.component_delta_m(PositionObservationCorrectionKind::BroadcastGroupDelay),
+            -2.4
+        );
+        assert_eq!(chain.reconstruction_error_m(), 0.0);
+        assert_eq!(
+            chain.corrected_pseudorange_m,
+            24_000_000.0 + 12_500.0 - 2.4 - 4.8 - 2.1 - 9_000.0
+        );
     }
 
     #[test]
