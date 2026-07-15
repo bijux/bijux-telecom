@@ -9,6 +9,7 @@ use super::navigation_pipeline::{
 
 pub const BAD_SATELLITE_PSEUDORANGE_BIAS_M: f64 = 1_000.0;
 const BAD_SATELLITE_PRN: u8 = 29;
+const SECOND_BAD_SATELLITE_PRN: u8 = 23;
 const UNDERDETERMINED_RAIM_VISIBLE_PRNS: [u8; 5] = [3, 7, 11, 19, BAD_SATELLITE_PRN];
 
 pub fn single_bad_satellite_profile() -> SyntheticPseudorangeNoiseProfile {
@@ -21,8 +22,28 @@ pub fn single_bad_satellite_profile() -> SyntheticPseudorangeNoiseProfile {
     }
 }
 
+pub fn simultaneous_bad_satellite_profile() -> SyntheticPseudorangeNoiseProfile {
+    SyntheticPseudorangeNoiseProfile {
+        profile_name: "simultaneous_bad_satellites",
+        satellites: vec![
+            SatellitePseudorangeNoise {
+                sat: SatId { constellation: Constellation::Gps, prn: SECOND_BAD_SATELLITE_PRN },
+                pseudorange_noise_m: BAD_SATELLITE_PSEUDORANGE_BIAS_M,
+            },
+            SatellitePseudorangeNoise {
+                sat: SatId { constellation: Constellation::Gps, prn: BAD_SATELLITE_PRN },
+                pseudorange_noise_m: BAD_SATELLITE_PSEUDORANGE_BIAS_M,
+            },
+        ],
+    }
+}
+
 pub fn bad_satellite_prn() -> u8 {
     BAD_SATELLITE_PRN
+}
+
+pub fn simultaneous_bad_satellite_prns() -> [u8; 2] {
+    [SECOND_BAD_SATELLITE_PRN, BAD_SATELLITE_PRN]
 }
 
 pub fn solution_position_errors_m(
@@ -52,6 +73,11 @@ pub fn rejected_outlier_prns(
 pub fn single_bad_satellite_navigation_run(
 ) -> super::navigation_pipeline::NoisySyntheticNavigationRun {
     noisy_synthetic_navigation_run(single_bad_satellite_profile())
+}
+
+pub fn simultaneous_bad_satellite_navigation_run(
+) -> super::navigation_pipeline::NoisySyntheticNavigationRun {
+    noisy_synthetic_navigation_run(simultaneous_bad_satellite_profile())
 }
 
 pub fn underdetermined_bad_satellite_navigation_run(

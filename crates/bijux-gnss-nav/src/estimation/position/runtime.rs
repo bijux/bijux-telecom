@@ -618,6 +618,7 @@ impl PositionRuntime {
                     explain_reasons.push(filter_divergence_explain_reason(reason));
                 }
                 if refusal.kind == PositionSolveRefusalKind::UnderdeterminedRaimExclusion {
+                    explain_reasons.push("integrity_unavailable".to_string());
                     explain_reasons.push("raim_exclusion_underdetermined".to_string());
                     if let Some((suspect_sat, _reason)) = rejected
                         .iter()
