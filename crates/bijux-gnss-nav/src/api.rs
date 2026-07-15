@@ -117,8 +117,8 @@ pub use crate::estimation::position::trajectory::{
 };
 /// PPP configuration and filter.
 pub use crate::estimation::ppp::config::{
-    PppArMode, PppConfig, PppConvergenceConfig, PppFilter, PppProcessNoise, PppSolutionEpoch,
-    PppTroposphereSource,
+    PppArMode, PppConfig, PppConvergenceConfig, PppFilter, PppMeasurementNoise, PppProcessNoise,
+    PppSolutionEpoch, PppStochasticEvidence, PppTroposphereSource,
 };
 pub use crate::estimation::ppp::measurements::ppp_ionosphere_delay_scale;
 /// RTK float-baseline helpers.

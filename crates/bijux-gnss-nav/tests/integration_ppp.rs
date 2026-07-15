@@ -6,7 +6,7 @@ use bijux_gnss_core::api::{
 };
 use bijux_gnss_nav::api::{
     geodetic_to_ecef, BroadcastProductsProvider, GpsEphemeris, PppConfig, PppFilter,
-    SaastamoinenModel,
+    PppMeasurementNoise, PppStochasticEvidence, SaastamoinenModel,
 };
 use bijux_gnss_signal::api::signal_spec_gps_l1_ca;
 
@@ -220,6 +220,32 @@ fn ppp_uses_current_broadcast_fallbacks_when_precise_products_are_missing() {
 
     assert_eq!(ppp.health.warnings.len(), 4);
     assert!(ppp.health.warnings.iter().all(|warning| warning.contains("products fallback used")));
+}
+
+#[test]
+fn ppp_public_api_exposes_stochastic_configuration_and_evidence() {
+    let config = PppConfig {
+        measurement_noise: PppMeasurementNoise {
+            code_floor_m: 0.4,
+            phase_floor_cycles: 0.02,
+            ..PppMeasurementNoise::default()
+        },
+        ..PppConfig::default()
+    };
+    let evidence = PppStochasticEvidence {
+        code_observation_variance_supported: true,
+        phase_observation_variance_supported: true,
+        satellite_orbit_uncertainty_supported: true,
+        satellite_clock_uncertainty_supported: false,
+        atmosphere_residual_supported: true,
+        antenna_residual_supported: true,
+        process_covariance_supported: true,
+    };
+
+    assert_eq!(config.measurement_noise.code_floor_m, 0.4);
+    assert_eq!(config.measurement_noise.phase_floor_cycles, 0.02);
+    assert!(evidence.code_observation_variance_supported);
+    assert!(!evidence.satellite_clock_uncertainty_supported);
 }
 
 #[test]
