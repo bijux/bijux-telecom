@@ -9,6 +9,7 @@ use bijux_gnss_nav::api::{
     rtk_float_baseline_from_double_differences_with_rover_prior,
     rtk_float_baseline_from_double_differences_with_satellite_states,
     rtk_switch_double_difference_reference, rtk_transform_float_baseline_reference,
+    solve_baseline_dd_with_satellite_states, solve_float_baseline_dd_with_satellite_states,
     RtkConstellationTimeScale, RtkDoubleDifferenceCovarianceEvidence,
     RtkDoubleDifferenceObservation, RtkDoubleDifferenceSatelliteStates, RtkEpochAlignmentEvidence,
     RtkFloatAmbiguityEstimate, RtkFloatBaselineSolution, RtkGlonassInterFrequencyBiasEvidence,
@@ -386,6 +387,84 @@ fn rtk_float_baseline_solver_combines_constellation_aware_double_differences() {
         .float_ambiguities
         .iter()
         .any(|ambiguity| { ambiguity.sig.sat.constellation == Constellation::Glonass }));
+}
+
+#[test]
+fn rtk_execution_wrappers_project_constellation_state_baseline() {
+    let base_ecef_m = bijux_gnss_nav::api::geodetic_to_ecef(37.0, -122.0, 10.0);
+    let base_ecef_m = [base_ecef_m.0, base_ecef_m.1, base_ecef_m.2];
+    let truth_enu_m = [4.0, -2.0, 1.0];
+    let rover_ecef_m = enu_to_ecef(base_ecef_m, truth_enu_m);
+    let glonass_channel = GlonassFrequencyChannel::new(-4).expect("valid GLONASS channel");
+    let cases = [
+        (
+            sig(Constellation::Gps, 7, SignalBand::L1, SignalCode::Ca),
+            sig(Constellation::Gps, 3, SignalBand::L1, SignalCode::Ca),
+            [15_600_000.0, -12_300_000.0, 21_700_000.0],
+            [21_200_000.0, 4_100_000.0, 13_400_000.0],
+            12.0,
+            None,
+        ),
+        (
+            sig(Constellation::Galileo, 19, SignalBand::E1, SignalCode::E1B),
+            sig(Constellation::Galileo, 11, SignalBand::E1, SignalCode::E1B),
+            [-14_500_000.0, 19_600_000.0, 18_100_000.0],
+            [9_800_000.0, 21_400_000.0, 15_900_000.0],
+            -7.0,
+            None,
+        ),
+        (
+            sig(Constellation::Beidou, 12, SignalBand::B1, SignalCode::B1I),
+            sig(Constellation::Beidou, 11, SignalBand::B1, SignalCode::B1I),
+            [23_100_000.0, -7_200_000.0, 14_900_000.0],
+            [-8_700_000.0, -22_500_000.0, 13_700_000.0],
+            5.0,
+            None,
+        ),
+        (
+            sig(Constellation::Glonass, 8, SignalBand::L1, SignalCode::Unknown),
+            sig(Constellation::Glonass, 4, SignalBand::L1, SignalCode::Unknown),
+            [-19_500_000.0, -10_400_000.0, 18_800_000.0],
+            [4_400_000.0, -21_100_000.0, 16_600_000.0],
+            -3.0,
+            Some(glonass_channel),
+        ),
+    ];
+    let mut observations = Vec::new();
+    let mut satellite_states = Vec::new();
+    for (sig, ref_sig, signal_position_m, reference_position_m, ambiguity_cycles, channel) in cases
+    {
+        let (observation, states) = synthetic_double_difference(
+            sig,
+            ref_sig,
+            signal_position_m,
+            reference_position_m,
+            base_ecef_m,
+            rover_ecef_m,
+            ambiguity_cycles,
+            channel,
+        );
+        observations.push(observation);
+        satellite_states.push(states);
+    }
+
+    let float_solution = solve_float_baseline_dd_with_satellite_states(
+        &observations,
+        base_ecef_m,
+        &satellite_states,
+    )
+    .expect("execution float baseline");
+    let projected_solution =
+        solve_baseline_dd_with_satellite_states(&observations, base_ecef_m, &satellite_states)
+            .expect("projected baseline");
+
+    assert_solution_matches_truth(&float_solution, truth_enu_m);
+    assert_eq!(projected_solution.enu_m, float_solution.enu_m);
+    assert_eq!(
+        projected_solution.covariance_m2.expect("projected covariance"),
+        float_solution.covariance_enu_m2
+    );
+    assert!(!projected_solution.fixed);
 }
 
 #[test]

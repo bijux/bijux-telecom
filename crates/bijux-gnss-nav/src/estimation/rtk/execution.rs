@@ -7,8 +7,10 @@ use crate::api::{
     choose_rtk_single_difference_reference_signal,
     choose_rtk_single_difference_reference_signals_by_constellation,
     rtk_double_differences_by_constellation, rtk_double_differences_from_single_differences,
-    rtk_float_baseline_from_double_differences, rtk_single_differences_from_aligned_obs_epochs,
-    rtk_single_differences_from_obs_epochs, GpsEphemeris, RtkDoubleDifferenceObservation,
+    rtk_float_baseline_from_double_differences,
+    rtk_float_baseline_from_double_differences_with_satellite_states,
+    rtk_single_differences_from_aligned_obs_epochs, rtk_single_differences_from_obs_epochs,
+    GpsEphemeris, RtkDoubleDifferenceObservation, RtkDoubleDifferenceSatelliteStates,
     RtkFloatBaselineSolution, RtkSingleDifferenceObservation,
 };
 use bijux_gnss_core::api::{
@@ -292,6 +294,20 @@ pub fn solve_baseline_dd(
     })
 }
 
+pub fn solve_baseline_dd_with_satellite_states(
+    dd: &[DdObservation],
+    base_ecef_m: [f64; 3],
+    satellite_states: &[RtkDoubleDifferenceSatelliteStates],
+) -> Option<BaselineSolution> {
+    let solution =
+        solve_float_baseline_dd_with_satellite_states(dd, base_ecef_m, satellite_states)?;
+    Some(BaselineSolution {
+        enu_m: solution.enu_m,
+        covariance_m2: Some(solution.covariance_enu_m2),
+        fixed: false,
+    })
+}
+
 pub fn solve_float_baseline_dd(
     dd: &[DdObservation],
     base_ecef_m: [f64; 3],
@@ -299,6 +315,18 @@ pub fn solve_float_baseline_dd(
     t_rx_s: f64,
 ) -> Option<RtkFloatBaselineSolution> {
     rtk_float_baseline_from_double_differences(dd, base_ecef_m, ephs, t_rx_s)
+}
+
+pub fn solve_float_baseline_dd_with_satellite_states(
+    dd: &[DdObservation],
+    base_ecef_m: [f64; 3],
+    satellite_states: &[RtkDoubleDifferenceSatelliteStates],
+) -> Option<RtkFloatBaselineSolution> {
+    rtk_float_baseline_from_double_differences_with_satellite_states(
+        dd,
+        base_ecef_m,
+        satellite_states,
+    )
 }
 
 pub fn los_unit(base: [f64; 3], sat: [f64; 3]) -> [f64; 3] {

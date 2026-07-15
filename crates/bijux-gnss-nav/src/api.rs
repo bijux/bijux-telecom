@@ -158,9 +158,10 @@ pub use crate::estimation::rtk::execution::{
     build_dd, build_dd_per_constellation, build_sd, build_sd_with_alignment_tolerance,
     choose_ref_sat, choose_ref_sat_per_constellation, dd_covariance, double_difference,
     innovation_diagnostics, los_unit, single_difference, solve_baseline_dd,
-    solve_float_baseline_dd, AlignmentDiagnostic, AlignmentReport, BaselineConfig,
-    DdCovarianceModel, DdObservation, EpochAligner, RefSatPolicy, RefSatSelector, SdObservation,
-    SolutionSeparation,
+    solve_baseline_dd_with_satellite_states, solve_float_baseline_dd,
+    solve_float_baseline_dd_with_satellite_states, AlignmentDiagnostic, AlignmentReport,
+    BaselineConfig, DdCovarianceModel, DdObservation, EpochAligner, RefSatPolicy, RefSatSelector,
+    SdObservation, SolutionSeparation,
 };
 /// RTK baseline-quality, residual, and fix-guard helpers.
 pub use crate::estimation::rtk::quality::{
