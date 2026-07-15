@@ -2,6 +2,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::orbits::beidou::{BeidouIonosphericCorrection, BeidouSignalHealth, BeidouSystemTime};
+
 const BEIDOU_D2_PAGE_BITS: usize = 300;
 const BEIDOU_D2_PREAMBLE: u16 = 0b111_0001_0010;
 const BEIDOU_D2_SUBFRAME_ID: u8 = 1;
@@ -18,6 +20,22 @@ pub struct BeidouD2Page {
     pub sow_s: u32,
     pub bits: Vec<u8>,
     pub parity: BeidouD2ParitySummary,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct BeidouD2ClockStatusPage {
+    pub bdt: BeidouSystemTime,
+    pub urai: u8,
+    pub signal_health: BeidouSignalHealth,
+    pub toc_s: f64,
+    pub aodc: u8,
+    pub tgd1_s: f64,
+    pub tgd2_s: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct BeidouD2IonosphericPage {
+    pub ionosphere: BeidouIonosphericCorrection,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -74,6 +92,35 @@ pub fn decode_beidou_d2_page(bits: &[u8]) -> Result<BeidouD2Page, BeidouD2PageRe
         sow_s: sow_s(&corrected.bits),
         bits: corrected.bits.to_vec(),
         parity: BeidouD2ParitySummary { corrected_blocks: corrected.corrected_blocks },
+    })
+}
+
+pub fn decode_beidou_d2_clock_status_page(page: &BeidouD2Page) -> Option<BeidouD2ClockStatusPage> {
+    (page.page_number == 1).then(|| BeidouD2ClockStatusPage {
+        bdt: BeidouSystemTime { week: page.unsigned_bits(65, 13) as u16, sow_s: page.sow_s },
+        signal_health: BeidouSignalHealth {
+            autonomous_satellite_good: page.unsigned_bits(47, 1) == 0,
+        },
+        aodc: page.unsigned_bits(48, 5) as u8,
+        urai: page.unsigned_bits(61, 4) as u8,
+        toc_s: page.concat_unsigned_bits(&[(78, 5), (91, 12)]) as f64 * 8.0,
+        tgd1_s: page.signed_bits(103, 10) as f64 * 1.0e-10,
+        tgd2_s: page.signed_bits(121, 10) as f64 * 1.0e-10,
+    })
+}
+
+pub fn decode_beidou_d2_ionospheric_page(page: &BeidouD2Page) -> Option<BeidouD2IonosphericPage> {
+    (page.page_number == 2).then(|| BeidouD2IonosphericPage {
+        ionosphere: BeidouIonosphericCorrection {
+            alpha0: page.concat_signed_bits(&[(47, 6), (61, 2)]) as f64 * 2f64.powi(-30),
+            alpha1: page.signed_bits(63, 8) as f64 * 2f64.powi(-27),
+            alpha2: page.signed_bits(71, 8) as f64 * 2f64.powi(-24),
+            alpha3: page.concat_signed_bits(&[(79, 4), (91, 4)]) as f64 * 2f64.powi(-24),
+            beta0: page.signed_bits(95, 8) as f64 * 2f64.powi(11),
+            beta1: page.signed_bits(103, 8) as f64 * 2f64.powi(14),
+            beta2: page.concat_signed_bits(&[(111, 2), (121, 6)]) as f64 * 2f64.powi(16),
+            beta3: page.signed_bits(127, 8) as f64 * 2f64.powi(16),
+        },
     })
 }
 
@@ -256,6 +303,29 @@ mod tests {
         set_unsigned_bits(bits, 43, 4, u64::from(page_number));
     }
 
+    fn encode_signed(value: i64, bits: usize) -> u64 {
+        let mask = if bits == 64 { u64::MAX } else { (1_u64 << bits) - 1 };
+        (value as u64) & mask
+    }
+
+    fn set_signed_bits(bits: &mut [u8; BEIDOU_D2_PAGE_BITS], start: usize, len: usize, value: i64) {
+        set_unsigned_bits(bits, start, len, encode_signed(value, len));
+    }
+
+    fn set_split_signed_bits(
+        bits: &mut [u8; BEIDOU_D2_PAGE_BITS],
+        parts: &[(usize, usize)],
+        value: i64,
+    ) {
+        let total_bits: usize = parts.iter().map(|(_, len)| *len).sum();
+        let encoded = encode_signed(value, total_bits);
+        let mut remaining = total_bits;
+        for (start, len) in parts {
+            remaining -= *len;
+            set_unsigned_bits(bits, *start, *len, (encoded >> remaining) & ((1_u64 << len) - 1));
+        }
+    }
+
     fn apply_bch_parity(bits: &mut [u8; BEIDOU_D2_PAGE_BITS]) {
         set_codeword_parity(bits, 16);
         for word_index in 1..10 {
@@ -345,5 +415,59 @@ mod tests {
 
         assert_eq!(rejection.reason, BeidouD2PageRejectionReason::InvalidPageNumber);
         assert_eq!(rejection.page_number, Some(0));
+    }
+
+    #[test]
+    fn clock_status_page_decodes_bdt_clock_and_delays() {
+        let mut bits = [0_u8; BEIDOU_D2_PAGE_BITS];
+        set_common_header(&mut bits, 1, 345_678);
+        set_unsigned_bits(&mut bits, 47, 1, 0);
+        set_unsigned_bits(&mut bits, 48, 5, 17);
+        set_unsigned_bits(&mut bits, 61, 4, 5);
+        set_unsigned_bits(&mut bits, 65, 13, 1_234);
+        set_unsigned_bits(&mut bits, 78, 5, 0b10_101);
+        set_unsigned_bits(&mut bits, 91, 12, 0x5A5);
+        set_signed_bits(&mut bits, 103, 10, -77);
+        set_signed_bits(&mut bits, 121, 10, 55);
+        apply_bch_parity(&mut bits);
+        let page = decode_beidou_d2_page(&bits).expect("valid clock page");
+
+        let clock = super::decode_beidou_d2_clock_status_page(&page).expect("page 1");
+
+        assert_eq!(clock.bdt.week, 1_234);
+        assert_eq!(clock.bdt.sow_s, 345_678);
+        assert!(clock.signal_health.autonomous_satellite_good);
+        assert_eq!(clock.aodc, 17);
+        assert_eq!(clock.urai, 5);
+        assert_eq!(clock.toc_s, (((0b10_101_u64 << 12) | 0x5A5_u64) as f64) * 8.0);
+        assert!((clock.tgd1_s - -77.0e-10).abs() < 1.0e-18);
+        assert!((clock.tgd2_s - 55.0e-10).abs() < 1.0e-18);
+    }
+
+    #[test]
+    fn ionospheric_page_decodes_broadcast_coefficients() {
+        let mut bits = [0_u8; BEIDOU_D2_PAGE_BITS];
+        set_common_header(&mut bits, 2, 345_681);
+        set_split_signed_bits(&mut bits, &[(47, 6), (61, 2)], -12);
+        set_signed_bits(&mut bits, 63, 8, 23);
+        set_signed_bits(&mut bits, 71, 8, -34);
+        set_split_signed_bits(&mut bits, &[(79, 4), (91, 4)], 45);
+        set_signed_bits(&mut bits, 95, 8, -56);
+        set_signed_bits(&mut bits, 103, 8, 67);
+        set_split_signed_bits(&mut bits, &[(111, 2), (121, 6)], -78);
+        set_signed_bits(&mut bits, 127, 8, 89);
+        apply_bch_parity(&mut bits);
+        let page = decode_beidou_d2_page(&bits).expect("valid ionosphere page");
+
+        let ionosphere = super::decode_beidou_d2_ionospheric_page(&page).expect("page 2");
+
+        assert_eq!(ionosphere.ionosphere.alpha0, -12.0 * 2f64.powi(-30));
+        assert_eq!(ionosphere.ionosphere.alpha1, 23.0 * 2f64.powi(-27));
+        assert_eq!(ionosphere.ionosphere.alpha2, -34.0 * 2f64.powi(-24));
+        assert_eq!(ionosphere.ionosphere.alpha3, 45.0 * 2f64.powi(-24));
+        assert_eq!(ionosphere.ionosphere.beta0, -56.0 * 2f64.powi(11));
+        assert_eq!(ionosphere.ionosphere.beta1, 67.0 * 2f64.powi(14));
+        assert_eq!(ionosphere.ionosphere.beta2, -78.0 * 2f64.powi(16));
+        assert_eq!(ionosphere.ionosphere.beta3, 89.0 * 2f64.powi(16));
     }
 }
