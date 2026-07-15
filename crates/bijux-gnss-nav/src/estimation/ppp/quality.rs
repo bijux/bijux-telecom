@@ -269,7 +269,7 @@ impl PppFilter {
         }
     }
 
-    pub fn try_fix_wide_lane(&mut self, _obs: &ObsEpoch, sats: &[&ObsSatellite]) -> usize {
+    pub fn try_fix_wide_lane(&mut self, obs: &ObsEpoch, sats: &[&ObsSatellite]) -> usize {
         self.ar_integer_ambiguities.clear();
         if self.config.ar_mode == PppArMode::FloatPpp {
             self.ar_evidence = PppAmbiguityResolutionEvidence::default();
@@ -290,11 +290,25 @@ impl PppFilter {
         }
         if candidates.is_empty() {
             self.health.ar_events.push("WL unavailable: no dual-frequency data".to_string());
+            let narrow_count = if self.config.ar_mode == PppArMode::PppArNarrowLane {
+                self.try_fix_narrow_lane(obs, false)
+            } else {
+                0
+            };
             self.ar_evidence = PppAmbiguityResolutionEvidence {
+                candidate_count: self.ar_integer_ambiguities.len(),
+                accepted_count: narrow_count,
                 ratio_threshold: self.config.ar_ratio_threshold,
                 stability_epochs_required: self.config.ar_stability_epochs,
                 stable_epochs: self.ar_stable_epochs,
-                missing_reasons: vec!["missing_wide_lane_candidates".to_string()],
+                missing_reasons: if narrow_count == 0 {
+                    vec![
+                        "missing_wide_lane_candidates".to_string(),
+                        "no_validated_narrow_lane_candidates".to_string(),
+                    ]
+                } else {
+                    vec!["missing_wide_lane_candidates".to_string()]
+                },
                 ..PppAmbiguityResolutionEvidence::default()
             };
             return 0;
@@ -347,9 +361,7 @@ impl PppFilter {
         }
         let stable = self.ar_stable_epochs >= self.config.ar_stability_epochs;
         let mut fixed_count = 0;
-        let mut all_phase_bias_provenance = true;
         for (sat, mut candidate) in evaluated {
-            all_phase_bias_provenance &= candidate.phase_bias_provenance_complete;
             if stable && candidate.validation_reasons.is_empty() {
                 candidate.accepted = true;
                 fixed_count += 1;
@@ -369,6 +381,15 @@ impl PppFilter {
         if fixed_count > 0 {
             self.apply_wl_constraints();
         }
+        let narrow_count = if self.config.ar_mode == PppArMode::PppArNarrowLane {
+            self.try_fix_narrow_lane(obs, fixed_count > 0)
+        } else {
+            0
+        };
+        let all_phase_bias_provenance = self
+            .ar_integer_ambiguities
+            .iter()
+            .all(|candidate| candidate.phase_bias_provenance_complete);
         let mut missing_reasons = Vec::new();
         if !all_phase_bias_provenance {
             missing_reasons.push("missing_phase_bias_provenance".to_string());
@@ -376,17 +397,84 @@ impl PppFilter {
         if fixed_count == 0 {
             missing_reasons.push("no_validated_integer_candidates".to_string());
         }
+        if self.config.ar_mode == PppArMode::PppArNarrowLane && narrow_count == 0 {
+            missing_reasons.push("no_validated_narrow_lane_candidates".to_string());
+        }
         self.ar_evidence = PppAmbiguityResolutionEvidence {
             candidate_count: self.ar_integer_ambiguities.len(),
-            accepted_count: fixed_count,
+            accepted_count: fixed_count + narrow_count,
             phase_bias_provenance_complete: all_phase_bias_provenance,
             wide_lane_validated: fixed_count > 0,
-            narrow_lane_validated: false,
+            narrow_lane_validated: narrow_count > 0,
             ratio_threshold: self.config.ar_ratio_threshold,
             stability_epochs_required: self.config.ar_stability_epochs,
             stable_epochs: self.ar_stable_epochs,
             missing_reasons,
         };
+        fixed_count
+    }
+
+    fn try_fix_narrow_lane(&mut self, obs: &ObsEpoch, wide_lane_validated: bool) -> usize {
+        let mut fixed_count = 0;
+        let ambiguity_states = self
+            .indices
+            .ambiguity
+            .iter()
+            .map(|(signal, index)| (*signal, *index))
+            .collect::<Vec<_>>();
+        for (signal, index) in ambiguity_states {
+            let float_cycles = self.ekf.x.get(index).copied().unwrap_or(f64::NAN);
+            let variance_cycles2 =
+                if index < self.ekf.p.rows() { self.ekf.p[(index, index)] } else { f64::NAN };
+            let (ratio, integer_cycles) = ratio_fix(float_cycles, variance_cycles2);
+            let phase_bias_provenance_complete = self
+                .phase_bias
+                .phase_bias_for_ambiguity_resolution(signal, obs.gps_time())
+                .is_some();
+            let mut validation_reasons = Vec::new();
+            if !wide_lane_validated {
+                validation_reasons.push("missing_wide_lane_validation".to_string());
+            }
+            if !phase_bias_provenance_complete {
+                validation_reasons.push("missing_phase_bias_provenance".to_string());
+            }
+            if !float_cycles.is_finite()
+                || !variance_cycles2.is_finite()
+                || variance_cycles2 < 0.0
+                || !ratio.is_finite()
+            {
+                validation_reasons.push("invalid_candidate_statistics".to_string());
+            }
+            if ratio < self.config.ar_ratio_threshold {
+                validation_reasons.push("ratio_below_threshold".to_string());
+            }
+            let accepted = validation_reasons.is_empty();
+            if accepted {
+                fixed_count += 1;
+                if index < self.ekf.x.len() {
+                    self.ekf.x[index] = integer_cycles as f64;
+                }
+                if index < self.ekf.p.rows() {
+                    self.ekf.p[(index, index)] *= 0.05;
+                }
+                self.health.ar_events.push(format!("NL fix {:?} ratio {:.2}", signal, ratio));
+            }
+            self.ar_integer_ambiguities.push(PppIntegerAmbiguityCandidate {
+                kind: PppIntegerAmbiguityKind::NarrowLane,
+                sat: signal.sat,
+                signal: Some(signal),
+                float_cycles,
+                integer_cycles,
+                variance_cycles2,
+                ratio,
+                accepted,
+                phase_bias_provenance_complete,
+                validation_reasons,
+            });
+        }
+        if fixed_count > 0 {
+            self.ekf.sanitize_covariance();
+        }
         fixed_count
     }
 
