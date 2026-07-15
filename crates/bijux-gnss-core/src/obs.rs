@@ -1023,6 +1023,103 @@ impl CodeCarrierDivergence {
     }
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[serde(rename_all = "snake_case")]
+pub enum CycleSlipDetector {
+    TrackingLock,
+    DopplerPredictedPhase,
+    GeometryFreePhase,
+    MelbourneWubbena,
+    DataGap,
+    PhaseInnovation,
+    CodeCarrierDivergence,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct CycleSlipDetectorEvidence {
+    pub detector: CycleSlipDetector,
+    pub triggered: bool,
+    pub value: Option<f64>,
+    pub threshold: Option<f64>,
+    pub units: String,
+    pub reason: String,
+}
+
+impl CycleSlipDetectorEvidence {
+    pub fn new(
+        detector: CycleSlipDetector,
+        triggered: bool,
+        value: Option<f64>,
+        threshold: Option<f64>,
+        units: impl Into<String>,
+        reason: impl Into<String>,
+    ) -> Self {
+        Self {
+            detector,
+            triggered,
+            value: value.filter(|value| value.is_finite()),
+            threshold: threshold.filter(|threshold| threshold.is_finite()),
+            units: units.into(),
+            reason: reason.into(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct CycleSlipDecisionEvidence {
+    pub detected: bool,
+    pub primary_reason: Option<String>,
+    pub contributors: Vec<CycleSlipDetectorEvidence>,
+    pub detection_probability_budget: f64,
+    pub false_alarm_probability_budget: f64,
+}
+
+impl CycleSlipDecisionEvidence {
+    pub fn from_contributors(
+        contributors: Vec<CycleSlipDetectorEvidence>,
+        detection_probability_budget: f64,
+        false_alarm_probability_budget: f64,
+    ) -> Self {
+        let detected = contributors.iter().any(|contributor| contributor.triggered);
+        let primary_reason = contributors
+            .iter()
+            .find(|contributor| contributor.triggered)
+            .map(|contributor| contributor.reason.clone());
+        Self {
+            detected,
+            primary_reason,
+            contributors,
+            detection_probability_budget,
+            false_alarm_probability_budget,
+        }
+    }
+
+    pub fn triggered_detectors(&self) -> Vec<CycleSlipDetector> {
+        self.contributors
+            .iter()
+            .filter(|contributor| contributor.triggered)
+            .map(|contributor| contributor.detector)
+            .collect()
+    }
+
+    pub fn upsert_contributor(&mut self, contributor: CycleSlipDetectorEvidence) {
+        if let Some(existing) =
+            self.contributors.iter_mut().find(|existing| existing.detector == contributor.detector)
+        {
+            *existing = contributor;
+        } else {
+            self.contributors.push(contributor);
+            self.contributors.sort_by_key(|contributor| contributor.detector);
+        }
+        self.detected = self.contributors.iter().any(|contributor| contributor.triggered);
+        self.primary_reason = self
+            .contributors
+            .iter()
+            .find(|contributor| contributor.triggered)
+            .map(|contributor| contributor.reason.clone());
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ObsMetadata {
     pub tracking_mode: String,
@@ -1100,6 +1197,8 @@ pub struct ObsMetadata {
     pub tracking_uncertainty: Option<TrackingUncertainty>,
     #[serde(default)]
     pub code_carrier_divergence: Option<CodeCarrierDivergence>,
+    #[serde(default)]
+    pub cycle_slip_evidence: Option<CycleSlipDecisionEvidence>,
 }
 
 impl Default for ObsMetadata {
@@ -1152,6 +1251,7 @@ impl Default for ObsMetadata {
             receiver_clock_source: String::new(),
             tracking_uncertainty: None,
             code_carrier_divergence: None,
+            cycle_slip_evidence: None,
         }
     }
 }
@@ -1653,6 +1753,7 @@ pub(crate) fn melbourne_wubbena_m(
 mod tests {
     use super::{
         acq_result_stability_key, obs_epoch_stability_key, CodeCarrierDivergence,
+        CycleSlipDecisionEvidence, CycleSlipDetector, CycleSlipDetectorEvidence,
         MeasurementErrorModel, ObsEpoch, ObsMetadata, ObsSatellite, ObservationCovarianceStatus,
         SignalDelayAlignment, TrackingUncertainty,
         OBSERVATION_DOPPLER_MODEL_TRACKED_CARRIER_IF_OFFSET,
@@ -2075,6 +2176,60 @@ mod tests {
         let metadata = ObsMetadata::default();
 
         assert_eq!(metadata.code_carrier_divergence, None);
+    }
+
+    #[test]
+    fn cycle_slip_decision_records_triggered_detector_budget() {
+        let mut decision = CycleSlipDecisionEvidence::from_contributors(
+            vec![
+                CycleSlipDetectorEvidence::new(
+                    CycleSlipDetector::TrackingLock,
+                    false,
+                    None,
+                    None,
+                    "",
+                    "tracking_lock_continuous",
+                ),
+                CycleSlipDetectorEvidence::new(
+                    CycleSlipDetector::PhaseInnovation,
+                    true,
+                    Some(0.42),
+                    Some(0.15),
+                    "cycles",
+                    "phase_residual",
+                ),
+            ],
+            0.99,
+            1.0e-3,
+        );
+
+        assert!(decision.detected);
+        assert_eq!(decision.primary_reason.as_deref(), Some("phase_residual"));
+        assert_eq!(decision.triggered_detectors(), vec![CycleSlipDetector::PhaseInnovation]);
+        assert_eq!(decision.detection_probability_budget, 0.99);
+        assert_eq!(decision.false_alarm_probability_budget, 1.0e-3);
+
+        decision.upsert_contributor(CycleSlipDetectorEvidence::new(
+            CycleSlipDetector::TrackingLock,
+            true,
+            None,
+            None,
+            "",
+            "loss_of_lock",
+        ));
+
+        assert_eq!(
+            decision.triggered_detectors(),
+            vec![CycleSlipDetector::TrackingLock, CycleSlipDetector::PhaseInnovation]
+        );
+        assert_eq!(decision.primary_reason.as_deref(), Some("loss_of_lock"));
+    }
+
+    #[test]
+    fn obs_metadata_defaults_do_not_invent_cycle_slip_evidence() {
+        let metadata = ObsMetadata::default();
+
+        assert_eq!(metadata.cycle_slip_evidence, None);
     }
 
     #[test]
