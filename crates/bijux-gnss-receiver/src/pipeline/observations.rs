@@ -2708,6 +2708,55 @@ mod tests {
             * SPEED_OF_LIGHT_MPS
     }
 
+    fn gps_l1ca_decoded_time_epoch(
+        prn: u8,
+        config: &ReceiverPipelineConfig,
+        epoch_idx: u64,
+        capture_start_gps_time: GpsTime,
+        receive_gps_time: GpsTime,
+        decoded_code_periods: f64,
+        aligned_code_phase_chips: f64,
+    ) -> TrackEpoch {
+        let signal = signal_spec_gps_l1_ca();
+        let code_period_s = 1023.0 / signal.code_rate_hz;
+        let code_delay_s = aligned_code_phase_chips / signal.code_rate_hz;
+        let expected_signal_travel_time_s = decoded_code_periods * code_period_s + code_delay_s;
+        let decoded_transmit_time = receive_gps_time.offset_seconds(-expected_signal_travel_time_s);
+        let epoch_sample_index = ((receive_gps_time.tow_s - capture_start_gps_time.tow_s)
+            * config.sampling_freq_hz)
+            .round() as u64;
+
+        TrackEpoch {
+            sat: SatId { constellation: Constellation::Gps, prn },
+            signal_band: SignalBand::L1,
+            carrier_hz: Hertz(tracked_signal_center_hz(config.intermediate_freq_hz, signal)),
+            code_rate_hz: Hertz(signal.code_rate_hz),
+            code_phase_samples: Chips(test_tracking_code_phase_samples_for_signal(
+                config,
+                signal,
+                1023,
+                aligned_code_phase_chips,
+            )),
+            transmit_time: Some(TrackingTransmitTime {
+                transmit_gps_time: decoded_transmit_time,
+                source: "decoded_lnav_how".to_string(),
+            }),
+            sample_index: epoch_sample_index,
+            source_time: ReceiverSampleTrace::from_sample_index(
+                epoch_sample_index,
+                config.sampling_freq_hz,
+            ),
+            signal_delay_alignment: None,
+            ..make_tracking_epoch_with_phase(
+                prn,
+                config,
+                epoch_idx,
+                tracked_signal_center_hz(config.intermediate_freq_hz, signal),
+                0.0,
+            )
+        }
+    }
+
     fn epoch_sample_index(config: &ReceiverPipelineConfig, epoch_idx: u64) -> u64 {
         epoch_idx
             * samples_per_code(
@@ -3660,6 +3709,113 @@ mod tests {
         );
         assert!((timing.signal_travel_time_s.0 - expected_signal_travel_time_s).abs() <= 1.0e-12);
         assert!((timing.transmit_gps_time.tow_s - decoded_transmit_time.tow_s).abs() <= 1.0e-12);
+    }
+
+    #[test]
+    fn observations_apply_joint_integer_code_period_vector() {
+        let signal = signal_spec_gps_l1_ca();
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 4_092_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: signal.code_rate_hz,
+            code_length: 1023,
+            ..ReceiverPipelineConfig::default()
+        };
+        let capture_start_gps_time = GpsTime { week: 2200, tow_s: 345_600.0 };
+        let receive_gps_time = GpsTime { week: 2200, tow_s: 345_600.250 };
+        let first_epoch = gps_l1ca_decoded_time_epoch(
+            3,
+            &config,
+            250,
+            capture_start_gps_time,
+            receive_gps_time,
+            72.0,
+            384.0,
+        );
+        let second_epoch = gps_l1ca_decoded_time_epoch(
+            9,
+            &config,
+            250,
+            capture_start_gps_time,
+            receive_gps_time,
+            80.0,
+            640.0,
+        );
+
+        let report = observations_from_tracking_results_with_gps_anchor(
+            &config,
+            Some(capture_start_gps_time),
+            &[track_from_epoch(second_epoch), track_from_epoch(first_epoch)],
+            10,
+        );
+        let epoch = report.output.first().expect("grouped observation epoch");
+        let first_sat = epoch.sats.iter().find(|sat| sat.signal_id.sat.prn == 3).expect("sat");
+        let second_sat = epoch.sats.iter().find(|sat| sat.signal_id.sat.prn == 9).expect("sat");
+        let first_expected_s = 72.0 * (1023.0 / signal.code_rate_hz) + 384.0 / signal.code_rate_hz;
+        let second_expected_s = 80.0 * (1023.0 / signal.code_rate_hz) + 640.0 / signal.code_rate_hz;
+
+        assert_eq!(epoch.decision, ObservationEpochDecision::Accepted);
+        assert_eq!(first_sat.metadata.pseudorange_integer_code_periods, Some(72));
+        assert_eq!(second_sat.metadata.pseudorange_integer_code_periods, Some(80));
+        assert_eq!(first_sat.metadata.observation_support_class, "supported");
+        assert_eq!(second_sat.metadata.observation_support_class, "supported");
+        assert!(
+            (first_sat.pseudorange_m.0 - first_expected_s * SPEED_OF_LIGHT_MPS).abs() <= 1.0e-6
+        );
+        assert!(
+            (second_sat.pseudorange_m.0 - second_expected_s * SPEED_OF_LIGHT_MPS).abs() <= 1.0e-6
+        );
+        assert!(!report
+            .events
+            .iter()
+            .any(|event| event.code == "OBS_INTEGER_CODE_PERIOD_AMBIGUITY_REFUSED"));
+    }
+
+    #[test]
+    fn observations_refuse_non_unique_integer_code_period_boundary() {
+        let signal = signal_spec_gps_l1_ca();
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 4_092_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: signal.code_rate_hz,
+            code_length: 1023,
+            ..ReceiverPipelineConfig::default()
+        };
+        let capture_start_gps_time = GpsTime { week: 2200, tow_s: 345_600.0 };
+        let receive_gps_time = GpsTime { week: 2200, tow_s: 345_600.250 };
+        let epoch = gps_l1ca_decoded_time_epoch(
+            4,
+            &config,
+            250,
+            capture_start_gps_time,
+            receive_gps_time,
+            72.5,
+            256.0,
+        );
+
+        let report = observations_from_tracking_results_with_gps_anchor(
+            &config,
+            Some(capture_start_gps_time),
+            &[track_from_epoch(epoch)],
+            10,
+        );
+        let epoch = report.output.first().expect("observation epoch");
+        let sat = epoch.sats.first().expect("observation satellite");
+
+        assert_eq!(epoch.decision, ObservationEpochDecision::Rejected);
+        assert_eq!(epoch.decision_reason.as_deref(), Some("inconsistent_observable"));
+        assert_eq!(sat.observation_status, ObservationStatus::Inconsistent);
+        assert!(sat
+            .observation_reject_reasons
+            .iter()
+            .any(|reason| reason == CODE_PERIOD_AMBIGUITY_NON_UNIQUE));
+        assert_eq!(sat.metadata.observation_support_class, "unsupported");
+        assert!(report.events.iter().any(|event| {
+            event.code == "OBS_INTEGER_CODE_PERIOD_AMBIGUITY_REFUSED"
+                && event.context.iter().any(|(key, value)| {
+                    key == "reason" && value == CODE_PERIOD_AMBIGUITY_NON_UNIQUE
+                })
+        }));
     }
 
     #[test]
