@@ -1681,13 +1681,17 @@ fn scored_code_period_ambiguity_solution(
 
     let satellites = chosen
         .into_iter()
-        .map(|(input, candidate)| CodePeriodAmbiguitySatellite {
-            signal_id: input.signal_id,
-            integer_code_periods: candidate.integer_code_periods,
-            signal_travel_time_s: Seconds(candidate.signal_travel_time_s),
-            transmit_gps_time: input
-                .receive_gps_time
-                .offset_seconds(-candidate.signal_travel_time_s),
+        .map(|(input, candidate)| {
+            let observed_signal_travel_time_s =
+                candidate.signal_travel_time_s + common_receiver_clock_bias_s;
+            CodePeriodAmbiguitySatellite {
+                signal_id: input.signal_id,
+                integer_code_periods: candidate.integer_code_periods,
+                signal_travel_time_s: Seconds(observed_signal_travel_time_s),
+                transmit_gps_time: input
+                    .receive_gps_time
+                    .offset_seconds(-observed_signal_travel_time_s),
+            }
         })
         .collect::<Vec<_>>();
 
@@ -3860,6 +3864,53 @@ mod tests {
     }
 
     #[test]
+    fn decoded_transmit_time_observation_applies_receiver_clock_bias_once() {
+        let signal = signal_spec_gps_l1_ca();
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 4_092_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: signal.code_rate_hz,
+            code_length: 1023,
+            receiver_clock_bias_s: 0.000_200,
+            receiver_clock_source: "known_receiver_clock".to_string(),
+            ..ReceiverPipelineConfig::default()
+        };
+        let capture_start_gps_time = GpsTime { week: 2200, tow_s: 345_600.0 };
+        let true_receive_gps_time = GpsTime { week: 2200, tow_s: 345_600.250 };
+        let whole_code_periods = 72;
+        let aligned_code_phase_chips = 384.0;
+        let physical_signal_time_s = whole_code_periods as f64 * (1023.0 / signal.code_rate_hz)
+            + aligned_code_phase_chips / signal.code_rate_hz;
+        let epoch = gps_l1ca_decoded_time_epoch(
+            7,
+            &config,
+            250,
+            capture_start_gps_time,
+            true_receive_gps_time,
+            whole_code_periods as f64,
+            aligned_code_phase_chips,
+        );
+
+        let report = observations_from_tracking_results_with_gps_anchor(
+            &config,
+            Some(capture_start_gps_time),
+            &[track_from_epoch(epoch)],
+            10,
+        );
+        let obs_sat = report.output[0].sats.first().expect("observation satellite");
+        let timing = obs_sat.timing.expect("resolved signal timing");
+        let expected_observed_time_s = physical_signal_time_s + config.receiver_clock_bias_s;
+
+        assert_eq!(obs_sat.metadata.pseudorange_integer_code_periods, Some(whole_code_periods));
+        assert_eq!(obs_sat.metadata.receiver_clock_source, "known_receiver_clock");
+        assert!((timing.signal_travel_time_s.0 - expected_observed_time_s).abs() <= 2.5e-7);
+        assert!(
+            (obs_sat.pseudorange_m.0 - expected_observed_time_s * SPEED_OF_LIGHT_MPS).abs()
+                <= CODE_PERIOD_AMBIGUITY_EPS_S * SPEED_OF_LIGHT_MPS
+        );
+    }
+
+    #[test]
     fn observations_apply_joint_integer_code_period_vector() {
         let signal = signal_spec_gps_l1_ca();
         let config = ReceiverPipelineConfig {
@@ -3908,10 +3959,12 @@ mod tests {
         assert_eq!(first_sat.metadata.observation_support_class, "supported");
         assert_eq!(second_sat.metadata.observation_support_class, "supported");
         assert!(
-            (first_sat.pseudorange_m.0 - first_expected_s * SPEED_OF_LIGHT_MPS).abs() <= 1.0e-6
+            (first_sat.pseudorange_m.0 - first_expected_s * SPEED_OF_LIGHT_MPS).abs()
+                <= CODE_PERIOD_AMBIGUITY_EPS_S * SPEED_OF_LIGHT_MPS
         );
         assert!(
-            (second_sat.pseudorange_m.0 - second_expected_s * SPEED_OF_LIGHT_MPS).abs() <= 1.0e-6
+            (second_sat.pseudorange_m.0 - second_expected_s * SPEED_OF_LIGHT_MPS).abs()
+                <= CODE_PERIOD_AMBIGUITY_EPS_S * SPEED_OF_LIGHT_MPS
         );
         assert!(!report
             .events
