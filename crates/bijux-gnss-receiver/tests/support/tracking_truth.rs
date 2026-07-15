@@ -259,6 +259,52 @@ pub fn mean_tracking_cn0_dbhz(epochs: &[TrackEpoch], min_locked_epochs: usize) -
     (!cn0_values.is_empty()).then_some(cn0_values.iter().sum::<f64>() / cn0_values.len() as f64)
 }
 
+pub fn cycle_slip_rate(epochs: &[TrackEpoch]) -> f64 {
+    if epochs.is_empty() {
+        return 0.0;
+    }
+    epochs.iter().filter(|epoch| epoch.cycle_slip).count() as f64 / epochs.len() as f64
+}
+
+pub fn stable_pll_error_rms(epochs: &[TrackEpoch], min_locked_epochs: usize) -> Option<f64> {
+    let stable_window = stable_tracking_window(epochs, min_locked_epochs);
+    if stable_window.is_empty() {
+        return None;
+    }
+
+    let mean_square = stable_window
+        .iter()
+        .map(|epoch| {
+            let pll_error = epoch.pll_err as f64;
+            pll_error * pll_error
+        })
+        .sum::<f64>()
+        / stable_window.len() as f64;
+    Some(mean_square.sqrt())
+}
+
+pub fn stable_carrier_phase_step_jitter_cycles(
+    epochs: &[TrackEpoch],
+    min_locked_epochs: usize,
+) -> Option<f64> {
+    let phase_steps_cycles =
+        carrier_phase_steps_cycles(stable_tracking_window(epochs, min_locked_epochs));
+    if phase_steps_cycles.len() < 2 {
+        return None;
+    }
+
+    let mean = phase_steps_cycles.iter().copied().sum::<f64>() / phase_steps_cycles.len() as f64;
+    let variance = phase_steps_cycles
+        .iter()
+        .map(|step| {
+            let residual = *step - mean;
+            residual * residual
+        })
+        .sum::<f64>()
+        / phase_steps_cycles.len() as f64;
+    Some(variance.sqrt())
+}
+
 fn gps_lnav_nav_bit_period_samples(sample_rate_hz: f64) -> u64 {
     ((sample_rate_hz * GPS_LNAV_NAV_BIT_PERIOD_S).round() as u64).max(1)
 }
@@ -268,14 +314,16 @@ mod tests {
     use super::{
         carrier_frequency_error_hz, carrier_frequency_error_under_linear_doppler_hz,
         carrier_frequency_error_under_quadratic_doppler_hz, carrier_phase_step_cycles,
-        carrier_phase_steps_cycles, code_phase_error_samples, epoch_indices_with_lock_state,
-        epoch_indices_with_lock_state_reason, expected_linear_doppler_hz,
-        expected_quadratic_doppler_hz, first_tracking_lock_epoch_index, mean_tracking_cn0_dbhz,
-        nav_bit_transition_epoch_indices, post_lock_carrier_frequency_errors_hz,
+        carrier_phase_steps_cycles, code_phase_error_samples, cycle_slip_rate,
+        epoch_indices_with_lock_state, epoch_indices_with_lock_state_reason,
+        expected_linear_doppler_hz, expected_quadratic_doppler_hz, first_tracking_lock_epoch_index,
+        mean_tracking_cn0_dbhz, nav_bit_transition_epoch_indices,
+        post_lock_carrier_frequency_errors_hz,
         post_lock_carrier_frequency_errors_under_linear_doppler_hz,
         post_lock_carrier_frequency_errors_under_quadratic_doppler_hz,
-        post_lock_code_phase_errors_samples, post_lock_epochs, stable_tracking_cn0_estimates,
-        stable_tracking_window, wrapped_code_phase_error_samples,
+        post_lock_code_phase_errors_samples, post_lock_epochs,
+        stable_carrier_phase_step_jitter_cycles, stable_pll_error_rms,
+        stable_tracking_cn0_estimates, stable_tracking_window, wrapped_code_phase_error_samples,
     };
     use bijux_gnss_core::api::{Chips, Cycles, Epoch, Hertz, TrackEpoch};
     use bijux_gnss_receiver::api::ReceiverPipelineConfig;
@@ -808,5 +856,84 @@ mod tests {
         let mean_cn0_dbhz = mean_tracking_cn0_dbhz(&epochs, 3).expect("mean cn0");
 
         assert!((mean_cn0_dbhz - 47.0).abs() <= f64::EPSILON);
+    }
+
+    #[test]
+    fn cycle_slip_rate_counts_slips_across_all_epochs() {
+        let epochs = vec![
+            TrackEpoch { cycle_slip: false, ..TrackEpoch::default() },
+            TrackEpoch { cycle_slip: true, ..TrackEpoch::default() },
+            TrackEpoch { cycle_slip: false, ..TrackEpoch::default() },
+            TrackEpoch { cycle_slip: true, ..TrackEpoch::default() },
+        ];
+
+        assert_eq!(cycle_slip_rate(&epochs), 0.5);
+        assert_eq!(cycle_slip_rate(&[]), 0.0);
+    }
+
+    #[test]
+    fn stable_pll_error_rms_uses_only_sustained_tracking_window() {
+        let epochs = vec![
+            TrackEpoch {
+                pll_err: 10.0,
+                lock_state: "pull_in".to_string(),
+                ..TrackEpoch::default()
+            },
+            TrackEpoch {
+                lock: true,
+                pll_lock: true,
+                fll_lock: true,
+                lock_state: "tracking".to_string(),
+                pll_err: 3.0,
+                ..TrackEpoch::default()
+            },
+            TrackEpoch {
+                lock: true,
+                pll_lock: true,
+                fll_lock: true,
+                lock_state: "tracking".to_string(),
+                pll_err: 4.0,
+                ..TrackEpoch::default()
+            },
+        ];
+
+        let rms = stable_pll_error_rms(&epochs, 2).expect("stable pll rms");
+
+        assert!((rms - (12.5_f64).sqrt()).abs() <= f64::EPSILON);
+    }
+
+    #[test]
+    fn stable_carrier_phase_step_jitter_measures_step_dispersion() {
+        let epochs = vec![
+            TrackEpoch {
+                lock: true,
+                pll_lock: true,
+                fll_lock: true,
+                lock_state: "tracking".to_string(),
+                carrier_phase_cycles: Cycles(0.0),
+                ..TrackEpoch::default()
+            },
+            TrackEpoch {
+                lock: true,
+                pll_lock: true,
+                fll_lock: true,
+                lock_state: "tracking".to_string(),
+                carrier_phase_cycles: Cycles(1.0),
+                ..TrackEpoch::default()
+            },
+            TrackEpoch {
+                lock: true,
+                pll_lock: true,
+                fll_lock: true,
+                lock_state: "tracking".to_string(),
+                carrier_phase_cycles: Cycles(3.0),
+                ..TrackEpoch::default()
+            },
+        ];
+
+        let jitter =
+            stable_carrier_phase_step_jitter_cycles(&epochs, 3).expect("carrier step jitter");
+
+        assert!((jitter - 0.5).abs() <= f64::EPSILON);
     }
 }
