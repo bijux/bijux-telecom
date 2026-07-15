@@ -287,6 +287,10 @@ pub struct PppSolutionEpoch {
     pub nis_mean: Option<f64>,
     pub ar_mode: PppArMode,
     pub fixed_wl: usize,
+    #[serde(default)]
+    pub ambiguity_resolution: PppAmbiguityResolutionEvidence,
+    #[serde(default)]
+    pub integer_ambiguities: Vec<PppIntegerAmbiguityCandidate>,
 }
 
 impl ArtifactPayloadValidate for PppSolutionEpoch {
@@ -423,6 +427,37 @@ impl ArtifactPayloadValidate for PppSolutionEpoch {
                 "PPP convergence claim must not carry unresolved evidence blockers",
             ));
         }
+        if self.fixed_wl > 0 && self.ambiguity_resolution.accepted_count == 0 {
+            events.push(DiagnosticEvent::new(
+                DiagnosticSeverity::Error,
+                "PPP_AR_EVIDENCE_MISSING",
+                "PPP fixed ambiguity count requires accepted ambiguity-resolution evidence",
+            ));
+        }
+        if self
+            .integer_ambiguities
+            .iter()
+            .any(|candidate| candidate.accepted && !candidate.phase_bias_provenance_complete)
+        {
+            events.push(DiagnosticEvent::new(
+                DiagnosticSeverity::Error,
+                "PPP_AR_PHASE_BIAS_PROVENANCE_MISSING",
+                "PPP accepted integer ambiguity requires complete phase-bias provenance",
+            ));
+        }
+        if self.integer_ambiguities.iter().any(|candidate| {
+            candidate.accepted
+                && (!candidate.ratio.is_finite()
+                    || !candidate.float_cycles.is_finite()
+                    || !candidate.variance_cycles2.is_finite()
+                    || candidate.variance_cycles2 < 0.0)
+        }) {
+            events.push(DiagnosticEvent::new(
+                DiagnosticSeverity::Error,
+                "PPP_AR_CANDIDATE_INVALID",
+                "PPP accepted integer ambiguity candidate must carry finite float, variance, and ratio evidence",
+            ));
+        }
         events
     }
 }
@@ -430,8 +465,10 @@ impl ArtifactPayloadValidate for PppSolutionEpoch {
 #[cfg(test)]
 mod tests {
     use super::{
-        PppArMode, PppConfig, PppConvergenceEvidence, PppConvergenceState, PppPreciseProductAction,
-        PppPreciseProductPolicy, PppSolutionEpoch, PppStochasticEvidence, PppTroposphereSource,
+        PppAmbiguityResolutionEvidence, PppArMode, PppConfig, PppConvergenceEvidence,
+        PppConvergenceState, PppIntegerAmbiguityCandidate, PppIntegerAmbiguityKind,
+        PppPreciseProductAction, PppPreciseProductPolicy, PppSolutionEpoch, PppStochasticEvidence,
+        PppTroposphereSource,
     };
     use crate::formats::precise_products::PreciseProductDiscontinuityKind;
     use crate::models::ocean_tide_loading::{
@@ -492,6 +529,8 @@ mod tests {
             nis_mean: None,
             ar_mode: PppArMode::FloatPpp,
             fixed_wl: 0,
+            ambiguity_resolution: PppAmbiguityResolutionEvidence::default(),
+            integer_ambiguities: Vec::new(),
         }
     }
 
@@ -550,6 +589,53 @@ mod tests {
         assert!(diagnostics
             .iter()
             .any(|event| event.code == "PPP_CONVERGENCE_REASON_INCONSISTENT"));
+    }
+
+    #[test]
+    fn ppp_solution_validation_rejects_fixed_count_without_ar_evidence() {
+        let mut solution = sample_solution();
+        solution.fixed_wl = 1;
+
+        let diagnostics = solution.validate_payload();
+
+        assert!(diagnostics.iter().any(|event| event.code == "PPP_AR_EVIDENCE_MISSING"));
+    }
+
+    #[test]
+    fn ppp_solution_validation_rejects_integer_acceptance_without_phase_bias_provenance() {
+        let mut solution = sample_solution();
+        solution.integer_ambiguities.push(PppIntegerAmbiguityCandidate {
+            kind: PppIntegerAmbiguityKind::WideLane,
+            sat: bijux_gnss_core::api::SatId {
+                constellation: bijux_gnss_core::api::Constellation::Gps,
+                prn: 7,
+            },
+            signal: None,
+            float_cycles: 11.05,
+            integer_cycles: 11,
+            variance_cycles2: 0.01,
+            ratio: 12.0,
+            accepted: true,
+            phase_bias_provenance_complete: false,
+            validation_reasons: Vec::new(),
+        });
+        solution.ambiguity_resolution = PppAmbiguityResolutionEvidence {
+            candidate_count: 1,
+            accepted_count: 1,
+            phase_bias_provenance_complete: false,
+            wide_lane_validated: true,
+            narrow_lane_validated: false,
+            ratio_threshold: 3.0,
+            stability_epochs_required: 3,
+            stable_epochs: 3,
+            missing_reasons: Vec::new(),
+        };
+
+        let diagnostics = solution.validate_payload();
+
+        assert!(diagnostics
+            .iter()
+            .any(|event| event.code == "PPP_AR_PHASE_BIAS_PROVENANCE_MISSING"));
     }
 
     #[test]
@@ -758,6 +844,58 @@ pub struct PppConvergenceEvidence {
     pub ambiguity_supported: bool,
     pub correction_supported: bool,
     pub integrity_supported: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PppIntegerAmbiguityKind {
+    WideLane,
+    NarrowLane,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PppIntegerAmbiguityCandidate {
+    pub kind: PppIntegerAmbiguityKind,
+    pub sat: SatId,
+    pub signal: Option<SigId>,
+    pub float_cycles: f64,
+    pub integer_cycles: i64,
+    pub variance_cycles2: f64,
+    pub ratio: f64,
+    pub accepted: bool,
+    pub phase_bias_provenance_complete: bool,
+    #[serde(default)]
+    pub validation_reasons: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PppAmbiguityResolutionEvidence {
+    pub candidate_count: usize,
+    pub accepted_count: usize,
+    pub phase_bias_provenance_complete: bool,
+    pub wide_lane_validated: bool,
+    pub narrow_lane_validated: bool,
+    pub ratio_threshold: f64,
+    pub stability_epochs_required: u32,
+    pub stable_epochs: u32,
+    #[serde(default)]
+    pub missing_reasons: Vec<String>,
+}
+
+impl Default for PppAmbiguityResolutionEvidence {
+    fn default() -> Self {
+        Self {
+            candidate_count: 0,
+            accepted_count: 0,
+            phase_bias_provenance_complete: false,
+            wide_lane_validated: false,
+            narrow_lane_validated: false,
+            ratio_threshold: 0.0,
+            stability_epochs_required: 0,
+            stable_epochs: 0,
+            missing_reasons: Vec::new(),
+        }
+    }
 }
 
 impl Default for PppConvergenceEvidence {

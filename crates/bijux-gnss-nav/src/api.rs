@@ -118,7 +118,8 @@ pub use crate::estimation::position::trajectory::{
 };
 /// PPP configuration and filter.
 pub use crate::estimation::ppp::config::{
-    PppArMode, PppConfig, PppConvergenceConfig, PppFilter, PppLifecycleEvent,
+    PppAmbiguityResolutionEvidence, PppArMode, PppConfig, PppConvergenceConfig, PppFilter,
+    PppIntegerAmbiguityCandidate, PppIntegerAmbiguityKind, PppLifecycleEvent,
     PppLifecycleEventKind, PppMeasurementNoise, PppPreciseProductAction, PppPreciseProductPolicy,
     PppProcessNoise, PppProductSupport, PppSolutionEpoch, PppStochasticEvidence,
     PppTroposphereSource,

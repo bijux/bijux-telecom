@@ -576,6 +576,8 @@ impl PppFilter {
             nis_mean: self.health.nis_mean,
             ar_mode: self.config.ar_mode,
             fixed_wl,
+            ambiguity_resolution: Default::default(),
+            integer_ambiguities: Vec::new(),
         }
     }
 
