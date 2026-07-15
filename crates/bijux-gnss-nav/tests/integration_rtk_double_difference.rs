@@ -418,9 +418,7 @@ fn rtk_double_difference_residuals_use_aligned_base_and_rover_receive_times() {
     );
     let single_differences = rtk_single_differences_from_obs_epochs(&base_epoch, &rover_epoch);
     assert!(!single_differences.is_empty());
-    assert!(single_differences
-        .iter()
-        .all(|observation| observation.epoch_alignment.delta_s > 0.0));
+    assert!(single_differences.iter().all(|observation| observation.epoch_alignment.delta_s > 0.0));
     let reference =
         choose_rtk_single_difference_reference_signal(&single_differences).expect("reference");
     let double_differences =

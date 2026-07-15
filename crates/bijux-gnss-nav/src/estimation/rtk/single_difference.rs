@@ -370,9 +370,8 @@ fn epoch_alignment_is_valid(evidence: &RtkEpochAlignmentEvidence) -> bool {
         && evidence.delta_s >= 0.0
         && evidence.tolerance_s >= 0.0
         && evidence.delta_s <= evidence.tolerance_s
-        && (evidence.delta_s
-            - (evidence.base_receive_time_s - evidence.rover_receive_time_s).abs())
-        .abs()
+        && (evidence.delta_s - (evidence.base_receive_time_s - evidence.rover_receive_time_s).abs())
+            .abs()
             <= 1.0e-12
 }
 
@@ -396,9 +395,8 @@ mod tests {
 
     use super::{
         geometric_range_m, rtk_single_difference_residual_metrics,
-        rtk_single_difference_residual_metrics_with_antenna_corrections,
-        RtkEpochAlignmentEvidence, RtkSingleDifferenceObservation,
-        RTK_EPOCH_ALIGNMENT_TOLERANCE_S, SPEED_OF_LIGHT_MPS,
+        rtk_single_difference_residual_metrics_with_antenna_corrections, RtkEpochAlignmentEvidence,
+        RtkSingleDifferenceObservation, RTK_EPOCH_ALIGNMENT_TOLERANCE_S, SPEED_OF_LIGHT_MPS,
     };
     use crate::estimation::rtk::antenna::modeled_pseudorange_with_antenna_corrections_m;
     use crate::estimation::rtk::antenna::RtkAntennaCorrectionConfig;

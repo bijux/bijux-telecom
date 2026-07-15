@@ -345,9 +345,8 @@ fn epoch_alignment_is_valid(evidence: &RtkEpochAlignmentEvidence) -> bool {
         && evidence.delta_s >= 0.0
         && evidence.tolerance_s >= 0.0
         && evidence.delta_s <= evidence.tolerance_s
-        && (evidence.delta_s
-            - (evidence.base_receive_time_s - evidence.rover_receive_time_s).abs())
-        .abs()
+        && (evidence.delta_s - (evidence.base_receive_time_s - evidence.rover_receive_time_s).abs())
+            .abs()
             <= 1.0e-12
 }
 
@@ -410,12 +409,12 @@ mod tests {
         rtk_double_difference_residual_metrics_with_antenna_corrections,
         RtkDoubleDifferenceObservation,
     };
-    use crate::estimation::rtk::single_difference::{
-        RtkEpochAlignmentEvidence, RTK_EPOCH_ALIGNMENT_TOLERANCE_S,
-    };
     use crate::estimation::position::solver::{ecef_to_enu, ecef_to_geodetic};
     use crate::estimation::rtk::antenna::{
         modeled_pseudorange_with_antenna_corrections_m, RtkAntennaCorrectionConfig,
+    };
+    use crate::estimation::rtk::single_difference::{
+        RtkEpochAlignmentEvidence, RTK_EPOCH_ALIGNMENT_TOLERANCE_S,
     };
     use crate::models::antenna::{
         ReceiverAntennaCalibration, ReceiverAntennaCalibrations, ReceiverPhaseCenterOffset,
