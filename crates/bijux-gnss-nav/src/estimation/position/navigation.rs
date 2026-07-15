@@ -11,6 +11,7 @@ use crate::orbits::glonass::{
     sat_state_glonass_l1,
 };
 use crate::orbits::gps::{gps_ephemeris_age, sat_state_gps_l1ca};
+use crate::orbits::satellite_uncertainty::SatelliteStateUncertainty;
 use bijux_gnss_core::api::{Constellation, MeasurementRejectReason, ObsSignalTiming, SatId, SigId};
 use bijux_gnss_signal::api::{default_acquisition_signal, signal_id_wavelength_m};
 
@@ -36,6 +37,7 @@ pub struct SatelliteState {
     pub vz_mps: f64,
     pub clock_bias_s: f64,
     pub clock_drift_s_per_s: f64,
+    pub uncertainty: SatelliteStateUncertainty,
 }
 
 pub type PositionSatelliteState = SatelliteState;
@@ -501,6 +503,7 @@ pub(crate) fn satellite_state_at_time(
                 vz_mps: state.vz_mps,
                 clock_bias_s: state.clock_correction.bias_s,
                 clock_drift_s_per_s: state.clock_correction.drift_s_per_s,
+                uncertainty: state.uncertainty,
             })
         }
         PositionBroadcastNavigation::Galileo(navigation) => {
@@ -514,6 +517,7 @@ pub(crate) fn satellite_state_at_time(
                 vz_mps: state.vz_mps,
                 clock_bias_s: state.clock_correction.bias_s,
                 clock_drift_s_per_s: state.clock_correction.drift_s_per_s,
+                uncertainty: state.uncertainty,
             })
         }
         PositionBroadcastNavigation::Beidou(navigation) => {
@@ -527,6 +531,7 @@ pub(crate) fn satellite_state_at_time(
                 vz_mps: state.vz_mps,
                 clock_bias_s: state.clock_correction.bias_s,
                 clock_drift_s_per_s: state.clock_correction.drift_s_per_s,
+                uncertainty: state.uncertainty,
             })
         }
         PositionBroadcastNavigation::Glonass(navigation) => {
@@ -540,6 +545,7 @@ pub(crate) fn satellite_state_at_time(
                 vz_mps: state.vz_mps,
                 clock_bias_s: state.clock_correction.bias_s,
                 clock_drift_s_per_s: state.clock_correction.drift_s_per_s,
+                uncertainty: state.uncertainty,
             })
         }
     }
@@ -665,6 +671,9 @@ mod tests {
         GlonassStateVector, GlonassSystemTime,
     };
     use crate::orbits::gps::{sat_state_gps_l1ca, GpsEphemeris};
+    use crate::orbits::satellite_uncertainty::{
+        SatelliteHealthSource, SatelliteHealthStatus, SatelliteOrbitUncertaintySource,
+    };
     use bijux_gnss_core::api::{
         Constellation, GpsTime, MeasurementRejectReason, ObsSignalTiming, SatId, Seconds, SigId,
         SignalBand, SignalCode,
@@ -885,7 +894,52 @@ mod tests {
             (state.clock_drift_s_per_s - direct_state.clock_correction.drift_s_per_s).abs()
                 < 1.0e-18
         );
+        assert_eq!(state.uncertainty, direct_state.uncertainty);
+        assert_eq!(state.uncertainty.health_status, SatelliteHealthStatus::Healthy);
+        assert_eq!(state.uncertainty.health_source, SatelliteHealthSource::GpsSvHealth);
         assert!(speed_mps > 100.0, "speed_mps={speed_mps}");
+    }
+
+    #[test]
+    fn satellite_state_at_time_preserves_constellation_uncertainty_provenance() {
+        let galileo = sample_galileo_navigation();
+        let beidou = sample_beidou_navigation();
+        let glonass = sample_glonass_navigation();
+
+        let galileo_state = satellite_state_at_time(
+            &PositionBroadcastNavigation::Galileo(galileo.clone()),
+            galileo.ephemeris.toe_s,
+            0.078,
+        )
+        .expect("galileo satellite state");
+        let beidou_state = satellite_state_at_time(
+            &PositionBroadcastNavigation::Beidou(beidou.clone()),
+            beidou.ephemeris.toe_s,
+            0.078,
+        )
+        .expect("beidou satellite state");
+        let glonass_state = satellite_state_at_time(
+            &PositionBroadcastNavigation::Glonass(glonass.clone()),
+            504_918.0,
+            0.078,
+        )
+        .expect("glonass satellite state");
+
+        assert_eq!(
+            galileo_state.uncertainty.orbit_source,
+            SatelliteOrbitUncertaintySource::GalileoSisa
+        );
+        assert_eq!(galileo_state.uncertainty.orbit_sigma_m, Some(1.08));
+        assert_eq!(
+            beidou_state.uncertainty.orbit_source,
+            SatelliteOrbitUncertaintySource::BeidouUrai
+        );
+        assert_eq!(beidou_state.uncertainty.orbit_sigma_m, Some(4.85));
+        assert_eq!(
+            glonass_state.uncertainty.orbit_source,
+            SatelliteOrbitUncertaintySource::GlonassAccuracyCode
+        );
+        assert_eq!(glonass_state.uncertainty.orbit_sigma_m, Some(2.5));
     }
 
     #[test]

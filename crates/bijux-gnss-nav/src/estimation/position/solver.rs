@@ -1109,6 +1109,7 @@ mod tests {
         GlonassStateVector, GlonassSystemTime,
     };
     use crate::orbits::gps::GpsEphemeris;
+    use crate::orbits::satellite_uncertainty::SatelliteStateUncertainty;
     use bijux_gnss_core::api::{
         Constellation, Cycles, Hertz, LockFlags, MeasurementErrorModel, Meters, ObsEpoch,
         ObsMetadata, ObsSatellite, ObservationEpochDecision, ObservationStatus, ReceiverRole,
@@ -1637,6 +1638,7 @@ mod tests {
                     vz_mps: 0.0,
                     clock_bias_s: 0.0,
                     clock_drift_s_per_s: 0.0,
+                    uncertainty: SatelliteStateUncertainty::unavailable(),
                 },
                 1.5,
                 1.0,
@@ -1663,6 +1665,7 @@ mod tests {
                     vz_mps: 0.0,
                     clock_bias_s: 0.0,
                     clock_drift_s_per_s: 0.0,
+                    uncertainty: SatelliteStateUncertainty::unavailable(),
                 },
                 2.0,
                 1.0,
@@ -1746,6 +1749,7 @@ mod tests {
                     vz_mps: 0.0,
                     clock_bias_s: 0.0,
                     clock_drift_s_per_s: 0.0,
+                    uncertainty: SatelliteStateUncertainty::unavailable(),
                 },
                 iono_delay_m: 0.0,
                 tropo_delay_m: 0.0,
@@ -1773,6 +1777,7 @@ mod tests {
                     vz_mps: 0.0,
                     clock_bias_s: 0.0,
                     clock_drift_s_per_s: 0.0,
+                    uncertainty: SatelliteStateUncertainty::unavailable(),
                 },
                 iono_delay_m: 0.0,
                 tropo_delay_m: 0.0,
@@ -1812,6 +1817,7 @@ mod tests {
                     vz_mps: 0.0,
                     clock_bias_s: 0.0,
                     clock_drift_s_per_s: 0.0,
+                    uncertainty: SatelliteStateUncertainty::unavailable(),
                 },
                 iono_delay_m: 0.0,
                 tropo_delay_m: 0.0,
@@ -1839,6 +1845,7 @@ mod tests {
                     vz_mps: 0.0,
                     clock_bias_s: 0.0,
                     clock_drift_s_per_s: 0.0,
+                    uncertainty: SatelliteStateUncertainty::unavailable(),
                 },
                 iono_delay_m: 0.0,
                 tropo_delay_m: 0.0,
@@ -2843,6 +2850,7 @@ mod replay_timing_tests {
     use super::{
         detect_replay_timing_anomaly, PositionObservation, SatelliteState, SPEED_OF_LIGHT_MPS,
     };
+    use crate::orbits::satellite_uncertainty::SatelliteStateUncertainty;
     use bijux_gnss_core::api::{Constellation, GpsTime, ObsSignalTiming, SatId, Seconds};
 
     #[test]
@@ -2925,6 +2933,7 @@ mod replay_timing_tests {
                     vz_mps: 0.0,
                     clock_bias_s: 0.0,
                     clock_drift_s_per_s: 0.0,
+                    uncertainty: SatelliteStateUncertainty::unavailable(),
                 };
                 (observation, state, *residual_m, 1.0)
             })
