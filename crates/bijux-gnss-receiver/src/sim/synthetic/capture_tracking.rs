@@ -776,6 +776,8 @@ pub fn validate_truth_guided_tracking_table(
                     );
                     let doppler_error_hz =
                         (measured_doppler_hz - expected_measured_doppler_hz).abs();
+                    let pll_phase_error_rad = epoch.pll_err as f64;
+                    let pll_phase_error_cycles = pll_phase_error_rad.abs() / std::f64::consts::TAU;
                     let measured_cn0_dbhz = epoch.cn0_dbhz;
                     let cn0_error_db = (measured_cn0_dbhz - sat_truth.cn0_db_hz as f64).abs();
                     let stable_tracking_epoch = tracking_epoch_is_stable(epoch);
@@ -798,6 +800,8 @@ pub fn validate_truth_guided_tracking_table(
                         expected_doppler_hz: expected_measured_doppler_hz,
                         measured_doppler_hz,
                         doppler_error_hz,
+                        pll_phase_error_rad,
+                        pll_phase_error_cycles,
                         expected_code_phase_samples,
                         measured_code_phase_samples,
                         code_phase_error_samples,

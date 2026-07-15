@@ -17,6 +17,12 @@ pub struct SyntheticTrackingTruthTableEpoch {
     pub measured_doppler_hz: f64,
     /// Absolute Doppler error in Hz.
     pub doppler_error_hz: f64,
+    /// PLL discriminator residual in radians for this tracking epoch.
+    #[serde(default)]
+    pub pll_phase_error_rad: f64,
+    /// Absolute PLL discriminator residual in cycles for this tracking epoch.
+    #[serde(default)]
+    pub pll_phase_error_cycles: f64,
     /// Expected code phase in samples at this epoch.
     pub expected_code_phase_samples: f64,
     /// Measured code phase in samples at this epoch.
@@ -255,4 +261,3 @@ pub struct SyntheticAcquisitionSampleRateValidationReport {
     /// Per-profile validation results.
     pub points: Vec<SyntheticAcquisitionSampleRateValidationPoint>,
 }
-

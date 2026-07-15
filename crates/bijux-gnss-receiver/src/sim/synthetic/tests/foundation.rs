@@ -587,6 +587,8 @@ fn tracking_accuracy_budget_requires_stable_truth_epochs() {
                 expected_doppler_hz: -250.0,
                 measured_doppler_hz: -250.0,
                 doppler_error_hz: 0.0,
+                pll_phase_error_rad: 0.0,
+                pll_phase_error_cycles: 0.0,
                 expected_code_phase_samples: 100.0,
                 measured_code_phase_samples: 100.0,
                 code_phase_error_samples: 0.0,
