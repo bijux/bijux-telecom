@@ -6524,6 +6524,51 @@ mod tests {
     }
 
     #[test]
+    fn secondary_code_phase_transitions_preserve_continuity_across_multiple_flips() {
+        let config = ReceiverPipelineConfig::default();
+        let signal_model = super::TrackingSignalModel::for_sat_signal_band(
+            &config,
+            SatId { constellation: Constellation::Gps, prn: 18 },
+            SignalBand::L5,
+            SignalCode::L5I,
+            None,
+        );
+        let sync = super::SecondaryCodeSyncResult {
+            phase_periods: 7,
+            confidence: 1.0,
+            best_likelihood: 1.0,
+            next_best_likelihood: 0.0,
+            observed_periods: 20,
+            accepted: true,
+        };
+        let transition_source =
+            super::carrier_phase_transition_source_for_prompt(&signal_model, Some(sync));
+        let raw_phase_cycles = [0.10, -0.39, -0.38, 0.13, 0.14];
+        let expected_transitions = [false, true, false, true, false];
+        let mut previous_aligned_phase_cycles = None;
+        let mut secondary_code_phase_offset_cycles = 0.0;
+
+        for (raw_phase_cycles, expected_transition) in
+            raw_phase_cycles.into_iter().zip(expected_transitions)
+        {
+            let decision = super::classify_prompt_phase(
+                raw_phase_cycles,
+                previous_aligned_phase_cycles,
+                secondary_code_phase_offset_cycles,
+                transition_source,
+            );
+
+            assert_eq!(decision.nav_bit_transition, expected_transition, "{decision:?}");
+            assert!(!decision.cycle_slip, "{decision:?}");
+            if previous_aligned_phase_cycles.is_some() {
+                assert!(decision.aligned_phase_delta_cycles.abs() <= 0.03, "{decision:?}");
+            }
+            previous_aligned_phase_cycles = Some(decision.aligned_phase_cycles);
+            secondary_code_phase_offset_cycles = decision.nav_bit_phase_offset_cycles;
+        }
+    }
+
+    #[test]
     fn classify_prompt_phase_handles_real_synthetic_nav_bit_transitions() {
         let config = ReceiverPipelineConfig {
             sampling_freq_hz: 4_092_000.0,
