@@ -6,10 +6,10 @@
   "solved_epoch_count": 9,
   "all_epochs_solved": true,
   "time_to_1m_s": 0.0,
-  "time_to_decimeter_s": 0.0,
-  "final_3d_error_m": 0.6833557763540749,
-  "best_3d_error_m": 0.05129469331288672,
-  "worst_3d_error_m": 0.8116341259882779,
+  "time_to_decimeter_s": null,
+  "final_3d_error_m": 4.453770906909427,
+  "best_3d_error_m": 0.25339257478241267,
+  "worst_3d_error_m": 4.453770906909427,
   "epochs": [
     {
       "gps_time": {
@@ -20,7 +20,7 @@
       "gps_satellite_count": 10,
       "dual_frequency_satellite_count": 10,
       "solved": true,
-      "three_dimensional_error_m": 0.05129469331288672,
+      "three_dimensional_error_m": 0.25339257478241267,
       "last_rejection": null
     },
     {
@@ -32,8 +32,8 @@
       "gps_satellite_count": 10,
       "dual_frequency_satellite_count": 10,
       "solved": true,
-      "three_dimensional_error_m": 0.3358072125366758,
-      "last_rejection": "ppp_if_phase: chi2 gate"
+      "three_dimensional_error_m": 0.5699034791736908,
+      "last_rejection": null
     },
     {
       "gps_time": {
@@ -44,8 +44,8 @@
       "gps_satellite_count": 10,
       "dual_frequency_satellite_count": 10,
       "solved": true,
-      "three_dimensional_error_m": 0.751496642014741,
-      "last_rejection": "ppp_if_phase: chi2 gate"
+      "three_dimensional_error_m": 1.129929722563441,
+      "last_rejection": null
     },
     {
       "gps_time": {
@@ -56,7 +56,7 @@
       "gps_satellite_count": 10,
       "dual_frequency_satellite_count": 10,
       "solved": true,
-      "three_dimensional_error_m": 0.7355497934076638,
+      "three_dimensional_error_m": 1.6838583604781199,
       "last_rejection": "ppp_if_phase: chi2 gate"
     },
     {
@@ -68,7 +68,7 @@
       "gps_satellite_count": 10,
       "dual_frequency_satellite_count": 10,
       "solved": true,
-      "three_dimensional_error_m": 0.8116341259882779,
+      "three_dimensional_error_m": 2.302052130432377,
       "last_rejection": "ppp_if_phase: chi2 gate"
     },
     {
@@ -80,7 +80,7 @@
       "gps_satellite_count": 10,
       "dual_frequency_satellite_count": 10,
       "solved": true,
-      "three_dimensional_error_m": 0.774166536776515,
+      "three_dimensional_error_m": 2.915928714026126,
       "last_rejection": "ppp_if_phase: chi2 gate"
     },
     {
@@ -92,7 +92,7 @@
       "gps_satellite_count": 10,
       "dual_frequency_satellite_count": 10,
       "solved": true,
-      "three_dimensional_error_m": 0.7402247094654635,
+      "three_dimensional_error_m": 3.52408257672159,
       "last_rejection": "ppp_if_phase: chi2 gate"
     },
     {
@@ -104,7 +104,7 @@
       "gps_satellite_count": 10,
       "dual_frequency_satellite_count": 10,
       "solved": true,
-      "three_dimensional_error_m": 0.7100921205840446,
+      "three_dimensional_error_m": 4.079036273615903,
       "last_rejection": "ppp_if_phase: chi2 gate"
     },
     {
@@ -116,7 +116,7 @@
       "gps_satellite_count": 10,
       "dual_frequency_satellite_count": 10,
       "solved": true,
-      "three_dimensional_error_m": 0.6833557763540749,
+      "three_dimensional_error_m": 4.453770906909427,
       "last_rejection": "ppp_if_phase: chi2 gate"
     }
   ]

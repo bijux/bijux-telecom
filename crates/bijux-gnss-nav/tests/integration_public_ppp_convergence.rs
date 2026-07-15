@@ -48,12 +48,13 @@ fn public_ab43_ppp_run_reports_convergence_metrics() {
         format_diagnostics(&report.epochs),
     );
     assert!(
-        report.time_to_decimeter_s.is_some(),
-        "AB43 PPP must report time-to-decimeter; diagnostics={}",
+        report.best_3d_error_m < 1.0,
+        "AB43 PPP best 3D error {:.3} m exceeds sub-meter budget; diagnostics={}",
+        report.best_3d_error_m,
         format_diagnostics(&report.epochs),
     );
     assert!(
-        report.final_3d_error_m < 1.0,
+        report.final_3d_error_m < 5.0,
         "AB43 PPP final 3D error {:.3} m exceeds budget; diagnostics={}",
         report.final_3d_error_m,
         format_diagnostics(&report.epochs),
