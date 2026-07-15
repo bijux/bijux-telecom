@@ -16,7 +16,9 @@ use crate::engine::receiver_config::{
     DEFAULT_PPP_MEASUREMENT_TROPOSPHERE_RESIDUAL_M, DEFAULT_PPP_NOISE_AMBIGUITY,
     DEFAULT_PPP_NOISE_CLOCK_BIAS, DEFAULT_PPP_NOISE_CLOCK_DRIFT,
     DEFAULT_PPP_NOISE_INTER_SYSTEM_BIAS, DEFAULT_PPP_NOISE_IONO, DEFAULT_PPP_NOISE_POSITION,
-    DEFAULT_PPP_NOISE_VELOCITY, DEFAULT_PPP_NOISE_ZTD,
+    DEFAULT_PPP_NOISE_VELOCITY, DEFAULT_PPP_NOISE_ZTD, DEFAULT_PPP_PRECISE_PRODUCT_BRIDGE_ACTION,
+    DEFAULT_PPP_PRECISE_PRODUCT_REFUSE_ACTION, DEFAULT_PPP_PRECISE_PRODUCT_RESET_ACTION,
+    DEFAULT_PPP_PRECISE_PRODUCT_STATE_INFLATION,
 };
 
 impl Default for ReceiverConfig {
@@ -146,6 +148,18 @@ impl Default for PppConfig {
             measurement_clock_sigma_scale: DEFAULT_PPP_MEASUREMENT_CLOCK_SIGMA_SCALE,
             measurement_troposphere_residual_m: DEFAULT_PPP_MEASUREMENT_TROPOSPHERE_RESIDUAL_M,
             measurement_antenna_residual_m: DEFAULT_PPP_MEASUREMENT_ANTENNA_RESIDUAL_M,
+            precise_product_missing_satellite_action: DEFAULT_PPP_PRECISE_PRODUCT_BRIDGE_ACTION
+                .to_string(),
+            precise_product_out_of_coverage_action: DEFAULT_PPP_PRECISE_PRODUCT_BRIDGE_ACTION
+                .to_string(),
+            precise_product_insufficient_support_action: DEFAULT_PPP_PRECISE_PRODUCT_BRIDGE_ACTION
+                .to_string(),
+            precise_product_orbit_gap_action: DEFAULT_PPP_PRECISE_PRODUCT_RESET_ACTION.to_string(),
+            precise_product_orbit_flag_action: DEFAULT_PPP_PRECISE_PRODUCT_REFUSE_ACTION
+                .to_string(),
+            precise_product_clock_gap_action: DEFAULT_PPP_PRECISE_PRODUCT_RESET_ACTION.to_string(),
+            precise_product_clock_jump_action: DEFAULT_PPP_PRECISE_PRODUCT_RESET_ACTION.to_string(),
+            precise_product_state_inflation: DEFAULT_PPP_PRECISE_PRODUCT_STATE_INFLATION,
             convergence_min_time_s: 60.0,
             convergence_pos_rate_mps: 0.1,
             convergence_sigma_h_m: 1.0,

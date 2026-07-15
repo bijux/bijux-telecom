@@ -3,12 +3,28 @@
 use crate::engine::receiver_config::{
     acquisition_integration_ms_is_supported, parse_band, supported_acquisition_integration_ms_csv,
     BandTrackingSpec, ReceiverConfig, ReceiverPipelineConfig,
+    DEFAULT_PPP_PRECISE_PRODUCT_BRIDGE_ACTION, DEFAULT_PPP_PRECISE_PRODUCT_REFUSE_ACTION,
+    DEFAULT_PPP_PRECISE_PRODUCT_RESET_ACTION,
 };
 use bijux_gnss_core::api::{ConfigError, SchemaVersion, ValidateConfig, ValidationReport};
 
 fn validate_finite_non_negative(report: &mut ValidationReport, field: &str, value: f64) {
     if !value.is_finite() || value < 0.0 {
         report.errors.push(ConfigError { message: format!("{field} must be finite and >= 0") });
+    }
+}
+
+fn validate_ppp_precise_product_action(report: &mut ValidationReport, field: &str, value: &str) {
+    if value != DEFAULT_PPP_PRECISE_PRODUCT_BRIDGE_ACTION
+        && value != "inflate_satellite_state"
+        && value != DEFAULT_PPP_PRECISE_PRODUCT_RESET_ACTION
+        && value != DEFAULT_PPP_PRECISE_PRODUCT_REFUSE_ACTION
+    {
+        report.errors.push(ConfigError {
+            message: format!(
+                "{field} must be one of [bridge_with_broadcast, inflate_satellite_state, reset_satellite_state, refuse_satellite]"
+            ),
+        });
     }
 }
 
@@ -294,6 +310,46 @@ impl ValidateConfig for ReceiverConfig {
         ] {
             validate_finite_non_negative(&mut report, field, value);
         }
+        for (field, value) in [
+            (
+                "navigation.ppp.precise_product_missing_satellite_action",
+                ppp.precise_product_missing_satellite_action.as_str(),
+            ),
+            (
+                "navigation.ppp.precise_product_out_of_coverage_action",
+                ppp.precise_product_out_of_coverage_action.as_str(),
+            ),
+            (
+                "navigation.ppp.precise_product_insufficient_support_action",
+                ppp.precise_product_insufficient_support_action.as_str(),
+            ),
+            (
+                "navigation.ppp.precise_product_orbit_gap_action",
+                ppp.precise_product_orbit_gap_action.as_str(),
+            ),
+            (
+                "navigation.ppp.precise_product_orbit_flag_action",
+                ppp.precise_product_orbit_flag_action.as_str(),
+            ),
+            (
+                "navigation.ppp.precise_product_clock_gap_action",
+                ppp.precise_product_clock_gap_action.as_str(),
+            ),
+            (
+                "navigation.ppp.precise_product_clock_jump_action",
+                ppp.precise_product_clock_jump_action.as_str(),
+            ),
+        ] {
+            validate_ppp_precise_product_action(&mut report, field, value);
+        }
+        if !ppp.precise_product_state_inflation.is_finite()
+            || ppp.precise_product_state_inflation < 1.0
+        {
+            report.errors.push(ConfigError {
+                message: "navigation.ppp.precise_product_state_inflation must be finite and >= 1"
+                    .to_string(),
+            });
+        }
         if self.navigation.science_thresholds.min_mean_cn0_dbhz <= 0.0 {
             report.errors.push(ConfigError {
                 message: "navigation.science_thresholds.min_mean_cn0_dbhz must be > 0".to_string(),
@@ -513,6 +569,24 @@ mod tests {
     }
 
     #[test]
+    fn validation_rejects_invalid_ppp_precise_product_policy() {
+        let mut config = ReceiverConfig::default();
+        config.navigation.ppp.precise_product_clock_jump_action = "consume_anyway".to_string();
+        config.navigation.ppp.precise_product_state_inflation = 0.5;
+
+        let report = <ReceiverConfig as ValidateConfig>::validate(&config);
+
+        assert!(report.errors.iter().any(|error| {
+            error.message
+                == "navigation.ppp.precise_product_clock_jump_action must be one of [bridge_with_broadcast, inflate_satellite_state, reset_satellite_state, refuse_satellite]"
+        }));
+        assert!(report.errors.iter().any(|error| {
+            error.message
+                == "navigation.ppp.precise_product_state_inflation must be finite and >= 1"
+        }));
+    }
+
+    #[test]
     fn ppp_stochastic_configuration_round_trips_through_toml() {
         let mut config = ReceiverConfig::default();
         config.navigation.ppp.noise_position = 0.12;
@@ -540,6 +614,44 @@ mod tests {
         assert_eq!(reparsed.navigation.ppp.measurement_troposphere_residual_m, 0.08);
         assert_eq!(reparsed.navigation.ppp.measurement_antenna_residual_m, 0.02);
         assert!(raw.contains("measurement_code_floor_m = 0.42"));
+    }
+
+    #[test]
+    fn ppp_precise_product_policy_round_trips_through_toml() {
+        let mut config = ReceiverConfig::default();
+        config.navigation.ppp.precise_product_missing_satellite_action =
+            "inflate_satellite_state".to_string();
+        config.navigation.ppp.precise_product_out_of_coverage_action =
+            "bridge_with_broadcast".to_string();
+        config.navigation.ppp.precise_product_insufficient_support_action =
+            "reset_satellite_state".to_string();
+        config.navigation.ppp.precise_product_orbit_gap_action =
+            "inflate_satellite_state".to_string();
+        config.navigation.ppp.precise_product_orbit_flag_action = "refuse_satellite".to_string();
+        config.navigation.ppp.precise_product_clock_gap_action =
+            "reset_satellite_state".to_string();
+        config.navigation.ppp.precise_product_clock_jump_action = "refuse_satellite".to_string();
+        config.navigation.ppp.precise_product_state_inflation = 25.0;
+
+        let raw = toml::to_string(&config).expect("serialize receiver config");
+        let reparsed: ReceiverConfig = toml::from_str(&raw).expect("parse receiver config");
+
+        assert_eq!(
+            reparsed.navigation.ppp.precise_product_missing_satellite_action,
+            "inflate_satellite_state"
+        );
+        assert_eq!(
+            reparsed.navigation.ppp.precise_product_insufficient_support_action,
+            "reset_satellite_state"
+        );
+        assert_eq!(
+            reparsed.navigation.ppp.precise_product_orbit_gap_action,
+            "inflate_satellite_state"
+        );
+        assert_eq!(reparsed.navigation.ppp.precise_product_orbit_flag_action, "refuse_satellite");
+        assert_eq!(reparsed.navigation.ppp.precise_product_clock_jump_action, "refuse_satellite");
+        assert_eq!(reparsed.navigation.ppp.precise_product_state_inflation, 25.0);
+        assert!(raw.contains("precise_product_clock_jump_action = \"refuse_satellite\""));
     }
 
     #[test]
@@ -614,6 +726,52 @@ mod tests {
         assert_eq!(
             reparsed.navigation.ppp.measurement_antenna_residual_m,
             ReceiverConfig::default().navigation.ppp.measurement_antenna_residual_m
+        );
+    }
+
+    #[test]
+    fn ppp_precise_product_policy_defaults_apply_to_existing_toml_profiles() {
+        let raw = toml::to_string(&ReceiverConfig::default()).expect("serialize receiver config");
+        let omitted_policy_fields = [
+            "precise_product_missing_satellite_action",
+            "precise_product_out_of_coverage_action",
+            "precise_product_insufficient_support_action",
+            "precise_product_orbit_gap_action",
+            "precise_product_orbit_flag_action",
+            "precise_product_clock_gap_action",
+            "precise_product_clock_jump_action",
+            "precise_product_state_inflation",
+        ];
+        let legacy_raw = raw
+            .lines()
+            .filter(|line| {
+                let trimmed = line.trim_start();
+                !omitted_policy_fields
+                    .iter()
+                    .any(|field| trimmed.starts_with(&format!("{field} =")))
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        let reparsed: ReceiverConfig =
+            toml::from_str(&legacy_raw).expect("parse receiver config without product policy");
+        let defaults = ReceiverConfig::default();
+
+        assert_eq!(
+            reparsed.navigation.ppp.precise_product_missing_satellite_action,
+            defaults.navigation.ppp.precise_product_missing_satellite_action
+        );
+        assert_eq!(
+            reparsed.navigation.ppp.precise_product_orbit_flag_action,
+            defaults.navigation.ppp.precise_product_orbit_flag_action
+        );
+        assert_eq!(
+            reparsed.navigation.ppp.precise_product_clock_jump_action,
+            defaults.navigation.ppp.precise_product_clock_jump_action
+        );
+        assert_eq!(
+            reparsed.navigation.ppp.precise_product_state_inflation,
+            defaults.navigation.ppp.precise_product_state_inflation
         );
     }
 

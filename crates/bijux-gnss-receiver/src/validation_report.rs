@@ -21,8 +21,8 @@ use bijux_gnss_nav::api::{
     ecef_to_enu, geometry_free_diagnostics_from_obs_epochs, iono_free_code_from_obs_epochs,
     melbourne_wubbena_diagnostics_from_obs_epochs, GeometryFreeEvent, GeometryFreeThresholds,
     MelbourneWubbenaEvent, MelbourneWubbenaThresholds, PositionWeightingModel, PppConfig,
-    PppConvergenceConfig, PppMeasurementNoise, PppPreciseProductPolicy, PppProcessNoise,
-    WeightingConfig,
+    PppConvergenceConfig, PppMeasurementNoise, PppPreciseProductAction, PppPreciseProductPolicy,
+    PppProcessNoise, WeightingConfig,
 };
 use bijux_gnss_signal::api::{
     check_dual_frequency_observations, check_inter_frequency_alignment,
@@ -1398,7 +1398,22 @@ fn build_ppp_config(profile: &ReceiverConfig) -> PppConfig {
             troposphere_residual_m: p.measurement_troposphere_residual_m,
             antenna_residual_m: p.measurement_antenna_residual_m,
         },
-        precise_product_policy: PppPreciseProductPolicy::default(),
+        precise_product_policy: PppPreciseProductPolicy {
+            missing_satellite_action: ppp_precise_product_action(
+                &p.precise_product_missing_satellite_action,
+            ),
+            out_of_coverage_action: ppp_precise_product_action(
+                &p.precise_product_out_of_coverage_action,
+            ),
+            insufficient_support_action: ppp_precise_product_action(
+                &p.precise_product_insufficient_support_action,
+            ),
+            orbit_gap_action: ppp_precise_product_action(&p.precise_product_orbit_gap_action),
+            orbit_flag_action: ppp_precise_product_action(&p.precise_product_orbit_flag_action),
+            clock_gap_action: ppp_precise_product_action(&p.precise_product_clock_gap_action),
+            clock_jump_action: ppp_precise_product_action(&p.precise_product_clock_jump_action),
+            satellite_state_inflation: p.precise_product_state_inflation,
+        },
         weighting: WeightingConfig {
             model: match profile.navigation.weighting.mode {
                 crate::engine::receiver_config::NavigationWeightingMode::Elevation => {
@@ -1423,6 +1438,15 @@ fn build_ppp_config(profile: &ReceiverConfig) -> PppConfig {
             sigma_h_m: p.convergence_sigma_h_m,
             sigma_v_m: p.convergence_sigma_v_m,
         },
+    }
+}
+
+fn ppp_precise_product_action(value: &str) -> PppPreciseProductAction {
+    match value {
+        "inflate_satellite_state" => PppPreciseProductAction::InflateSatelliteState,
+        "reset_satellite_state" => PppPreciseProductAction::ResetSatelliteState,
+        "refuse_satellite" => PppPreciseProductAction::RefuseSatellite,
+        _ => PppPreciseProductAction::BridgeWithBroadcast,
     }
 }
 
@@ -1492,6 +1516,56 @@ mod tests {
     };
     use bijux_gnss_signal::api::{carrier_wavelength_m, signal_registry};
     use serde::Deserialize;
+
+    #[test]
+    fn build_ppp_config_maps_precise_product_policy() {
+        let mut profile = ReceiverConfig::default();
+        profile.navigation.ppp.precise_product_missing_satellite_action =
+            "bridge_with_broadcast".to_string();
+        profile.navigation.ppp.precise_product_out_of_coverage_action =
+            "inflate_satellite_state".to_string();
+        profile.navigation.ppp.precise_product_insufficient_support_action =
+            "reset_satellite_state".to_string();
+        profile.navigation.ppp.precise_product_orbit_gap_action =
+            "inflate_satellite_state".to_string();
+        profile.navigation.ppp.precise_product_orbit_flag_action = "refuse_satellite".to_string();
+        profile.navigation.ppp.precise_product_clock_gap_action =
+            "reset_satellite_state".to_string();
+        profile.navigation.ppp.precise_product_clock_jump_action = "refuse_satellite".to_string();
+        profile.navigation.ppp.precise_product_state_inflation = 40.0;
+
+        let config = build_ppp_config(&profile);
+
+        assert_eq!(
+            config.precise_product_policy.missing_satellite_action,
+            PppPreciseProductAction::BridgeWithBroadcast
+        );
+        assert_eq!(
+            config.precise_product_policy.out_of_coverage_action,
+            PppPreciseProductAction::InflateSatelliteState
+        );
+        assert_eq!(
+            config.precise_product_policy.insufficient_support_action,
+            PppPreciseProductAction::ResetSatelliteState
+        );
+        assert_eq!(
+            config.precise_product_policy.orbit_gap_action,
+            PppPreciseProductAction::InflateSatelliteState
+        );
+        assert_eq!(
+            config.precise_product_policy.orbit_flag_action,
+            PppPreciseProductAction::RefuseSatellite
+        );
+        assert_eq!(
+            config.precise_product_policy.clock_gap_action,
+            PppPreciseProductAction::ResetSatelliteState
+        );
+        assert_eq!(
+            config.precise_product_policy.clock_jump_action,
+            PppPreciseProductAction::RefuseSatellite
+        );
+        assert_eq!(config.precise_product_policy.satellite_state_inflation, 40.0);
+    }
 
     #[test]
     fn golden_reference_validation() {

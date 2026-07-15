@@ -625,6 +625,10 @@ pub(crate) const DEFAULT_PPP_MEASUREMENT_ORBIT_SIGMA_SCALE: f64 = 1.0;
 pub(crate) const DEFAULT_PPP_MEASUREMENT_CLOCK_SIGMA_SCALE: f64 = 1.0;
 pub(crate) const DEFAULT_PPP_MEASUREMENT_TROPOSPHERE_RESIDUAL_M: f64 = 0.05;
 pub(crate) const DEFAULT_PPP_MEASUREMENT_ANTENNA_RESIDUAL_M: f64 = 0.01;
+pub(crate) const DEFAULT_PPP_PRECISE_PRODUCT_BRIDGE_ACTION: &str = "bridge_with_broadcast";
+pub(crate) const DEFAULT_PPP_PRECISE_PRODUCT_RESET_ACTION: &str = "reset_satellite_state";
+pub(crate) const DEFAULT_PPP_PRECISE_PRODUCT_REFUSE_ACTION: &str = "refuse_satellite";
+pub(crate) const DEFAULT_PPP_PRECISE_PRODUCT_STATE_INFLATION: f64 = 100.0;
 
 fn default_ppp_noise_position() -> f64 {
     DEFAULT_PPP_NOISE_POSITION
@@ -680,6 +684,22 @@ fn default_ppp_measurement_troposphere_residual_m() -> f64 {
 
 fn default_ppp_measurement_antenna_residual_m() -> f64 {
     DEFAULT_PPP_MEASUREMENT_ANTENNA_RESIDUAL_M
+}
+
+fn default_ppp_precise_product_bridge_action() -> String {
+    DEFAULT_PPP_PRECISE_PRODUCT_BRIDGE_ACTION.to_string()
+}
+
+fn default_ppp_precise_product_reset_action() -> String {
+    DEFAULT_PPP_PRECISE_PRODUCT_RESET_ACTION.to_string()
+}
+
+fn default_ppp_precise_product_refuse_action() -> String {
+    DEFAULT_PPP_PRECISE_PRODUCT_REFUSE_ACTION.to_string()
+}
+
+fn default_ppp_precise_product_state_inflation() -> f64 {
+    DEFAULT_PPP_PRECISE_PRODUCT_STATE_INFLATION
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -760,6 +780,30 @@ pub struct PppConfig {
     /// Residual antenna correction uncertainty, in meters.
     #[serde(default = "default_ppp_measurement_antenna_residual_m")]
     pub measurement_antenna_residual_m: f64,
+    /// Action applied when precise products omit a satellite.
+    #[serde(default = "default_ppp_precise_product_bridge_action")]
+    pub precise_product_missing_satellite_action: String,
+    /// Action applied when precise products do not cover the requested epoch.
+    #[serde(default = "default_ppp_precise_product_bridge_action")]
+    pub precise_product_out_of_coverage_action: String,
+    /// Action applied when precise products have too little interpolation support.
+    #[serde(default = "default_ppp_precise_product_bridge_action")]
+    pub precise_product_insufficient_support_action: String,
+    /// Action applied when precise orbit products contain an interpolation gap.
+    #[serde(default = "default_ppp_precise_product_reset_action")]
+    pub precise_product_orbit_gap_action: String,
+    /// Action applied when precise orbit products flag an unusable record.
+    #[serde(default = "default_ppp_precise_product_refuse_action")]
+    pub precise_product_orbit_flag_action: String,
+    /// Action applied when precise clock products contain an interpolation gap.
+    #[serde(default = "default_ppp_precise_product_reset_action")]
+    pub precise_product_clock_gap_action: String,
+    /// Action applied when precise clock products contain a clock jump.
+    #[serde(default = "default_ppp_precise_product_reset_action")]
+    pub precise_product_clock_jump_action: String,
+    /// Covariance multiplier for satellite-scoped PPP state inflation.
+    #[serde(default = "default_ppp_precise_product_state_inflation")]
+    pub precise_product_state_inflation: f64,
     /// Minimum convergence time, in seconds.
     pub convergence_min_time_s: f64,
     /// Convergence position rate threshold, in m/s.
