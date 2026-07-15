@@ -196,6 +196,57 @@ impl RinexObservationValue {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct RinexObservationEpochTime {
+    pub year: i32,
+    pub month: u8,
+    pub day: u8,
+    pub hour: u8,
+    pub minute: u8,
+    pub second: f64,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct RinexSatelliteObservation {
+    pub system: char,
+    pub satellite: SatId,
+    pub observations: Vec<RinexObservationValue>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct RinexObservationEpoch {
+    pub epoch_time: RinexObservationEpochTime,
+    pub receive_gps_time: GpsTime,
+    pub event_flag: u8,
+    pub receiver_clock_offset_s: Option<f64>,
+    pub satellites: Vec<RinexSatelliteObservation>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RinexObservationEvent {
+    pub event_flag: u8,
+    pub records: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum RinexObservationRecord {
+    Epoch(RinexObservationEpoch),
+    Event(RinexObservationEvent),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct RinexObservationDataset {
+    pub version: f64,
+    pub marker_name: Option<String>,
+    pub approx_position_ecef_m: Option<(f64, f64, f64)>,
+    pub interval_s: Option<f64>,
+    pub time_system: RinexObservationTimeSystem,
+    pub observation_types_v2: Option<Vec<String>>,
+    pub observation_types_by_system: BTreeMap<char, Vec<String>>,
+    pub code_bias_status_by_system: BTreeMap<char, String>,
+    pub records: Vec<RinexObservationRecord>,
+}
+
 #[derive(Debug, Clone)]
 struct ImportedObservationChannel {
     band: SignalBand,
@@ -221,7 +272,9 @@ enum Rinex2Record {
         special_record_count: usize,
     },
     ObservationEpoch {
+        epoch_time: RinexObservationEpochTime,
         receive_gps_time: GpsTime,
+        event_flag: u8,
         discontinuity: bool,
         satellites: Vec<SatId>,
         header_line_count: usize,
@@ -481,6 +534,35 @@ pub fn parse_rinex_beidou_observation_dataset(
     })
 }
 
+pub fn parse_rinex_observation_dataset(data: &str) -> Result<RinexObservationDataset, ParseError> {
+    let lines = data.lines().collect::<Vec<_>>();
+    let (header, header_line_count) = parse_rinex_observation_header(data)?;
+    let records = if header.version >= 3.0 {
+        parse_rinex_3_observation_records(&lines[header_line_count..], &header)?
+    } else {
+        let observation_types = header.obs_types_v2.as_ref().ok_or_else(|| ParseError {
+            message: "RINEX 2 OBS file does not declare observation types".to_string(),
+        })?;
+        parse_rinex_2_observation_records(
+            &lines[header_line_count..],
+            observation_types,
+            header.time_system,
+        )?
+    };
+
+    Ok(RinexObservationDataset {
+        version: header.version,
+        marker_name: header.marker_name,
+        approx_position_ecef_m: header.approx_position_ecef_m,
+        interval_s: header.interval_s,
+        time_system: header.time_system,
+        observation_types_v2: header.obs_types_v2,
+        observation_types_by_system: header.obs_types_by_system,
+        code_bias_status_by_system: header.dcbs_applied_by_system,
+        records,
+    })
+}
+
 fn rinex_header_label(line: &str) -> &str {
     line.get(60..).unwrap_or_default().trim()
 }
@@ -522,7 +604,9 @@ fn parse_rinex_2_constellation_epochs(
                 continue;
             }
             Rinex2Record::ObservationEpoch {
+                epoch_time: _,
                 receive_gps_time,
+                event_flag: _,
                 discontinuity,
                 satellites,
                 header_line_count,
@@ -567,6 +651,88 @@ fn parse_rinex_2_constellation_epochs(
     }
 
     Ok(epochs)
+}
+
+fn parse_rinex_2_observation_records(
+    lines: &[&str],
+    observation_types: &[String],
+    time_system: RinexObservationTimeSystem,
+) -> Result<Vec<RinexObservationRecord>, ParseError> {
+    let mut records = Vec::new();
+    let mut line_index = 0usize;
+
+    while line_index < lines.len() {
+        let line = lines[line_index];
+        if line.trim().is_empty() {
+            line_index += 1;
+            continue;
+        }
+
+        let record = parse_rinex_2_epoch_header(&lines[line_index..], time_system)?;
+        match record {
+            Rinex2Record::Event { special_record_count } => {
+                let event_line_start = line_index + 1;
+                let event_line_end = event_line_start + special_record_count;
+                let event_lines = lines
+                    .get(event_line_start..event_line_end)
+                    .ok_or_else(|| ParseError {
+                        message: format!(
+                            "truncated RINEX 2 event record: expected {special_record_count} records"
+                        ),
+                    })?
+                    .iter()
+                    .map(|line| (*line).to_string())
+                    .collect();
+                let event_flag = parse_u8_field(line, 28, 29, "RINEX 2 OBS event flag")?;
+                records.push(RinexObservationRecord::Event(RinexObservationEvent {
+                    event_flag,
+                    records: event_lines,
+                }));
+                line_index = event_line_end;
+            }
+            Rinex2Record::ObservationEpoch {
+                epoch_time,
+                receive_gps_time,
+                event_flag,
+                discontinuity: _,
+                satellites,
+                header_line_count,
+            } => {
+                line_index += header_line_count;
+                let observation_line_count = observation_record_line_count(observation_types.len());
+                let mut raw_satellites = Vec::with_capacity(satellites.len());
+
+                for satellite in satellites {
+                    let record_lines = lines
+                        .get(line_index..line_index + observation_line_count)
+                        .ok_or_else(|| ParseError {
+                        message: format!(
+                            "truncated RINEX 2 OBS record for satellite {:?}-{:02}",
+                            satellite.constellation, satellite.prn
+                        ),
+                    })?;
+                    let observations =
+                        parse_observation_cells(record_lines, observation_types.len(), 0)?;
+                    line_index += observation_line_count;
+                    raw_satellites.push(RinexSatelliteObservation {
+                        system: rinex_system_from_constellation(satellite.constellation),
+                        satellite,
+                        observations,
+                    });
+                }
+
+                records.push(RinexObservationRecord::Epoch(RinexObservationEpoch {
+                    epoch_time,
+                    receive_gps_time,
+                    event_flag,
+                    receiver_clock_offset_s: None,
+                    satellites: raw_satellites,
+                }));
+            }
+        }
+    }
+
+    Ok(records)
 }
 
 fn parse_rinex_3_constellation_epochs(
@@ -652,6 +818,97 @@ fn parse_rinex_3_constellation_epochs(
     Ok(epochs)
 }
 
+fn parse_rinex_3_observation_records(
+    lines: &[&str],
+    header: &RinexObservationHeader,
+) -> Result<Vec<RinexObservationRecord>, ParseError> {
+    let mut records = Vec::new();
+    let mut line_index = 0usize;
+
+    while line_index < lines.len() {
+        let line = lines[line_index];
+        if line.trim().is_empty() {
+            line_index += 1;
+            continue;
+        }
+        if !line.starts_with('>') {
+            return Err(ParseError {
+                message: format!("expected RINEX 3/4 epoch header line, found '{}'", line.trim()),
+            });
+        }
+
+        let (epoch_time, receive_gps_time, event_flag, record_count, receiver_clock_offset_s) =
+            parse_rinex_3_epoch_header_raw(line, header.time_system)?;
+        line_index += 1;
+
+        if event_flag > 1 {
+            let event_lines = lines
+                .get(line_index..line_index + record_count)
+                .ok_or_else(|| ParseError {
+                    message: format!(
+                        "truncated RINEX 3/4 event record: expected {record_count} records"
+                    ),
+                })?
+                .iter()
+                .map(|line| (*line).to_string())
+                .collect();
+            records.push(RinexObservationRecord::Event(RinexObservationEvent {
+                event_flag,
+                records: event_lines,
+            }));
+            line_index += record_count;
+            continue;
+        }
+
+        let mut satellites = Vec::with_capacity(record_count);
+        for _ in 0..record_count {
+            let record_start = lines.get(line_index).ok_or_else(|| ParseError {
+                message: "truncated RINEX 3/4 observation record".to_string(),
+            })?;
+            let satellite_token = parse_satellite_token(record_start.get(..3).unwrap_or_default())?;
+            let observation_types = observation_types_for_system(header, satellite_token.system);
+            if observation_types.is_empty() {
+                return Err(ParseError {
+                    message: format!(
+                        "missing RINEX 3/4 observation types for {}{:02}",
+                        satellite_token.system, satellite_token.satellite.prn
+                    ),
+                });
+            }
+            let record_line_count = rinex_3_observation_record_line_count(
+                &lines[line_index..],
+                observation_types.len(),
+            );
+            let record_lines =
+                lines.get(line_index..line_index + record_line_count).ok_or_else(|| {
+                    ParseError {
+                        message: format!(
+                            "truncated RINEX 3/4 OBS record for satellite {:?}-{:02}",
+                            satellite_token.satellite.constellation, satellite_token.satellite.prn
+                        ),
+                    }
+                })?;
+            let observations = parse_observation_cells(record_lines, observation_types.len(), 3)?;
+            line_index += record_line_count;
+            satellites.push(RinexSatelliteObservation {
+                system: satellite_token.system,
+                satellite: satellite_token.satellite,
+                observations,
+            });
+        }
+
+        records.push(RinexObservationRecord::Epoch(RinexObservationEpoch {
+            epoch_time,
+            receive_gps_time,
+            event_flag,
+            receiver_clock_offset_s,
+            satellites,
+        }));
+    }
+
+    Ok(records)
+}
+
 fn parse_rinex_2_epoch_header(
     lines: &[&str],
     time_system: RinexObservationTimeSystem,
@@ -681,15 +938,11 @@ fn parse_rinex_2_epoch_header(
     if flag > 1 {
         return Ok(Rinex2Record::Event { special_record_count: satellite_count });
     }
-    let receive_gps_time = rinex_epoch_to_gps_time(
-        normalize_rinex_2_year(year),
-        month,
-        day,
-        hour,
-        minute,
-        second,
-        time_system,
-    )?;
+    let normalized_year = normalize_rinex_2_year(year);
+    let epoch_time =
+        RinexObservationEpochTime { year: normalized_year, month, day, hour, minute, second };
+    let receive_gps_time =
+        rinex_epoch_to_gps_time(normalized_year, month, day, hour, minute, second, time_system)?;
     let header_line_count = 1 + satellite_count.saturating_sub(1) / 12;
     let mut satellites = Vec::with_capacity(satellite_count);
 
@@ -717,7 +970,9 @@ fn parse_rinex_2_epoch_header(
     }
 
     Ok(Rinex2Record::ObservationEpoch {
+        epoch_time,
         receive_gps_time,
+        event_flag: flag,
         discontinuity: flag == 1,
         satellites,
         header_line_count,
@@ -728,6 +983,18 @@ fn parse_rinex_3_epoch_header(
     line: &str,
     time_system: RinexObservationTimeSystem,
 ) -> Result<(GpsTime, bool, usize), ParseError> {
+    let (_epoch_time, receive_gps_time, flag, satellite_count, _receiver_clock_offset_s) =
+        parse_rinex_3_epoch_header_raw(line, time_system)?;
+    if flag > 1 {
+        return Err(ParseError { message: format!("unsupported RINEX 3 epoch flag {flag}") });
+    }
+    Ok((receive_gps_time, flag == 1, satellite_count))
+}
+
+fn parse_rinex_3_epoch_header_raw(
+    line: &str,
+    time_system: RinexObservationTimeSystem,
+) -> Result<(RinexObservationEpochTime, GpsTime, u8, usize, Option<f64>), ParseError> {
     let fields = line.split_whitespace().collect::<Vec<_>>();
     if fields.len() < 9 || fields.first().copied() != Some(">") {
         return Err(ParseError {
@@ -758,14 +1025,12 @@ fn parse_rinex_3_epoch_header(
     let satellite_count = fields[8].parse::<usize>().map_err(|err| ParseError {
         message: format!("invalid RINEX 3 epoch satellite count '{}': {err}", fields[8]),
     })?;
-    if flag > 1 {
-        return Err(ParseError { message: format!("unsupported RINEX 3 epoch flag {flag}") });
-    }
-    Ok((
-        rinex_epoch_to_gps_time(year, month, day, hour, minute, second, time_system)?,
-        flag == 1,
-        satellite_count,
-    ))
+    let receiver_clock_offset_s =
+        fields.get(9).map(|field| parse_rinex_float(field)).transpose()?;
+    let epoch_time = RinexObservationEpochTime { year, month, day, hour, minute, second };
+    let receive_gps_time =
+        rinex_epoch_to_gps_time(year, month, day, hour, minute, second, time_system)?;
+    Ok((epoch_time, receive_gps_time, flag, satellite_count, receiver_clock_offset_s))
 }
 
 fn resolve_gps_observation_channels(
@@ -1231,6 +1496,16 @@ fn looks_like_rinex_3_satellite_record(line: &str) -> bool {
     parse_satellite_token(line.get(..3).unwrap_or_default()).is_ok()
 }
 
+fn rinex_system_from_constellation(constellation: Constellation) -> char {
+    match constellation {
+        Constellation::Gps => 'G',
+        Constellation::Glonass => 'R',
+        Constellation::Galileo => 'E',
+        Constellation::Beidou => 'C',
+        Constellation::Unknown => 'S',
+    }
+}
+
 fn parse_satellite_token(token: &str) -> Result<RinexSatelliteToken, ParseError> {
     let trimmed = token.trim();
     if trimmed.is_empty() {
@@ -1501,9 +1776,11 @@ mod tests {
     };
 
     use super::{
-        parse_observation_cells, parse_rinex_beidou_observation_dataset,
-        parse_rinex_galileo_observation_dataset, parse_rinex_gps_observation_dataset,
-        parse_rinex_observation_header, RinexCodeBiasState,
+        parse_observation_cells, parse_rinex_2_observation_records,
+        parse_rinex_beidou_observation_dataset, parse_rinex_galileo_observation_dataset,
+        parse_rinex_gps_observation_dataset, parse_rinex_observation_dataset,
+        parse_rinex_observation_header, RinexCodeBiasState, RinexObservationRecord,
+        RinexObservationTimeSystem,
     };
 
     fn fixture(name: &str) -> String {
@@ -1568,6 +1845,162 @@ mod tests {
         assert_eq!(cells[2].value, Some(123_456.250));
         assert_eq!(cells[2].loss_of_lock_indicator, None);
         assert_eq!(cells[2].signal_strength_indicator, Some(7));
+    }
+
+    #[test]
+    fn rinex_2_raw_records_preserve_events_and_continuations() {
+        let observation_types = ["C1", "L1", "S1", "C2", "L2", "S2"]
+            .into_iter()
+            .map(str::to_string)
+            .collect::<Vec<_>>();
+        let epoch_header = format!(
+            "{:>3}{:>3}{:>3}{:>3}{:>3}{:>11.7}  {:>1}{:>3}{}",
+            22, 5, 14, 0, 0, 0.0, 0, 13, "G01G02G03G04G05G06G07G08G09G10G11G12"
+        );
+        let epoch_continuation = format!("{:32}{}", "", "R01");
+        let mut lines = vec![epoch_header, epoch_continuation];
+        for satellite_index in 0..13 {
+            lines.push(format!(
+                "{:>14.3}{}{}{:>14.3}{}{}{:>14.3}{}{}{:>14.3}{}{}{:>14.3}{}{}",
+                20_000_000.0 + satellite_index as f64,
+                1,
+                9,
+                100_000.0 + satellite_index as f64,
+                " ",
+                8,
+                45.0,
+                " ",
+                7,
+                21_000_000.0 + satellite_index as f64,
+                " ",
+                6,
+                110_000.0 + satellite_index as f64,
+                " ",
+                5,
+            ));
+            lines.push(format!("{:>14.3}{}{}", 44.0, " ", 4));
+        }
+        lines.push(format!("{:28}{:>1}{:>3}", "", 4, 1));
+        lines.push(format!("{:<60}{}", "event marker", "COMMENT"));
+        let line_refs = lines.iter().map(String::as_str).collect::<Vec<_>>();
+
+        let records = parse_rinex_2_observation_records(
+            &line_refs,
+            &observation_types,
+            RinexObservationTimeSystem::Gps,
+        )
+        .expect("RINEX 2 raw records");
+
+        assert_eq!(records.len(), 2);
+        let RinexObservationRecord::Epoch(epoch) = &records[0] else {
+            panic!("expected epoch record");
+        };
+        assert_eq!(epoch.epoch_time.year, 2022);
+        assert_eq!(epoch.event_flag, 0);
+        assert_eq!(epoch.satellites.len(), 13);
+        assert_eq!(epoch.satellites[12].system, 'R');
+        assert_eq!(epoch.satellites[0].observations.len(), 6);
+        assert_eq!(epoch.satellites[0].observations[0].loss_of_lock_indicator, Some(1));
+        assert_eq!(epoch.satellites[0].observations[0].signal_strength_indicator, Some(9));
+        assert_eq!(epoch.satellites[0].observations[5].value, Some(44.0));
+        assert_eq!(epoch.satellites[0].observations[5].signal_strength_indicator, Some(4));
+
+        let RinexObservationRecord::Event(event) = &records[1] else {
+            panic!("expected event record");
+        };
+        assert_eq!(event.event_flag, 4);
+        assert_eq!(
+            event.records,
+            ["event marker                                                COMMENT"]
+        );
+    }
+
+    #[test]
+    fn raw_observation_dataset_parses_rinex_2_records() {
+        let data = [
+            format!(
+                "{:<60}{}",
+                "     2.11           OBSERVATION DATA    M (MIXED)", "RINEX VERSION / TYPE"
+            ),
+            format!("{:<60}{}", "raw-station", "MARKER NAME"),
+            format!("{:<60}{}", "     3    C1    L1    S1", "# / TYPES OF OBSERV"),
+            format!("{:<60}{}", "", "END OF HEADER"),
+            format!(
+                "{:>3}{:>3}{:>3}{:>3}{:>3}{:>11.7}  {:>1}{:>3}{}",
+                22, 5, 14, 0, 0, 0.0, 1, 2, "G01R02"
+            ),
+            format!(
+                "{:>14.3}{}{}{:>14.3}{}{}{:>14.3}{}{}",
+                20_000_000.0, 1, 9, 100_000.0, " ", 8, 45.0, " ", 7
+            ),
+            format!(
+                "{:>14.3}{}{}{:>14.3}{}{}{:>14.3}{}{}",
+                21_000_000.0, " ", 6, 110_000.0, " ", 5, 44.0, " ", 4
+            ),
+        ]
+        .join("\n");
+
+        let dataset = parse_rinex_observation_dataset(&data).expect("raw RINEX 2 dataset");
+
+        assert!((dataset.version - 2.11).abs() < 1.0e-12);
+        assert_eq!(dataset.marker_name.as_deref(), Some("raw-station"));
+        assert_eq!(dataset.observation_types_v2.as_deref().expect("types"), ["C1", "L1", "S1"]);
+        assert_eq!(dataset.records.len(), 1);
+        let RinexObservationRecord::Epoch(epoch) = &dataset.records[0] else {
+            panic!("expected epoch");
+        };
+        assert_eq!(epoch.event_flag, 1);
+        assert_eq!(epoch.satellites.len(), 2);
+        assert_eq!(epoch.satellites[0].system, 'G');
+        assert_eq!(epoch.satellites[1].system, 'R');
+        assert_eq!(epoch.satellites[0].observations[0].signal_strength_indicator, Some(9));
+    }
+
+    #[test]
+    fn raw_observation_dataset_parses_rinex_4_mixed_epochs_and_events() {
+        let data = [
+            format!(
+                "{:<60}{}",
+                "     4.02           OBSERVATION DATA    M (MIXED)", "RINEX VERSION / TYPE"
+            ),
+            format!("{:<60}{}", "mixed-station", "MARKER NAME"),
+            format!("{:<60}{}", "G    3 C1C L1C S1C", "SYS / # / OBS TYPES"),
+            format!("{:<60}{}", "E    2 C1C L1C", "SYS / # / OBS TYPES"),
+            format!("{:<60}{}", "", "END OF HEADER"),
+            "> 2022 05 14 00 00 00.0000000  0  2  -0.000000123".to_string(),
+            format!(
+                "{:<3}{:>14.3}{}{}{:>14.3}{}{}{:>14.3}{}{}",
+                "G01", 20_000_000.0, 1, 9, 100_000.0, " ", 8, 45.0, " ", 7
+            ),
+            format!(
+                "{:<3}{:>14.3}{}{}{:>14.3}{}{}",
+                "E11", 24_000_000.0, " ", 6, 200_000.0, " ", 5
+            ),
+            "> 2022 05 14 00 00 30.0000000  4  1".to_string(),
+            format!("{:<60}{}", "event marker", "COMMENT"),
+        ]
+        .join("\n");
+
+        let dataset = parse_rinex_observation_dataset(&data).expect("raw RINEX 4 dataset");
+
+        assert!((dataset.version - 4.02).abs() < 1.0e-12);
+        assert_eq!(dataset.records.len(), 2);
+        let RinexObservationRecord::Epoch(epoch) = &dataset.records[0] else {
+            panic!("expected epoch");
+        };
+        assert_eq!(epoch.receiver_clock_offset_s, Some(-0.000000123));
+        assert_eq!(epoch.satellites.len(), 2);
+        assert_eq!(epoch.satellites[0].system, 'G');
+        assert_eq!(epoch.satellites[0].observations[0].loss_of_lock_indicator, Some(1));
+        assert_eq!(epoch.satellites[1].system, 'E');
+        let RinexObservationRecord::Event(event) = &dataset.records[1] else {
+            panic!("expected event");
+        };
+        assert_eq!(event.event_flag, 4);
+        assert_eq!(
+            event.records,
+            ["event marker                                                COMMENT"]
+        );
     }
 
     #[test]

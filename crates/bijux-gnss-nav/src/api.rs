@@ -268,10 +268,13 @@ pub use crate::formats::rinex::{
 };
 pub use crate::formats::rinex_obs::{
     parse_rinex_beidou_observation_dataset, parse_rinex_galileo_observation_dataset,
-    parse_rinex_gps_observation_dataset, RinexBeidouObservationChannel,
-    RinexBeidouObservationDataset, RinexCodeBiasState, RinexCodeBiasStatus,
-    RinexGalileoObservationChannel, RinexGalileoObservationDataset, RinexGpsObservationChannel,
-    RinexGpsObservationDataset,
+    parse_rinex_gps_observation_dataset, parse_rinex_observation_dataset,
+    RinexBeidouObservationChannel, RinexBeidouObservationDataset, RinexCodeBiasState,
+    RinexCodeBiasStatus, RinexGalileoObservationChannel, RinexGalileoObservationDataset,
+    RinexGpsObservationChannel, RinexGpsObservationDataset, RinexObservationDataset,
+    RinexObservationEpoch, RinexObservationEpochTime, RinexObservationEvent,
+    RinexObservationRecord, RinexObservationTimeSystem, RinexObservationValue,
+    RinexSatelliteObservation,
 };
 /// Precise product parsing helpers.
 pub use crate::formats::{
