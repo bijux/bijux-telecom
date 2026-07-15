@@ -15,10 +15,12 @@ use bijux_gnss_core::api::{
 use crate::engine::receiver_config::ReceiverPipelineConfig;
 use crate::pipeline::doppler::doppler_hz_from_carrier_hz;
 use crate::pipeline::hatch::HatchFilterState;
-#[cfg(test)]
-use crate::pipeline::observations::carrier_phase::CYCLE_SLIP_DETECTION_PROBABILITY_BUDGET;
 use crate::pipeline::observations::carrier_phase::{
     carrier_phase_observation, cycle_slip_decision_evidence, CarrierPhaseArcState,
+};
+#[cfg(test)]
+use crate::pipeline::observations::carrier_phase::{
+    CYCLE_SLIP_DETECTION_PROBABILITY_BUDGET, CYCLE_SLIP_FALSE_ALARM_PROBABILITY_BUDGET,
 };
 use crate::pipeline::observations::code_period_ambiguity::{
     apply_grouped_integer_code_period_ambiguities, code_period_ambiguity_input_from_tracking_epoch,
