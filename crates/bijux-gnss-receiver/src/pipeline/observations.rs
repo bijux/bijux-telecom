@@ -820,6 +820,16 @@ pub fn observation_artifacts_from_tracking_results_with_gps_anchor(
                 if supports_code_carrier_slip_detection && divergence_jump > threshold_m {
                     smoothing_cycle_slip_reason = Some("code_carrier_divergence");
                 }
+                if supports_code_carrier_slip_detection {
+                    upsert_cycle_slip_contributor(
+                        &mut sat,
+                        code_carrier_divergence_evidence(
+                            smoothing_cycle_slip_reason.is_some(),
+                            divergence_jump,
+                            threshold_m,
+                        ),
+                    );
+                }
                 apply_cycle_slip_surface(&mut sat, smoothing_cycle_slip_reason);
                 if sat.lock_flags.cycle_slip {
                     state.clear_arc();
@@ -2190,6 +2200,21 @@ fn phase_innovation_evidence(
         Some(threshold_cycles),
         "cycles",
         if triggered { "phase_residual" } else { "phase_innovation_nominal" },
+    )
+}
+
+fn code_carrier_divergence_evidence(
+    triggered: bool,
+    value_m: f64,
+    threshold_m: f64,
+) -> CycleSlipDetectorEvidence {
+    CycleSlipDetectorEvidence::new(
+        CycleSlipDetector::CodeCarrierDivergence,
+        triggered,
+        Some(value_m),
+        Some(threshold_m),
+        "m",
+        if triggered { "code_carrier_divergence" } else { "code_carrier_divergence_nominal" },
     )
 }
 
@@ -4106,6 +4131,26 @@ mod tests {
             vec![0, 0, 1, 1]
         );
         assert!(slipped.lock_flags.cycle_slip);
+        let evidence = slipped.metadata.cycle_slip_evidence.as_ref().expect("cycle-slip evidence");
+        let detectors = evidence.triggered_detectors();
+        let divergence = evidence
+            .contributors
+            .iter()
+            .find(|contributor| contributor.detector == CycleSlipDetector::CodeCarrierDivergence)
+            .expect("code-carrier divergence contributor");
+        assert!(detectors.contains(&CycleSlipDetector::CodeCarrierDivergence));
+        assert!(divergence.triggered);
+        assert!(
+            divergence.value.expect("divergence value")
+                > divergence.threshold.expect("divergence threshold")
+        );
+        assert_eq!(divergence.units, "m");
+        assert_eq!(evidence.primary_reason.as_deref(), Some("code_carrier_divergence"));
+        assert_eq!(evidence.detection_probability_budget, CYCLE_SLIP_DETECTION_PROBABILITY_BUDGET);
+        assert_eq!(
+            evidence.false_alarm_probability_budget,
+            CYCLE_SLIP_FALSE_ALARM_PROBABILITY_BUDGET
+        );
         assert!((slipped.pseudorange_m.0 - expected_raw).abs() <= f64::EPSILON);
         assert_eq!(post_slip.metadata.smoothing_age, 2);
     }
