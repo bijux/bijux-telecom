@@ -1407,6 +1407,17 @@ mod tests {
         }
     }
 
+    fn ppp_test_signal_satellite(sat: SatId, band: SignalBand, code: SignalCode) -> ObsSatellite {
+        let mut observation = ppp_test_satellite(sat);
+        observation.signal_id = SigId { sat, band, code };
+        observation.metadata.signal = match (band, code) {
+            (SignalBand::L1, SignalCode::Ca) => signal_spec_gps_l1_ca(),
+            (SignalBand::L2, SignalCode::Py) => signal_spec_gps_l2_py(),
+            _ => observation.metadata.signal,
+        };
+        observation
+    }
+
     #[test]
     fn ppp_filter_aligns_dynamic_state_identities_with_indices() {
         let gps = ppp_test_satellite(SatId { constellation: Constellation::Gps, prn: 7 });
@@ -1440,6 +1451,38 @@ mod tests {
                 super::PppStateIdentity::CarrierAmbiguity(*sig)
             );
         }
+    }
+
+    #[test]
+    fn ppp_filter_creates_uncombined_dual_frequency_states() {
+        let sat = SatId { constellation: Constellation::Gps, prn: 7 };
+        let l1 = ppp_test_signal_satellite(sat, SignalBand::L1, SignalCode::Ca);
+        let l2 = ppp_test_signal_satellite(sat, SignalBand::L2, SignalCode::Py);
+        let mut filter = PppFilter::new(PppConfig {
+            use_iono_free: false,
+            enable_iono_state: true,
+            ..PppConfig::default()
+        });
+
+        filter.ensure_states(&[&l1, &l2]);
+
+        assert_eq!(filter.indices.iono.len(), 1);
+        assert!(filter.indices.iono.contains_key(&sat));
+        assert_eq!(filter.indices.ambiguity.len(), 2);
+        assert!(filter.indices.ambiguity.contains_key(&l1.signal_id));
+        assert!(filter.indices.ambiguity.contains_key(&l2.signal_id));
+        assert_eq!(
+            filter.state_identities[filter.indices.iono[&sat]],
+            super::PppStateIdentity::SlantIonosphere(sat)
+        );
+        assert_eq!(
+            filter.state_identities[filter.indices.ambiguity[&l1.signal_id]],
+            super::PppStateIdentity::CarrierAmbiguity(l1.signal_id)
+        );
+        assert_eq!(
+            filter.state_identities[filter.indices.ambiguity[&l2.signal_id]],
+            super::PppStateIdentity::CarrierAmbiguity(l2.signal_id)
+        );
     }
 
     #[test]
