@@ -203,7 +203,7 @@ fn position_solver_rejects_stale_ephemeris_when_current_satellites_can_still_sol
 
     assert!(solution.rejected.iter().any(|(sat, reason)| {
         *sat == SatId { constellation: Constellation::Gps, prn: 5 }
-            && *reason == bijux_gnss_core::api::MeasurementRejectReason::InvalidEphemeris
+            && *reason == bijux_gnss_core::api::MeasurementRejectReason::EphemerisStale
     }));
 }
 
