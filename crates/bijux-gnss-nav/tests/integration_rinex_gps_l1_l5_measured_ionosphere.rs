@@ -36,7 +36,7 @@ fn rinex_gps_l1_l5_import_supports_measured_ionosphere() {
     );
     assert_eq!(
         dataset.observation_channels.iter().map(|channel| channel.code).collect::<Vec<_>>(),
-        vec![SignalCode::Ca, SignalCode::Unknown]
+        vec![SignalCode::Ca, SignalCode::L5Q]
     );
     validate_obs_epochs(&dataset.epochs).expect("synthetic GPS L1/L5 epochs must validate");
 
