@@ -18,7 +18,10 @@ use crate::formats::rinex_obs::{
     RinexObservationValue, RinexSatelliteObservation,
 };
 use crate::models::atmosphere::KlobucharCoefficients;
-use crate::orbits::beidou::BeidouBroadcastNavigationData;
+use crate::orbits::beidou::{
+    BeidouBroadcastNavigationData, BeidouClockCorrection, BeidouEphemeris,
+    BeidouIonosphericCorrection, BeidouSignalHealth, BeidouSystemTime,
+};
 use crate::orbits::galileo::{
     GalileoBroadcastNavigationData, GalileoClockCorrection, GalileoEphemeris,
     GalileoIonosphericCorrection, GalileoIonosphericDisturbanceFlags, GalileoSignalHealth,
@@ -27,7 +30,9 @@ use crate::orbits::galileo::{
 use crate::orbits::glonass::GlonassBroadcastNavigationFrame;
 use crate::orbits::gps::GpsBroadcastNavigationData;
 use crate::orbits::gps::GpsEphemeris;
-use crate::time::{utc_civil_to_gps_with_offset, UtcCivilTime, UtcCivilTimeError};
+use crate::time::{
+    gps_to_beidou_with_offset, utc_civil_to_gps_with_offset, UtcCivilTime, UtcCivilTimeError,
+};
 
 const GPS_UNIX_EPOCH_OFFSET_S: f64 = 315_964_800.0;
 
@@ -628,6 +633,119 @@ fn parse_galileo_rinex_nav_record(
     })
 }
 
+fn parse_beidou_rinex_nav_record(
+    header: &RinexNavHeader,
+    lines: &[&str],
+) -> Result<BeidouBroadcastNavigationData, ParseError> {
+    if lines.len() != 8 {
+        return Err(ParseError {
+            message: format!("BeiDou RINEX NAV record requires 8 lines, found {}", lines.len()),
+        });
+    }
+
+    let first_line = lines[0];
+    let prn = first_line
+        .get(..3)
+        .unwrap_or_default()
+        .trim()
+        .strip_prefix('C')
+        .ok_or_else(|| ParseError {
+            message: format!(
+                "unsupported BeiDou RINEX NAV satellite identifier '{}'",
+                &first_line[..3.min(first_line.len())]
+            ),
+        })?
+        .parse::<u8>()
+        .map_err(|err| ParseError {
+            message: format!(
+                "invalid BeiDou satellite identifier '{}': {err}",
+                &first_line[..3.min(first_line.len())]
+            ),
+        })?;
+    let line1 = parse_rinex_numeric_fields(first_line.get(3..).unwrap_or_default())?;
+    if line1.len() < 9 {
+        return Err(ParseError {
+            message: format!(
+                "BeiDou RINEX NAV first line requires 9 numeric fields, found {}",
+                line1.len()
+            ),
+        });
+    }
+    let line2 = pad_rinex_nav_record_fields(parse_rinex_numeric_fields(lines[1])?);
+    let line3 = pad_rinex_nav_record_fields(parse_rinex_numeric_fields(lines[2])?);
+    let line4 = pad_rinex_nav_record_fields(parse_rinex_numeric_fields(lines[3])?);
+    let line5 = pad_rinex_nav_record_fields(parse_rinex_numeric_fields(lines[4])?);
+    let line6 = pad_rinex_nav_record_fields(parse_rinex_numeric_fields(lines[5])?);
+    let line7 = pad_rinex_nav_record_fields(parse_rinex_numeric_fields(lines[6])?);
+    let line8 = pad_rinex_nav_record_fields(parse_rinex_numeric_fields(lines[7])?);
+
+    let year = parse_rinex_nav_year(line1[0] as i32, header.version);
+    let toc = parse_rinex_epoch_utc_civil(
+        year,
+        line1[1] as u8,
+        line1[2] as u8,
+        line1[3] as u8,
+        line1[4] as u8,
+        line1[5],
+    )?;
+    let toc_gps = utc_civil_to_gps_with_offset(toc, &LeapSeconds::default_table())
+        .map_err(rinex_utc_civil_error)?
+        .time;
+    let toc_bdt = gps_to_beidou_with_offset(toc_gps).time;
+    let sat = SatId { constellation: Constellation::Beidou, prn };
+    let aode = line2[0].round().max(0.0) as u8;
+    let transmit_time_s = line8[0].rem_euclid(604_800.0);
+
+    Ok(BeidouBroadcastNavigationData {
+        sat,
+        bdt: BeidouSystemTime {
+            week: line6[2].round().max(0.0) as u16,
+            sow_s: transmit_time_s.round().max(0.0) as u32,
+        },
+        urai: line7[0].round().max(0.0) as u8,
+        signal_health: BeidouSignalHealth { autonomous_satellite_good: line7[1].round() == 0.0 },
+        clock: BeidouClockCorrection {
+            toc_s: toc_bdt.tow_s,
+            aodc: line8[1].round().max(0.0) as u8,
+            af0: line1[6],
+            af1: line1[7],
+            af2: line1[8],
+            tgd1_s: line7[2],
+            tgd2_s: line7[3],
+        },
+        ephemeris: BeidouEphemeris {
+            sat,
+            aode,
+            toe_s: line4[0].rem_euclid(604_800.0),
+            sqrt_a: line3[3],
+            e: line3[1],
+            i0: line5[0],
+            idot: line6[0],
+            omega0: line4[2],
+            omegadot: line5[3],
+            w: line5[2],
+            m0: line2[3],
+            delta_n: line2[2],
+            cuc: line3[0],
+            cus: line3[2],
+            crc: line5[1],
+            crs: line2[1],
+            cic: line4[1],
+            cis: line4[3],
+        },
+        ionosphere: BeidouIonosphericCorrection {
+            alpha0: 0.0,
+            alpha1: 0.0,
+            alpha2: 0.0,
+            alpha3: 0.0,
+            beta0: 0.0,
+            beta1: 0.0,
+            beta2: 0.0,
+            beta3: 0.0,
+        },
+    })
+}
+
 pub fn parse_rinex_nav(data: &str) -> Result<Vec<GpsEphemeris>, ParseError> {
     Ok(parse_rinex_broadcast_navigation(data)?.ephemerides)
 }
@@ -643,7 +761,7 @@ pub fn parse_rinex_navigation_dataset(
         .collect::<Vec<_>>();
     let mut gps = Vec::new();
     let mut galileo = Vec::new();
-    let beidou = Vec::new();
+    let mut beidou = Vec::new();
     let glonass = Vec::new();
     let mut index = 0usize;
 
@@ -665,6 +783,8 @@ pub fn parse_rinex_navigation_dataset(
             gps.push(parse_gps_rinex_nav_record(&header, record)?);
         } else if line.starts_with('E') {
             galileo.push(parse_galileo_rinex_nav_record(&header, record)?);
+        } else if line.starts_with('C') {
+            beidou.push(parse_beidou_rinex_nav_record(&header, record)?);
         }
         index += line_count;
     }
@@ -999,6 +1119,7 @@ mod tests {
     };
     use crate::formats::rinex_obs::{parse_rinex_observation_dataset, RinexObservationRecord};
     use crate::models::atmosphere::KlobucharCoefficients;
+    use crate::orbits::beidou::BeidouSystemTime;
     use crate::orbits::galileo::GalileoSystemTime;
     use crate::orbits::gps::{GpsBroadcastNavigationData, GpsEphemeris};
     use bijux_gnss_core::api::{
@@ -1392,6 +1513,40 @@ E19 1980 01 06 18 20 00-1.700000000000D-04 2.500000000000D-12-3.000000000000D-19
         assert!((galileo.clock.bgd_e1_e5a_s + 1.1e-9).abs() < 1.0e-20);
         assert!((galileo.ephemeris.sqrt_a - 5_440.612_319).abs() < 1.0e-12);
         assert!((galileo.ephemeris.toe_s - 64_800.0).abs() < 1.0e-9);
+    }
+
+    #[test]
+    fn parse_rinex_navigation_dataset_reads_beidou_records() {
+        let data = "\
+     3.05           NAVIGATION DATA     M (MIXED)           RINEX VERSION / TYPE
+bijux-gnss                              PGM / RUN BY / DATE
+                                                            END OF HEADER
+C11 2006 01 01 18 00 00-1.800000000000D-04 2.200000000000D-12-2.600000000000D-19
+    3.000000000000D+00-8.200000000000D+01 4.300000000000D-09 1.120000000000D+00
+   -2.300000000000D-06 2.340000000000D-03 3.100000000000D-06 5.282625128000D+03
+    6.480000000000D+04 2.600000000000D-07 8.700000000000D-01-2.200000000000D-07
+    9.580000000000D-01 1.450000000000D+02-4.200000000000D-01-6.200000000000D-09
+   -1.900000000000D-10 0.000000000000D+00 0.000000000000D+00 0.000000000000D+00
+    2.000000000000D+00 0.000000000000D+00-1.100000000000D-09 2.200000000000D-09
+    6.470000000000D+04 3.000000000000D+00 0.000000000000D+00 0.000000000000D+00
+";
+
+        let dataset = parse_rinex_navigation_dataset(data).expect("parse BeiDou navigation");
+
+        assert!(dataset.gps.is_empty());
+        assert!(dataset.galileo.is_empty());
+        assert_eq!(dataset.beidou.len(), 1);
+        let beidou = &dataset.beidou[0];
+        assert_eq!(beidou.sat, SatId { constellation: Constellation::Beidou, prn: 11 });
+        assert_eq!(beidou.bdt, BeidouSystemTime { week: 0, sow_s: 64_700 });
+        assert_eq!(beidou.urai, 2);
+        assert!(beidou.signal_health.autonomous_satellite_good);
+        assert_eq!(beidou.clock.aodc, 3);
+        assert!((beidou.clock.toc_s - 64_800.0).abs() < 1.0e-9);
+        assert!((beidou.clock.tgd1_s + 1.1e-9).abs() < 1.0e-20);
+        assert_eq!(beidou.ephemeris.aode, 3);
+        assert!((beidou.ephemeris.sqrt_a - 5_282.625_128).abs() < 1.0e-12);
+        assert!((beidou.ephemeris.toe_s - 64_800.0).abs() < 1.0e-9);
     }
 
     #[test]
