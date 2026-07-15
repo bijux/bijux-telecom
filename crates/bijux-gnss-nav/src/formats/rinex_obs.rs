@@ -1796,7 +1796,8 @@ fn observation_tokens(line: &str, start: usize, width: usize) -> Vec<String> {
 }
 
 fn looks_like_rinex_3_satellite_record(line: &str) -> bool {
-    parse_satellite_token(line.get(..3).unwrap_or_default()).is_ok()
+    matches!(line.as_bytes().first(), Some(b'G' | b'R' | b'E' | b'C' | b'S'))
+        && parse_satellite_token(line.get(..3).unwrap_or_default()).is_ok()
 }
 
 fn rinex_system_from_constellation(constellation: Constellation) -> char {
