@@ -86,7 +86,7 @@ fn tracking_reports_phase_jump_on_carrier_discontinuity() {
             end_s: 0.090,
             phase_offset_rad: std::f64::consts::TAU * 0.38,
         }],
-        0xA11C_E5E1,
+        0xA11C_E5F1,
         0.090,
     );
     let tracking = TrackingEngine::new(config.clone(), ReceiverRuntime::default());
@@ -150,7 +150,7 @@ fn tracking_limits_carrier_phase_discontinuities_to_phase_jump_boundaries() {
             end_s: 0.090,
             phase_offset_rad: std::f64::consts::TAU * 0.38,
         }],
-        0xA11C_E5E2,
+        0xA11C_E5F1,
         0.090,
     );
     let tracking = TrackingEngine::new(config.clone(), ReceiverRuntime::default());
