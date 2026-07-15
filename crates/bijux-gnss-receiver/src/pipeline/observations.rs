@@ -77,9 +77,8 @@ use serde::{Deserialize, Serialize};
 
 #[cfg(test)]
 use bijux_gnss_core::api::{
-    Constellation, CycleSlipDetector, Cycles, GlonassFrequencyChannel, Hertz, ObsSignalTiming,
-    ObservationStatus, ReceiverSampleTrace, SatId, SignalBand, SignalCode, SignalSpec,
-    GPS_L1_CA_CARRIER_HZ,
+    Constellation, CycleSlipDetector, Cycles, GlonassFrequencyChannel, ObservationStatus,
+    ReceiverSampleTrace, SignalBand, SignalCode, SignalSpec, GPS_L1_CA_CARRIER_HZ,
 };
 #[cfg(test)]
 use bijux_gnss_signal::api::{glonass_l1_carrier_hz, samples_per_code};
@@ -99,6 +98,8 @@ mod decision_artifacts;
 mod labels;
 mod lock_state;
 mod measurement_quality;
+#[cfg(test)]
+mod nav_epoch_fixture;
 mod pseudorange_timing;
 mod receiver_clock;
 mod residual_reports;
@@ -116,6 +117,8 @@ pub use decision_artifacts::observation_decisions_from_epochs;
 pub use measurement_quality::{
     ObservationMeasurementQualityEpochReport, ObservationMeasurementQualitySatellite,
 };
+#[cfg(test)]
+use nav_epoch_fixture::nav_observation_epoch_fixture;
 #[cfg(test)]
 use pseudorange_timing::resolve_pseudorange_from_transmit_time;
 use residual_reports::{observation_signal_key, observation_snapshot_key};
@@ -703,86 +706,6 @@ pub fn observation_artifacts_from_tracking_results_with_gps_anchor(
         output: ObservationPipelineArtifacts { epochs: out, residuals, measurement_quality },
         events: diagnostics,
         stats: StepStats::default(),
-    }
-}
-
-#[cfg(test)]
-pub(crate) fn fake_obs_epoch_for_nav_tests(epoch_idx: u64) -> ObsEpoch {
-    let receive_tow_s = epoch_idx as f64 * 0.001;
-    let sats = (1..=4)
-        .map(|prn| ObsSatellite {
-            signal_id: SigId {
-                sat: SatId { constellation: Constellation::Gps, prn },
-                band: SignalBand::L1,
-                code: SignalCode::Ca,
-            },
-            pseudorange_m: Meters(20_200_000.0 + prn as f64),
-            pseudorange_var_m2: 100.0,
-            carrier_phase_cycles: Cycles(0.0),
-            carrier_phase_var_cycles2: 1.0,
-            doppler_hz: Hertz(0.0),
-            doppler_var_hz2: 1.0,
-            cn0_dbhz: 45.0,
-            lock_flags: LockFlags {
-                code_lock: true,
-                carrier_lock: true,
-                bit_lock: true,
-                cycle_slip: false,
-            },
-            multipath_suspect: false,
-            observation_status: ObservationStatus::Accepted,
-            observation_reject_reasons: Vec::new(),
-            elevation_deg: Some(45.0),
-            azimuth_deg: Some(0.0),
-            weight: Some(1.0),
-            timing: Some(ObsSignalTiming {
-                signal_travel_time_s: Seconds((20_200_000.0 + prn as f64) / SPEED_OF_LIGHT_MPS),
-                transmit_gps_time: GpsTime {
-                    week: 0,
-                    tow_s: receive_tow_s - ((20_200_000.0 + prn as f64) / SPEED_OF_LIGHT_MPS),
-                },
-            }),
-            error_model: None,
-            metadata: ObsMetadata {
-                tracking_mode: "scalar".to_string(),
-                integration_ms: 1,
-                lock_quality: 1.0,
-                smoothing_window: 0,
-                smoothing_age: 0,
-                smoothing_resets: 0,
-                signal: signal_spec_gps_l1_ca(),
-                tracking_lock_state: "locked".to_string(),
-                observation_lock_state: "locked".to_string(),
-                observation_lock_reason: Some("stable_tracking".to_string()),
-                tracking_lock_quality: 1.0,
-                ..ObsMetadata::default()
-            },
-        })
-        .collect();
-    ObsEpoch {
-        t_rx_s: Seconds(receive_tow_s),
-        source_time: ReceiverSampleTrace::from_sample_index(epoch_idx, 1_000.0),
-        gps_week: None,
-        tow_s: None,
-        epoch_idx,
-        discontinuity: false,
-        valid: true,
-        processing_ms: None,
-        role: ReceiverRole::Rover,
-        sats,
-        decision: ObservationEpochDecision::Accepted,
-        decision_reason: Some("accepted_observables_present".to_string()),
-        manifest: Some(ObsEpochManifest {
-            version: bijux_gnss_core::api::OBSERVATION_MODEL_VERSION,
-            artifact_id: format!("obs-epoch-{epoch_idx:010}"),
-            epoch_id: observation_epoch_id(epoch_idx, epoch_idx),
-            source_epoch_idx: epoch_idx,
-            source_sample_index: epoch_idx,
-            source_time: ReceiverSampleTrace::from_sample_index(epoch_idx, 1_000.0),
-            decision: ObservationEpochDecision::Accepted,
-            downstream_profile_version:
-                bijux_gnss_core::api::OBSERVATION_DOWNSTREAM_PROFILE_VERSION,
-        }),
     }
 }
 
@@ -3433,7 +3356,7 @@ mod tests {
 
     #[test]
     fn apply_epoch_decision_refuses_malformed_duplicate_signal_set() {
-        let mut epoch = fake_obs_epoch_for_nav_tests(0);
+        let mut epoch = nav_observation_epoch_fixture(0);
         let duplicate = epoch.sats[0].clone();
         epoch.sats.push(duplicate);
         apply_epoch_decision(&mut epoch);
