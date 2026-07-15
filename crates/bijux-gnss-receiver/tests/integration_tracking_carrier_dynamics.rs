@@ -25,6 +25,8 @@ const BOUNDED_DOPPLER_JERK_HZ_PER_S2: f64 = 1_000.0;
 const BOUNDED_CARRIER_ERROR_MAX_HZ: f64 = 18.0;
 const BOUNDED_CODE_ERROR_MAX_SAMPLES: f64 = 1.25;
 const BOUNDED_MIN_STABLE_TRACKING_EPOCHS: usize = 5;
+const EXCESSIVE_DOPPLER_RATE_HZ_PER_S: f64 = 1_500.0;
+const EXCESSIVE_DOPPLER_JERK_HZ_PER_S2: f64 = 120_000.0;
 
 fn accepted_acquisition(sat: SatId, doppler_hz: f64, code_phase_samples: usize) -> AcqResult {
     AcqResult {
@@ -163,5 +165,49 @@ fn tracking_preserves_lock_inside_declared_acceleration_and_jerk_envelope() {
     assert!(
         code_errors_samples.iter().all(|error_samples| *error_samples <= BOUNDED_CODE_ERROR_MAX_SAMPLES),
         "code error exceeded bounded dynamics envelope: code_errors_samples={code_errors_samples:?}, epochs={epochs:?}"
+    );
+}
+
+#[test]
+fn tracking_refuses_stable_solution_outside_acceleration_and_jerk_envelope() {
+    let config = carrier_dynamics_tracking_config();
+    let sat = SatId { constellation: Constellation::Gps, prn: 25 };
+    let initial_doppler_hz = 180.0;
+    let code_phase_chips = 377.75;
+    let frame = generate_l1_ca_with_carrier_dynamics(
+        &config,
+        carrier_dynamics_signal(
+            sat,
+            initial_doppler_hz,
+            code_phase_chips,
+            0.0,
+            EXCESSIVE_DOPPLER_RATE_HZ_PER_S,
+            EXCESSIVE_DOPPLER_JERK_HZ_PER_S2,
+        ),
+        0xC4D1_6002,
+        CARRIER_DYNAMICS_DURATION_S,
+    );
+    let seeded_code_phase_samples =
+        expected_acquisition_code_phase_samples(&config, &frame, code_phase_chips);
+    let tracking = TrackingEngine::new(config.clone(), ReceiverRuntime::default());
+    let tracks = tracking.track_from_acquisition(
+        &frame,
+        &[accepted_acquisition(sat, initial_doppler_hz, seeded_code_phase_samples)],
+    );
+    let epochs = &tracks.first().expect("track").epochs;
+    let stable_window = stable_tracking_window(epochs, BOUNDED_MIN_STABLE_TRACKING_EPOCHS);
+    let final_epoch = epochs.last().expect("final epoch");
+
+    assert!(
+        stable_window.is_empty(),
+        "excessive dynamics must not produce a stable tracking solution: stable_window={stable_window:?}, epochs={epochs:?}"
+    );
+    assert!(
+        matches!(final_epoch.lock_state.as_str(), "degraded" | "lost" | "refused" | "pull_in"),
+        "excessive dynamics must not finish as a normal tracking solution: final_epoch={final_epoch:?}, epochs={epochs:?}"
+    );
+    assert!(
+        epochs.iter().any(|epoch| !epoch.pll_lock || !epoch.fll_lock || !epoch.dll_lock),
+        "excessive dynamics must expose detector refusal evidence instead of silently reporting full lock: epochs={epochs:?}"
     );
 }
