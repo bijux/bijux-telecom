@@ -283,7 +283,10 @@ pub use crate::formats::rinex_obs::{
 };
 /// Precise product parsing helpers.
 pub use crate::formats::{
-    clk::{ClkInterpolationSummary, ClkProvider},
+    clk::{
+        ClkInterpolationEdgePolicy, ClkInterpolationPolicy, ClkInterpolationSummary,
+        ClkInterpolationWindowPolicy, ClkProvider, CLK_INTERPOLATION_POLICY,
+    },
     sp3::{
         Sp3InterpolationEdgePolicy, Sp3InterpolationPolicy, Sp3InterpolationSummary,
         Sp3InterpolationWindowPolicy, Sp3Provider, Sp3RecordAccuracy, Sp3RecordFlags, Sp3State,

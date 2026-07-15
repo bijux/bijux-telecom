@@ -9,6 +9,19 @@ use crate::orbits::gps::GpsSatelliteClockCorrection;
 
 const CLK_MISSING_ABS_THRESHOLD: f64 = 999_999.0;
 const CLK_MAX_INTERPOLATED_BIAS_STEP_S: f64 = 1.0e-6;
+const CLK_INTERPOLATION_SUPPORT_POINTS: usize = 4;
+const CLK_INTERPOLATION_GAP_MULTIPLIER: f64 = 1.5;
+const CLK_INTERPOLATION_GAP_MARGIN_S: f64 = 1.0;
+
+pub const CLK_INTERPOLATION_POLICY: ClkInterpolationPolicy = ClkInterpolationPolicy {
+    support_point_count: CLK_INTERPOLATION_SUPPORT_POINTS,
+    polynomial_order: CLK_INTERPOLATION_SUPPORT_POINTS - 1,
+    window_policy: ClkInterpolationWindowPolicy::NearestCentered,
+    edge_policy: ClkInterpolationEdgePolicy::InsideCoverageOnly,
+    max_gap_multiplier: CLK_INTERPOLATION_GAP_MULTIPLIER,
+    max_gap_margin_s: CLK_INTERPOLATION_GAP_MARGIN_S,
+    max_bias_step_s: CLK_MAX_INTERPOLATED_BIAS_STEP_S,
+};
 
 #[derive(Debug, Clone)]
 pub struct ClkRecord {
@@ -26,9 +39,32 @@ pub struct ClkProvider {
     records: BTreeMap<SatId, Vec<ClkRecord>>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClkInterpolationWindowPolicy {
+    NearestCentered,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClkInterpolationEdgePolicy {
+    InsideCoverageOnly,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ClkInterpolationPolicy {
+    pub support_point_count: usize,
+    pub polynomial_order: usize,
+    pub window_policy: ClkInterpolationWindowPolicy,
+    pub edge_policy: ClkInterpolationEdgePolicy,
+    pub max_gap_multiplier: f64,
+    pub max_gap_margin_s: f64,
+    pub max_bias_step_s: f64,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ClkInterpolationSummary {
+    pub policy: ClkInterpolationPolicy,
     pub sample_count: usize,
+    pub withheld_edge_sample_count: usize,
     pub max_bias_error_s: f64,
     pub rms_bias_error_s: f64,
     pub max_sigma_error_s: Option<f64>,
@@ -345,9 +381,10 @@ fn interpolation_support_records<'a>(
         let right_dt = (right.epoch_s - t_s).abs();
         left_dt.total_cmp(&right_dt).then_with(|| left_index.cmp(right_index))
     });
-    support.truncate(4);
+    support.truncate(CLK_INTERPOLATION_SUPPORT_POINTS);
     support.sort_by(|(_, left), (_, right)| left.epoch_s.total_cmp(&right.epoch_s));
-    Some(support.into_iter().map(|(_, record)| record).collect())
+    let support = support.into_iter().map(|(_, record)| record).collect::<Vec<_>>();
+    support_records_are_valid(records, &support, skip_index).then_some(support)
 }
 
 fn is_valid_clock_interpolation_interval(
@@ -359,10 +396,54 @@ fn is_valid_clock_interpolation_interval(
         return false;
     }
     let nominal_step_s = nominal_epoch_step_s(records).unwrap_or(next.epoch_s - previous.epoch_s);
-    let has_valid_gap = next.epoch_s - previous.epoch_s <= nominal_step_s * 1.5 + 1.0;
-    let has_valid_clock_step =
-        (next.bias_s - previous.bias_s).abs() <= CLK_MAX_INTERPOLATED_BIAS_STEP_S;
-    has_valid_gap && has_valid_clock_step
+    is_valid_clock_gap(nominal_step_s, previous.epoch_s, next.epoch_s)
+        && is_valid_clock_step(previous.bias_s, next.bias_s)
+}
+
+fn support_records_are_valid(
+    records: &[ClkRecord],
+    support: &[&ClkRecord],
+    skip_index: Option<usize>,
+) -> bool {
+    let Some(nominal_step_s) = nominal_epoch_step_s(records) else {
+        return true;
+    };
+    let skipped_record = skip_index.and_then(|index| records.get(index));
+    support
+        .windows(2)
+        .all(|window| valid_support_interval(nominal_step_s, window[0], window[1], skipped_record))
+}
+
+fn valid_support_interval(
+    nominal_step_s: f64,
+    left: &ClkRecord,
+    right: &ClkRecord,
+    skipped_record: Option<&ClkRecord>,
+) -> bool {
+    if is_valid_clock_gap(nominal_step_s, left.epoch_s, right.epoch_s)
+        && is_valid_clock_step(left.bias_s, right.bias_s)
+    {
+        return true;
+    }
+
+    skipped_record.is_some_and(|skipped| {
+        skipped.epoch_s > left.epoch_s
+            && skipped.epoch_s < right.epoch_s
+            && is_valid_clock_gap(nominal_step_s, left.epoch_s, skipped.epoch_s)
+            && is_valid_clock_gap(nominal_step_s, skipped.epoch_s, right.epoch_s)
+            && is_valid_clock_step(left.bias_s, skipped.bias_s)
+            && is_valid_clock_step(skipped.bias_s, right.bias_s)
+    })
+}
+
+fn is_valid_clock_gap(nominal_step_s: f64, left_epoch_s: f64, right_epoch_s: f64) -> bool {
+    right_epoch_s > left_epoch_s
+        && right_epoch_s - left_epoch_s
+            <= nominal_step_s * CLK_INTERPOLATION_GAP_MULTIPLIER + CLK_INTERPOLATION_GAP_MARGIN_S
+}
+
+fn is_valid_clock_step(left_bias_s: f64, right_bias_s: f64) -> bool {
+    (right_bias_s - left_bias_s).abs() <= CLK_MAX_INTERPOLATED_BIAS_STEP_S
 }
 
 fn nominal_epoch_step_s(records: &[ClkRecord]) -> Option<f64> {
@@ -415,7 +496,13 @@ fn summarize_interpolation_errors(records: &[ClkRecord]) -> Option<ClkInterpolat
     }
 
     Some(ClkInterpolationSummary {
+        policy: CLK_INTERPOLATION_POLICY,
         sample_count: bias_errors_s.len(),
+        withheld_edge_sample_count: records
+            .iter()
+            .enumerate()
+            .filter(|(index, _)| is_withheld_edge_sample(records, *index))
+            .count(),
         max_bias_error_s: bias_errors_s.iter().copied().fold(f64::NEG_INFINITY, f64::max),
         rms_bias_error_s: rms_error_s(&bias_errors_s),
         max_sigma_error_s: (!sigma_errors_s.is_empty())
@@ -451,6 +538,23 @@ fn interpolate_sigma_error_s(records: &[ClkRecord], index: usize) -> Option<f64>
     Some((sigma_s - target_sigma_s).abs())
 }
 
+fn is_withheld_edge_sample(records: &[ClkRecord], index: usize) -> bool {
+    let Some(target) = records.get(index) else {
+        return false;
+    };
+    let Some(support) = interpolation_support_records(records, target.epoch_s, Some(index)) else {
+        return false;
+    };
+    let Some(first_epoch_s) = support.first().map(|record| record.epoch_s) else {
+        return false;
+    };
+    let Some(last_epoch_s) = support.last().map(|record| record.epoch_s) else {
+        return false;
+    };
+
+    target.epoch_s <= first_epoch_s || target.epoch_s >= last_epoch_s
+}
+
 fn rms_error_s(errors_s: &[f64]) -> f64 {
     (errors_s.iter().map(|error_s| error_s.powi(2)).sum::<f64>() / errors_s.len() as f64).sqrt()
 }
@@ -467,7 +571,10 @@ fn days_from_civil(year: i32, month: u32, day: u32) -> i64 {
 
 #[cfg(test)]
 mod tests {
-    use super::ClkProvider;
+    use super::{
+        interpolation_support_records, ClkInterpolationEdgePolicy, ClkInterpolationWindowPolicy,
+        ClkProvider,
+    };
     use bijux_gnss_core::api::{Constellation, SatId};
 
     #[test]
@@ -512,11 +619,68 @@ AS G01 2020 01 01 01 00 00.000000  2  0.000000313  0.000000065
         let sat = SatId { constellation: Constellation::Gps, prn: 1 };
         let summary = provider.interpolation_summary(sat).expect("clock interpolation summary");
 
+        assert_eq!(summary.policy.support_point_count, 4);
+        assert_eq!(summary.policy.polynomial_order, 3);
+        assert_eq!(summary.policy.window_policy, ClkInterpolationWindowPolicy::NearestCentered);
+        assert_eq!(summary.policy.edge_policy, ClkInterpolationEdgePolicy::InsideCoverageOnly);
+        assert_eq!(summary.policy.max_gap_multiplier, 1.5);
+        assert_eq!(summary.policy.max_gap_margin_s, 1.0);
+        assert_eq!(summary.policy.max_bias_step_s, 1.0e-6);
         assert_eq!(summary.sample_count, 3);
+        assert_eq!(summary.withheld_edge_sample_count, 2);
         assert!(summary.max_bias_error_s.abs() < 1e-18);
         assert!(summary.rms_bias_error_s.abs() < 1e-18);
         assert!(summary.max_sigma_error_s.expect("sigma summary").abs() < 1e-18);
         assert!(summary.rms_sigma_error_s.expect("sigma RMS summary").abs() < 1e-18);
+    }
+
+    #[test]
+    fn interpolation_uses_nearest_centered_clock_support() {
+        let data = "\
+AS G01 2020 01 01 00 00 00.000000  1  0.000000001
+AS G01 2020 01 01 00 15 00.000000  1  0.000000010
+AS G01 2020 01 01 00 30 00.000000  1  0.000000049
+AS G01 2020 01 01 00 45 00.000000  1  0.000000142
+AS G01 2020 01 01 01 00 00.000000  1  0.000000313
+";
+        let provider: ClkProvider = data.parse().expect("parse CLK");
+        let sat = SatId { constellation: Constellation::Gps, prn: 1 };
+        let records = provider.records.get(&sat).expect("clock records");
+        let support =
+            interpolation_support_records(records, 2_250.0, None).expect("centered support");
+
+        assert_eq!(
+            support.iter().map(|record| record.epoch_s as i64).collect::<Vec<_>>(),
+            vec![900, 1_800, 2_700, 3_600]
+        );
+    }
+
+    #[test]
+    fn interpolation_summary_refuses_withheld_clock_samples_across_gaps() {
+        let data = "\
+AS G01 2020 01 01 00 00 00.000000  1  0.000000001
+AS G01 2020 01 01 00 15 00.000000  1  0.000000002
+AS G01 2020 01 01 01 00 00.000000  1  0.000000003
+AS G01 2020 01 01 01 15 00.000000  1  0.000000004
+";
+        let provider: ClkProvider = data.parse().expect("parse CLK with gap");
+        let sat = SatId { constellation: Constellation::Gps, prn: 1 };
+
+        assert!(provider.interpolation_summary(sat).is_none());
+    }
+
+    #[test]
+    fn interpolation_summary_refuses_withheld_clock_samples_across_jumps() {
+        let data = "\
+AS G01 2020 01 01 00 00 00.000000  1  0.000000001
+AS G01 2020 01 01 00 15 00.000000  1  0.000000002
+AS G01 2020 01 01 00 30 00.000000  1  0.000003500
+AS G01 2020 01 01 00 45 00.000000  1  0.000003501
+";
+        let provider: ClkProvider = data.parse().expect("parse CLK with jump");
+        let sat = SatId { constellation: Constellation::Gps, prn: 1 };
+
+        assert!(provider.interpolation_summary(sat).is_none());
     }
 
     #[test]
