@@ -8,11 +8,12 @@ use super::false_alarm_calibration::{
     calibration_seed, false_alarm_rate, mix_seed, noise_only_frame, wilson_confidence_interval,
     FalseAlarmRateMeasurement,
 };
+use super::request_planning::required_samples_for_request;
 use super::signal_model::resolved_request_signal_code;
 use super::threshold_resolution::{
     threshold_provenance_for_request, AcquisitionThresholdCacheKey, ResolvedAcquisitionThresholds,
 };
-use super::{required_samples_for_request, Acquisition};
+use super::Acquisition;
 
 const FALSE_ALARM_CALIBRATION_SEARCH_ITERATIONS: usize = 7;
 
