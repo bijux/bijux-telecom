@@ -8,8 +8,8 @@ use bijux_gnss_signal::api::signal_cycles_to_meters;
 
 use crate::pipeline::hatch::HatchFilterState;
 
-use super::apply_cycle_slip_surface;
 use super::carrier_phase::cycle_slip_decision_evidence;
+use super::lock_state::apply_cycle_slip_surface;
 use super::residual_reports::{observation_snapshot_key, RawObservationSnapshot};
 use super::SPEED_OF_LIGHT_MPS;
 
