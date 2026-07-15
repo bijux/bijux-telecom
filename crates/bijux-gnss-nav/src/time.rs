@@ -4,6 +4,7 @@ use bijux_gnss_core::api::{gps_to_utc, utc_to_gps, GpsTime, LeapSeconds, TaiTime
 use serde::{Deserialize, Serialize};
 
 const UTC_TAI_EPOCH_OFFSET_S: f64 = 19.0;
+const WEEK_SECONDS: f64 = 604_800.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum GnssTimeSystem {
@@ -36,6 +37,50 @@ pub struct TimeOffsetEvidence {
 pub struct TimeConversion<T> {
     pub time: T,
     pub offset: TimeOffsetEvidence,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct GalileoTime {
+    pub week: u32,
+    pub tow_s: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GalileoGpsTimeOffset {
+    pub gst_minus_gps_s: f64,
+    pub source: TimeOffsetSource,
+    pub source_detail: String,
+}
+
+impl GalileoTime {
+    pub fn from_seconds(total_seconds: f64) -> Self {
+        let mut seconds = total_seconds.max(0.0);
+        let week = (seconds / WEEK_SECONDS).floor() as u64;
+        seconds -= week as f64 * WEEK_SECONDS;
+        Self { week: week as u32, tow_s: seconds }
+    }
+
+    pub fn to_seconds(&self) -> f64 {
+        self.week as f64 * WEEK_SECONDS + self.tow_s
+    }
+}
+
+impl GalileoGpsTimeOffset {
+    pub fn system_definition() -> Self {
+        Self {
+            gst_minus_gps_s: 0.0,
+            source: TimeOffsetSource::FixedSystemDefinition,
+            source_detail: "GST steered to GPST within broadcast offset tolerance".to_string(),
+        }
+    }
+
+    pub fn broadcast(gst_minus_gps_s: f64, source_detail: impl Into<String>) -> Self {
+        Self {
+            gst_minus_gps_s,
+            source: TimeOffsetSource::BroadcastNavigationMessage,
+            source_detail: source_detail.into(),
+        }
+    }
 }
 
 pub fn normalize_tow(tow_s: f64) -> f64 {
@@ -133,11 +178,44 @@ pub fn tai_to_utc_with_offset(tai: TaiTime, leap: &LeapSeconds) -> TimeConversio
     }
 }
 
+pub fn gps_to_galileo_with_offset(
+    gps: GpsTime,
+    offset: &GalileoGpsTimeOffset,
+) -> TimeConversion<GalileoTime> {
+    TimeConversion {
+        time: GalileoTime::from_seconds(gps.to_seconds() + offset.gst_minus_gps_s),
+        offset: TimeOffsetEvidence {
+            from: GnssTimeSystem::Gpst,
+            to: GnssTimeSystem::Gst,
+            offset_s: offset.gst_minus_gps_s,
+            source: offset.source,
+            source_detail: offset.source_detail.clone(),
+        },
+    }
+}
+
+pub fn galileo_to_gps_with_offset(
+    gst: GalileoTime,
+    offset: &GalileoGpsTimeOffset,
+) -> TimeConversion<GpsTime> {
+    TimeConversion {
+        time: GpsTime::from_seconds(gst.to_seconds() - offset.gst_minus_gps_s),
+        offset: TimeOffsetEvidence {
+            from: GnssTimeSystem::Gst,
+            to: GnssTimeSystem::Gpst,
+            offset_s: -offset.gst_minus_gps_s,
+            source: offset.source,
+            source_detail: offset.source_detail.clone(),
+        },
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        gps_to_utc_with_offset, gps_week_rollover, tai_to_utc_with_offset, utc_to_gps_with_offset,
-        utc_to_tai_with_offset, GnssTimeSystem, TimeOffsetSource,
+        galileo_to_gps_with_offset, gps_to_galileo_with_offset, gps_to_utc_with_offset,
+        gps_week_rollover, tai_to_utc_with_offset, utc_to_gps_with_offset, utc_to_tai_with_offset,
+        GalileoGpsTimeOffset, GalileoTime, GnssTimeSystem, TimeOffsetSource,
     };
     use bijux_gnss_core::api::{GpsTime, LeapSeconds, TaiTime, UtcTime};
 
@@ -210,5 +288,36 @@ mod tests {
 
         assert_eq!(conversion.offset.offset_s, -19.0);
         assert_eq!(conversion.time.unix_s, 315_964_800.0);
+    }
+
+    #[test]
+    fn galileo_system_definition_offset_preserves_gps_time() {
+        let offset = GalileoGpsTimeOffset::system_definition();
+        let gps = GpsTime { week: 2_300, tow_s: 604_799.5 };
+        let gst = gps_to_galileo_with_offset(gps, &offset);
+        let round_trip = galileo_to_gps_with_offset(gst.time, &offset);
+
+        assert_eq!(gst.offset.source, TimeOffsetSource::FixedSystemDefinition);
+        assert_eq!(gst.offset.from, GnssTimeSystem::Gpst);
+        assert_eq!(gst.offset.to, GnssTimeSystem::Gst);
+        assert_eq!(gst.offset.offset_s, 0.0);
+        assert_eq!(gst.time, GalileoTime { week: 2_300, tow_s: 604_799.5 });
+        assert_eq!(round_trip.time, gps);
+    }
+
+    #[test]
+    fn galileo_broadcast_offset_crosses_week_boundary_with_evidence() {
+        let offset = GalileoGpsTimeOffset::broadcast(0.75, "galileo inav word gst-gps offset");
+        let gps = GpsTime { week: 2_300, tow_s: 604_799.5 };
+        let gst = gps_to_galileo_with_offset(gps, &offset);
+        let round_trip = galileo_to_gps_with_offset(gst.time, &offset);
+
+        assert_eq!(gst.offset.source, TimeOffsetSource::BroadcastNavigationMessage);
+        assert_eq!(gst.offset.offset_s, 0.75);
+        assert_eq!(gst.time, GalileoTime { week: 2_301, tow_s: 0.25 });
+        assert_eq!(round_trip.offset.from, GnssTimeSystem::Gst);
+        assert_eq!(round_trip.offset.to, GnssTimeSystem::Gpst);
+        assert_eq!(round_trip.offset.offset_s, -0.75);
+        assert!((round_trip.time.to_seconds() - gps.to_seconds()).abs() < 1.0e-9);
     }
 }

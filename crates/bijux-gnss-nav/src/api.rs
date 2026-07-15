@@ -296,9 +296,10 @@ pub use crate::orbits::gps::{
 };
 /// Time helpers.
 pub use crate::time::{
-    gps_time_from_utc, gps_to_utc_with_offset, gps_week_rollover, normalize_tow,
-    tai_to_utc_with_offset, utc_to_gps_with_offset, utc_to_tai_with_offset, GnssTimeSystem,
-    TimeConversion, TimeOffsetEvidence, TimeOffsetSource,
+    galileo_to_gps_with_offset, gps_time_from_utc, gps_to_galileo_with_offset,
+    gps_to_utc_with_offset, gps_week_rollover, normalize_tow, tai_to_utc_with_offset,
+    utc_to_gps_with_offset, utc_to_tai_with_offset, GalileoGpsTimeOffset, GalileoTime,
+    GnssTimeSystem, TimeConversion, TimeOffsetEvidence, TimeOffsetSource,
 };
 
 /// Navigation engine trait boundary.
