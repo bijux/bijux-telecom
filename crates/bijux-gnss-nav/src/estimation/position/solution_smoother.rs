@@ -555,6 +555,7 @@ mod tests {
             integrity_hpl_m: Some(21.0),
             integrity_vpl_m: Some(24.0),
             residuals: Vec::new(),
+            corrected_observations: Vec::new(),
             constellation_residual_rms: Vec::new(),
             rejected: Vec::new(),
             raim_fault_detection: None,
