@@ -5,11 +5,20 @@ use std::str::FromStr;
 
 use bijux_gnss_core::api::{Constellation, SatId};
 
+use crate::orbits::gps::GpsSatelliteClockCorrection;
+
+const CLK_MISSING_ABS_THRESHOLD: f64 = 999_999.0;
+const CLK_MAX_INTERPOLATED_BIAS_STEP_S: f64 = 1.0e-6;
+
 #[derive(Debug, Clone)]
 pub struct ClkRecord {
     pub epoch_s: f64,
     pub bias_s: f64,
     pub sigma_s: Option<f64>,
+    pub rate_s_per_s: Option<f64>,
+    pub rate_sigma_s_per_s: Option<f64>,
+    pub acceleration_s_per_s2: Option<f64>,
+    pub acceleration_sigma_s_per_s2: Option<f64>,
 }
 
 #[derive(Debug, Clone)]
@@ -48,15 +57,18 @@ impl ClkProvider {
             if value_count == 0 || parts.len() < 9 + value_count {
                 return Err("missing clock values".to_string());
             }
-            let bias_s: f64 = parts[9].parse().map_err(|_| "invalid bias")?;
-            let sigma_s = if value_count >= 2 {
-                Some(parts[10].parse().map_err(|_| "invalid sigma")?)
-            } else {
-                None
-            };
+            let values = parse_clk_values(&parts[9..9 + value_count])?;
             let days = days_from_civil(year, month, day);
             let epoch_s = days as f64 * 86_400.0 + hour as f64 * 3600.0 + min as f64 * 60.0 + sec;
-            records.entry(sat).or_default().push(ClkRecord { epoch_s, bias_s, sigma_s });
+            records.entry(sat).or_default().push(ClkRecord {
+                epoch_s,
+                bias_s: values.bias_s,
+                sigma_s: values.sigma_s,
+                rate_s_per_s: values.rate_s_per_s,
+                rate_sigma_s_per_s: values.rate_sigma_s_per_s,
+                acceleration_s_per_s2: values.acceleration_s_per_s2,
+                acceleration_sigma_s_per_s2: values.acceleration_sigma_s_per_s2,
+            });
         }
         normalize_records(&mut records);
         Ok(Self { records })
@@ -82,6 +94,17 @@ impl ClkProvider {
         interpolate_bias_s(list, t_s)
     }
 
+    pub fn clock_correction(&self, sat: SatId, t_s: f64) -> Option<GpsSatelliteClockCorrection> {
+        Some(GpsSatelliteClockCorrection {
+            bias_s: self.bias_s(sat, t_s)?,
+            drift_s_per_s: self.rate_s_per_s(sat, t_s).unwrap_or(0.0),
+            drift_rate_s_per_s2: self.acceleration_s_per_s2(sat, t_s).unwrap_or(0.0),
+            base_bias_s: self.bias_s(sat, t_s)?,
+            relativistic_s: 0.0,
+            group_delay_s: 0.0,
+        })
+    }
+
     pub fn sigma_s(&self, sat: SatId, t_s: f64) -> Option<f64> {
         let list = self.records.get(&sat)?;
         if let Some(record) =
@@ -95,10 +118,102 @@ impl ClkProvider {
         interpolate_sigma_s(list, t_s)
     }
 
+    pub fn rate_s_per_s(&self, sat: SatId, t_s: f64) -> Option<f64> {
+        let list = self.records.get(&sat)?;
+        if let Some(record) =
+            list.iter().find(|record| (record.epoch_s - t_s).abs() <= f64::EPSILON)
+        {
+            return record.rate_s_per_s;
+        }
+        if list.len() == 1 {
+            return list[0].rate_s_per_s;
+        }
+        interpolate_optional_s(list, t_s, |record| record.rate_s_per_s)
+    }
+
+    pub fn rate_sigma_s_per_s(&self, sat: SatId, t_s: f64) -> Option<f64> {
+        let list = self.records.get(&sat)?;
+        if let Some(record) =
+            list.iter().find(|record| (record.epoch_s - t_s).abs() <= f64::EPSILON)
+        {
+            return record.rate_sigma_s_per_s;
+        }
+        if list.len() == 1 {
+            return list[0].rate_sigma_s_per_s;
+        }
+        interpolate_optional_s(list, t_s, |record| record.rate_sigma_s_per_s)
+    }
+
+    pub fn acceleration_s_per_s2(&self, sat: SatId, t_s: f64) -> Option<f64> {
+        let list = self.records.get(&sat)?;
+        if let Some(record) =
+            list.iter().find(|record| (record.epoch_s - t_s).abs() <= f64::EPSILON)
+        {
+            return record.acceleration_s_per_s2;
+        }
+        if list.len() == 1 {
+            return list[0].acceleration_s_per_s2;
+        }
+        interpolate_optional_s(list, t_s, |record| record.acceleration_s_per_s2)
+    }
+
+    pub fn acceleration_sigma_s_per_s2(&self, sat: SatId, t_s: f64) -> Option<f64> {
+        let list = self.records.get(&sat)?;
+        if let Some(record) =
+            list.iter().find(|record| (record.epoch_s - t_s).abs() <= f64::EPSILON)
+        {
+            return record.acceleration_sigma_s_per_s2;
+        }
+        if list.len() == 1 {
+            return list[0].acceleration_sigma_s_per_s2;
+        }
+        interpolate_optional_s(list, t_s, |record| record.acceleration_sigma_s_per_s2)
+    }
+
     pub fn interpolation_summary(&self, sat: SatId) -> Option<ClkInterpolationSummary> {
         let records = self.records.get(&sat)?;
         summarize_interpolation_errors(records)
     }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ClkValues {
+    bias_s: f64,
+    sigma_s: Option<f64>,
+    rate_s_per_s: Option<f64>,
+    rate_sigma_s_per_s: Option<f64>,
+    acceleration_s_per_s2: Option<f64>,
+    acceleration_sigma_s_per_s2: Option<f64>,
+}
+
+fn parse_clk_values(fields: &[&str]) -> Result<ClkValues, String> {
+    let bias_s = parse_clk_required_value(fields.first().copied(), "bias")?;
+    Ok(ClkValues {
+        bias_s,
+        sigma_s: parse_clk_optional_value(fields.get(1).copied(), "sigma")?,
+        rate_s_per_s: parse_clk_optional_value(fields.get(2).copied(), "clock rate")?,
+        rate_sigma_s_per_s: parse_clk_optional_value(fields.get(3).copied(), "clock rate sigma")?,
+        acceleration_s_per_s2: parse_clk_optional_value(
+            fields.get(4).copied(),
+            "clock acceleration",
+        )?,
+        acceleration_sigma_s_per_s2: parse_clk_optional_value(
+            fields.get(5).copied(),
+            "clock acceleration sigma",
+        )?,
+    })
+}
+
+fn parse_clk_required_value(field: Option<&str>, label: &str) -> Result<f64, String> {
+    parse_clk_optional_value(field, label)?.ok_or_else(|| format!("missing clock {label}"))
+}
+
+fn parse_clk_optional_value(field: Option<&str>, label: &str) -> Result<Option<f64>, String> {
+    let Some(field) = field else {
+        return Ok(None);
+    };
+    let value = field.parse::<f64>().map_err(|_| format!("invalid clock {label}"))?;
+    Ok((value.abs() < CLK_MISSING_ABS_THRESHOLD).then_some(value))
 }
 
 impl FromStr for ClkProvider {
@@ -153,7 +268,7 @@ fn interpolate_bias_s(records: &[ClkRecord], t_s: f64) -> Option<f64> {
         return None;
     }
 
-    let support = interpolation_support_records(records, t_s, None);
+    let support = interpolation_support_records(records, t_s, None)?;
     if support.is_empty() {
         return None;
     }
@@ -168,7 +283,7 @@ fn interpolate_sigma_s(records: &[ClkRecord], t_s: f64) -> Option<f64> {
         return None;
     }
 
-    let support = interpolation_support_records(records, t_s, None);
+    let support = interpolation_support_records(records, t_s, None)?;
     if support.is_empty() {
         return None;
     }
@@ -176,11 +291,34 @@ fn interpolate_sigma_s(records: &[ClkRecord], t_s: f64) -> Option<f64> {
     lagrange_scalar(&support, t_s, |record| record.sigma_s)
 }
 
+fn interpolate_optional_s(
+    records: &[ClkRecord],
+    t_s: f64,
+    value: impl Fn(&ClkRecord) -> Option<f64>,
+) -> Option<f64> {
+    let first_epoch_s = records.first()?.epoch_s;
+    let last_epoch_s = records.last()?.epoch_s;
+    if t_s < first_epoch_s || t_s > last_epoch_s {
+        return None;
+    }
+
+    let support = interpolation_support_records(records, t_s, None)?;
+    lagrange_scalar(&support, t_s, value)
+}
+
 fn interpolation_support_records<'a>(
     records: &'a [ClkRecord],
     t_s: f64,
     skip_index: Option<usize>,
-) -> Vec<&'a ClkRecord> {
+) -> Option<Vec<&'a ClkRecord>> {
+    if skip_index.is_none() {
+        let bracket_index = records.partition_point(|record| record.epoch_s < t_s);
+        let previous = records.get(bracket_index.checked_sub(1)?)?;
+        let next = records.get(bracket_index)?;
+        if !is_valid_clock_interpolation_interval(records, previous, next) {
+            return None;
+        }
+    }
     let mut support = records
         .iter()
         .enumerate()
@@ -193,7 +331,30 @@ fn interpolation_support_records<'a>(
     });
     support.truncate(4);
     support.sort_by(|(_, left), (_, right)| left.epoch_s.total_cmp(&right.epoch_s));
-    support.into_iter().map(|(_, record)| record).collect()
+    Some(support.into_iter().map(|(_, record)| record).collect())
+}
+
+fn is_valid_clock_interpolation_interval(
+    records: &[ClkRecord],
+    previous: &ClkRecord,
+    next: &ClkRecord,
+) -> bool {
+    if next.epoch_s <= previous.epoch_s {
+        return false;
+    }
+    let nominal_step_s = nominal_epoch_step_s(records).unwrap_or(next.epoch_s - previous.epoch_s);
+    let has_valid_gap = next.epoch_s - previous.epoch_s <= nominal_step_s * 1.5 + 1.0;
+    let has_valid_clock_step =
+        (next.bias_s - previous.bias_s).abs() <= CLK_MAX_INTERPOLATED_BIAS_STEP_S;
+    has_valid_gap && has_valid_clock_step
+}
+
+fn nominal_epoch_step_s(records: &[ClkRecord]) -> Option<f64> {
+    records
+        .windows(2)
+        .map(|window| window[1].epoch_s - window[0].epoch_s)
+        .filter(|step_s| *step_s > f64::EPSILON)
+        .min_by(f64::total_cmp)
 }
 
 fn lagrange_scalar(
@@ -249,7 +410,7 @@ fn summarize_interpolation_errors(records: &[ClkRecord]) -> Option<ClkInterpolat
 
 fn interpolate_bias_error_s(records: &[ClkRecord], index: usize) -> Option<f64> {
     let target = records.get(index)?;
-    let support = interpolation_support_records(records, target.epoch_s, Some(index));
+    let support = interpolation_support_records(records, target.epoch_s, Some(index))?;
     let first_epoch_s = support.first()?.epoch_s;
     let last_epoch_s = support.last()?.epoch_s;
     if target.epoch_s <= first_epoch_s || target.epoch_s >= last_epoch_s {
@@ -263,7 +424,7 @@ fn interpolate_bias_error_s(records: &[ClkRecord], index: usize) -> Option<f64> 
 fn interpolate_sigma_error_s(records: &[ClkRecord], index: usize) -> Option<f64> {
     let target = records.get(index)?;
     let target_sigma_s = target.sigma_s?;
-    let support = interpolation_support_records(records, target.epoch_s, Some(index));
+    let support = interpolation_support_records(records, target.epoch_s, Some(index))?;
     let first_epoch_s = support.first()?.epoch_s;
     let last_epoch_s = support.last()?.epoch_s;
     if target.epoch_s <= first_epoch_s || target.epoch_s >= last_epoch_s {
@@ -340,5 +501,52 @@ AS G01 2020 01 01 01 00 00.000000  2  0.000000313  0.000000065
         assert!(summary.rms_bias_error_s.abs() < 1e-18);
         assert!(summary.max_sigma_error_s.expect("sigma summary").abs() < 1e-18);
         assert!(summary.rms_sigma_error_s.expect("sigma RMS summary").abs() < 1e-18);
+    }
+
+    #[test]
+    fn clk_preserves_clock_rate_acceleration_and_sigmas() {
+        let data = "\
+AS G01 2020 01 01 00 00 00.000000  6  0.000000001  0.000000002 -0.000000003  0.000000004  0.000000005  0.000000006
+AS G01 2020 01 01 00 15 00.000000  6  0.000000010  0.000000011 -0.000000012  0.000000013  0.000000014  0.000000015
+";
+        let provider: ClkProvider = data.parse().expect("parse CLK");
+        let sat = SatId { constellation: Constellation::Gps, prn: 1 };
+        let records = provider.records.get(&sat).expect("clock records");
+
+        assert_eq!(records[0].rate_s_per_s, Some(-3.0e-9));
+        assert_eq!(records[0].rate_sigma_s_per_s, Some(4.0e-9));
+        assert_eq!(records[0].acceleration_s_per_s2, Some(5.0e-9));
+        assert_eq!(records[0].acceleration_sigma_s_per_s2, Some(6.0e-9));
+        let correction = provider.clock_correction(sat, 900.0).expect("clock correction");
+        assert_eq!(correction.bias_s, 1.0e-8);
+        assert_eq!(correction.drift_s_per_s, -12.0e-9);
+        assert_eq!(correction.drift_rate_s_per_s2, 14.0e-9);
+    }
+
+    #[test]
+    fn clk_interpolation_refuses_large_product_gaps() {
+        let data = "\
+AS G01 2020 01 01 00 00 00.000000  1  0.000000001
+AS G01 2020 01 01 00 15 00.000000  1  0.000000002
+AS G01 2020 01 01 01 00 00.000000  1  0.000000003
+";
+        let provider: ClkProvider = data.parse().expect("parse CLK");
+        let sat = SatId { constellation: Constellation::Gps, prn: 1 };
+
+        assert!(provider.bias_s(sat, 2_700.0).is_none());
+    }
+
+    #[test]
+    fn clk_interpolation_refuses_clock_jumps() {
+        let data = "\
+AS G01 2020 01 01 00 00 00.000000  1  0.000000001
+AS G01 2020 01 01 00 15 00.000000  1  0.000000002
+AS G01 2020 01 01 00 30 00.000000  1  0.000003500
+";
+        let provider: ClkProvider = data.parse().expect("parse CLK");
+        let sat = SatId { constellation: Constellation::Gps, prn: 1 };
+
+        assert!(provider.bias_s(sat, 1_350.0).is_none());
+        assert_eq!(provider.bias_s(sat, 900.0), Some(2.0e-9));
     }
 }
