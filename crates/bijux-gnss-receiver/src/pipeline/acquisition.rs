@@ -10,8 +10,8 @@ use bijux_gnss_core::api::AcqThresholdProvenance;
 #[cfg(test)]
 use bijux_gnss_core::api::SignalCode;
 use bijux_gnss_core::api::{
-    acq_result_stability_key, AcqCodePhaseRefinement, AcqEvidence, AcqExplain, AcqHypothesis,
-    AcqRequest, AcqResult, Hertz, ReceiverSampleTrace, SamplesFrame, SatId,
+    acq_result_stability_key, AcqEvidence, AcqExplain, AcqHypothesis, AcqRequest, AcqResult, Hertz,
+    ReceiverSampleTrace, SamplesFrame, SatId,
 };
 #[cfg(test)]
 use num_complex::Complex;
@@ -51,9 +51,10 @@ use candidate_failures::{
 };
 use candidate_ranking::competing_candidate_ratio;
 use candidate_refinement::refine_acquisition_candidates;
+use code_phase_profile::measure_code_phase_profile;
+#[cfg(test)]
 use code_phase_profile::{
-    estimate_parabolic_code_phase_offset_samples, measure_code_phase_profile,
-    wrap_acquisition_code_phase_samples,
+    estimate_parabolic_code_phase_offset_samples, wrap_acquisition_code_phase_samples,
 };
 use correlation_accumulation::{
     accumulate_component_correlations, combine_component_accumulations,
@@ -74,9 +75,8 @@ use likelihood_covariance::{
 };
 #[cfg(test)]
 use likelihood_covariance::{LocalAcquisitionLikelihoodSurface, LocalAcquisitionLikelihoodVolume};
-use likelihood_measurement::{
-    estimate_quadratic_surface_peak_offsets, measure_local_acquisition_likelihood_surface,
-};
+#[cfg(test)]
+use likelihood_measurement::estimate_quadratic_surface_peak_offsets;
 use peak_metrics::{
     correlation_metrics, correlation_metrics_in_window, delayed_secondary_peak_diagnostic,
     DelayedSecondaryPeakDiagnostic,
@@ -116,6 +116,7 @@ mod candidate_failures;
 mod candidate_ranking;
 mod candidate_refinement;
 mod code_phase_profile;
+mod code_phase_refinement;
 mod correlation_accumulation;
 mod doppler_refinement;
 mod false_alarm_calibration;
@@ -157,17 +158,6 @@ pub struct AcquisitionStats {
     pub ambiguous_count: u64,
     pub rejected_count: u64,
     pub deferred_count: u64,
-}
-
-const SUB_SAMPLE_CODE_PHASE_REFINEMENT_METHOD: &str = "parabolic_code_peak";
-const SUB_SAMPLE_CODE_PHASE_REFINEMENT_MIN_ABS_OFFSET_SAMPLES: f64 = 0.05;
-#[derive(Debug, Clone, Copy)]
-struct JointAcquisitionRefinement {
-    doppler_offset_bins: f64,
-    code_phase_offset_samples: f64,
-    refined_code_phase_samples: f64,
-    doppler_cross_section: [f32; 3],
-    code_phase_cross_section: [f32; 3],
 }
 
 #[derive(Debug, Clone)]
@@ -910,116 +900,6 @@ impl Acquisition {
         suppress_wrong_prn_correlations(&mut sat_evaluations);
 
         self.report_satellite_evaluations(sat_evaluations, emit_explanations)
-    }
-
-    fn estimate_joint_acquisition_refinement(
-        &self,
-        frame: &SamplesFrame,
-        signal_model: &AcquisitionSignalModel,
-        sat: SatId,
-        coarse_carrier_hz: f64,
-        coarse_doppler_rate_hz_per_s: f64,
-        coarse_code_phase_samples: usize,
-        doppler_step_hz: i32,
-        coherent_ms: u32,
-        noncoherent: u32,
-    ) -> Option<JointAcquisitionRefinement> {
-        if doppler_step_hz <= 0 {
-            return None;
-        }
-        let samples_per_code = signal_model.samples_per_code(self.config.sampling_freq_hz);
-        let coherent_periods = signal_model.coherent_periods(coherent_ms)?;
-        if samples_per_code == 0
-            || frame.len()
-                < samples_per_code * coherent_periods.max(1) as usize * noncoherent.max(1) as usize
-        {
-            return None;
-        }
-
-        let surface = measure_local_acquisition_likelihood_surface(
-            &self.config,
-            signal_model,
-            frame,
-            sat,
-            coarse_carrier_hz,
-            coarse_doppler_rate_hz_per_s,
-            coarse_code_phase_samples,
-            doppler_step_hz as f64,
-            coherent_ms,
-            noncoherent,
-        )?;
-        let (doppler_offset_bins, code_phase_offset_samples) =
-            estimate_quadratic_surface_peak_offsets(&surface)?;
-        if doppler_offset_bins.abs() < f64::EPSILON
-            && code_phase_offset_samples.abs()
-                < SUB_SAMPLE_CODE_PHASE_REFINEMENT_MIN_ABS_OFFSET_SAMPLES
-        {
-            return None;
-        }
-
-        Some(JointAcquisitionRefinement {
-            doppler_offset_bins,
-            code_phase_offset_samples,
-            refined_code_phase_samples: wrap_acquisition_code_phase_samples(
-                coarse_code_phase_samples as f64 + code_phase_offset_samples,
-                samples_per_code,
-            ),
-            doppler_cross_section: surface.doppler_cross_section,
-            code_phase_cross_section: surface.code_phase_cross_section,
-        })
-    }
-
-    fn estimate_acquisition_code_phase_refinement(
-        &self,
-        frame: &SamplesFrame,
-        signal_model: &AcquisitionSignalModel,
-        sat: SatId,
-        carrier_hz: f64,
-        doppler_rate_hz_per_s: f64,
-        coarse_code_phase_samples: usize,
-        coherent_ms: u32,
-        noncoherent: u32,
-    ) -> Option<AcqCodePhaseRefinement> {
-        let samples_per_code = signal_model.samples_per_code(self.config.sampling_freq_hz);
-        let coherent_periods = signal_model.coherent_periods(coherent_ms)?;
-        if samples_per_code == 0
-            || frame.len()
-                < samples_per_code * coherent_periods.max(1) as usize * noncoherent.max(1) as usize
-        {
-            return None;
-        }
-        let correlation_profile = measure_code_phase_profile(
-            &self.config,
-            signal_model,
-            frame,
-            sat,
-            carrier_hz,
-            doppler_rate_hz_per_s,
-            coherent_ms,
-            noncoherent,
-        )?;
-        let (
-            offset_samples,
-            left_correlation_norm,
-            center_correlation_norm,
-            right_correlation_norm,
-        ) = estimate_parabolic_code_phase_offset_samples(
-            &correlation_profile,
-            coarse_code_phase_samples,
-        )?;
-        let refined_code_phase_samples = wrap_acquisition_code_phase_samples(
-            coarse_code_phase_samples as f64 + offset_samples,
-            samples_per_code,
-        );
-
-        Some(AcqCodePhaseRefinement {
-            method: SUB_SAMPLE_CODE_PHASE_REFINEMENT_METHOD.to_string(),
-            offset_samples,
-            refined_code_phase_samples,
-            left_correlation_norm,
-            center_correlation_norm,
-            right_correlation_norm,
-        })
     }
 }
 
