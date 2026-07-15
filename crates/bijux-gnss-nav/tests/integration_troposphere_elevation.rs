@@ -9,7 +9,7 @@ mod support;
 use bijux_gnss_core::api::{Llh, Seconds};
 use bijux_gnss_nav::api::{
     ecef_to_geodetic, elevation_azimuth_deg, sat_state_gps_l1ca_from_observation,
-    SaastamoinenModel, TroposphereModel,
+    NiellMappingFunction, SaastamoinenModel, TroposphereMeteorology, TroposphereModel,
 };
 use bijux_gnss_testkit::public_troposphere::{
     build_public_troposphere_elevation_report, PublicTroposphereElevationReport,
@@ -67,6 +67,27 @@ fn synthetic_low_elevation_residuals_improve_with_troposphere_correction() {
         mean_abs_improvement_m(&low_samples) > mean_abs_improvement_m(&high_samples),
         "low-elevation residual improvement should exceed high-elevation improvement; low={low_samples:?} high={high_samples:?}"
     );
+}
+
+#[test]
+fn public_saastamoinen_components_use_niell_mapping_and_meteorology() {
+    let receiver = Llh { lat_deg: 45.0, lon_deg: 8.0, alt_m: 100.0 };
+    let epoch = Seconds((28.0 - 1.0) * 86_400.0);
+    let mapping = NiellMappingFunction::mapping_factors(receiver, 10.0, epoch);
+    let standard_components = SaastamoinenModel::delay_components_m(receiver, 10.0, epoch);
+    let humid_components = SaastamoinenModel::delay_components_with_meteorology_m(
+        receiver,
+        10.0,
+        epoch,
+        TroposphereMeteorology::new(980.0, 301.15, 0.9),
+    );
+
+    assert!((mapping.hydrostatic - 5.556_157_591).abs() < 1.0e-9);
+    assert!((mapping.wet - 5.657_127_345).abs() < 1.0e-9);
+    assert_eq!(standard_components.hydrostatic_mapping, mapping.hydrostatic);
+    assert_eq!(standard_components.wet_mapping, mapping.wet);
+    assert!(humid_components.slant_wet_m() > standard_components.slant_wet_m() + 1.0);
+    assert!(humid_components.slant_total_m() > standard_components.slant_total_m());
 }
 
 #[test]

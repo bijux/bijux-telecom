@@ -307,7 +307,9 @@ pub use crate::models::antenna::{
 };
 /// Atmospheric delay models and coefficients.
 pub use crate::models::atmosphere::{
-    IonosphereModel, KlobucharCoefficients, KlobucharModel, SaastamoinenModel, TroposphereModel,
+    IonosphereModel, KlobucharCoefficients, KlobucharModel, NiellMappingFactors,
+    NiellMappingFunction, SaastamoinenDelayComponents, SaastamoinenModel, TroposphereMeteorology,
+    TroposphereModel,
 };
 pub use crate::models::nequick::model::GalileoNequickModel;
 pub use crate::models::ocean_tide_loading::{
