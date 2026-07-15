@@ -117,7 +117,7 @@ pub use crate::dsp::local_code::{
     default_local_code_model, default_local_code_model_for_signal, LocalCodeModel,
 };
 /// Numerically controlled oscillator helper.
-pub use crate::dsp::nco::Nco;
+pub use crate::dsp::nco::{Nco, NcoState};
 /// Front-end quality metrics derived from complex I/Q samples.
 pub use crate::dsp::quality::{
     estimate_iq_noise_floor_db, estimate_iq_noise_floor_db_from_metrics,

@@ -11,6 +11,15 @@ pub struct Nco {
     sample_index: u64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct NcoState {
+    pub phase_rad: f64,
+    pub phase_offset_rad: f64,
+    pub freq_hz: f64,
+    pub sample_rate_hz: f64,
+    pub sample_index: u64,
+}
+
 impl Nco {
     pub fn new(freq_hz: f64, sample_rate_hz: f64) -> Self {
         Self::with_phase(freq_hz, sample_rate_hz, 0.0)
@@ -60,6 +69,16 @@ impl Nco {
             self.phase_offset_rad
                 + phase_advance_rad(self.freq_hz, self.sample_rate_hz, self.sample_index),
         )
+    }
+
+    pub fn state(&self) -> NcoState {
+        NcoState {
+            phase_rad: self.phase_rad(),
+            phase_offset_rad: self.phase_offset_rad,
+            freq_hz: self.freq_hz,
+            sample_rate_hz: self.sample_rate_hz,
+            sample_index: self.sample_index,
+        }
     }
 
     pub fn next_sin_cos(&mut self) -> (f64, f64) {

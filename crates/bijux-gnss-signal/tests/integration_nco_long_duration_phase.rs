@@ -8,6 +8,7 @@ const SAMPLE_RATE_HZ: f64 = 4_000_000.0;
 const CARRIER_HZ: f64 = -12_345.625;
 const PHASE_OFFSET_RAD: f64 = 0.375;
 const SIXTY_SECONDS: f64 = 60.0;
+const TEN_MINUTES: f64 = 600.0;
 const SAMPLE_BLOCK_LEN: usize = 4092;
 const PHASE_TOLERANCE_RAD: f64 = 1e-12;
 const SAMPLE_TOLERANCE: f64 = 1e-12;
@@ -42,6 +43,37 @@ fn nco_outputs_match_analytic_carrier_block_after_sixty_seconds() {
             "cos drifted at sample {absolute_sample_index}: actual={cos:.15}, expected={:.15}",
             expected_phase_rad.cos()
         );
+    }
+}
+
+#[test]
+fn nco_state_remains_bounded_after_ten_minutes() {
+    let start_sample_index = (TEN_MINUTES * SAMPLE_RATE_HZ) as u64;
+    let mut nco =
+        Nco::from_sample_index(CARRIER_HZ, SAMPLE_RATE_HZ, start_sample_index, PHASE_OFFSET_RAD);
+
+    for sample_offset in 0..SAMPLE_BLOCK_LEN {
+        let absolute_sample_index = start_sample_index + sample_offset as u64;
+        let state = nco.state();
+        let expected_phase_rad = analytic_phase_rad(absolute_sample_index);
+
+        assert_eq!(state.sample_index, absolute_sample_index);
+        assert_eq!(state.freq_hz, CARRIER_HZ);
+        assert_eq!(state.sample_rate_hz, SAMPLE_RATE_HZ);
+        assert!(
+            state.phase_rad.is_finite()
+                && state.phase_offset_rad.is_finite()
+                && (0.0..TAU).contains(&state.phase_rad)
+                && (0.0..TAU).contains(&state.phase_offset_rad),
+            "unbounded NCO state at sample {absolute_sample_index}: {state:?}"
+        );
+        assert_phase_close(
+            state.phase_rad,
+            expected_phase_rad,
+            "state phase drifted after ten minutes",
+        );
+
+        nco.next_sin_cos();
     }
 }
 
