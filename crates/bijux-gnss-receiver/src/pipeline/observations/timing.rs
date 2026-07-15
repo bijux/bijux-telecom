@@ -70,6 +70,45 @@ pub(super) fn observation_epoch_interval_samples(
     samples_per_code.saturating_mul(integration_ms)
 }
 
+pub(super) fn tracking_epoch_has_sample_discontinuity(
+    epoch: &TrackEpoch,
+    previous_sample_index: Option<u64>,
+    expected_step_samples: u64,
+    diagnostics: &mut Vec<DiagnosticEvent>,
+) -> bool {
+    let Some(previous_sample_index) = previous_sample_index else {
+        return false;
+    };
+    if epoch.sample_index < previous_sample_index {
+        diagnostics.push(
+            DiagnosticEvent::new(
+                DiagnosticSeverity::Warning,
+                "OBS_TIME_BACKWARDS",
+                format!(
+                    "sample index went backwards ({} -> {})",
+                    previous_sample_index, epoch.sample_index
+                ),
+            )
+            .with_context("epoch", epoch.epoch.index.to_string())
+            .with_context("stage", "observations"),
+        );
+    }
+    let discontinuity =
+        epoch.sample_index.saturating_sub(previous_sample_index) != expected_step_samples;
+    if discontinuity {
+        diagnostics.push(
+            DiagnosticEvent::new(
+                DiagnosticSeverity::Warning,
+                "OBS_TIME_DISCONTINUITY",
+                format!("discontinuity at sample index {}", epoch.sample_index),
+            )
+            .with_context("epoch", epoch.epoch.index.to_string())
+            .with_context("stage", "observations"),
+        );
+    }
+    discontinuity
+}
+
 pub(super) fn reject_epoch_for_invalid_timing(epoch: &mut ObsEpoch) {
     epoch.valid = false;
     if epoch.decision == ObservationEpochDecision::Accepted {

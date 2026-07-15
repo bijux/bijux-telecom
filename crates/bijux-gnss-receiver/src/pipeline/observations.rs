@@ -6,9 +6,8 @@
 //! - clock_error_m comes from configured receiver-clock bias uncertainty.
 
 use bijux_gnss_core::api::{
-    CodeCarrierDivergence, DiagnosticEvent, DiagnosticSeverity, GpsTime, LockFlags, Meters,
-    ObsEpoch, ObsMetadata, ObsSatellite, ObservationEpochDecision, ReceiverRole, Seconds, SigId,
-    TrackEpoch,
+    CodeCarrierDivergence, DiagnosticEvent, GpsTime, LockFlags, Meters, ObsEpoch, ObsMetadata,
+    ObsSatellite, ObservationEpochDecision, ReceiverRole, Seconds, SigId, TrackEpoch,
 };
 
 use crate::engine::receiver_config::ReceiverPipelineConfig;
@@ -62,7 +61,7 @@ use crate::pipeline::observations::timing::{
     grouped_epoch_time_mismatch_diagnostic, grouped_epoch_time_mismatch_reasons,
     mark_grouped_epoch_time_mismatch, normalize_observation_cn0_dbhz, observation_epoch_id,
     observation_epoch_interval_samples, observation_timing_interval_diagnostic,
-    reject_epoch_for_invalid_timing, tracking_time_tag,
+    reject_epoch_for_invalid_timing, tracking_epoch_has_sample_discontinuity, tracking_time_tag,
 };
 use crate::pipeline::observations::variance::{
     apply_variance_evidence_status, observation_error_model, observation_variance_evidence,
@@ -183,34 +182,12 @@ fn observations_from_tracking_with_provenance(
 
         let expected_step =
             observation_epoch_interval_samples(config, &signal_model, epoch.signal_band);
-        let discontinuity = match last_sample_index {
-            Some(prev) => epoch.sample_index.saturating_sub(prev) != expected_step,
-            None => false,
-        };
-        if let Some(prev) = last_sample_index {
-            if epoch.sample_index < prev {
-                diagnostics.push(
-                    DiagnosticEvent::new(
-                        DiagnosticSeverity::Warning,
-                        "OBS_TIME_BACKWARDS",
-                        format!("sample index went backwards ({} -> {})", prev, epoch.sample_index),
-                    )
-                    .with_context("epoch", epoch.epoch.index.to_string())
-                    .with_context("stage", "observations"),
-                );
-            }
-        }
-        if discontinuity {
-            diagnostics.push(
-                DiagnosticEvent::new(
-                    DiagnosticSeverity::Warning,
-                    "OBS_TIME_DISCONTINUITY",
-                    format!("discontinuity at sample index {}", epoch.sample_index),
-                )
-                .with_context("epoch", epoch.epoch.index.to_string())
-                .with_context("stage", "observations"),
-            );
-        }
+        let discontinuity = tracking_epoch_has_sample_discontinuity(
+            epoch,
+            last_sample_index,
+            expected_step,
+            &mut diagnostics,
+        );
         last_sample_index = Some(epoch.sample_index);
 
         let receive_gps_time = capture_start_gps_time
