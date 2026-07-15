@@ -1122,8 +1122,9 @@ pub fn calibrated_lock_detector_thresholds(
     let pll_quantile = two_sided_normal_quantile(input.pll_false_unlock_probability);
     let fll_quantile = two_sided_normal_quantile(input.fll_false_unlock_probability);
     let dll_lock = (dll_quantile * distributions.dll_sigma).clamp(0.05, 0.95) as f32;
+    let pll_lock_upper_rad = std::f64::consts::PI - f32::EPSILON as f64;
     let pll_lock_rad =
-        (pll_quantile * distributions.pll_sigma_rad).clamp(0.05, std::f64::consts::PI) as f32;
+        (pll_quantile * distributions.pll_sigma_rad).clamp(0.05, pll_lock_upper_rad) as f32;
     let fll_lock_hz =
         (fll_quantile * distributions.fll_sigma_hz + distributions.dynamic_stress_hz).max(1.0);
     LockDetectorThresholds {
