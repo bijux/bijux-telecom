@@ -310,7 +310,12 @@ impl SaastamoinenModel {
     }
 
     pub fn mapping_factor(el_deg: f64) -> f64 {
-        Self::mapping_factor_for_receiver(equatorial_standard_receiver(), el_deg, Seconds(0.0))
+        if !el_deg.is_finite() || el_deg <= 0.0 {
+            return 0.0;
+        }
+        let mapped_elevation_deg =
+            (el_deg.max(MIN_TROPOSPHERE_ELEVATION_DEG).powi(2) + 6.25).sqrt();
+        1.0 / mapped_elevation_deg.to_radians().sin()
     }
 
     pub fn mapping_factor_for_receiver(receiver: Llh, el_deg: f64, t: Seconds) -> f64 {
@@ -360,8 +365,8 @@ impl SaastamoinenModel {
 }
 
 impl TroposphereModel for SaastamoinenModel {
-    fn delay_m(&self, receiver: Llh, el_deg: f64, t: Seconds) -> f64 {
-        Self::delay_components_m(receiver, el_deg, t).slant_total_m()
+    fn delay_m(&self, receiver: Llh, el_deg: f64, _t: Seconds) -> f64 {
+        Self::zenith_delay_m(receiver) * Self::mapping_factor(el_deg)
     }
 }
 
@@ -383,10 +388,6 @@ fn standard_temperature_k(altitude_m: f64) -> f64 {
 fn standard_water_vapor_pressure_hpa(altitude_m: f64, relative_humidity: f64) -> f64 {
     let temperature_k = standard_temperature_k(altitude_m);
     relative_humidity.clamp(0.0, 1.0) * saturation_vapor_pressure_hpa(temperature_k)
-}
-
-fn equatorial_standard_receiver() -> Llh {
-    Llh { lat_deg: 0.0, lon_deg: 0.0, alt_m: 0.0 }
 }
 
 fn saturation_vapor_pressure_hpa(temperature_k: f64) -> f64 {
@@ -575,7 +576,7 @@ mod tests {
         assert!(high_elevation.is_finite());
         assert!(low_elevation > high_elevation);
         assert!(low_elevation > 5.0);
-        assert!((low_elevation - 5.552_239_502).abs() < 1.0e-9);
+        assert!((low_elevation - 5.588_604_756).abs() < 1.0e-9);
     }
 
     #[test]
