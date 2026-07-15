@@ -234,6 +234,25 @@ fn rtk_lambda_integer_candidates_back_transform_to_original_ambiguities() {
 }
 
 #[test]
+fn rtk_lambda_integer_candidates_match_three_dimensional_benchmark() {
+    let float_state = RtkFloatAmbiguityState {
+        ids: vec![gps_l1_dd_id(7, 3), gps_l1_dd_id(11, 3), gps_l1_dd_id(14, 3)],
+        float_cycles: vec![5.45, -2.35, 3.62],
+        covariance_cycles2: vec![vec![4.0, 1.2, -0.6], vec![1.2, 2.25, 0.8], vec![-0.6, 0.8, 1.44]],
+    };
+
+    let candidates = rtk_lambda_integer_ambiguity_candidates(&float_state, 5);
+
+    assert_eq!(
+        candidates.iter().map(|candidate| candidate.integers.clone()).collect::<Vec<_>>(),
+        vec![vec![5, -2, 4], vec![6, -2, 4], vec![5, -3, 3], vec![6, -3, 3], vec![6, -2, 3],]
+    );
+    assert!(candidates.windows(2).all(|pair| pair[0].cost <= pair[1].cost));
+    assert!((candidates[0].cost - 0.179_505_373_640_877_46).abs() < 1.0e-12);
+    assert!((candidates[1].cost - 0.253_353_654_704_292_44).abs() < 1.0e-12);
+}
+
+#[test]
 fn rtk_float_ambiguity_reference_transform_refuses_missing_reference() {
     let float_state = RtkFloatAmbiguityState {
         ids: vec![gps_l1_dd_id(7, 3), gps_l1_dd_id(11, 3)],
