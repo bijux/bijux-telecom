@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use bijux_gnss_core::api::{
     AmbiguityId, AmbiguityState, AmbiguityStatus, ArtifactPayloadValidate, DiagnosticEvent,
-    DiagnosticSeverity, ObsSatellite,
+    DiagnosticSeverity, ObsSatellite, SigId,
 };
 use serde::{Deserialize, Serialize};
 
@@ -13,9 +13,9 @@ use crate::linalg::Matrix;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct RtkDoubleDifferenceAmbiguityId {
     /// Signal identity for the non-reference satellite.
-    pub sig: bijux_gnss_core::api::SigId,
+    pub sig: SigId,
     /// Signal identity for the reference satellite.
-    pub ref_sig: bijux_gnss_core::api::SigId,
+    pub ref_sig: SigId,
 }
 
 /// Float ambiguity state ordered for integer candidate search.
@@ -389,6 +389,25 @@ pub fn rtk_float_ambiguity_state_from_filter_state(
     RtkFloatAmbiguityState { ids, float_cycles, covariance_cycles2 }
 }
 
+/// Transform a float double-difference ambiguity state to a different reference signal.
+pub fn rtk_transform_float_ambiguity_reference(
+    float: &RtkFloatAmbiguityState,
+    new_ref_sig: SigId,
+) -> Option<RtkFloatAmbiguityState> {
+    let transform = reference_switch_transform(float, new_ref_sig)?;
+    let old_float = column_matrix(&float.float_cycles);
+    let new_float = transform.coefficients.mul(&old_float);
+    let old_covariance = matrix_from_rows(&float.covariance_cycles2);
+    let new_covariance =
+        transform.coefficients.mul(&old_covariance).mul(&transform.coefficients.transpose());
+
+    Some(RtkFloatAmbiguityState {
+        ids: transform.ids,
+        float_cycles: matrix_column_values(&new_float),
+        covariance_cycles2: matrix_rows(&new_covariance),
+    })
+}
+
 pub fn rtk_lambda_decorrelate(float: &RtkFloatAmbiguityState) -> RtkDecorrelatedAmbiguityState {
     let n = float.float_cycles.len();
     let mut z = vec![vec![0_i64; n]; n];
@@ -400,6 +419,59 @@ pub fn rtk_lambda_decorrelate(float: &RtkFloatAmbiguityState) -> RtkDecorrelated
         n_prime: float.float_cycles.clone(),
         q_prime: float.covariance_cycles2.clone(),
     }
+}
+
+#[derive(Debug, Clone)]
+struct ReferenceSwitchTransform {
+    ids: Vec<RtkDoubleDifferenceAmbiguityId>,
+    coefficients: Matrix,
+}
+
+fn reference_switch_transform(
+    float: &RtkFloatAmbiguityState,
+    new_ref_sig: SigId,
+) -> Option<ReferenceSwitchTransform> {
+    if !float.validate_payload().is_empty() {
+        return None;
+    }
+    let old_ref_sig = common_reference_signal(&float.ids)?;
+    if new_ref_sig == old_ref_sig {
+        return Some(ReferenceSwitchTransform {
+            ids: float.ids.clone(),
+            coefficients: Matrix::identity(float.ids.len()),
+        });
+    }
+    let old_index_by_sig =
+        float.ids.iter().enumerate().map(|(index, id)| (id.sig, index)).collect::<BTreeMap<_, _>>();
+    let Some(&new_ref_old_index) = old_index_by_sig.get(&new_ref_sig) else {
+        return None;
+    };
+
+    let mut output_signals = float.ids.iter().map(|id| id.sig).collect::<Vec<_>>();
+    output_signals.push(old_ref_sig);
+    output_signals.retain(|sig| *sig != new_ref_sig);
+    output_signals.sort();
+    output_signals.dedup();
+
+    let mut coefficients = Matrix::new(output_signals.len(), float.ids.len(), 0.0);
+    let mut ids = Vec::with_capacity(output_signals.len());
+    for (row, sig) in output_signals.iter().copied().enumerate() {
+        ids.push(RtkDoubleDifferenceAmbiguityId { sig, ref_sig: new_ref_sig });
+        if sig == old_ref_sig {
+            coefficients[(row, new_ref_old_index)] = -1.0;
+        } else {
+            let &old_index = old_index_by_sig.get(&sig)?;
+            coefficients[(row, old_index)] = 1.0;
+            coefficients[(row, new_ref_old_index)] -= 1.0;
+        }
+    }
+
+    Some(ReferenceSwitchTransform { ids, coefficients })
+}
+
+fn common_reference_signal(ids: &[RtkDoubleDifferenceAmbiguityId]) -> Option<SigId> {
+    let first = ids.first()?.ref_sig;
+    ids.iter().all(|id| id.ref_sig == first && id.sig != id.ref_sig).then_some(first)
 }
 
 pub fn rtk_integer_ambiguity_candidates(
@@ -586,6 +658,20 @@ fn matrix_from_rows(rows: &[Vec<f64>]) -> Matrix {
     let col_count = rows.first().map_or(0, Vec::len);
     let data = rows.iter().flat_map(|row| row.iter().copied()).collect::<Vec<_>>();
     Matrix::from_parts(row_count, col_count, data)
+}
+
+fn column_matrix(values: &[f64]) -> Matrix {
+    Matrix::from_parts(values.len(), 1, values.to_vec())
+}
+
+fn matrix_column_values(matrix: &Matrix) -> Vec<f64> {
+    (0..matrix.rows()).map(|row| matrix[(row, 0)]).collect()
+}
+
+fn matrix_rows(matrix: &Matrix) -> Vec<Vec<f64>> {
+    (0..matrix.rows())
+        .map(|row| (0..matrix.cols()).map(|col| matrix[(row, col)]).collect())
+        .collect()
 }
 
 fn matrix_from_covariance_3x3(covariance: [[f64; 3]; 3]) -> Matrix {

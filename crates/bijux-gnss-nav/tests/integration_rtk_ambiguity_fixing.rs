@@ -4,19 +4,37 @@ use bijux_gnss_core::api::{Constellation, SatId, SigId, SignalBand};
 use bijux_gnss_nav::api::{
     rtk_ambiguity_state_from_fixed_solution, rtk_conditioned_baseline_from_fixed_ambiguities,
     rtk_float_ambiguity_state_from_baseline_solution, rtk_float_baseline_from_double_differences,
-    RtkAmbiguityFixPolicy, RtkAmbiguityFixState, RtkAmbiguityFixStatus,
-    RtkDoubleDifferenceAmbiguityId, RtkFloatAmbiguityEstimate, RtkFloatAmbiguityState,
-    RtkFloatBaselineSolution, RtkRatioTestFixer,
+    rtk_transform_float_ambiguity_reference, RtkAmbiguityFixPolicy, RtkAmbiguityFixState,
+    RtkAmbiguityFixStatus, RtkDoubleDifferenceAmbiguityId, RtkFloatAmbiguityEstimate,
+    RtkFloatAmbiguityState, RtkFloatBaselineSolution, RtkRatioTestFixer,
 };
 use bijux_gnss_testkit::rtk_baseline::clean_gps_l1_short_baseline_case;
 
 fn gps_l1_id(prn: u8) -> RtkDoubleDifferenceAmbiguityId {
-    let sig = SigId {
+    let sig = gps_l1_sig(prn);
+    RtkDoubleDifferenceAmbiguityId { sig, ref_sig: sig }
+}
+
+fn gps_l1_sig(prn: u8) -> SigId {
+    SigId {
         sat: SatId { constellation: Constellation::Gps, prn },
         band: SignalBand::L1,
         code: bijux_gnss_core::api::SignalCode::Ca,
+    }
+}
+
+fn gps_l1_dd_id(sig_prn: u8, ref_prn: u8) -> RtkDoubleDifferenceAmbiguityId {
+    let sig = SigId {
+        sat: SatId { constellation: Constellation::Gps, prn: sig_prn },
+        band: SignalBand::L1,
+        code: bijux_gnss_core::api::SignalCode::Ca,
     };
-    RtkDoubleDifferenceAmbiguityId { sig, ref_sig: sig }
+    let ref_sig = SigId {
+        sat: SatId { constellation: Constellation::Gps, prn: ref_prn },
+        band: SignalBand::L1,
+        code: bijux_gnss_core::api::SignalCode::Ca,
+    };
+    RtkDoubleDifferenceAmbiguityId { sig, ref_sig }
 }
 
 #[test]
@@ -67,6 +85,39 @@ fn rtk_ratio_test_fixer_reports_failed_status_for_indistinguishable_candidates()
     assert_eq!(audit.reason, "ratio_fail");
     assert!(result.selected_ids.is_none());
     assert!(result.selected_integers.is_none());
+}
+
+#[test]
+fn rtk_float_ambiguity_reference_transform_preserves_satellite_arcs() {
+    let float_state = RtkFloatAmbiguityState {
+        ids: vec![gps_l1_dd_id(7, 3), gps_l1_dd_id(11, 3), gps_l1_dd_id(14, 3)],
+        float_cycles: vec![20.0, 35.0, 50.0],
+        covariance_cycles2: vec![vec![4.0, 1.0, 0.5], vec![1.0, 9.0, 2.0], vec![0.5, 2.0, 16.0]],
+    };
+
+    let transformed =
+        rtk_transform_float_ambiguity_reference(&float_state, gps_l1_sig(11)).expect("transform");
+
+    assert_eq!(
+        transformed.ids,
+        vec![gps_l1_dd_id(3, 11), gps_l1_dd_id(7, 11), gps_l1_dd_id(14, 11)]
+    );
+    assert_eq!(transformed.float_cycles, vec![-35.0, -15.0, 15.0]);
+    assert_eq!(
+        transformed.covariance_cycles2,
+        vec![vec![9.0, 8.0, 7.0], vec![8.0, 11.0, 6.5], vec![7.0, 6.5, 21.0]]
+    );
+}
+
+#[test]
+fn rtk_float_ambiguity_reference_transform_refuses_missing_reference() {
+    let float_state = RtkFloatAmbiguityState {
+        ids: vec![gps_l1_dd_id(7, 3), gps_l1_dd_id(11, 3)],
+        float_cycles: vec![20.0, 35.0],
+        covariance_cycles2: vec![vec![4.0, 1.0], vec![1.0, 9.0]],
+    };
+
+    assert!(rtk_transform_float_ambiguity_reference(&float_state, gps_l1_sig(14)).is_none());
 }
 
 #[test]
