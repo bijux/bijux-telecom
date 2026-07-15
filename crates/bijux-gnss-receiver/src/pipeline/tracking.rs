@@ -6189,7 +6189,11 @@ mod tests {
         assert_eq!(sat.metadata.pseudorange_time_source, "gps_l1ca_lnav_how");
         assert_eq!(sat.metadata.pseudorange_integer_code_periods, Some(80));
         assert_eq!(sat.metadata.signal_delay_alignment_source, "");
-        assert!((sat.pseudorange_m.0 - 0.080 * 299_792_458.0).abs() <= 1.0e-6);
+        let timing = sat.timing.expect("decoded timing");
+        assert!(
+            (sat.pseudorange_m.0 - timing.signal_travel_time_s.0 * 299_792_458.0).abs() <= 1.0e-6
+        );
+        assert!((timing.signal_travel_time_s.0 - 0.080).abs() <= 2.5e-7);
     }
 
     #[test]
