@@ -1,4 +1,6 @@
-fn refused_execution_status(
+use super::*;
+
+pub(crate) fn refused_execution_status(
     decision: &bijux_gnss_infra::api::receiver::AdvancedPrereqDecision,
 ) -> (bijux_gnss_infra::api::receiver::ExecutionStatus, Option<String>) {
     let status = if matches!(
@@ -13,7 +15,7 @@ fn refused_execution_status(
     (status, reason)
 }
 
-fn rtk_advanced_solution_measurements(
+pub(crate) fn rtk_advanced_solution_measurements(
     quality: Option<&bijux_gnss_infra::api::receiver::RtkBaselineQuality>,
 ) -> bijux_gnss_infra::api::receiver::AdvancedSolutionMeasurements {
     if let Some(quality) = quality {
@@ -32,13 +34,13 @@ fn rtk_advanced_solution_measurements(
     }
 }
 
-fn evidence_backed_rtk_fix_accepted(
+pub(crate) fn evidence_backed_rtk_fix_accepted(
     claim: bijux_gnss_infra::api::receiver::AdvancedSolutionClaim,
 ) -> bool {
     matches!(claim, bijux_gnss_infra::api::receiver::AdvancedSolutionClaim::Fixed)
 }
 
-pub(super) fn handle_rtk(command: GnssCommand) -> Result<()> {
+pub(crate) fn handle_rtk(command: GnssCommand) -> Result<()> {
     let GnssCommand::Rtk { common, base_obs, rover_obs, eph, base_ecef, tolerance_s, ref_policy } =
         command
     else {
