@@ -23,9 +23,13 @@ use crate::estimation::ekf::statistics::InnovationConsistencyConfig;
 use crate::estimation::position::solver::{ecef_to_geodetic, elevation_azimuth_deg};
 use crate::estimation::ppp::config::{
     PppConvergenceEvidence, PppConvergenceState, PppHealth, PppLifecycleEvent,
-    PppLifecycleEventKind, PppProductSupport, PppSolutionEpoch, PppStochasticEvidence,
+    PppLifecycleEventKind, PppPreciseProductAction, PppProductSupport, PppSolutionEpoch,
+    PppStochasticEvidence,
 };
-use crate::formats::precise_products::{ProductDiagnostics, ProductsProvider};
+use crate::formats::precise_products::{
+    PreciseProductDiscontinuity, PreciseProductDiscontinuityKind, PreciseProductSurface,
+    ProductDiagnostics, ProductsProvider,
+};
 use crate::linalg::Matrix;
 use crate::models::antenna::{ReceiverAntennaCalibrations, SatelliteAntennaCalibrations};
 use crate::models::atmosphere::SaastamoinenModel;
@@ -209,7 +213,7 @@ impl PppFilter {
                 Some(e) => e,
                 None => continue,
             };
-            let (state, clock_bias_s, fallback, product_support) =
+            let (state, clock_bias_s, fallback, product_support, product_discontinuities) =
                 match self.sat_state(products, eph, sat.signal_id.sat, products_time_s) {
                     Some(v) => v,
                     None => continue,
@@ -218,6 +222,20 @@ impl PppFilter {
                 self.health
                     .warnings
                     .push(format!("products fallback used for {:?}", sat.signal_id.sat));
+            }
+            if !self.apply_precise_product_policy(
+                obs.epoch_idx,
+                sat.signal_id.sat,
+                sat.signal_id,
+                &product_discontinuities,
+            ) {
+                continue;
+            }
+            if product_discontinuities.iter().any(|discontinuity| {
+                self.config.precise_product_policy.action_for(discontinuity.kind)
+                    == PppPreciseProductAction::ResetSatelliteState
+            }) {
+                self.ensure_states(&[*sat], &phase_discontinuities);
             }
             if self.handle_product_support(
                 obs.epoch_idx,
@@ -567,7 +585,7 @@ impl PppFilter {
         eph: &GpsEphemeris,
         sat: SatId,
         t_s: f64,
-    ) -> Option<(GpsSatState, f64, bool, PppProductSupport)> {
+    ) -> Option<(GpsSatState, f64, bool, PppProductSupport, Vec<PreciseProductDiscontinuity>)> {
         let mut diag = ProductDiagnostics::default();
         let state = match products.sat_state(sat, t_s, &mut diag) {
             Some(state) => state,
@@ -588,7 +606,7 @@ impl PppFilter {
             precise_clock: diag.clk_interpolation_summary.is_some(),
         };
         let fallback = !diag.fallbacks.is_empty();
-        Some((state, clock_correction.bias_s, fallback, support))
+        Some((state, clock_correction.bias_s, fallback, support, diag.discontinuities))
     }
 
     fn ensure_states(&mut self, sats: &[&ObsSatellite], phase_discontinuities: &PppPhaseBreaks) {
@@ -691,6 +709,88 @@ impl PppFilter {
         if previous.is_none() || previous == Some(support) {
             return false;
         }
+        let removed_states = self.reset_satellite_dependent_states(sat);
+        let removed_count = removed_states.len();
+        let previous = previous.expect("previous product support");
+        if removed_count > 0 || previous != support {
+            self.health.lifecycle_events.push(PppLifecycleEvent {
+                kind: PppLifecycleEventKind::ProductSupportChanged,
+                epoch_idx: Some(epoch_idx),
+                sat: Some(sat),
+                signal: Some(representative.signal_id),
+                removed_states,
+                reason: format!(
+                    "product_support_changed_from_orbit_{}_clock_{}_to_orbit_{}_clock_{}",
+                    previous.precise_orbit,
+                    previous.precise_clock,
+                    support.precise_orbit,
+                    support.precise_clock
+                ),
+            });
+        }
+        !phase_discontinuities.satellites.contains(&sat)
+    }
+
+    fn apply_precise_product_policy(
+        &mut self,
+        epoch_idx: u64,
+        sat: SatId,
+        signal: SigId,
+        discontinuities: &[PreciseProductDiscontinuity],
+    ) -> bool {
+        let mut usable = true;
+        for discontinuity in discontinuities {
+            let action = self.config.precise_product_policy.action_for(discontinuity.kind);
+            match action {
+                PppPreciseProductAction::BridgeWithBroadcast => {
+                    self.record_precise_product_policy_event(
+                        epoch_idx,
+                        sat,
+                        signal,
+                        action,
+                        *discontinuity,
+                        Vec::new(),
+                    );
+                }
+                PppPreciseProductAction::InflateSatelliteState => {
+                    self.inflate_satellite_dependent_states(sat);
+                    self.record_precise_product_policy_event(
+                        epoch_idx,
+                        sat,
+                        signal,
+                        action,
+                        *discontinuity,
+                        Vec::new(),
+                    );
+                }
+                PppPreciseProductAction::ResetSatelliteState => {
+                    let removed_states = self.reset_satellite_dependent_states(sat);
+                    self.record_precise_product_policy_event(
+                        epoch_idx,
+                        sat,
+                        signal,
+                        action,
+                        *discontinuity,
+                        removed_states,
+                    );
+                }
+                PppPreciseProductAction::RefuseSatellite => {
+                    self.record_precise_product_policy_event(
+                        epoch_idx,
+                        sat,
+                        signal,
+                        action,
+                        *discontinuity,
+                        Vec::new(),
+                    );
+                    usable = false;
+                }
+            }
+        }
+        usable
+    }
+
+    fn reset_satellite_dependent_states(&mut self, sat: SatId) -> Vec<PppStateIdentity> {
         let mut removed_state_identities = BTreeSet::new();
         if self.indices.iono.remove(&sat).is_some() {
             self.last_seen_iono.remove(&sat);
@@ -712,25 +812,55 @@ impl PppFilter {
         self.phase_windup.remove(&sat);
         self.wl_state.remove(&sat);
         let removed_states = removed_state_identities.iter().copied().collect::<Vec<_>>();
-        let removed_count = self.remove_state_identities(&removed_state_identities);
-        let previous = previous.expect("previous product support");
-        if removed_count > 0 || previous != support {
-            self.health.lifecycle_events.push(PppLifecycleEvent {
-                kind: PppLifecycleEventKind::ProductSupportChanged,
-                epoch_idx: Some(epoch_idx),
-                sat: Some(sat),
-                signal: Some(representative.signal_id),
-                removed_states,
-                reason: format!(
-                    "product_support_changed_from_orbit_{}_clock_{}_to_orbit_{}_clock_{}",
-                    previous.precise_orbit,
-                    previous.precise_clock,
-                    support.precise_orbit,
-                    support.precise_clock
-                ),
-            });
+        self.remove_state_identities(&removed_state_identities);
+        removed_states
+    }
+
+    fn inflate_satellite_dependent_states(&mut self, sat: SatId) {
+        let inflation = self.config.precise_product_policy.satellite_state_inflation;
+        if !inflation.is_finite() || inflation <= 1.0 {
+            return;
         }
-        !phase_discontinuities.satellites.contains(&sat)
+        if let Some(index) = self.indices.iono.get(&sat).copied() {
+            if index < self.ekf.p.rows() {
+                self.ekf.p[(index, index)] *= inflation;
+            }
+        }
+        for index in self
+            .indices
+            .ambiguity
+            .iter()
+            .filter_map(|(signal, index)| (signal.sat == sat).then_some(*index))
+        {
+            if index < self.ekf.p.rows() {
+                self.ekf.p[(index, index)] *= inflation;
+            }
+        }
+        self.ekf.sanitize_covariance();
+    }
+
+    fn record_precise_product_policy_event(
+        &mut self,
+        epoch_idx: u64,
+        sat: SatId,
+        signal: SigId,
+        action: PppPreciseProductAction,
+        discontinuity: PreciseProductDiscontinuity,
+        removed_states: Vec<PppStateIdentity>,
+    ) {
+        self.health.lifecycle_events.push(PppLifecycleEvent {
+            kind: PppLifecycleEventKind::PreciseProductDiscontinuity,
+            epoch_idx: Some(epoch_idx),
+            sat: Some(sat),
+            signal: Some(signal),
+            removed_states,
+            reason: format!(
+                "precise_product_{}_{}_action_{}",
+                precise_product_surface_label(discontinuity.surface),
+                precise_product_discontinuity_label(discontinuity.kind),
+                precise_product_action_label(action)
+            ),
+        });
     }
 
     fn predict(&mut self, dt_s: f64) {
@@ -917,6 +1047,34 @@ impl PppFilter {
             }
         }
         valid
+    }
+}
+
+fn precise_product_surface_label(surface: PreciseProductSurface) -> &'static str {
+    match surface {
+        PreciseProductSurface::Orbit => "orbit",
+        PreciseProductSurface::Clock => "clock",
+    }
+}
+
+fn precise_product_discontinuity_label(kind: PreciseProductDiscontinuityKind) -> &'static str {
+    match kind {
+        PreciseProductDiscontinuityKind::MissingSatellite => "missing_satellite",
+        PreciseProductDiscontinuityKind::OutOfCoverage => "out_of_coverage",
+        PreciseProductDiscontinuityKind::InsufficientSupport => "insufficient_support",
+        PreciseProductDiscontinuityKind::OrbitGap => "orbit_gap",
+        PreciseProductDiscontinuityKind::OrbitFlag => "orbit_flag",
+        PreciseProductDiscontinuityKind::ClockGap => "clock_gap",
+        PreciseProductDiscontinuityKind::ClockJump => "clock_jump",
+    }
+}
+
+fn precise_product_action_label(action: PppPreciseProductAction) -> &'static str {
+    match action {
+        PppPreciseProductAction::BridgeWithBroadcast => "bridge_with_broadcast",
+        PppPreciseProductAction::InflateSatelliteState => "inflate_satellite_state",
+        PppPreciseProductAction::ResetSatelliteState => "reset_satellite_state",
+        PppPreciseProductAction::RefuseSatellite => "refuse_satellite",
     }
 }
 
@@ -1507,9 +1665,13 @@ mod tests {
     use crate::corrections::biases::{CodeBias, CodeBiasProvider, SignalCodeBiases};
     use crate::corrections::phase_windup::PhaseWindupState;
     use crate::estimation::ppp::config::{
-        PppLifecycleEventKind, PppMeasurementNoise, PppProductSupport, WlAmbiguity,
+        PppLifecycleEventKind, PppMeasurementNoise, PppPreciseProductAction, PppProductSupport,
+        WlAmbiguity,
     };
     use crate::estimation::ppp::measurements::iono_free_code_observation_from_obs;
+    use crate::formats::precise_products::{
+        PreciseProductDiscontinuity, PreciseProductDiscontinuityKind, PreciseProductSurface,
+    };
     use crate::models::antenna::{
         AntennaPhaseCenterVariation, ReceiverAntennaCalibration, ReceiverAntennaCalibrations,
         ReceiverPhaseCenterOffset, SatelliteAntennaCalibration, SatelliteAntennaCalibrations,
@@ -1777,6 +1939,14 @@ mod tests {
             decision_reason: Some("accepted_observables_present".to_string()),
             manifest: None,
         }
+    }
+
+    fn precise_product_discontinuity(
+        sat: SatId,
+        surface: PreciseProductSurface,
+        kind: PreciseProductDiscontinuityKind,
+    ) -> PreciseProductDiscontinuity {
+        PreciseProductDiscontinuity { sat, t_s: 10.0, surface, kind }
     }
 
     #[test]
@@ -2131,6 +2301,139 @@ mod tests {
     }
 
     #[test]
+    fn ppp_precise_product_policy_bridges_missing_support_without_state_reset() {
+        let observation = ppp_test_satellite(SatId { constellation: Constellation::Gps, prn: 22 });
+        let sig = observation.signal_id;
+        let mut filter =
+            PppFilter::new(PppConfig { enable_iono_state: true, ..PppConfig::default() });
+        filter.ensure_states(&[&observation], &PppPhaseBreaks::default());
+        let ambiguity_index = filter.indices.ambiguity[&sig];
+        let ionosphere_index = filter.indices.iono[&sig.sat];
+
+        let usable = filter.apply_precise_product_policy(
+            5,
+            sig.sat,
+            sig,
+            &[precise_product_discontinuity(
+                sig.sat,
+                PreciseProductSurface::Orbit,
+                PreciseProductDiscontinuityKind::MissingSatellite,
+            )],
+        );
+
+        assert!(usable);
+        assert_eq!(filter.indices.ambiguity.get(&sig), Some(&ambiguity_index));
+        assert_eq!(filter.indices.iono.get(&sig.sat), Some(&ionosphere_index));
+        assert!(filter.health.lifecycle_events.iter().any(|event| {
+            event.kind == PppLifecycleEventKind::PreciseProductDiscontinuity
+                && event.reason
+                    == "precise_product_orbit_missing_satellite_action_bridge_with_broadcast"
+                && event.removed_states.is_empty()
+        }));
+    }
+
+    #[test]
+    fn ppp_precise_product_policy_inflates_satellite_state_covariance() {
+        let observation = ppp_test_satellite(SatId { constellation: Constellation::Gps, prn: 23 });
+        let sig = observation.signal_id;
+        let mut config = PppConfig { enable_iono_state: true, ..PppConfig::default() };
+        config.precise_product_policy.orbit_gap_action =
+            PppPreciseProductAction::InflateSatelliteState;
+        config.precise_product_policy.satellite_state_inflation = 12.0;
+        let mut filter = PppFilter::new(config);
+        filter.ensure_states(&[&observation], &PppPhaseBreaks::default());
+        let ambiguity_index = filter.indices.ambiguity[&sig];
+        let ionosphere_index = filter.indices.iono[&sig.sat];
+        let ambiguity_variance = filter.ekf.p[(ambiguity_index, ambiguity_index)];
+        let ionosphere_variance = filter.ekf.p[(ionosphere_index, ionosphere_index)];
+
+        let usable = filter.apply_precise_product_policy(
+            6,
+            sig.sat,
+            sig,
+            &[precise_product_discontinuity(
+                sig.sat,
+                PreciseProductSurface::Orbit,
+                PreciseProductDiscontinuityKind::OrbitGap,
+            )],
+        );
+
+        assert!(usable);
+        assert_eq!(filter.indices.ambiguity.get(&sig), Some(&ambiguity_index));
+        assert_eq!(filter.indices.iono.get(&sig.sat), Some(&ionosphere_index));
+        assert!(
+            (filter.ekf.p[(ambiguity_index, ambiguity_index)] - ambiguity_variance * 12.0).abs()
+                < 1.0e-9
+        );
+        assert!(
+            (filter.ekf.p[(ionosphere_index, ionosphere_index)] - ionosphere_variance * 12.0).abs()
+                < 1.0e-9
+        );
+    }
+
+    #[test]
+    fn ppp_precise_product_policy_resets_satellite_states_on_clock_jump() {
+        let observation = ppp_test_satellite(SatId { constellation: Constellation::Gps, prn: 24 });
+        let sig = observation.signal_id;
+        let mut filter =
+            PppFilter::new(PppConfig { enable_iono_state: true, ..PppConfig::default() });
+        filter.ensure_states(&[&observation], &PppPhaseBreaks::default());
+        filter.last_seen_iono.insert(sig.sat, 4);
+        filter.last_seen_amb.insert(sig, 4);
+        filter.residual_history.insert(sig, vec![3.0]);
+
+        let usable = filter.apply_precise_product_policy(
+            7,
+            sig.sat,
+            sig,
+            &[precise_product_discontinuity(
+                sig.sat,
+                PreciseProductSurface::Clock,
+                PreciseProductDiscontinuityKind::ClockJump,
+            )],
+        );
+
+        assert!(usable);
+        assert!(!filter.indices.ambiguity.contains_key(&sig));
+        assert!(!filter.indices.iono.contains_key(&sig.sat));
+        assert!(!filter.last_seen_amb.contains_key(&sig));
+        assert!(!filter.last_seen_iono.contains_key(&sig.sat));
+        assert!(!filter.residual_history.contains_key(&sig));
+        assert!(filter.health.lifecycle_events.iter().any(|event| {
+            event.kind == PppLifecycleEventKind::PreciseProductDiscontinuity
+                && event.reason == "precise_product_clock_clock_jump_action_reset_satellite_state"
+                && event.removed_states.contains(&super::PppStateIdentity::SlantIonosphere(sig.sat))
+                && event.removed_states.contains(&super::PppStateIdentity::CarrierAmbiguity(sig))
+        }));
+    }
+
+    #[test]
+    fn ppp_precise_product_policy_refuses_flagged_orbit_records() {
+        let observation = ppp_test_satellite(SatId { constellation: Constellation::Gps, prn: 25 });
+        let sig = observation.signal_id;
+        let mut filter = PppFilter::new(PppConfig::default());
+
+        let usable = filter.apply_precise_product_policy(
+            8,
+            sig.sat,
+            sig,
+            &[precise_product_discontinuity(
+                sig.sat,
+                PreciseProductSurface::Orbit,
+                PreciseProductDiscontinuityKind::OrbitFlag,
+            )],
+        );
+
+        assert!(!usable);
+        assert!(filter.health.lifecycle_events.iter().any(|event| {
+            event.kind == PppLifecycleEventKind::PreciseProductDiscontinuity
+                && event.reason == "precise_product_orbit_orbit_flag_action_refuse_satellite"
+                && event.sat == Some(sig.sat)
+                && event.signal == Some(sig)
+        }));
+    }
+
+    #[test]
     fn ppp_filter_uses_precise_clock_correction_when_available() {
         let eph = make_eph(1);
         let t_s = 1_350.0;
@@ -2140,7 +2443,7 @@ mod tests {
         let provider = StubProductsProvider { state, precise_clock_bias_s: Some(2.5e-9) };
         let filter = PppFilter::new(PppConfig::default());
 
-        let (_state, clock_bias_s, fallback, _support) =
+        let (_state, clock_bias_s, fallback, _support, _discontinuities) =
             filter.sat_state(&provider, &eph, eph.sat, t_s).expect("PPP precise clock state");
 
         assert!((clock_bias_s - 2.5e-9).abs() < 1e-18);
@@ -2456,7 +2759,7 @@ mod tests {
         let provider = StubProductsProvider { state, precise_clock_bias_s: None };
         let filter = PppFilter::new(PppConfig::default());
 
-        let (_state, clock_bias_s, fallback, _support) = filter
+        let (_state, clock_bias_s, fallback, _support, _discontinuities) = filter
             .sat_state(&provider, &eph, eph.sat, t_s)
             .expect("PPP broadcast fallback clock state");
         let expected = crate::api::gps_satellite_clock_correction(&eph, t_s);

@@ -840,6 +840,7 @@ pub enum PppLifecycleEventKind {
     CarrierDiscontinuity,
     SatelliteStatePruned,
     ProductSupportChanged,
+    PreciseProductDiscontinuity,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
