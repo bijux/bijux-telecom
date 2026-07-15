@@ -47,6 +47,7 @@ use serde::{Deserialize, Serialize};
 #[cfg(test)]
 use bijux_gnss_core::api::{
     Constellation, GlonassFrequencyChannel, Hertz, ObsSignalTiming, SignalCode, SignalSpec,
+    GPS_L1_CA_CARRIER_HZ,
 };
 #[cfg(test)]
 use bijux_gnss_signal::api::glonass_l1_carrier_hz;
@@ -69,7 +70,7 @@ use code_period_ambiguity::{
     CODE_PERIOD_AMBIGUITY_NON_UNIQUE,
 };
 #[cfg(test)]
-use pseudorange_timing::{aligned_code_phase_chips, resolve_pseudorange_from_transmit_time};
+use pseudorange_timing::resolve_pseudorange_from_transmit_time;
 pub(crate) use signal_model::supports_observation_signal;
 #[cfg(test)]
 use signal_model::{tracked_signal_center_hz, tracked_signal_code_for_band};
