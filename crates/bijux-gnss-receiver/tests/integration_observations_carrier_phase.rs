@@ -238,3 +238,101 @@ fn observations_keep_carrier_phase_arc_after_recoverable_fade() {
         pre_fade.metadata.carrier_phase_arc_start_sample_index
     );
 }
+
+#[test]
+fn observations_start_new_carrier_phase_arc_after_reacquisition() {
+    let config = tracking_config();
+    let sat = SatId { constellation: Constellation::Gps, prn: 21 };
+    let interruption_start_s = 0.030;
+    let interruption_end_s = 0.190;
+    let interruption_start_sample = (interruption_start_s * config.sampling_freq_hz).round() as u64;
+    let interruption_end_sample = (interruption_end_s * config.sampling_freq_hz).round() as u64;
+    let frame = generate_l1_ca_with_fades(
+        &config,
+        SyntheticSignalParams {
+            sat,
+            glonass_frequency_channel: None,
+            signal_band: bijux_gnss_core::api::SignalBand::L1,
+            signal_code: bijux_gnss_core::api::SignalCode::Unknown,
+            doppler_hz: 0.0,
+            code_phase_chips: 0.0,
+            carrier_phase_rad: 0.0,
+            cn0_db_hz: PRELOCK_CN0_DBHZ,
+            navigation_data: false.into(),
+        },
+        &[SyntheticFadeWindow {
+            start_s: interruption_start_s,
+            end_s: interruption_end_s,
+            signal_scale: 0.0,
+        }],
+        0x51AC_0001,
+        0.350,
+    );
+    let tracking = TrackingEngine::new(config.clone(), ReceiverRuntime::default());
+    let tracks = tracking.track_from_acquisition(&frame, &[accepted_acquisition(sat, 0.0, 0)]);
+    let report = observations_from_tracking_results(&config, &tracks, 10);
+    let sats = report.output.iter().flat_map(|epoch| epoch.sats.iter()).collect::<Vec<_>>();
+    let arc_events = sats
+        .iter()
+        .filter(|sat| {
+            sat.metadata.time_tag_sample_index >= interruption_start_sample
+                && (sat.metadata.carrier_phase_continuity != "continuous"
+                    || sat.metadata.observation_lock_state == "reacquired")
+        })
+        .map(|sat| {
+            (
+                sat.metadata.time_tag_sample_index,
+                sat.metadata.observation_lock_state.as_str(),
+                sat.metadata.observation_lock_reason.as_deref(),
+                sat.metadata.carrier_phase_continuity.as_str(),
+                sat.lock_flags.cycle_slip,
+            )
+        })
+        .collect::<Vec<_>>();
+
+    assert!(
+        sats.iter().any(|sat| {
+            sat.metadata.time_tag_sample_index >= interruption_start_sample
+                && sat.metadata.time_tag_sample_index < interruption_end_sample
+                && sat.metadata.carrier_phase_continuity == "unusable"
+                && sat.metadata.observation_lock_state == "lost"
+        }),
+        "interruption must produce unusable lost carrier-phase rows: {:?}",
+        report.output
+    );
+
+    let arc_reset = sats
+        .iter()
+        .find(|sat| {
+            sat.metadata.time_tag_sample_index >= interruption_end_sample
+                && sat.metadata.carrier_phase_continuity.starts_with("reset_after_")
+                && sat.lock_flags.cycle_slip
+        })
+        .unwrap_or_else(|| panic!("missing post-loss carrier-arc reset: {arc_events:?}"));
+    let reacquired = sats
+        .iter()
+        .find(|sat| {
+            sat.metadata.time_tag_sample_index >= arc_reset.metadata.time_tag_sample_index
+                && sat.metadata.observation_lock_state == "reacquired"
+                && !sat.lock_flags.cycle_slip
+        })
+        .unwrap_or_else(|| panic!("missing reacquisition lock marker: {arc_events:?}"));
+    let settled = sats
+        .iter()
+        .find(|sat| {
+            sat.metadata.time_tag_sample_index > reacquired.metadata.time_tag_sample_index
+                && sat.lock_flags.carrier_lock
+                && sat.metadata.carrier_phase_continuity == "continuous"
+                && !sat.lock_flags.cycle_slip
+        })
+        .unwrap_or_else(|| panic!("missing settled post-reacquisition arc: {:?}", report.output));
+
+    assert_eq!(
+        reacquired.metadata.carrier_phase_arc_start_sample_index,
+        arc_reset.metadata.carrier_phase_arc_start_sample_index
+    );
+    assert_eq!(
+        settled.metadata.carrier_phase_arc_start_sample_index,
+        arc_reset.metadata.carrier_phase_arc_start_sample_index
+    );
+}

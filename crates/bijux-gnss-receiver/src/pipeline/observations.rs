@@ -1341,7 +1341,9 @@ fn carrier_phase_observation(
             CarrierPhaseContinuity::ResetAfterCycleSlip,
             explicit_cycle_slip_reason(epoch, "cycle_slip"),
         ))
-    } else if epoch.lock_state_reason.as_deref() == Some("reacquired") {
+    } else if epoch.lock_state_reason.as_deref() == Some("reacquired")
+        && state.pending_reset.is_some()
+    {
         Some((CarrierPhaseContinuity::ResetAfterReacquisition, "reacquired".to_string()))
     } else if discontinuity && state.initialized {
         Some((CarrierPhaseContinuity::ResetAfterDiscontinuity, "sample_discontinuity".to_string()))
