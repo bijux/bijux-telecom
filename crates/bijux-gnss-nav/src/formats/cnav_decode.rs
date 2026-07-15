@@ -27,6 +27,29 @@ pub struct GpsCnavMessage {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GpsCnavSignalHealth {
+    pub l1_unhealthy: bool,
+    pub l2_unhealthy: bool,
+    pub l5_unhealthy: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GpsCnavEphemerisMessage {
+    pub common: GpsCnavCommon,
+    pub week: u16,
+    pub signal_health: GpsCnavSignalHealth,
+    pub uraed_index: u8,
+    pub top_s: f64,
+    pub delta_a_m: f64,
+    pub a_dot_mps: f64,
+    pub delta_n0_rad_per_s: f64,
+    pub delta_n0_dot_rad_per_s2: f64,
+    pub m0_rad: f64,
+    pub e: f64,
+    pub w_rad: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum GpsCnavMessageRejectionReason {
     InvalidBitCount,
@@ -129,6 +152,38 @@ pub fn decode_gps_cnav_message_hex(hex: &str) -> Result<GpsCnavMessage, GpsCnavM
     decode_gps_cnav_message(&bits)
 }
 
+pub fn decode_gps_cnav_ephemeris_message(
+    message: &GpsCnavMessage,
+) -> Option<GpsCnavEphemerisMessage> {
+    if message.common.message_type != 10 {
+        return None;
+    }
+
+    let health = message.unsigned_bits(52, 3) as u8;
+    Some(GpsCnavEphemerisMessage {
+        common: message.common,
+        week: message.unsigned_bits(39, 13) as u16,
+        signal_health: GpsCnavSignalHealth {
+            l1_unhealthy: (health & 0b100) != 0,
+            l2_unhealthy: (health & 0b010) != 0,
+            l5_unhealthy: (health & 0b001) != 0,
+        },
+        uraed_index: message.unsigned_bits(55, 5) as u8,
+        top_s: message.unsigned_bits(60, 11) as f64 * 300.0,
+        delta_a_m: message.signed_bits(71, 26) as f64 * 2f64.powi(-9),
+        a_dot_mps: message.signed_bits(97, 25) as f64 * 2f64.powi(-21),
+        delta_n0_rad_per_s: message.signed_bits(122, 17) as f64
+            * 2f64.powi(-44)
+            * std::f64::consts::PI,
+        delta_n0_dot_rad_per_s2: message.signed_bits(139, 23) as f64
+            * 2f64.powi(-57)
+            * std::f64::consts::PI,
+        m0_rad: message.signed_bits(162, 33) as f64 * 2f64.powi(-32) * std::f64::consts::PI,
+        e: message.unsigned_bits(195, 33) as f64 * 2f64.powi(-34),
+        w_rad: message.signed_bits(228, 33) as f64 * 2f64.powi(-32) * std::f64::consts::PI,
+    })
+}
+
 fn normalize_cnav_bits(bits: &[u8]) -> Result<Vec<u8>, GpsCnavMessageRejection> {
     if bits.len() != GPS_CNAV_BITS {
         return Err(GpsCnavMessageRejection {
@@ -185,8 +240,9 @@ fn signed_from_unsigned(value: u64, bits: usize) -> i64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        cnav_crc24q, decode_gps_cnav_message, GpsCnavMessageRejectionReason, GPS_CNAV_BITS,
-        GPS_CNAV_CRC_BITS, GPS_CNAV_DATA_BITS, GPS_CNAV_PREAMBLE,
+        cnav_crc24q, decode_gps_cnav_ephemeris_message, decode_gps_cnav_message,
+        GpsCnavMessageRejectionReason, GPS_CNAV_BITS, GPS_CNAV_CRC_BITS, GPS_CNAV_DATA_BITS,
+        GPS_CNAV_PREAMBLE,
     };
 
     fn set_bits(bits: &mut [u8], start: usize, len: usize, value: u64) {
@@ -196,6 +252,16 @@ mod tests {
         }
     }
 
+    fn encode_signed(value: i64, bits: usize) -> u64 {
+        let mask = (1_u64 << bits) - 1;
+        value as u64 & mask
+    }
+
+    fn apply_crc(bits: &mut [u8]) {
+        let crc = cnav_crc24q(&bits[..GPS_CNAV_DATA_BITS]);
+        set_bits(bits, GPS_CNAV_DATA_BITS + 1, GPS_CNAV_CRC_BITS, u64::from(crc));
+    }
+
     fn valid_message(message_type: u8) -> Vec<u8> {
         let mut bits = vec![0_u8; GPS_CNAV_BITS];
         set_bits(&mut bits, 1, 8, u64::from(GPS_CNAV_PREAMBLE));
@@ -203,8 +269,7 @@ mod tests {
         set_bits(&mut bits, 15, 6, u64::from(message_type));
         set_bits(&mut bits, 21, 17, 12_345);
         set_bits(&mut bits, 38, 1, 1);
-        let crc = cnav_crc24q(&bits[..GPS_CNAV_DATA_BITS]);
-        set_bits(&mut bits, GPS_CNAV_DATA_BITS + 1, GPS_CNAV_CRC_BITS, u64::from(crc));
+        apply_crc(&mut bits);
         bits
     }
 
@@ -249,5 +314,66 @@ mod tests {
         let rejection = decode_gps_cnav_message(&bits).expect_err("binary rejection");
         assert_eq!(rejection.reason, GpsCnavMessageRejectionReason::NonBinaryBit);
         assert_eq!(rejection.bit_index, Some(4));
+    }
+
+    #[test]
+    fn cnav_ephemeris_message_decodes_type_10_fields() {
+        let week = 4_321_u64;
+        let health = 0b101_u64;
+        let uraed = 17_u64;
+        let top_raw = 1_234_u64;
+        let delta_a_raw = -123_456_i64;
+        let a_dot_raw = 654_321_i64;
+        let delta_n0_raw = -16_321_i64;
+        let delta_n0_dot_raw = 2_001_i64;
+        let m0_raw = -0x1234_5678_i64;
+        let e_raw = 0x1234_5678_u64;
+        let w_raw = 0x1020_3040_i64;
+        let mut bits = valid_message(10);
+        set_bits(&mut bits, 39, 13, week);
+        set_bits(&mut bits, 52, 3, health);
+        set_bits(&mut bits, 55, 5, uraed);
+        set_bits(&mut bits, 60, 11, top_raw);
+        set_bits(&mut bits, 71, 26, encode_signed(delta_a_raw, 26));
+        set_bits(&mut bits, 97, 25, encode_signed(a_dot_raw, 25));
+        set_bits(&mut bits, 122, 17, encode_signed(delta_n0_raw, 17));
+        set_bits(&mut bits, 139, 23, encode_signed(delta_n0_dot_raw, 23));
+        set_bits(&mut bits, 162, 33, encode_signed(m0_raw, 33));
+        set_bits(&mut bits, 195, 33, e_raw);
+        set_bits(&mut bits, 228, 33, encode_signed(w_raw, 33));
+        apply_crc(&mut bits);
+
+        let message = decode_gps_cnav_message(&bits).expect("valid CNAV message");
+        let ephemeris = decode_gps_cnav_ephemeris_message(&message).expect("type 10 message");
+
+        assert_eq!(ephemeris.week, week as u16);
+        assert!(ephemeris.signal_health.l1_unhealthy);
+        assert!(!ephemeris.signal_health.l2_unhealthy);
+        assert!(ephemeris.signal_health.l5_unhealthy);
+        assert_eq!(ephemeris.uraed_index, uraed as u8);
+        assert_eq!(ephemeris.top_s, top_raw as f64 * 300.0);
+        assert!((ephemeris.delta_a_m - delta_a_raw as f64 * 2f64.powi(-9)).abs() < f64::EPSILON);
+        assert!((ephemeris.a_dot_mps - a_dot_raw as f64 * 2f64.powi(-21)).abs() < f64::EPSILON);
+        assert!(
+            (ephemeris.delta_n0_rad_per_s
+                - delta_n0_raw as f64 * 2f64.powi(-44) * std::f64::consts::PI)
+                .abs()
+                < f64::EPSILON
+        );
+        assert!(
+            (ephemeris.delta_n0_dot_rad_per_s2
+                - delta_n0_dot_raw as f64 * 2f64.powi(-57) * std::f64::consts::PI)
+                .abs()
+                < f64::EPSILON
+        );
+        assert!(
+            (ephemeris.m0_rad - m0_raw as f64 * 2f64.powi(-32) * std::f64::consts::PI).abs()
+                < f64::EPSILON
+        );
+        assert_eq!(ephemeris.e, e_raw as f64 * 2f64.powi(-34));
+        assert!(
+            (ephemeris.w_rad - w_raw as f64 * 2f64.powi(-32) * std::f64::consts::PI).abs()
+                < f64::EPSILON
+        );
     }
 }
