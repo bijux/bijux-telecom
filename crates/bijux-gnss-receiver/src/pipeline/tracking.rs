@@ -4765,7 +4765,8 @@ mod tests {
         advance_code_phase_seconds, delay_lock_loop_coefficients, discriminators,
         first_order_angular_loop_coefficients, normalize_dll_discriminator,
         phase_lock_loop_coefficients, sample_ca_code, sample_galileo_e1_cboc, samples_per_code,
-        shared_path_code_rate_hz, signal_spec_gps_l5_i, LocalCodeModel, Prn,
+        shared_path_code_rate_hz, signal_spec_gps_l5_i, wrapped_code_phase_delta_samples,
+        LocalCodeModel, Prn,
     };
     use num_complex::Complex;
     use serde::Deserialize;
@@ -6215,6 +6216,52 @@ mod tests {
         );
 
         assert_eq!(selection, super::ReacquisitionSelection::Refused);
+    }
+
+    #[test]
+    fn quick_reacquire_recovers_offset_code_hypothesis() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 1_023_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 1023,
+            ..ReceiverPipelineConfig::default()
+        };
+        let sat = SatId { constellation: Constellation::Gps, prn: 21 };
+        let frame = generate_l1_ca(
+            &config,
+            SyntheticSignalParams {
+                sat,
+                glonass_frequency_channel: None,
+                signal_band: SignalBand::L1,
+                signal_code: SignalCode::Ca,
+                doppler_hz: 0.0,
+                code_phase_chips: 0.0,
+                carrier_phase_rad: 0.0,
+                cn0_db_hz: 70.0,
+                navigation_data: false.into(),
+            },
+            0x51AC_0301,
+            0.001,
+        );
+        let tracking = Tracking::new(config.clone(), ReceiverRuntime::default());
+
+        let seed = tracking
+            .quick_reacquire(&frame, sat, 0.0, 2.0, 35.0, 0.0, None)
+            .expect("reacquisition seed");
+        let samples_per_code = samples_per_code(
+            config.sampling_freq_hz,
+            config.code_freq_basis_hz,
+            config.code_length,
+        );
+        let code_error =
+            wrapped_code_phase_delta_samples(seed.code_phase_samples, 0.0, samples_per_code).abs();
+
+        assert!(
+            code_error <= 0.1,
+            "reacquisition should recover the actual code hypothesis: seed={seed:?}, code_error={code_error}"
+        );
+        assert!((seed.carrier_hz - 0.0).abs() <= f64::EPSILON, "{seed:?}");
     }
 
     #[test]
