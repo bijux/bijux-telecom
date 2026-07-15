@@ -566,13 +566,14 @@ fn wrap_glonass_time_delta_s(delta_t_s: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        glonass_navigation_age, glonass_numerical_orbit_propagation,
-        glonass_satellite_clock_correction, glonass_slot_channel_association,
-        glonass_transmit_time, glonass_utc_relation, sat_state_glonass_l1, GlonassAlmanacEntry,
-        GlonassAlmanacTimeData, GlonassBroadcastNavigationFrame, GlonassFrameTime,
-        GlonassImmediateHealth, GlonassImmediateNavigationData, GlonassLeapSecondAnnouncement,
-        GlonassSatelliteType, GlonassStateVector, GlonassSystemTime, PZ90_02_TO_ITRF2000_X_M,
-        PZ90_02_TO_ITRF2000_Y_M, PZ90_02_TO_ITRF2000_Z_M,
+        glonass_earth_rotation_correction, glonass_navigation_age,
+        glonass_numerical_orbit_propagation, glonass_satellite_clock_correction,
+        glonass_slot_channel_association, glonass_transmit_time, glonass_utc_relation,
+        sat_state_glonass_l1, GlonassAlmanacEntry, GlonassAlmanacTimeData,
+        GlonassBroadcastNavigationFrame, GlonassFrameTime, GlonassImmediateHealth,
+        GlonassImmediateNavigationData, GlonassLeapSecondAnnouncement, GlonassSatelliteType,
+        GlonassStateVector, GlonassSystemTime, PZ90_02_TO_ITRF2000_X_M, PZ90_02_TO_ITRF2000_Y_M,
+        PZ90_02_TO_ITRF2000_Z_M,
     };
     use bijux_gnss_core::api::{Constellation, GlonassFrequencyChannel, GlonassSlot, SatId};
 
@@ -858,6 +859,44 @@ mod tests {
         assert!(propagation.position_refinement_m <= propagation.position_tolerance_m);
         assert!(propagation.pz90_position_m.iter().all(|component| component.is_finite()));
         assert!(propagation.pz90_velocity_mps.iter().all(|component| component.is_finite()));
+    }
+
+    #[test]
+    fn glonass_satellite_state_uses_numerical_orbit_propagation() {
+        let navigation = sample_navigation();
+        let transmit_gps_tow_s = 505_518.0;
+        let signal_travel_time_s = 0.073;
+
+        let propagation = glonass_numerical_orbit_propagation(&navigation, transmit_gps_tow_s)
+            .expect("GLONASS numerical propagation");
+        let state = sat_state_glonass_l1(&navigation, transmit_gps_tow_s, signal_travel_time_s)
+            .expect("GLONASS satellite state");
+
+        let pz90_shifted_x_m = propagation.pz90_position_m[0] + PZ90_02_TO_ITRF2000_X_M;
+        let pz90_shifted_y_m = propagation.pz90_position_m[1] + PZ90_02_TO_ITRF2000_Y_M;
+        let earth_rotation = glonass_earth_rotation_correction(
+            pz90_shifted_x_m,
+            pz90_shifted_y_m,
+            signal_travel_time_s,
+        );
+
+        assert!((state.x_m - (pz90_shifted_x_m + earth_rotation.delta_x_m)).abs() < 1.0e-9);
+        assert!((state.y_m - (pz90_shifted_y_m + earth_rotation.delta_y_m)).abs() < 1.0e-9);
+        assert!(
+            (state.z_m - (propagation.pz90_position_m[2] + PZ90_02_TO_ITRF2000_Z_M)).abs() < 1.0e-9
+        );
+    }
+
+    #[test]
+    fn glonass_numerical_orbit_propagation_refuses_nonfinite_state_vector() {
+        let mut navigation = sample_navigation();
+        navigation.immediate.state_vector.x_m = f64::NAN;
+
+        let propagation = glonass_numerical_orbit_propagation(&navigation, 505_518.0);
+        let state = sat_state_glonass_l1(&navigation, 505_518.0, 0.073);
+
+        assert!(propagation.is_none());
+        assert!(state.is_none());
     }
 
     #[test]
