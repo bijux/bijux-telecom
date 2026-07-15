@@ -91,6 +91,7 @@ const REACQUISITION_STABLE_TRACKING_EPOCHS: u8 = 5;
 const REACQUISITION_AMBIGUITY_CN0_MARGIN_DB: f64 = 1.5;
 const REACQUISITION_AMBIGUITY_PROMPT_POWER_RATIO: f32 = 0.97;
 const REACQUISITION_REFERENCE_PROMPT_POWER_RATIO: f32 = 0.25;
+const REACQUISITION_PROMPT_EVIDENCE_CN0_MARGIN_DB: f64 = 3.0;
 const TRACKING_CN0_WINDOW_EPOCHS: usize = 8;
 const TRACKING_CN0_MIN_WINDOW_EPOCHS: usize = 4;
 const TRACKING_UNCERTAINTY_WINDOW_EPOCHS: usize = 8;
@@ -1795,7 +1796,9 @@ fn select_reacquisition_candidate(
             candidate.cn0_dbhz.is_finite()
                 && candidate.prompt_power.is_finite()
                 && (candidate.cn0_dbhz >= min_cn0_dbhz
-                    || candidate.prompt_power >= min_prompt_power)
+                    || (candidate.cn0_dbhz
+                        >= min_cn0_dbhz - REACQUISITION_PROMPT_EVIDENCE_CN0_MARGIN_DB
+                        && candidate.prompt_power >= min_prompt_power))
         })
         .collect::<Vec<_>>();
     eligible.sort_by(|left, right| {
@@ -4623,6 +4626,7 @@ impl Tracking {
         let code_bins = [-2_i8, -1, 0, 1, 2];
         let signal_model = TrackingSignalModel::for_sat(&self.config, sat);
         let carrier_signs = reacquisition_carrier_signs(&signal_model);
+        let secondary_code_phases = reacquisition_secondary_code_phase_periods(&signal_model);
         let mut candidates = Vec::new();
         let min_cn0_dbhz = reacquisition_min_cn0_dbhz(lock_reference_cn0_dbhz);
         for doppler_bin in doppler_bins {
@@ -4632,37 +4636,40 @@ impl Tracking {
                 let candidate_carrier_hz = carrier_hz + doppler_offset_hz;
                 let candidate_code_phase_samples = code_phase_samples + code_offset_samples;
                 for &carrier_sign in carrier_signs {
-                    let corr = self.correlate_epoch(
-                        frame,
-                        sat,
-                        candidate_carrier_hz,
-                        carrier_sign.phase_offset_cycles(),
-                        self.config.code_freq_basis_hz,
-                        candidate_code_phase_samples,
-                        0.5,
-                    );
-                    let cn0_dbhz = estimate_cn0_dbhz(
-                        corr.prompt,
-                        corr.early - corr.late,
-                        self.config.sampling_freq_hz,
-                        frame.len() as f64,
-                        corr.early_late_noise_weight_energy,
-                    );
-                    let anti_false_lock =
-                        anti_false_lock_detected(corr.early, corr.prompt, corr.late);
-                    if !anti_false_lock {
-                        candidates.push(ReacquisitionCandidate {
-                            hypothesis: ReacquisitionHypothesis {
-                                doppler_bin,
-                                code_bin,
-                                carrier_sign,
-                                secondary_code_phase_periods: None,
-                            },
-                            carrier_hz: candidate_carrier_hz,
-                            code_phase_samples: candidate_code_phase_samples,
-                            cn0_dbhz,
-                            prompt_power: corr.prompt.norm_sqr(),
-                        });
+                    for &secondary_code_phase_periods in &secondary_code_phases {
+                        let corr = self.correlate_reacquisition_epoch(
+                            frame,
+                            &signal_model,
+                            candidate_carrier_hz,
+                            carrier_sign.phase_offset_cycles(),
+                            self.config.code_freq_basis_hz,
+                            candidate_code_phase_samples,
+                            0.5,
+                            secondary_code_phase_periods,
+                        );
+                        let cn0_dbhz = estimate_cn0_dbhz(
+                            corr.prompt,
+                            corr.early - corr.late,
+                            self.config.sampling_freq_hz,
+                            frame.len() as f64,
+                            corr.early_late_noise_weight_energy,
+                        );
+                        let anti_false_lock =
+                            anti_false_lock_detected(corr.early, corr.prompt, corr.late);
+                        if !anti_false_lock {
+                            candidates.push(ReacquisitionCandidate {
+                                hypothesis: ReacquisitionHypothesis {
+                                    doppler_bin,
+                                    code_bin,
+                                    carrier_sign,
+                                    secondary_code_phase_periods,
+                                },
+                                carrier_hz: candidate_carrier_hz,
+                                code_phase_samples: candidate_code_phase_samples,
+                                cn0_dbhz,
+                                prompt_power: corr.prompt.norm_sqr(),
+                            });
+                        }
                     }
                 }
             }
@@ -4671,6 +4678,50 @@ impl Tracking {
             ReacquisitionSelection::Accepted(seed) => Some(seed),
             ReacquisitionSelection::Refused => None,
         }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn correlate_reacquisition_epoch(
+        &self,
+        frame: &SamplesFrame,
+        signal_model: &TrackingSignalModel,
+        carrier_freq_hz: f64,
+        carrier_phase_cycles: f64,
+        code_rate_hz: f64,
+        code_phase_samples: f64,
+        early_late_spacing_chips: f64,
+        secondary_code_phase_periods: Option<usize>,
+    ) -> CorrelatorOutput {
+        let sample_rate_hz = self.config.sampling_freq_hz;
+        let primary_code_period_samples = signal_model.samples_per_code(sample_rate_hz);
+        let epoch_primary_code_period_index =
+            frame.t0.sample_index as usize / primary_code_period_samples.max(1);
+        let primary_code_period_index = secondary_code_phase_periods
+            .and_then(|phase_periods| {
+                let component = secondary_code_sync_component(signal_model)?;
+                let period = component.secondary_code_period()?.max(1);
+                let period_base =
+                    epoch_primary_code_period_index - (epoch_primary_code_period_index % period);
+                Some(period_base + (phase_periods % period))
+            })
+            .unwrap_or(epoch_primary_code_period_index);
+        let tracked_chips_per_sample = code_rate_hz / sample_rate_hz;
+        let epoch_start_code_phase_samples = epoch_start_code_phase_samples_from_receiver_phase(
+            code_phase_samples,
+            primary_code_period_samples,
+        );
+        let base_chip_phase =
+            epoch_start_code_phase_samples * signal_model.nominal_chips_per_sample(sample_rate_hz);
+        correlate_early_prompt_late(
+            &frame.iq,
+            sample_rate_hz,
+            carrier_freq_hz,
+            carrier_phase_offset_radians(carrier_phase_cycles),
+            base_chip_phase,
+            tracked_chips_per_sample,
+            early_late_spacing_chips,
+            |chip_phase| signal_model.value_at_phase(chip_phase, primary_code_period_index),
+        )
     }
 }
 
@@ -4682,6 +4733,18 @@ fn reacquisition_carrier_signs(
     } else {
         &[ReacquisitionCarrierSign::Aligned]
     }
+}
+
+fn reacquisition_secondary_code_phase_periods(
+    signal_model: &TrackingSignalModel,
+) -> Vec<Option<usize>> {
+    let Some(component) = secondary_code_sync_component(signal_model) else {
+        return vec![None];
+    };
+    let Some(period) = component.secondary_code_period() else {
+        return vec![None];
+    };
+    (0..period.max(1)).map(Some).collect()
 }
 
 #[cfg(test)]
@@ -6008,6 +6071,34 @@ mod tests {
     }
 
     #[test]
+    fn reacquisition_selection_refuses_competing_secondary_code_phases() {
+        let selection = super::select_reacquisition_candidate(
+            &[
+                reacquisition_candidate(
+                    0,
+                    0,
+                    super::ReacquisitionCarrierSign::Aligned,
+                    Some(3),
+                    44.0,
+                    300.0,
+                ),
+                reacquisition_candidate(
+                    0,
+                    0,
+                    super::ReacquisitionCarrierSign::Aligned,
+                    Some(4),
+                    43.5,
+                    294.0,
+                ),
+            ],
+            35.0,
+            0.0,
+        );
+
+        assert_eq!(selection, super::ReacquisitionSelection::Refused);
+    }
+
+    #[test]
     fn reacquisition_selection_treats_carrier_sign_only_tie_as_same_location() {
         let selection = super::select_reacquisition_candidate(
             &[
@@ -6106,6 +6197,55 @@ mod tests {
                 secondary_code_phase_periods: None,
             })
         );
+    }
+
+    #[test]
+    fn reacquisition_selection_rejects_strong_prompt_when_cn0_is_too_low() {
+        let selection = super::select_reacquisition_candidate(
+            &[reacquisition_candidate(
+                0,
+                0,
+                super::ReacquisitionCarrierSign::Aligned,
+                None,
+                41.0,
+                300_000.0,
+            )],
+            48.0,
+            100_000.0,
+        );
+
+        assert_eq!(selection, super::ReacquisitionSelection::Refused);
+    }
+
+    #[test]
+    fn reacquisition_secondary_code_phases_collapse_when_signal_has_no_secondary_code() {
+        let config = ReceiverPipelineConfig::default();
+        let signal_model = super::TrackingSignalModel::for_sat_signal_band(
+            &config,
+            SatId { constellation: Constellation::Gps, prn: 7 },
+            SignalBand::L1,
+            SignalCode::Ca,
+            None,
+        );
+
+        assert_eq!(super::reacquisition_secondary_code_phase_periods(&signal_model), vec![None]);
+    }
+
+    #[test]
+    fn reacquisition_secondary_code_phases_cover_supported_period() {
+        let config = ReceiverPipelineConfig::default();
+        let signal_model = super::TrackingSignalModel::for_sat_signal_band(
+            &config,
+            SatId { constellation: Constellation::Gps, prn: 18 },
+            SignalBand::L5,
+            SignalCode::L5I,
+            None,
+        );
+        let phases = super::reacquisition_secondary_code_phase_periods(&signal_model);
+
+        assert!(phases.len() > 1);
+        assert_eq!(phases.first(), Some(&Some(0)));
+        assert_eq!(phases.last(), Some(&Some(phases.len() - 1)));
     }
 
     #[test]
