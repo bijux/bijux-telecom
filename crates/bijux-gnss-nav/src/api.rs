@@ -356,6 +356,12 @@ pub use crate::orbits::gps::{
     GpsEarthRotationCorrection, GpsEphemeris, GpsEphemerisAge, GpsSatState,
     GpsSatelliteClockCorrection,
 };
+/// Satellite state uncertainty and provenance helpers.
+pub use crate::orbits::satellite_uncertainty::{
+    beidou_urai_sigma_m, galileo_sisa_sigma_m, glonass_accuracy_code_sigma_m,
+    SatelliteClockUncertaintySource, SatelliteHealthSource, SatelliteHealthStatus,
+    SatelliteOrbitUncertaintySource, SatelliteStateUncertainty,
+};
 /// Time helpers.
 pub use crate::time::{
     beidou_to_gps_with_offset, format_utc_civil_time, galileo_to_gps_with_offset,

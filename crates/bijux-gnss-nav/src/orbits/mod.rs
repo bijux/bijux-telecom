@@ -7,3 +7,4 @@ pub mod galileo;
 pub mod glonass;
 mod glonass_orbit;
 pub mod gps;
+pub mod satellite_uncertainty;
