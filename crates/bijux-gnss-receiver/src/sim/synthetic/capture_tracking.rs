@@ -829,6 +829,9 @@ pub fn validate_truth_guided_tracking_table(
 
             SyntheticTrackingTruthTableSatellite {
                 sat: sat_truth.sat,
+                signal_band: sat_truth.signal_band,
+                signal_code: sat_truth.signal_code,
+                glonass_frequency_channel: sat_truth.glonass_frequency_channel,
                 injected_doppler_hz: sat_truth.doppler_hz,
                 expected_measured_doppler_hz,
                 injected_code_phase_chips: sat_truth.code_phase_chips,

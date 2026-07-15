@@ -570,6 +570,9 @@ fn tracking_accuracy_budget_requires_stable_truth_epochs() {
         pass: false,
         satellites: vec![SyntheticTrackingTruthTableSatellite {
             sat: SatId { constellation: Constellation::Gps, prn: 7 },
+            signal_band: SignalBand::L1,
+            signal_code: SignalCode::Ca,
+            glonass_frequency_channel: None,
             injected_doppler_hz: -250.0,
             expected_measured_doppler_hz: -250.0,
             injected_code_phase_chips: 100.0,

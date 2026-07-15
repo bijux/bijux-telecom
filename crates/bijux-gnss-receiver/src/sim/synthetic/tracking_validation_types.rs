@@ -60,6 +60,15 @@ pub struct SyntheticTrackingTruthTableEpoch {
 pub struct SyntheticTrackingTruthTableSatellite {
     /// Satellite identifier.
     pub sat: SatId,
+    /// Explicit signal band validated for this satellite.
+    #[serde(default = "default_signal_band")]
+    pub signal_band: SignalBand,
+    /// Explicit signal code validated for this satellite.
+    #[serde(default = "default_signal_code")]
+    pub signal_code: SignalCode,
+    /// GLONASS FDMA channel when the validated signal uses GLONASS L1.
+    #[serde(default)]
+    pub glonass_frequency_channel: Option<GlonassFrequencyChannel>,
     /// Injected Doppler shift in Hz.
     pub injected_doppler_hz: f64,
     /// Expected measured Doppler after the receiver clock bias is applied, in Hz.
