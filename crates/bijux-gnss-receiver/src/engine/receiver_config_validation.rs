@@ -28,6 +28,15 @@ fn validate_ppp_precise_product_action(report: &mut ValidationReport, field: &st
     }
 }
 
+fn validate_ppp_ar_mode(report: &mut ValidationReport, value: &str) {
+    if value != "float_ppp" && value != "ppp_ar_wide_lane" && value != "ppp_ar_narrow_lane" {
+        report.errors.push(ConfigError {
+            message: "navigation.ppp.ar_mode must be one of [float_ppp, ppp_ar_wide_lane, ppp_ar_narrow_lane]"
+                .to_string(),
+        });
+    }
+}
+
 impl ValidateConfig for ReceiverConfig {
     fn validate(&self) -> ValidationReport {
         let mut report = ValidationReport::default();
@@ -289,6 +298,22 @@ impl ValidateConfig for ReceiverConfig {
             });
         }
         let ppp = &self.navigation.ppp;
+        validate_ppp_ar_mode(&mut report, &ppp.ar_mode);
+        if !ppp.ar_ratio_threshold.is_finite() || ppp.ar_ratio_threshold <= 0.0 {
+            report.errors.push(ConfigError {
+                message: "navigation.ppp.ar_ratio_threshold must be finite and > 0".to_string(),
+            });
+        }
+        if ppp.ar_stability_epochs == 0 {
+            report.errors.push(ConfigError {
+                message: "navigation.ppp.ar_stability_epochs must be > 0".to_string(),
+            });
+        }
+        if ppp.ar_max_sats == 0 {
+            report.errors.push(ConfigError {
+                message: "navigation.ppp.ar_max_sats must be > 0".to_string(),
+            });
+        }
         for (field, value) in [
             ("navigation.ppp.noise_position", ppp.noise_position),
             ("navigation.ppp.noise_velocity", ppp.noise_velocity),
@@ -584,6 +609,33 @@ mod tests {
             error.message
                 == "navigation.ppp.precise_product_state_inflation must be finite and >= 1"
         }));
+    }
+
+    #[test]
+    fn validation_rejects_invalid_ppp_ambiguity_resolution_configuration() {
+        let mut config = ReceiverConfig::default();
+        config.navigation.ppp.ar_mode = "integer_now".to_string();
+        config.navigation.ppp.ar_ratio_threshold = f64::NAN;
+        config.navigation.ppp.ar_stability_epochs = 0;
+        config.navigation.ppp.ar_max_sats = 0;
+
+        let report = <ReceiverConfig as ValidateConfig>::validate(&config);
+
+        assert!(report.errors.iter().any(|error| {
+            error.message
+                == "navigation.ppp.ar_mode must be one of [float_ppp, ppp_ar_wide_lane, ppp_ar_narrow_lane]"
+        }));
+        assert!(report.errors.iter().any(|error| {
+            error.message == "navigation.ppp.ar_ratio_threshold must be finite and > 0"
+        }));
+        assert!(report
+            .errors
+            .iter()
+            .any(|error| { error.message == "navigation.ppp.ar_stability_epochs must be > 0" }));
+        assert!(report
+            .errors
+            .iter()
+            .any(|error| { error.message == "navigation.ppp.ar_max_sats must be > 0" }));
     }
 
     #[test]
