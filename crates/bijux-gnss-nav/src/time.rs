@@ -424,6 +424,69 @@ pub fn tai_to_utc_with_offset(tai: TaiTime, leap: &LeapSeconds) -> TimeConversio
     }
 }
 
+pub fn utc_civil_to_tai_with_offset(
+    civil: UtcCivilTime,
+    leap: &LeapSeconds,
+) -> Result<TimeConversion<TaiTime>, UtcCivilTimeError> {
+    if civil.second != 60 {
+        return Ok(utc_to_tai_with_offset(civil.to_utc_time()?, leap));
+    }
+
+    civil.validate_leap_second(leap)?;
+    let leap_boundary_unix_s = leap_boundary_unix_seconds(civil);
+    let entry = leap
+        .entries
+        .iter()
+        .find(|entry| entry.utc_unix_s == leap_boundary_unix_s)
+        .ok_or(UtcCivilTimeError::LeapSecondNotDeclared)?;
+    let offset_s = UTC_TAI_EPOCH_OFFSET_S + (entry.offset_s - 1) as f64;
+    Ok(TimeConversion {
+        time: TaiTime {
+            tai_s: leap_boundary_unix_s as f64
+                + offset_s
+                + civil.nanosecond as f64 / 1_000_000_000.0,
+        },
+        offset: TimeOffsetEvidence {
+            from: GnssTimeSystem::Utc,
+            to: GnssTimeSystem::Tai,
+            offset_s,
+            source: TimeOffsetSource::LeapSecondTable,
+            source_detail: "TAI-UTC across declared inserted UTC second".to_string(),
+        },
+    })
+}
+
+pub fn tai_to_utc_civil_with_offset(
+    tai: TaiTime,
+    leap: &LeapSeconds,
+) -> TimeConversion<UtcCivilTime> {
+    for entry in &leap.entries {
+        let previous_offset_s = entry.offset_s - 1;
+        let inserted_start_s =
+            entry.utc_unix_s as f64 + UTC_TAI_EPOCH_OFFSET_S + previous_offset_s as f64;
+        let inserted_end_s =
+            entry.utc_unix_s as f64 + UTC_TAI_EPOCH_OFFSET_S + entry.offset_s as f64;
+        if tai.tai_s >= inserted_start_s && tai.tai_s < inserted_end_s {
+            let (year, month, day, hour, minute, _) = civil_from_unix_seconds(entry.utc_unix_s - 1);
+            let nanosecond = ((tai.tai_s - inserted_start_s) * 1_000_000_000.0).round() as u32;
+            let offset_s = UTC_TAI_EPOCH_OFFSET_S + previous_offset_s as f64;
+            return TimeConversion {
+                time: UtcCivilTime { year, month, day, hour, minute, second: 60, nanosecond },
+                offset: TimeOffsetEvidence {
+                    from: GnssTimeSystem::Tai,
+                    to: GnssTimeSystem::Utc,
+                    offset_s: -offset_s,
+                    source: TimeOffsetSource::LeapSecondTable,
+                    source_detail: "UTC-TAI across declared inserted UTC second".to_string(),
+                },
+            };
+        }
+    }
+
+    let conversion = tai_to_utc_with_offset(tai, leap);
+    TimeConversion { time: UtcCivilTime::from_utc_time(conversion.time), offset: conversion.offset }
+}
+
 pub fn gps_to_galileo_with_offset(
     gps: GpsTime,
     offset: &GalileoGpsTimeOffset,
@@ -668,10 +731,11 @@ mod tests {
         beidou_to_gps_with_offset, galileo_to_gps_with_offset, glonass_to_gps_with_offset,
         glonass_to_utc_with_offset, gps_to_beidou_with_offset, gps_to_galileo_with_offset,
         gps_to_glonass_with_offset, gps_to_utc_civil_with_offset, gps_to_utc_with_offset,
-        gps_week_rollover, tai_to_utc_with_offset, utc_civil_to_gps_with_offset,
-        utc_to_glonass_with_offset, utc_to_gps_with_offset, utc_to_tai_with_offset, BeidouTime,
-        GalileoGpsTimeOffset, GalileoTime, GlonassTime, GlonassUtcOffset, GnssTimeSystem,
-        TimeOffsetSource, UtcCivilTime, UtcCivilTimeError,
+        gps_week_rollover, tai_to_utc_civil_with_offset, tai_to_utc_with_offset,
+        utc_civil_to_gps_with_offset, utc_civil_to_tai_with_offset, utc_to_glonass_with_offset,
+        utc_to_gps_with_offset, utc_to_tai_with_offset, BeidouTime, GalileoGpsTimeOffset,
+        GalileoTime, GlonassTime, GlonassUtcOffset, GnssTimeSystem, TimeOffsetSource, UtcCivilTime,
+        UtcCivilTimeError,
     };
     use bijux_gnss_core::api::{GpsTime, LeapSeconds, TaiTime, UtcTime};
 
@@ -923,6 +987,46 @@ mod tests {
 
         assert_eq!(round_trip.time.format_utc(), "2016-12-31T23:59:60.5Z");
         assert_eq!(round_trip.offset.offset_s, -17.0);
+        assert_eq!(after.time.format_utc(), "2017-01-01T00:00:00Z");
+    }
+
+    #[test]
+    fn utc_civil_leap_second_maps_to_unique_tai_second() {
+        let leap = LeapSeconds::default_table();
+        let before = utc_civil_to_tai_with_offset(
+            UtcCivilTime::parse("2016-12-31T23:59:59Z").expect("before"),
+            &leap,
+        )
+        .expect("before tai");
+        let inserted = utc_civil_to_tai_with_offset(
+            UtcCivilTime::parse("2016-12-31T23:59:60Z").expect("inserted"),
+            &leap,
+        )
+        .expect("inserted tai");
+        let after = utc_civil_to_tai_with_offset(
+            UtcCivilTime::parse("2017-01-01T00:00:00Z").expect("after"),
+            &leap,
+        )
+        .expect("after tai");
+
+        assert_eq!(inserted.offset.offset_s, 36.0);
+        assert!((inserted.time.tai_s - before.time.tai_s - 1.0).abs() < 1.0e-9);
+        assert!((after.time.tai_s - inserted.time.tai_s - 1.0).abs() < 1.0e-9);
+    }
+
+    #[test]
+    fn tai_time_inside_leap_second_formats_as_inserted_utc_second() {
+        let leap = LeapSeconds::default_table();
+        let inserted = utc_civil_to_tai_with_offset(
+            UtcCivilTime::parse("2016-12-31T23:59:60.25Z").expect("inserted"),
+            &leap,
+        )
+        .expect("inserted tai");
+        let round_trip = tai_to_utc_civil_with_offset(inserted.time, &leap);
+        let after = tai_to_utc_civil_with_offset(TaiTime { tai_s: 1_483_228_837.0 }, &leap);
+
+        assert_eq!(round_trip.time.format_utc(), "2016-12-31T23:59:60.25Z");
+        assert_eq!(round_trip.offset.offset_s, -36.0);
         assert_eq!(after.time.format_utc(), "2017-01-01T00:00:00Z");
     }
 }
