@@ -566,6 +566,8 @@ mod tests {
             covariance_symmetrized: false,
             covariance_clamped: false,
             covariance_max_variance: None,
+            solver_rank: 4,
+            solver_condition_number: Some(1.0),
             sat_count: 6,
             used_sat_count: 6,
             rejected_sat_count: 0,

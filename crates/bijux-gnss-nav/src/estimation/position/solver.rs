@@ -109,6 +109,8 @@ pub struct PositionSolution {
     pub covariance_symmetrized: bool,
     pub covariance_clamped: bool,
     pub covariance_max_variance: Option<f64>,
+    pub solver_rank: usize,
+    pub solver_condition_number: Option<f64>,
     pub sat_count: usize,
     pub used_sat_count: usize,
     pub rejected_sat_count: usize,
@@ -506,6 +508,8 @@ struct WorkingSetSolution {
     covariance_symmetrized: bool,
     covariance_clamped: bool,
     covariance_max_variance: Option<f64>,
+    solver_rank: usize,
+    solver_condition_number: Option<f64>,
 }
 
 #[derive(Debug, Clone)]
@@ -1086,6 +1090,8 @@ impl PositionSolver {
             covariance_symmetrized: working_set.covariance_symmetrized,
             covariance_clamped: working_set.covariance_clamped,
             covariance_max_variance: working_set.covariance_max_variance,
+            solver_rank: working_set.solver_rank,
+            solver_condition_number: working_set.solver_condition_number,
             sat_count: observations.len(),
             used_sat_count: filtered.len(),
             rejected_sat_count,
@@ -2730,6 +2736,8 @@ impl PositionSolver {
             covariance_symmetrized,
             covariance_clamped,
             covariance_max_variance,
+            solver_rank: 0,
+            solver_condition_number: None,
         })
     }
 
