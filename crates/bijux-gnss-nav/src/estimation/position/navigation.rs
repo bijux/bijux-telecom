@@ -76,6 +76,7 @@ pub const POSITION_OBSERVATION_CORRECTION_ORDER: [PositionObservationCorrectionK
 pub struct PositionObservationCorrectionComponent {
     pub kind: PositionObservationCorrectionKind,
     pub delta_m: f64,
+    pub applied: bool,
     pub corrected_pseudorange_m: f64,
 }
 
@@ -96,10 +97,24 @@ impl PositionObservationCorrectionChain {
     }
 
     pub fn push_component(&mut self, kind: PositionObservationCorrectionKind, delta_m: f64) {
+        self.push_component_with_application(kind, delta_m, true);
+    }
+
+    pub fn push_unapplied_component(&mut self, kind: PositionObservationCorrectionKind) {
+        self.push_component_with_application(kind, 0.0, false);
+    }
+
+    pub fn push_component_with_application(
+        &mut self,
+        kind: PositionObservationCorrectionKind,
+        delta_m: f64,
+        applied: bool,
+    ) {
         self.corrected_pseudorange_m += delta_m;
         self.components.push(PositionObservationCorrectionComponent {
             kind,
             delta_m,
+            applied,
             corrected_pseudorange_m: self.corrected_pseudorange_m,
         });
     }
@@ -982,11 +997,15 @@ mod tests {
         let mut chain = PositionObservationCorrectionChain::new(24_000_000.0);
 
         chain.push_component(PositionObservationCorrectionKind::SatelliteClock, 12_500.0);
+        chain.push_unapplied_component(PositionObservationCorrectionKind::Relativity);
         chain.push_component(PositionObservationCorrectionKind::BroadcastGroupDelay, -2.4);
         chain.push_component(PositionObservationCorrectionKind::Ionosphere, -4.8);
         chain.push_component(PositionObservationCorrectionKind::Troposphere, -2.1);
         chain.push_component(PositionObservationCorrectionKind::ReceiverClock, -9_000.0);
 
+        assert_eq!(chain.components.len(), 6);
+        assert!(!chain.components[1].applied);
+        assert_eq!(chain.components[1].corrected_pseudorange_m, 24_012_500.0);
         assert_eq!(
             chain.component_delta_m(PositionObservationCorrectionKind::BroadcastGroupDelay),
             -2.4
