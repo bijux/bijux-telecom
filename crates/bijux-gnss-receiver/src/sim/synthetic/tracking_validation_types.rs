@@ -114,6 +114,92 @@ pub struct SyntheticTrackingTruthTableReport {
     pub satellites: Vec<SyntheticTrackingTruthTableSatellite>,
 }
 
+/// Stable identity for a tracking-supported signal profile.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+pub struct SyntheticTrackingSignalIdentity {
+    /// Constellation that owns the signal.
+    pub constellation: Constellation,
+    /// Signal band being characterized.
+    pub signal_band: SignalBand,
+    /// Signal code being characterized.
+    pub signal_code: SignalCode,
+    /// GLONASS FDMA channel when the signal identity requires one.
+    pub glonass_frequency_channel: Option<GlonassFrequencyChannel>,
+}
+
+/// Empirical distribution summary for one tracking-noise measurement.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticTrackingNoiseDistribution {
+    /// Number of finite samples used in this distribution.
+    pub sample_count: usize,
+    /// Signed arithmetic mean of the samples.
+    pub mean: f64,
+    /// Root-mean-square sample value.
+    pub rms: f64,
+    /// Population standard deviation of the samples.
+    pub standard_deviation: f64,
+    /// Median absolute sample value.
+    pub p50_abs: f64,
+    /// Ninety-fifth percentile absolute sample value.
+    pub p95_abs: f64,
+    /// Maximum absolute sample value.
+    pub max_abs: f64,
+}
+
+/// Empirical tracking-noise profile for one supported signal identity.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticTrackingNoiseProfile {
+    /// Signal identity covered by this empirical profile.
+    pub signal: SyntheticTrackingSignalIdentity,
+    /// Number of satellites contributing stable epochs.
+    pub satellite_count: usize,
+    /// Number of stable tracking epochs used in every distribution.
+    pub stable_epoch_count: usize,
+    /// Minimum truth C/N0 covered by this profile, in dB-Hz.
+    pub min_cn0_db_hz: f64,
+    /// Maximum truth C/N0 covered by this profile, in dB-Hz.
+    pub max_cn0_db_hz: f64,
+    /// Minimum absolute truth Doppler covered by this profile, in Hz.
+    pub min_abs_doppler_hz: f64,
+    /// Maximum absolute truth Doppler covered by this profile, in Hz.
+    pub max_abs_doppler_hz: f64,
+    /// Empirical DLL code-jitter distribution, in samples.
+    pub dll_jitter_samples: SyntheticTrackingNoiseDistribution,
+    /// Empirical PLL discriminator phase-error distribution, in cycles.
+    pub pll_phase_error_cycles: SyntheticTrackingNoiseDistribution,
+    /// Empirical tracking Doppler-error distribution, in Hz.
+    pub doppler_error_hz: SyntheticTrackingNoiseDistribution,
+    /// Empirical C/N0 bias distribution, in dB-Hz.
+    pub cn0_bias_db_hz: SyntheticTrackingNoiseDistribution,
+    /// Number of stable epochs that reported cycle slips.
+    pub cycle_slip_count: usize,
+    /// Empirical cycle-slip probability across stable epochs.
+    pub cycle_slip_probability: f64,
+    /// Whether this profile has enough stable samples for a defensible distribution.
+    pub pass: bool,
+}
+
+/// Empirical tracking-noise characterization across supported receiver signals.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticTrackingNoiseReport {
+    /// Scenario identifiers that contributed input tracking truth tables.
+    pub scenario_ids: Vec<String>,
+    /// Minimum stable samples required for each supported signal profile.
+    pub required_stable_epoch_count: usize,
+    /// Number of tracking-supported signal identities expected by the receiver.
+    pub supported_signal_count: usize,
+    /// Number of supported signal identities with empirical profiles.
+    pub characterized_signal_count: usize,
+    /// Tracking-supported signal identities not covered by the input reports.
+    pub missing_signals: Vec<SyntheticTrackingSignalIdentity>,
+    /// Signal identities whose empirical profile had too few stable samples.
+    pub under_sampled_signals: Vec<SyntheticTrackingSignalIdentity>,
+    /// Per-signal empirical profiles.
+    pub profiles: Vec<SyntheticTrackingNoiseProfile>,
+    /// Whether every supported signal had enough empirical tracking-noise samples.
+    pub pass: bool,
+}
+
 /// Noise-only false-alarm summary for a synthetic acquisition profile.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SyntheticAcquisitionFalseAlarmReport {

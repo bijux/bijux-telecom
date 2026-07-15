@@ -624,6 +624,169 @@ fn tracking_accuracy_budget_requires_stable_truth_epochs() {
 }
 
 #[test]
+fn supported_tracking_signal_identities_match_receiver_execution_surface() {
+    let signals = super::supported_tracking_signal_identities();
+
+    assert!(signals.contains(&SyntheticTrackingSignalIdentity {
+        constellation: Constellation::Gps,
+        signal_band: SignalBand::L2,
+        signal_code: SignalCode::L2C,
+        glonass_frequency_channel: None,
+    }));
+    assert!(signals.contains(&SyntheticTrackingSignalIdentity {
+        constellation: Constellation::Gps,
+        signal_band: SignalBand::L5,
+        signal_code: SignalCode::L5Q,
+        glonass_frequency_channel: None,
+    }));
+    assert!(signals.contains(&SyntheticTrackingSignalIdentity {
+        constellation: Constellation::Glonass,
+        signal_band: SignalBand::L1,
+        signal_code: SignalCode::Unknown,
+        glonass_frequency_channel: Some(
+            GlonassFrequencyChannel::new(0).expect("valid GLONASS channel"),
+        ),
+    }));
+    assert!(!signals.contains(&SyntheticTrackingSignalIdentity {
+        constellation: Constellation::Gps,
+        signal_band: SignalBand::L2,
+        signal_code: SignalCode::Py,
+        glonass_frequency_channel: None,
+    }));
+    assert!(!signals.contains(&SyntheticTrackingSignalIdentity {
+        constellation: Constellation::Galileo,
+        signal_band: SignalBand::E1,
+        signal_code: SignalCode::E1C,
+        glonass_frequency_channel: None,
+    }));
+}
+
+#[test]
+fn tracking_noise_report_requires_supported_signal_coverage() {
+    let signals = super::supported_tracking_signal_identities();
+    let report = tracking_noise_truth_report(signals[0], 2, 40.0, 125.0);
+
+    let noise = super::characterize_supported_tracking_noise(&[report], 2);
+
+    assert!(!noise.pass);
+    assert_eq!(noise.characterized_signal_count, 1);
+    assert_eq!(noise.supported_signal_count, signals.len());
+    assert_eq!(noise.missing_signals.len(), signals.len() - 1);
+    assert!(noise.under_sampled_signals.is_empty(), "{noise:?}");
+}
+
+#[test]
+fn tracking_noise_report_summarizes_empirical_distributions() {
+    let signals = super::supported_tracking_signal_identities();
+    let reports = signals
+        .iter()
+        .enumerate()
+        .map(|(index, signal)| {
+            tracking_noise_truth_report(*signal, 3, 42.0 + index as f64, 100.0 + index as f64)
+        })
+        .collect::<Vec<_>>();
+
+    let noise = super::characterize_supported_tracking_noise(&reports, 3);
+
+    assert!(noise.pass, "{noise:?}");
+    assert_eq!(noise.supported_signal_count, signals.len());
+    assert_eq!(noise.characterized_signal_count, signals.len());
+    assert!(noise.missing_signals.is_empty(), "{noise:?}");
+    assert!(noise.under_sampled_signals.is_empty(), "{noise:?}");
+
+    let profile = noise
+        .profiles
+        .iter()
+        .find(|profile| profile.signal == signals[0])
+        .expect("first supported signal profile");
+    assert_eq!(profile.stable_epoch_count, 3);
+    assert_eq!(profile.satellite_count, 1);
+    assert_eq!(profile.dll_jitter_samples.sample_count, 3);
+    assert_eq!(profile.dll_jitter_samples.p50_abs, 0.2);
+    assert!((profile.dll_jitter_samples.p95_abs - 0.3).abs() < f64::EPSILON);
+    assert_eq!(profile.pll_phase_error_cycles.sample_count, 3);
+    assert!(profile.pll_phase_error_cycles.max_abs > 0.0, "{profile:?}");
+    assert_eq!(profile.doppler_error_hz.max_abs, 1.5);
+    assert!(profile.cn0_bias_db_hz.mean > 0.0, "{profile:?}");
+    assert_eq!(profile.cycle_slip_count, 1);
+    assert_eq!(profile.cycle_slip_probability, 1.0 / 3.0);
+}
+
+fn tracking_noise_truth_report(
+    signal: SyntheticTrackingSignalIdentity,
+    stable_epoch_count: usize,
+    cn0_db_hz: f64,
+    abs_doppler_hz: f64,
+) -> SyntheticTrackingTruthTableReport {
+    SyntheticTrackingTruthTableReport {
+        scenario_id: format!(
+            "tracking_noise_{:?}_{:?}_{:?}",
+            signal.constellation, signal.signal_band, signal.signal_code
+        ),
+        carrier_tolerance_hz: 10.0,
+        doppler_tolerance_hz: 10.0,
+        code_phase_tolerance_samples: 1.0,
+        cn0_tolerance_db_hz: 8.0,
+        sample_rate_hz: 4_092_000.0,
+        period_samples: 4092,
+        output_scale_applied: 1.0,
+        pass: true,
+        satellites: vec![SyntheticTrackingTruthTableSatellite {
+            sat: SatId { constellation: signal.constellation, prn: 7 },
+            signal_band: signal.signal_band,
+            signal_code: signal.signal_code,
+            glonass_frequency_channel: signal.glonass_frequency_channel,
+            injected_doppler_hz: abs_doppler_hz,
+            expected_measured_doppler_hz: abs_doppler_hz,
+            injected_code_phase_chips: 100.0,
+            injected_cn0_db_hz: cn0_db_hz as f32,
+            epoch_count: stable_epoch_count,
+            stable_epoch_count,
+            first_stable_epoch_index: Some(0),
+            pass: true,
+            epochs: (0..stable_epoch_count)
+                .map(|index| tracking_noise_truth_epoch(index, cn0_db_hz, abs_doppler_hz))
+                .collect(),
+        }],
+    }
+}
+
+fn tracking_noise_truth_epoch(
+    index: usize,
+    cn0_db_hz: f64,
+    abs_doppler_hz: f64,
+) -> SyntheticTrackingTruthTableEpoch {
+    let code_error = 0.1 * (index as f64 + 1.0);
+    SyntheticTrackingTruthTableEpoch {
+        epoch_index: index,
+        sample_index: index as u64 * 4092,
+        expected_carrier_hz: abs_doppler_hz,
+        measured_carrier_hz: abs_doppler_hz + 0.5,
+        carrier_error_hz: 0.5,
+        expected_doppler_hz: abs_doppler_hz,
+        measured_doppler_hz: abs_doppler_hz + 0.5 * (index as f64 + 1.0),
+        doppler_error_hz: 0.5 * (index as f64 + 1.0),
+        pll_phase_error_rad: 0.01 * (index as f64 + 1.0),
+        pll_phase_error_cycles: 0.01 * (index as f64 + 1.0) / std::f64::consts::TAU,
+        expected_code_phase_samples: 100.0,
+        measured_code_phase_samples: 100.0 + code_error,
+        code_phase_error_samples: code_error,
+        expected_cn0_db_hz: cn0_db_hz,
+        measured_cn0_dbhz: cn0_db_hz + 0.25 * (index as f64 + 1.0),
+        cn0_error_db: 0.25 * (index as f64 + 1.0),
+        lock: true,
+        pll_lock: true,
+        dll_lock: true,
+        fll_lock: true,
+        cycle_slip: index == 2,
+        lock_state: "tracking".to_string(),
+        lock_state_reason: None,
+        stable_tracking_epoch: true,
+        pass: true,
+    }
+}
+
+#[test]
 fn pvt_accuracy_budget_fails_invalid_or_out_of_budget_epoch() {
     let report = SyntheticPvtTruthTableReport {
         scenario_id: "pvt_budget_failure".to_string(),

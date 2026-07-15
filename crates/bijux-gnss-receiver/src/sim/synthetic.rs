@@ -52,6 +52,7 @@ include!("synthetic/pvt_profiles_time_accuracy.rs");
 include!("synthetic/pvt_truth.rs");
 include!("synthetic/acquisition_validation_types.rs");
 include!("synthetic/tracking_validation_types.rs");
+include!("synthetic/tracking_noise_characterization.rs");
 include!("synthetic/capture_tracking.rs");
 include!("synthetic/composite_component_recovery.rs");
 include!("synthetic/acquisition_validation.rs");
@@ -114,19 +115,19 @@ mod tests {
         SyntheticReceiverPhaseNoiseModel, SyntheticScenario, SyntheticSignalParams,
         SyntheticSignalSource, SyntheticTrackingLockRateCase, SyntheticTrackingLockRatePoint,
         SyntheticTrackingLockRateReport, SyntheticTrackingSensitivityTrial,
-        SyntheticTrackingTruthTableEpoch, SyntheticTrackingTruthTableReport,
-        SyntheticTrackingTruthTableSatellite, SPEED_OF_LIGHT_MPS, SYNTHETIC_COMPLEX_NOISE_POWER,
-        SYNTHETIC_NOISE_STD_PER_COMPONENT,
+        SyntheticTrackingSignalIdentity, SyntheticTrackingTruthTableEpoch,
+        SyntheticTrackingTruthTableReport, SyntheticTrackingTruthTableSatellite,
+        SPEED_OF_LIGHT_MPS, SYNTHETIC_COMPLEX_NOISE_POWER, SYNTHETIC_NOISE_STD_PER_COMPONENT,
     };
     use crate::engine::receiver_config::ReceiverPipelineConfig;
     use crate::reference_validation::ValidationReferenceEpoch;
     use bijux_gnss_core::api::{
-        ecef_to_geodetic, lla_to_ecef, Constellation, Cycles, Epoch, FreqHz, Hertz, LockFlags,
-        Meters, NavLifecycleState, NavQualityFlag, NavSolutionEpoch, NavUncertaintyClass, ObsEpoch,
-        ObsMetadata, ObsSatellite, ObservationEpochDecision, ObservationStatus, ReceiverRole,
-        ReceiverSampleTrace, SampleTime, SamplesFrame, SatId, Seconds, SigId, SignalBand,
-        SignalCode, SignalSpec, SolutionStatus, SolutionValidity,
-        NAV_OUTPUT_STABILITY_SIGNATURE_VERSION, NAV_SOLUTION_MODEL_VERSION,
+        ecef_to_geodetic, lla_to_ecef, Constellation, Cycles, Epoch, FreqHz,
+        GlonassFrequencyChannel, Hertz, LockFlags, Meters, NavLifecycleState, NavQualityFlag,
+        NavSolutionEpoch, NavUncertaintyClass, ObsEpoch, ObsMetadata, ObsSatellite,
+        ObservationEpochDecision, ObservationStatus, ReceiverRole, ReceiverSampleTrace, SampleTime,
+        SamplesFrame, SatId, Seconds, SigId, SignalBand, SignalCode, SignalSpec, SolutionStatus,
+        SolutionValidity, NAV_OUTPUT_STABILITY_SIGNATURE_VERSION, NAV_SOLUTION_MODEL_VERSION,
     };
     use bijux_gnss_nav::api::GpsEphemeris;
     use bijux_gnss_signal::api::{
