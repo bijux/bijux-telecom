@@ -2,7 +2,10 @@
 
 use std::collections::BTreeMap;
 
-use bijux_gnss_core::api::{AmbiguityId, ObsEpoch, ObsSatellite, ObservationStatus, SigId};
+use bijux_gnss_core::api::{
+    AmbiguityId, Constellation, GlonassFrequencyChannel, ObsEpoch, ObsSatellite, ObservationStatus,
+    SigId, GLONASS_L1_CARRIER_HZ, GLONASS_L1_CHANNEL_SPACING_HZ,
+};
 use bijux_gnss_nav::api::{
     RtkDoubleDifferenceObservation, RtkEpochAlignmentEvidence,
     RtkSingleDifferenceCovarianceEvidence, RtkSingleDifferenceObservation,
@@ -43,6 +46,10 @@ pub(crate) fn single_differences_from_epochs(
             min_cn0_dbhz: rover_observation.cn0_dbhz.min(base_observation.cn0_dbhz),
             multipath_suspect: rover_observation.multipath_suspect
                 || base_observation.multipath_suspect,
+            glonass_frequency_channel: matching_glonass_frequency_channel(
+                rover_observation,
+                base_observation,
+            ),
             rover_pseudorange_m: rover_observation.pseudorange_m.0,
             rover_signal_timing: rover_observation.timing,
             base_pseudorange_m: base_observation.pseudorange_m.0,
@@ -68,6 +75,36 @@ pub(crate) fn single_differences_from_epochs(
     }
     differences.sort_by_key(|difference| difference.sig);
     differences
+}
+
+fn matching_glonass_frequency_channel(
+    rover_observation: &ObsSatellite,
+    base_observation: &ObsSatellite,
+) -> Option<GlonassFrequencyChannel> {
+    if rover_observation.signal_id.sat.constellation != Constellation::Glonass {
+        return None;
+    }
+    let rover_channel = glonass_frequency_channel_from_observation(rover_observation)?;
+    let base_channel = glonass_frequency_channel_from_observation(base_observation)?;
+    (rover_channel == base_channel).then_some(rover_channel)
+}
+
+fn glonass_frequency_channel_from_observation(
+    observation: &ObsSatellite,
+) -> Option<GlonassFrequencyChannel> {
+    if observation.signal_id.sat.constellation != Constellation::Glonass {
+        return None;
+    }
+    let offset = (observation.metadata.signal.carrier_hz.value() - GLONASS_L1_CARRIER_HZ.value())
+        / GLONASS_L1_CHANNEL_SPACING_HZ.value();
+    if !offset.is_finite() {
+        return None;
+    }
+    let channel = offset.round();
+    if (offset - channel).abs() > 1.0e-6 {
+        return None;
+    }
+    GlonassFrequencyChannel::new(channel as i8)
 }
 
 pub(crate) fn choose_reference_signal(

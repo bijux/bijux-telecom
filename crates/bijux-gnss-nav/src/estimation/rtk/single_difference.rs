@@ -2,7 +2,8 @@ use std::collections::BTreeMap;
 
 use bijux_gnss_core::api::{
     AmbiguityId, ArtifactPayloadValidate, Constellation, DiagnosticEvent, DiagnosticSeverity,
-    GpsTime, ObsEpoch, ObsSatellite, ObsSignalTiming, ObservationStatus, SigId,
+    GlonassFrequencyChannel, GpsTime, ObsEpoch, ObsSatellite, ObsSignalTiming, ObservationStatus,
+    SigId, GLONASS_L1_CARRIER_HZ, GLONASS_L1_CHANNEL_SPACING_HZ,
 };
 use serde::{Deserialize, Serialize};
 
@@ -86,6 +87,9 @@ pub struct RtkSingleDifferenceObservation {
     pub min_cn0_dbhz: f64,
     /// Whether either contributing observation was marked multipath-suspect.
     pub multipath_suspect: bool,
+    /// GLONASS FDMA channel evidence for this signal when the signal is GLONASS L1.
+    #[serde(default)]
+    pub glonass_frequency_channel: Option<GlonassFrequencyChannel>,
     /// Rover pseudorange used to form the single difference.
     pub rover_pseudorange_m: f64,
     /// Optional rover transmit-time timing carried from the observation.
@@ -165,6 +169,15 @@ impl ArtifactPayloadValidate for RtkSingleDifferenceObservation {
                 "single-difference covariance evidence is invalid",
             ));
         }
+        if self.sig.sat.constellation == Constellation::Glonass
+            && self.glonass_frequency_channel.is_none()
+        {
+            events.push(DiagnosticEvent::new(
+                DiagnosticSeverity::Error,
+                "RTK_SD_GLONASS_CHANNEL_MISSING",
+                "GLONASS single-difference observation is missing FDMA channel evidence",
+            ));
+        }
         if self.code_variance_m2 < 0.0 || self.phase_variance_cycles2 < 0.0 {
             events.push(DiagnosticEvent::new(
                 DiagnosticSeverity::Error,
@@ -236,11 +249,13 @@ pub fn rtk_single_differences_from_aligned_obs_epochs_with_covariance(
 
         let covariance_evidence =
             single_difference_covariance_evidence(rover_sat, base_sat, &covariance_config);
+        let glonass_frequency_channel = matching_glonass_frequency_channel(rover_sat, base_sat);
 
         out.push(RtkSingleDifferenceObservation {
             sig: rover_sat.signal_id,
             min_cn0_dbhz: rover_sat.cn0_dbhz.min(base_sat.cn0_dbhz),
             multipath_suspect: rover_sat.multipath_suspect || base_sat.multipath_suspect,
+            glonass_frequency_channel,
             rover_pseudorange_m: rover_sat.pseudorange_m.0,
             rover_signal_timing: rover_sat.timing,
             base_pseudorange_m: base_sat.pseudorange_m.0,
@@ -399,6 +414,34 @@ pub fn rtk_single_difference_residual_metrics_with_antenna_corrections(
 
 fn ambiguity_id_from_satellite(sat: &ObsSatellite) -> AmbiguityId {
     AmbiguityId { sig: sat.signal_id, signal: format!("{:?}", sat.metadata.signal.band) }
+}
+
+fn matching_glonass_frequency_channel(
+    rover_sat: &ObsSatellite,
+    base_sat: &ObsSatellite,
+) -> Option<GlonassFrequencyChannel> {
+    if rover_sat.signal_id.sat.constellation != Constellation::Glonass {
+        return None;
+    }
+    let rover_channel = glonass_frequency_channel_from_satellite(rover_sat)?;
+    let base_channel = glonass_frequency_channel_from_satellite(base_sat)?;
+    (rover_channel == base_channel).then_some(rover_channel)
+}
+
+fn glonass_frequency_channel_from_satellite(sat: &ObsSatellite) -> Option<GlonassFrequencyChannel> {
+    if sat.signal_id.sat.constellation != Constellation::Glonass {
+        return None;
+    }
+    let offset = (sat.metadata.signal.carrier_hz.value() - GLONASS_L1_CARRIER_HZ.value())
+        / GLONASS_L1_CHANNEL_SPACING_HZ.value();
+    if !offset.is_finite() {
+        return None;
+    }
+    let channel = offset.round();
+    if (offset - channel).abs() > 1.0e-6 {
+        return None;
+    }
+    GlonassFrequencyChannel::new(channel as i8)
 }
 
 fn single_difference_input_is_usable(sat: &ObsSatellite) -> bool {
@@ -807,6 +850,7 @@ mod tests {
             },
             min_cn0_dbhz: 45.0,
             multipath_suspect: false,
+            glonass_frequency_channel: None,
             rover_pseudorange_m: rover_modeled,
             rover_signal_timing: Some(ObsSignalTiming {
                 signal_travel_time_s: Seconds(rover_travel_time_s),

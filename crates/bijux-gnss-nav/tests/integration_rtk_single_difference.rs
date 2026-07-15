@@ -1,9 +1,10 @@
 #![allow(missing_docs)]
 
 use bijux_gnss_core::api::{
-    ArtifactPayloadValidate, Constellation, GpsTime, LockFlags, MeasurementErrorModel, Meters,
-    ObsEpoch, ObsMetadata, ObsSatellite, ObsSignalTiming, ObservationStatus, ReceiverRole,
-    ReceiverSampleTrace, SatId, Seconds, SigId, SignalBand, SignalSpec,
+    ArtifactPayloadValidate, Constellation, FreqHz, GlonassFrequencyChannel, GpsTime, LockFlags,
+    MeasurementErrorModel, Meters, ObsEpoch, ObsMetadata, ObsSatellite, ObsSignalTiming,
+    ObservationStatus, ReceiverRole, ReceiverSampleTrace, SatId, Seconds, SigId, SignalBand,
+    SignalSpec, GLONASS_L1_CARRIER_HZ, GLONASS_L1_CHANNEL_SPACING_HZ,
 };
 use bijux_gnss_nav::api::{
     choose_rtk_single_difference_reference_signals_by_constellation, geodetic_to_ecef,
@@ -217,6 +218,13 @@ fn make_simple_epoch(
     }
 }
 
+fn glonass_l1_carrier_hz(channel: GlonassFrequencyChannel) -> FreqHz {
+    FreqHz::new(
+        GLONASS_L1_CARRIER_HZ.value()
+            + f64::from(channel.value()) * GLONASS_L1_CHANNEL_SPACING_HZ.value(),
+    )
+}
+
 #[test]
 fn rtk_single_difference_builder_propagates_measurement_delta_and_variance() {
     let base = make_simple_epoch(7, Constellation::Gps, 20_000_100.0, 42.0);
@@ -228,6 +236,34 @@ fn rtk_single_difference_builder_propagates_measurement_delta_and_variance() {
     assert!((observations[0].code_m - 150.0).abs() < 1.0e-9);
     assert!(observations[0].code_variance_m2.is_finite() && observations[0].code_variance_m2 > 0.0);
     assert_eq!(observations[0].ambiguity_rover.signal, "L1");
+}
+
+#[test]
+fn rtk_single_difference_builder_preserves_glonass_fdma_channel_evidence() {
+    let channel = GlonassFrequencyChannel::new(-4).expect("valid GLONASS channel");
+    let mut base = make_simple_epoch(8, Constellation::Glonass, 20_000_100.0, 42.0);
+    let mut rover = make_simple_epoch(8, Constellation::Glonass, 20_000_250.0, 42.0);
+    base.sats[0].metadata.signal.carrier_hz = glonass_l1_carrier_hz(channel);
+    rover.sats[0].metadata.signal.carrier_hz = glonass_l1_carrier_hz(channel);
+
+    let observations = rtk_single_differences_from_obs_epochs(&base, &rover);
+
+    assert_eq!(observations.len(), 1);
+    assert_eq!(observations[0].glonass_frequency_channel, Some(channel));
+    assert!(observations[0].validate_payload().is_empty());
+}
+
+#[test]
+fn rtk_single_difference_validation_rejects_glonass_without_fdma_channel_evidence() {
+    let base = make_simple_epoch(8, Constellation::Glonass, 20_000_100.0, 42.0);
+    let rover = make_simple_epoch(8, Constellation::Glonass, 20_000_250.0, 42.0);
+
+    let observations = rtk_single_differences_from_obs_epochs(&base, &rover);
+
+    assert_eq!(observations.len(), 1);
+    assert_eq!(observations[0].glonass_frequency_channel, None);
+    let diagnostics = observations[0].validate_payload();
+    assert!(diagnostics.iter().any(|event| event.code == "RTK_SD_GLONASS_CHANNEL_MISSING"));
 }
 
 #[test]
