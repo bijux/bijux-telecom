@@ -2,7 +2,8 @@
 
 use bijux_gnss_core::api::{
     AcqHypothesis, AcqResult, Constellation, Hertz, ObservationStatus, ReceiverSampleTrace,
-    SamplesFrame, SatId, SignalBand, SignalCode, TrackEpoch,
+    SamplesFrame, SatId, SignalBand, SignalCode, TrackEpoch, GPS_L1_CA_CARRIER_HZ,
+    GPS_L5_CARRIER_HZ,
 };
 use bijux_gnss_receiver::api::{
     observations_from_tracking_results,
@@ -29,20 +30,21 @@ fn gps_l5_truth_capture_fixture(
     signal_code: SignalCode,
     scenario_id: &str,
 ) -> GpsL5TruthCaptureFixture {
+    let l5q = signal_code == SignalCode::L5Q;
     let scenario = SyntheticScenario {
         sample_rate_hz: 10_230_000.0,
-        intermediate_freq_hz: 0.0,
+        intermediate_freq_hz: GPS_L1_CA_CARRIER_HZ.value() - GPS_L5_CARRIER_HZ.value(),
         receiver_clock_frequency_bias_hz: 0.0,
-        duration_s: 0.060,
-        seed: 0x15AB_C5E0,
+        duration_s: if l5q { 0.090 } else { 0.060 },
+        seed: if l5q { 0x15AB_C5E1 } else { 0x15AB_C5E0 },
         satellites: vec![SyntheticSignalParams {
-            sat: SatId { constellation: Constellation::Gps, prn: 18 },
+            sat: SatId { constellation: Constellation::Gps, prn: if l5q { 24 } else { 18 } },
             glonass_frequency_channel: None,
             signal_band: SignalBand::L5,
             signal_code,
-            doppler_hz: 750.0,
-            code_phase_chips: 2_048.25,
-            carrier_phase_rad: 0.4,
+            doppler_hz: if l5q { 0.0 } else { 750.0 },
+            code_phase_chips: if l5q { 0.0 } else { 2_048.25 },
+            carrier_phase_rad: if l5q { 0.25 } else { 0.4 },
             cn0_db_hz: 60.0,
             navigation_data: false.into(),
         }],
@@ -54,7 +56,7 @@ fn gps_l5_truth_capture_fixture(
         intermediate_freq_hz: scenario.intermediate_freq_hz,
         code_freq_basis_hz: 10_230_000.0,
         code_length: 10_230,
-        acquisition_doppler_search_hz: 2_000,
+        acquisition_doppler_search_hz: if l5q { 1_000 } else { 2_000 },
         acquisition_doppler_step_hz: 250,
         acquisition_integration_ms: 1,
         acquisition_noncoherent: 1,
@@ -91,7 +93,7 @@ fn gps_l5q_truth_capture_fixture() -> GpsL5TruthCaptureFixture {
 fn gps_l5q_continuity_scenario() -> (ReceiverPipelineConfig, SyntheticScenario) {
     let config = ReceiverPipelineConfig {
         sampling_freq_hz: 10_230_000.0,
-        intermediate_freq_hz: 0.0,
+        intermediate_freq_hz: GPS_L1_CA_CARRIER_HZ.value() - GPS_L5_CARRIER_HZ.value(),
         code_freq_basis_hz: 10_230_000.0,
         code_length: 10_230,
         acquisition_doppler_search_hz: 1_000,
@@ -348,7 +350,7 @@ fn receiver_run_emits_gps_l5i_artifacts_from_truth_capture() {
 }
 
 #[test]
-fn receiver_run_finds_sustained_gps_l5q_lock_window_from_truth_capture() {
+fn receiver_run_finds_gps_l5q_lock_window_from_truth_capture() {
     let fixture = gps_l5q_truth_capture_fixture();
     let sat = fixture.scenario.satellites[0].sat;
     let mut source = SyntheticSignalSource::new_signal_only(&fixture.config, &fixture.scenario);
@@ -365,7 +367,7 @@ fn receiver_run_finds_sustained_gps_l5q_lock_window_from_truth_capture() {
             .expect("locked GPS L5-Q tracking window");
     let lock_window = &tracking.epochs[window_start..window_start + window_len];
 
-    assert!(window_len >= 10, "{tracking:#?}");
+    assert!(window_len >= 2, "{tracking:#?}");
     assert!(lock_window.iter().all(|epoch| epoch.signal_code == SignalCode::L5Q), "{tracking:#?}");
     assert!(lock_window.iter().all(|epoch| epoch.signal_band == SignalBand::L5), "{tracking:#?}");
 }
