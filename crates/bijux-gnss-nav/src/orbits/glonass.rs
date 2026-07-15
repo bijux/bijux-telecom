@@ -219,6 +219,9 @@ pub struct GlonassSatState {
     pub x_m: f64,
     pub y_m: f64,
     pub z_m: f64,
+    pub vx_mps: f64,
+    pub vy_mps: f64,
+    pub vz_mps: f64,
     pub clock_correction: GlonassSatelliteClockCorrection,
 }
 
@@ -481,12 +484,21 @@ pub fn sat_state_glonass_l1(
     let mut x_m = propagated_state.position_m[0] + PZ90_02_TO_ITRF2000_X_M;
     let mut y_m = propagated_state.position_m[1] + PZ90_02_TO_ITRF2000_Y_M;
     let z_m = propagated_state.position_m[2] + PZ90_02_TO_ITRF2000_Z_M;
+    let mut vx_mps = propagated_state.velocity_mps[0];
+    let mut vy_mps = propagated_state.velocity_mps[1];
+    let vz_mps = propagated_state.velocity_mps[2];
 
     let earth_rotation = glonass_earth_rotation_correction(x_m, y_m, signal_travel_time_s);
     x_m += earth_rotation.delta_x_m;
     y_m += earth_rotation.delta_y_m;
+    let cos_rotation = earth_rotation.rotation_rad.cos();
+    let sin_rotation = earth_rotation.rotation_rad.sin();
+    let rotated_vx_mps = cos_rotation * vx_mps + sin_rotation * vy_mps;
+    let rotated_vy_mps = -sin_rotation * vx_mps + cos_rotation * vy_mps;
+    vx_mps = rotated_vx_mps;
+    vy_mps = rotated_vy_mps;
 
-    Some(GlonassSatState { x_m, y_m, z_m, clock_correction })
+    Some(GlonassSatState { x_m, y_m, z_m, vx_mps, vy_mps, vz_mps, clock_correction })
 }
 
 pub fn glonass_numerical_orbit_propagation(
@@ -839,6 +851,9 @@ mod tests {
             (state.z_m - (navigation.immediate.state_vector.z_m + PZ90_02_TO_ITRF2000_Z_M)).abs()
                 < 1.0e-9
         );
+        assert!((state.vx_mps - navigation.immediate.state_vector.vx_mps).abs() < 1.0e-12);
+        assert!((state.vy_mps - navigation.immediate.state_vector.vy_mps).abs() < 1.0e-12);
+        assert!((state.vz_mps - navigation.immediate.state_vector.vz_mps).abs() < 1.0e-12);
         assert!((state.clock_correction.bias_s - 2.572_406_083_345_413_2e-5).abs() < 1.0e-18);
     }
 
@@ -879,12 +894,21 @@ mod tests {
             pz90_shifted_y_m,
             signal_travel_time_s,
         );
+        let cos_rotation = earth_rotation.rotation_rad.cos();
+        let sin_rotation = earth_rotation.rotation_rad.sin();
+        let expected_vx_mps = cos_rotation * propagation.pz90_velocity_mps[0]
+            + sin_rotation * propagation.pz90_velocity_mps[1];
+        let expected_vy_mps = -sin_rotation * propagation.pz90_velocity_mps[0]
+            + cos_rotation * propagation.pz90_velocity_mps[1];
 
         assert!((state.x_m - (pz90_shifted_x_m + earth_rotation.delta_x_m)).abs() < 1.0e-9);
         assert!((state.y_m - (pz90_shifted_y_m + earth_rotation.delta_y_m)).abs() < 1.0e-9);
         assert!(
             (state.z_m - (propagation.pz90_position_m[2] + PZ90_02_TO_ITRF2000_Z_M)).abs() < 1.0e-9
         );
+        assert!((state.vx_mps - expected_vx_mps).abs() < 1.0e-12);
+        assert!((state.vy_mps - expected_vy_mps).abs() < 1.0e-12);
+        assert!((state.vz_mps - propagation.pz90_velocity_mps[2]).abs() < 1.0e-12);
     }
 
     #[test]
