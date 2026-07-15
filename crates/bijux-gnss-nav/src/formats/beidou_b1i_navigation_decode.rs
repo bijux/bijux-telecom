@@ -8,6 +8,7 @@ use crate::orbits::beidou::{
     BeidouBroadcastNavigationData, BeidouClockCorrection, BeidouEphemeris,
     BeidouIonosphericCorrection, BeidouSignalHealth, BeidouSystemTime,
 };
+use crate::time::{resolve_beidou_week_rollover, RolloverResolutionError};
 
 const BEIDOU_D1_SUBFRAME_BITS: usize = 300;
 const BEIDOU_D1_PREAMBLE: u16 = 0b111_0001_0010;
@@ -78,6 +79,8 @@ pub enum BeidouD1BatchRejectionReason {
     InvalidSatelliteId,
     DuplicateSubframe,
     NonConsecutiveSow,
+    AmbiguousWeekRollover,
+    InvalidWeekRollover,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -134,6 +137,22 @@ pub fn decode_beidou_broadcast_navigation_data(
     sat: SatId,
     subframes: &[BeidouD1Subframe],
 ) -> Result<Option<BeidouBroadcastNavigationData>, BeidouD1BatchRejection> {
+    decode_beidou_broadcast_navigation_data_inner(sat, subframes, None)
+}
+
+pub fn decode_beidou_broadcast_navigation_data_with_reference_week(
+    sat: SatId,
+    subframes: &[BeidouD1Subframe],
+    reference_week: u32,
+) -> Result<Option<BeidouBroadcastNavigationData>, BeidouD1BatchRejection> {
+    decode_beidou_broadcast_navigation_data_inner(sat, subframes, Some(reference_week))
+}
+
+fn decode_beidou_broadcast_navigation_data_inner(
+    sat: SatId,
+    subframes: &[BeidouD1Subframe],
+    reference_week: Option<u32>,
+) -> Result<Option<BeidouBroadcastNavigationData>, BeidouD1BatchRejection> {
     if sat.constellation != Constellation::Beidou {
         return Err(BeidouD1BatchRejection {
             reason: BeidouD1BatchRejectionReason::InvalidSatelliteId,
@@ -144,11 +163,11 @@ pub fn decode_beidou_broadcast_navigation_data(
         });
     }
 
-    let mut builder = BeidouD1BatchBuilder::new(sat);
+    let mut builder = BeidouD1BatchBuilder::new(sat).with_reference_week(reference_week);
     for subframe in subframes {
         builder.merge(subframe)?;
     }
-    Ok(builder.try_build())
+    builder.try_build_checked()
 }
 
 fn decode_beidou_b1i_clock_subframe_bits(
@@ -312,6 +331,7 @@ fn signed_from_unsigned(value: u64, bits: usize) -> i64 {
 #[derive(Debug, Default, Clone)]
 struct BeidouD1BatchBuilder {
     sat: Option<SatId>,
+    reference_week: Option<u32>,
     clock: Option<BeidouD1ClockSubframe>,
     ephemeris_1: Option<BeidouD1Ephemeris1Subframe>,
     ephemeris_2: Option<BeidouD1Ephemeris2Subframe>,
@@ -320,6 +340,11 @@ struct BeidouD1BatchBuilder {
 impl BeidouD1BatchBuilder {
     fn new(sat: SatId) -> Self {
         Self { sat: Some(sat), ..Self::default() }
+    }
+
+    fn with_reference_week(mut self, reference_week: Option<u32>) -> Self {
+        self.reference_week = reference_week;
+        self
     }
 
     fn merge(&mut self, subframe: &BeidouD1Subframe) -> Result<(), BeidouD1BatchRejection> {
@@ -349,18 +374,29 @@ impl BeidouD1BatchBuilder {
         Ok(())
     }
 
-    fn try_build(&self) -> Option<BeidouBroadcastNavigationData> {
-        let sat = self.sat?;
-        let clock = self.clock.as_ref()?;
-        let ephemeris_1 = self.ephemeris_1.as_ref()?;
-        let ephemeris_2 = self.ephemeris_2.as_ref()?;
+    fn try_build_checked(
+        &self,
+    ) -> Result<Option<BeidouBroadcastNavigationData>, BeidouD1BatchRejection> {
+        let Some(sat) = self.sat else {
+            return Ok(None);
+        };
+        let Some(clock) = self.clock.as_ref() else {
+            return Ok(None);
+        };
+        let Some(ephemeris_1) = self.ephemeris_1.as_ref() else {
+            return Ok(None);
+        };
+        let Some(ephemeris_2) = self.ephemeris_2.as_ref() else {
+            return Ok(None);
+        };
+        let bdt = self.resolved_bdt(clock)?;
         let toe_s = ((((ephemeris_1.toe_msb2 as u32) << 15) | u32::from(ephemeris_2.toe_lsb15))
             as f64)
             * 8.0;
 
-        Some(BeidouBroadcastNavigationData {
+        Ok(Some(BeidouBroadcastNavigationData {
             sat,
-            bdt: clock.bdt,
+            bdt,
             urai: clock.urai,
             signal_health: clock.signal_health,
             clock: clock.clock,
@@ -385,7 +421,25 @@ impl BeidouD1BatchBuilder {
                 cis: ephemeris_2.cis,
             },
             ionosphere: clock.ionosphere,
-        })
+        }))
+    }
+
+    fn resolved_bdt(
+        &self,
+        clock: &BeidouD1ClockSubframe,
+    ) -> Result<BeidouSystemTime, BeidouD1BatchRejection> {
+        let Some(reference_week) = self.reference_week else {
+            return Ok(clock.bdt);
+        };
+        let resolution = resolve_beidou_week_rollover(clock.bdt.week, reference_week)
+            .map_err(|error| self.week_rollover_rejection(error, clock.bdt.sow_s))?;
+        let Ok(week) = u16::try_from(resolution.week) else {
+            return Err(self.week_rollover_rejection(
+                RolloverResolutionError::TruncatedValueOutOfRange,
+                clock.bdt.sow_s,
+            ));
+        };
+        Ok(BeidouSystemTime { week, sow_s: clock.bdt.sow_s })
     }
 
     fn check_sow_progression(
@@ -444,6 +498,28 @@ impl BeidouD1BatchBuilder {
             incoming_sow_s: Some(incoming_sow_s),
         }
     }
+
+    fn week_rollover_rejection(
+        &self,
+        error: RolloverResolutionError,
+        incoming_sow_s: u32,
+    ) -> BeidouD1BatchRejection {
+        BeidouD1BatchRejection {
+            reason: match error {
+                RolloverResolutionError::AmbiguousReference => {
+                    BeidouD1BatchRejectionReason::AmbiguousWeekRollover
+                }
+                RolloverResolutionError::InvalidCycle
+                | RolloverResolutionError::TruncatedValueOutOfRange => {
+                    BeidouD1BatchRejectionReason::InvalidWeekRollover
+                }
+            },
+            sat: self.sat,
+            subframe_id: Some(1),
+            expected_sow_s: None,
+            incoming_sow_s: Some(incoming_sow_s),
+        }
+    }
 }
 
 fn next_sow(sow_s: u32) -> u32 {
@@ -459,8 +535,9 @@ mod tests {
     use super::{
         decode_beidou_b1i_clock_subframe, decode_beidou_b1i_ephemeris_1_subframe,
         decode_beidou_b1i_ephemeris_2_subframe, decode_beidou_b1i_subframe,
-        decode_beidou_broadcast_navigation_data, BeidouD1BatchRejectionReason, BeidouD1Subframe,
-        BEIDOU_D1_PREAMBLE, BEIDOU_D1_SUBFRAME_BITS,
+        decode_beidou_broadcast_navigation_data,
+        decode_beidou_broadcast_navigation_data_with_reference_week, BeidouD1BatchRejectionReason,
+        BeidouD1Subframe, BEIDOU_D1_PREAMBLE, BEIDOU_D1_SUBFRAME_BITS,
     };
     use bijux_gnss_core::api::{Constellation, SatId};
 
@@ -657,6 +734,52 @@ mod tests {
         assert_eq!(navigation.ephemeris.toe_s, (((0b10_u32 << 15) | 0x4321_u32) as f64) * 8.0);
         assert_eq!(navigation.clock.aodc, 17);
         assert!(navigation.signal_health.autonomous_satellite_good);
+    }
+
+    #[test]
+    fn broadcast_navigation_assembly_resolves_week_from_reference_week() {
+        let mut clock = decode_beidou_b1i_subframe(&sample_clock_subframe()).expect("clock");
+        if let BeidouD1Subframe::Clock(clock) = &mut clock {
+            clock.bdt.week = 4;
+        }
+        let ephemeris_1 =
+            decode_beidou_b1i_subframe(&sample_ephemeris_1_subframe()).expect("ephemeris 1");
+        let ephemeris_2 =
+            decode_beidou_b1i_subframe(&sample_ephemeris_2_subframe()).expect("ephemeris 2");
+
+        let sat = SatId { constellation: Constellation::Beidou, prn: 11 };
+        let navigation = decode_beidou_broadcast_navigation_data_with_reference_week(
+            sat,
+            &[clock, ephemeris_1, ephemeris_2],
+            8_190,
+        )
+        .expect("navigation assembly")
+        .expect("complete navigation");
+
+        assert_eq!(navigation.bdt.week, 8_196);
+    }
+
+    #[test]
+    fn broadcast_navigation_assembly_refuses_ambiguous_week_reference() {
+        let mut clock = decode_beidou_b1i_subframe(&sample_clock_subframe()).expect("clock");
+        if let BeidouD1Subframe::Clock(clock) = &mut clock {
+            clock.bdt.week = 4_096;
+        }
+        let ephemeris_1 =
+            decode_beidou_b1i_subframe(&sample_ephemeris_1_subframe()).expect("ephemeris 1");
+        let ephemeris_2 =
+            decode_beidou_b1i_subframe(&sample_ephemeris_2_subframe()).expect("ephemeris 2");
+
+        let sat = SatId { constellation: Constellation::Beidou, prn: 11 };
+        let rejection = decode_beidou_broadcast_navigation_data_with_reference_week(
+            sat,
+            &[clock, ephemeris_1, ephemeris_2],
+            8_192,
+        )
+        .expect_err("ambiguous rollover rejection");
+
+        assert_eq!(rejection.reason, BeidouD1BatchRejectionReason::AmbiguousWeekRollover);
+        assert_eq!(rejection.subframe_id, Some(1));
     }
 
     #[test]
