@@ -217,44 +217,51 @@ pub fn rtk_double_difference_residual_metrics_with_antenna_corrections(
     let mut residuals_m = Vec::new();
     let mut predicted_variances_m2 = Vec::new();
     for observation in observations {
+        let (base_receive_time_s, rover_receive_time_s) =
+            aligned_receive_times(observation, receive_time_s);
         let signal_ephemeris =
             ephemerides.iter().find(|candidate| candidate.sat == observation.sig.sat)?;
         let reference_ephemeris =
             ephemerides.iter().find(|candidate| candidate.sat == observation.ref_sig.sat)?;
         let rover_signal_satellite = sat_state_gps_l1ca_from_observation(
             signal_ephemeris,
-            receive_time_s,
+            rover_receive_time_s,
             observation.rover_signal_pseudorange_m,
             observation.rover_signal_timing,
         );
         let base_signal_satellite = sat_state_gps_l1ca_from_observation(
             signal_ephemeris,
-            receive_time_s,
+            base_receive_time_s,
             observation.base_signal_pseudorange_m,
             observation.base_signal_timing,
         );
         let rover_reference_satellite = sat_state_gps_l1ca_from_observation(
             reference_ephemeris,
-            receive_time_s,
+            rover_receive_time_s,
             observation.rover_ref_pseudorange_m,
             observation.rover_ref_signal_timing,
         );
         let base_reference_satellite = sat_state_gps_l1ca_from_observation(
             reference_ephemeris,
-            receive_time_s,
+            base_receive_time_s,
             observation.base_ref_pseudorange_m,
             observation.base_ref_signal_timing,
         );
-        let signal_gps_time = Some(GpsTime { week: signal_ephemeris.week, tow_s: receive_time_s });
-        let reference_gps_time =
-            Some(GpsTime { week: reference_ephemeris.week, tow_s: receive_time_s });
+        let rover_signal_gps_time =
+            Some(GpsTime { week: signal_ephemeris.week, tow_s: rover_receive_time_s });
+        let base_signal_gps_time =
+            Some(GpsTime { week: signal_ephemeris.week, tow_s: base_receive_time_s });
+        let rover_reference_gps_time =
+            Some(GpsTime { week: reference_ephemeris.week, tow_s: rover_receive_time_s });
+        let base_reference_gps_time =
+            Some(GpsTime { week: reference_ephemeris.week, tow_s: base_receive_time_s });
         let modeled_signal_m = modeled_pseudorange_with_antenna_corrections_m(
             rover_ecef_m,
             [rover_signal_satellite.x_m, rover_signal_satellite.y_m, rover_signal_satellite.z_m],
             rover_signal_satellite.clock_correction.bias_s,
             observation.sig.sat,
             observation.sig.band,
-            signal_gps_time,
+            rover_signal_gps_time,
             antenna_corrections.and_then(|config| config.rover_antenna_type.as_deref()),
             antenna_corrections,
         ) - modeled_pseudorange_with_antenna_corrections_m(
@@ -263,7 +270,7 @@ pub fn rtk_double_difference_residual_metrics_with_antenna_corrections(
             base_signal_satellite.clock_correction.bias_s,
             observation.sig.sat,
             observation.sig.band,
-            signal_gps_time,
+            base_signal_gps_time,
             antenna_corrections.and_then(|config| config.base_antenna_type.as_deref()),
             antenna_corrections,
         );
@@ -277,7 +284,7 @@ pub fn rtk_double_difference_residual_metrics_with_antenna_corrections(
             rover_reference_satellite.clock_correction.bias_s,
             observation.ref_sig.sat,
             observation.ref_sig.band,
-            reference_gps_time,
+            rover_reference_gps_time,
             antenna_corrections.and_then(|config| config.rover_antenna_type.as_deref()),
             antenna_corrections,
         ) - modeled_pseudorange_with_antenna_corrections_m(
@@ -290,7 +297,7 @@ pub fn rtk_double_difference_residual_metrics_with_antenna_corrections(
             base_reference_satellite.clock_correction.bias_s,
             observation.ref_sig.sat,
             observation.ref_sig.band,
-            reference_gps_time,
+            base_reference_gps_time,
             antenna_corrections.and_then(|config| config.base_antenna_type.as_deref()),
             antenna_corrections,
         );
@@ -342,6 +349,20 @@ fn epoch_alignment_is_valid(evidence: &RtkEpochAlignmentEvidence) -> bool {
             - (evidence.base_receive_time_s - evidence.rover_receive_time_s).abs())
         .abs()
             <= 1.0e-12
+}
+
+fn aligned_receive_times(
+    observation: &RtkDoubleDifferenceObservation,
+    fallback_receive_time_s: f64,
+) -> (f64, f64) {
+    if epoch_alignment_is_valid(&observation.epoch_alignment) {
+        (
+            observation.epoch_alignment.base_receive_time_s,
+            observation.epoch_alignment.rover_receive_time_s,
+        )
+    } else {
+        (fallback_receive_time_s, fallback_receive_time_s)
+    }
 }
 
 fn enu_to_ecef(base_ecef_m: [f64; 3], enu_m: [f64; 3]) -> [f64; 3] {

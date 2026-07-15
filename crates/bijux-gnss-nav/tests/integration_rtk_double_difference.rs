@@ -388,6 +388,63 @@ fn rtk_double_difference_residuals_match_synthetic_baseline_truth() {
 }
 
 #[test]
+fn rtk_double_difference_residuals_use_aligned_base_and_rover_receive_times() {
+    let base = geodetic_to_ecef(37.0, -122.0, 10.0);
+    let rover = geodetic_to_ecef(37.0001, -121.9999, 12.0);
+    let base_ecef_m = [base.0, base.1, base.2];
+    let (lat_deg, lon_deg, alt_m) = ecef_to_geodetic(base.0, base.1, base.2);
+    let rover_enu_m = {
+        let (east_m, north_m, up_m) =
+            ecef_to_enu(rover.0, rover.1, rover.2, lat_deg, lon_deg, alt_m);
+        [east_m, north_m, up_m]
+    };
+    let base_receive_gps_time = GpsTime { week: 2200, tow_s: 345_600.08 };
+    let rover_receive_gps_time = GpsTime { week: 2200, tow_s: 345_600.0802 };
+    let ephemerides = vec![
+        make_eph(1, 0.0, 0.0, 345_600.0),
+        make_eph(2, 0.8, 0.9, 345_600.0),
+        make_eph(3, 1.6, 1.8, 345_600.0),
+        make_eph(4, 2.4, 2.7, 345_600.0),
+        make_eph(5, 3.2, 3.6, 345_600.0),
+    ];
+
+    let base_epoch =
+        make_obs_epoch(ReceiverRole::Base, base_receive_gps_time, base_ecef_m, &ephemerides);
+    let rover_epoch = make_obs_epoch(
+        ReceiverRole::Rover,
+        rover_receive_gps_time,
+        [rover.0, rover.1, rover.2],
+        &ephemerides,
+    );
+    let single_differences = rtk_single_differences_from_obs_epochs(&base_epoch, &rover_epoch);
+    assert!(!single_differences.is_empty());
+    assert!(single_differences
+        .iter()
+        .all(|observation| observation.epoch_alignment.delta_s > 0.0));
+    let reference =
+        choose_rtk_single_difference_reference_signal(&single_differences).expect("reference");
+    let double_differences =
+        rtk_double_differences_from_single_differences(&single_differences, reference);
+    assert!(!double_differences.is_empty());
+
+    let metrics = rtk_double_difference_residual_metrics(
+        &double_differences,
+        base_ecef_m,
+        rover_enu_m,
+        &ephemerides,
+        base_receive_gps_time.tow_s,
+    )
+    .expect("double-difference residual metrics");
+
+    assert!(
+        metrics.residual_rms_m < 1.0e-3,
+        "double-difference residual RMS {:.6} m should use aligned base/rover times",
+        metrics.residual_rms_m
+    );
+    assert_eq!(metrics.used_observations, double_differences.len());
+}
+
+#[test]
 fn rtk_double_difference_residuals_use_carried_satellite_timing() {
     let base = geodetic_to_ecef(37.0, -122.0, 10.0);
     let rover = geodetic_to_ecef(37.0001, -121.9999, 12.0);
