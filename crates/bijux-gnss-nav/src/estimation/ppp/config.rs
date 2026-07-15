@@ -737,6 +737,12 @@ pub struct PppLifecycleEvent {
     pub reason: String,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PppProductSupport {
+    pub precise_orbit: bool,
+    pub precise_clock: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PppIndices {
     pub pos: [usize; 3],
@@ -780,6 +786,7 @@ pub struct PppFilter {
     pub drift_history: Vec<[f64; 3]>,
     pub wl_state: BTreeMap<SatId, WlAmbiguity>,
     pub phase_windup: BTreeMap<SatId, PhaseWindupState>,
+    pub product_support: BTreeMap<SatId, PppProductSupport>,
     pub ar_stable_epochs: u32,
     pub health: PppHealth,
     pub code_bias: Box<dyn CodeBiasProvider + Send + Sync>,
@@ -806,6 +813,8 @@ pub struct PppCheckpoint {
     pub phase_windup: Vec<(SatId, PhaseWindupState)>,
     #[serde(default)]
     pub wl_state: Vec<(SatId, WlAmbiguity)>,
+    #[serde(default)]
+    pub product_support: Vec<(SatId, PppProductSupport)>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]

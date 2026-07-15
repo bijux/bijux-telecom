@@ -163,6 +163,7 @@ impl PppFilter {
         self.drift_history.clear();
         self.wl_state.clear();
         self.phase_windup.clear();
+        self.product_support.clear();
         self.ar_stable_epochs = 0;
         self.validate_state_layout("reset");
     }
@@ -190,6 +191,7 @@ impl PppFilter {
             last_seen_amb: self.last_seen_amb.iter().map(|(k, v)| (*k, *v)).collect(),
             phase_windup: self.phase_windup.iter().map(|(k, v)| (*k, *v)).collect(),
             wl_state: self.wl_state.iter().map(|(k, v)| (*k, v.clone())).collect(),
+            product_support: self.product_support.iter().map(|(k, v)| (*k, *v)).collect(),
         }
     }
 
@@ -233,6 +235,7 @@ impl PppFilter {
         self.last_seen_amb = ck.last_seen_amb.into_iter().collect();
         self.phase_windup = ck.phase_windup.into_iter().collect();
         self.wl_state = ck.wl_state.into_iter().collect();
+        self.product_support = ck.product_support.into_iter().collect();
     }
 
     pub fn update_wide_lane(&mut self, obs: &ObsEpoch, sats: &[&ObsSatellite]) {
@@ -390,7 +393,7 @@ mod tests {
     use super::*;
     use crate::corrections::phase_windup::PhaseWindupState;
     use crate::estimation::ppp::config::{
-        PppConfig, PppLifecycleEventKind, PppStateIdentity, WlAmbiguity,
+        PppConfig, PppLifecycleEventKind, PppProductSupport, PppStateIdentity, WlAmbiguity,
     };
     use crate::estimation::ppp::filter::{
         base_ppp_state_identities, ppp_indices_from_state_identities, ppp_state_label,
@@ -503,6 +506,9 @@ mod tests {
             sig.sat,
             WlAmbiguity { float_cycles: 7.25, variance: 0.125, fixed: true, last_update_epoch: 44 },
         );
+        filter
+            .product_support
+            .insert(sig.sat, PppProductSupport { precise_orbit: true, precise_clock: false });
 
         let checkpoint = filter.checkpoint();
         let mut restored = PppFilter::new(PppConfig::default());
@@ -515,6 +521,10 @@ mod tests {
         assert_eq!(restored_wide_lane.variance, 0.125);
         assert!(restored_wide_lane.fixed);
         assert_eq!(restored_wide_lane.last_update_epoch, 44);
+        assert_eq!(
+            restored.product_support.get(&sig.sat),
+            Some(&PppProductSupport { precise_orbit: true, precise_clock: false })
+        );
     }
 
     #[test]
