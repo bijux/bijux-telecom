@@ -5,7 +5,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use bijux_gnss_core::api::{Constellation, ObsEpoch, ObsSatellite, SatId, SigId, SignalBand};
 use bijux_gnss_signal::api::signal_wavelength_m;
 
-use super::config::{PppConfig, PppFilter, PppIndices};
+use super::config::{PppConfig, PppFilter, PppIndices, PppStateIdentity};
 use super::measurements::{
     iono_free_from_obs, IonoFreeCodeMeasurementObservation, PppIonoFreeCodeMeasurement,
     PppIonoFreePhaseMeasurement, PppPhaseMeasurement,
@@ -63,7 +63,7 @@ impl PppFilter {
     pub fn new(config: PppConfig) -> Self {
         let x = vec![0.0_f64; 9];
         let p = Matrix::identity(9);
-        let ekf = Ekf::new(
+        let mut ekf = Ekf::new(
             x,
             p,
             EkfConfig {
@@ -77,6 +77,8 @@ impl PppFilter {
                 divergence_max_variance: 1e12,
             },
         );
+        let state_identities = base_ppp_state_identities();
+        ekf.labels = state_identities.iter().map(ppp_state_label).collect();
         Self {
             ekf,
             config,
@@ -90,6 +92,7 @@ impl PppFilter {
                 iono: BTreeMap::new(),
                 ambiguity: BTreeMap::new(),
             },
+            state_identities,
             last_t_rx_s: None,
             last_pos: None,
             epoch0_t_s: None,
@@ -192,6 +195,7 @@ impl PppFilter {
         let mut residuals = Vec::new();
         let mut used = 0;
         let mut slip_count = 0usize;
+        let mut removed_state_identities = BTreeSet::new();
         for sat in &sats {
             if sat.lock_flags.cycle_slip {
                 slip_count += 1;
@@ -404,6 +408,9 @@ impl PppFilter {
                         self.ekf.p[(idx, idx)] = 1e6;
                     }
                     self.indices.ambiguity.remove(&sat.signal_id);
+                    self.last_seen_amb.remove(&sat.signal_id);
+                    removed_state_identities
+                        .insert(PppStateIdentity::CarrierAmbiguity(sat.signal_id));
                 }
             }
             if let Some(idx) = amb_index {
@@ -417,6 +424,7 @@ impl PppFilter {
         if slip_count >= 3 {
             self.reset("mass_slip");
         }
+        self.remove_state_identities(&removed_state_identities);
         if used < 4 {
             return None;
         }
@@ -547,17 +555,23 @@ impl PppFilter {
         }
         for c in new_isb {
             let idx = self.ekf.x.len();
-            self.ekf.add_state(&format!("isb_{c:?}"), 0.0, 1e-6);
+            let identity = PppStateIdentity::InterSystemBias(c);
+            self.ekf.add_state(&ppp_state_label(&identity), 0.0, 1e-6);
+            self.state_identities.push(identity);
             self.indices.isb.insert(c, idx);
         }
         for sat in new_iono {
             let idx = self.ekf.x.len();
-            self.ekf.add_state(&format!("iono_{sat:?}"), 0.0, 10.0);
+            let identity = PppStateIdentity::SlantIonosphere(sat);
+            self.ekf.add_state(&ppp_state_label(&identity), 0.0, 10.0);
+            self.state_identities.push(identity);
             self.indices.iono.insert(sat, idx);
         }
         for sig in new_amb {
             let idx = self.ekf.x.len();
-            self.ekf.add_state(&format!("amb_{:?}_{:?}", sig.sat, sig.band), 0.0, 100.0);
+            let identity = PppStateIdentity::CarrierAmbiguity(sig);
+            self.ekf.add_state(&ppp_state_label(&identity), 0.0, 100.0);
+            self.state_identities.push(identity);
             self.indices.ambiguity.insert(sig, idx);
         }
     }
@@ -603,33 +617,63 @@ impl PppFilter {
     }
 
     fn prune_states(&mut self, epoch_idx: u64) {
-        let mut pruned = 0;
+        let mut removed_state_identities = BTreeSet::new();
         let cutoff = self.config.prune_after_epochs;
         self.last_seen_iono.retain(|sat, last| {
             let keep = epoch_idx.saturating_sub(*last) <= cutoff;
             if !keep {
-                if let Some(idx) = self.indices.iono.remove(sat) {
-                    if idx < self.ekf.p.rows() {
-                        self.ekf.p[(idx, idx)] = 1e6;
-                    }
-                }
-                pruned += 1;
+                self.indices.iono.remove(sat);
+                removed_state_identities.insert(PppStateIdentity::SlantIonosphere(*sat));
             }
             keep
         });
         self.last_seen_amb.retain(|sig, last| {
             let keep = epoch_idx.saturating_sub(*last) <= cutoff;
             if !keep {
-                if let Some(idx) = self.indices.ambiguity.remove(sig) {
-                    if idx < self.ekf.p.rows() {
-                        self.ekf.p[(idx, idx)] = 1e6;
-                    }
-                }
-                pruned += 1;
+                self.indices.ambiguity.remove(sig);
+                removed_state_identities.insert(PppStateIdentity::CarrierAmbiguity(*sig));
             }
             keep
         });
+        let pruned = self.remove_state_identities(&removed_state_identities);
         self.health.pruned_states += pruned;
+    }
+
+    fn remove_state_identities(&mut self, removed: &BTreeSet<PppStateIdentity>) -> usize {
+        if removed.is_empty() {
+            return 0;
+        }
+        let retained_indices: Vec<usize> = self
+            .state_identities
+            .iter()
+            .enumerate()
+            .filter_map(|(index, identity)| (!removed.contains(identity)).then_some(index))
+            .collect();
+        let retained_identities: Vec<PppStateIdentity> = retained_indices
+            .iter()
+            .filter_map(|index| self.state_identities.get(*index).copied())
+            .collect();
+        let removed_count = self.state_identities.len().saturating_sub(retained_identities.len());
+        if removed_count == 0 {
+            return 0;
+        }
+        if !self.ekf.retain_states(&retained_indices) {
+            self.health
+                .warnings
+                .push("PPP state compaction refused invalid retained state layout".to_string());
+            return 0;
+        }
+        if let Some(indices) = ppp_indices_from_state_identities(&retained_identities) {
+            self.indices = indices;
+            self.state_identities = retained_identities;
+            self.ekf.labels = self.state_identities.iter().map(ppp_state_label).collect();
+            removed_count
+        } else {
+            self.health
+                .warnings
+                .push("PPP state compaction produced invalid state identity layout".to_string());
+            0
+        }
     }
 }
 
@@ -671,6 +715,188 @@ fn iono_free_satellite_representatives<'a>(sats: &[&'a ObsSatellite]) -> Vec<&'a
 
 fn product_reference_time_s(obs: &ObsEpoch) -> f64 {
     obs.gps_time().map(|time| time.tow_s).unwrap_or(obs.t_rx_s.0)
+}
+
+pub(crate) fn base_ppp_state_identities() -> Vec<PppStateIdentity> {
+    vec![
+        PppStateIdentity::ReceiverPositionX,
+        PppStateIdentity::ReceiverPositionY,
+        PppStateIdentity::ReceiverPositionZ,
+        PppStateIdentity::ReceiverVelocityX,
+        PppStateIdentity::ReceiverVelocityY,
+        PppStateIdentity::ReceiverVelocityZ,
+        PppStateIdentity::ReceiverClockBias,
+        PppStateIdentity::ReceiverClockDrift,
+        PppStateIdentity::ZenithTroposphereDelay,
+    ]
+}
+
+pub(crate) fn ppp_state_label(identity: &PppStateIdentity) -> String {
+    match identity {
+        PppStateIdentity::ReceiverPositionX => "receiver_position_x_m".to_string(),
+        PppStateIdentity::ReceiverPositionY => "receiver_position_y_m".to_string(),
+        PppStateIdentity::ReceiverPositionZ => "receiver_position_z_m".to_string(),
+        PppStateIdentity::ReceiverVelocityX => "receiver_velocity_x_mps".to_string(),
+        PppStateIdentity::ReceiverVelocityY => "receiver_velocity_y_mps".to_string(),
+        PppStateIdentity::ReceiverVelocityZ => "receiver_velocity_z_mps".to_string(),
+        PppStateIdentity::ReceiverClockBias => "receiver_clock_bias_s".to_string(),
+        PppStateIdentity::ReceiverClockDrift => "receiver_clock_drift_s_per_s".to_string(),
+        PppStateIdentity::ZenithTroposphereDelay => "zenith_troposphere_delay_m".to_string(),
+        PppStateIdentity::InterSystemBias(constellation) => {
+            format!("inter_system_bias_{}_s", constellation_label(*constellation))
+        }
+        PppStateIdentity::SlantIonosphere(sat) => {
+            format!("slant_ionosphere_{}_{:02}_m", constellation_label(sat.constellation), sat.prn)
+        }
+        PppStateIdentity::CarrierAmbiguity(sig) => {
+            format!(
+                "carrier_ambiguity_{}_{:02}_{}_{}_cycles",
+                constellation_label(sig.sat.constellation),
+                sig.sat.prn,
+                signal_band_label(sig.band),
+                signal_code_label(sig.code)
+            )
+        }
+    }
+}
+
+fn constellation_label(constellation: Constellation) -> &'static str {
+    match constellation {
+        Constellation::Gps => "gps",
+        Constellation::Glonass => "glonass",
+        Constellation::Galileo => "galileo",
+        Constellation::Beidou => "beidou",
+        Constellation::Unknown => "unknown",
+    }
+}
+
+fn signal_band_label(band: SignalBand) -> &'static str {
+    match band {
+        SignalBand::L1 => "l1",
+        SignalBand::L2 => "l2",
+        SignalBand::L5 => "l5",
+        SignalBand::E1 => "e1",
+        SignalBand::E5 => "e5",
+        SignalBand::B1 => "b1",
+        SignalBand::B2 => "b2",
+        SignalBand::Unknown => "unknown_band",
+    }
+}
+
+fn signal_code_label(code: bijux_gnss_core::api::SignalCode) -> &'static str {
+    match code {
+        bijux_gnss_core::api::SignalCode::Ca => "ca",
+        bijux_gnss_core::api::SignalCode::L2C => "l2c",
+        bijux_gnss_core::api::SignalCode::L5I => "l5i",
+        bijux_gnss_core::api::SignalCode::L5Q => "l5q",
+        bijux_gnss_core::api::SignalCode::Py => "py",
+        bijux_gnss_core::api::SignalCode::E1B => "e1b",
+        bijux_gnss_core::api::SignalCode::E1C => "e1c",
+        bijux_gnss_core::api::SignalCode::E5a => "e5a",
+        bijux_gnss_core::api::SignalCode::E5b => "e5b",
+        bijux_gnss_core::api::SignalCode::B1I => "b1i",
+        bijux_gnss_core::api::SignalCode::B2I => "b2i",
+        bijux_gnss_core::api::SignalCode::Unknown => "unknown_code",
+    }
+}
+
+pub(crate) fn ppp_indices_from_state_identities(
+    identities: &[PppStateIdentity],
+) -> Option<PppIndices> {
+    let mut indices = PppIndices {
+        pos: [usize::MAX; 3],
+        vel: [usize::MAX; 3],
+        clock_bias: usize::MAX,
+        clock_drift: usize::MAX,
+        ztd: usize::MAX,
+        isb: BTreeMap::new(),
+        iono: BTreeMap::new(),
+        ambiguity: BTreeMap::new(),
+    };
+
+    for (index, identity) in identities.iter().enumerate() {
+        match identity {
+            PppStateIdentity::ReceiverPositionX => indices.pos[0] = index,
+            PppStateIdentity::ReceiverPositionY => indices.pos[1] = index,
+            PppStateIdentity::ReceiverPositionZ => indices.pos[2] = index,
+            PppStateIdentity::ReceiverVelocityX => indices.vel[0] = index,
+            PppStateIdentity::ReceiverVelocityY => indices.vel[1] = index,
+            PppStateIdentity::ReceiverVelocityZ => indices.vel[2] = index,
+            PppStateIdentity::ReceiverClockBias => indices.clock_bias = index,
+            PppStateIdentity::ReceiverClockDrift => indices.clock_drift = index,
+            PppStateIdentity::ZenithTroposphereDelay => indices.ztd = index,
+            PppStateIdentity::InterSystemBias(constellation) => {
+                if indices.isb.insert(*constellation, index).is_some() {
+                    return None;
+                }
+            }
+            PppStateIdentity::SlantIonosphere(sat) => {
+                if indices.iono.insert(*sat, index).is_some() {
+                    return None;
+                }
+            }
+            PppStateIdentity::CarrierAmbiguity(sig) => {
+                if indices.ambiguity.insert(*sig, index).is_some() {
+                    return None;
+                }
+            }
+        }
+    }
+
+    (indices.pos.iter().all(|index| *index != usize::MAX)
+        && indices.vel.iter().all(|index| *index != usize::MAX)
+        && indices.clock_bias != usize::MAX
+        && indices.clock_drift != usize::MAX
+        && indices.ztd != usize::MAX)
+        .then_some(indices)
+}
+
+pub(crate) fn state_identities_from_checkpoint_indices(
+    state_len: usize,
+    indices_isb: Vec<(Constellation, usize)>,
+    indices_iono: Vec<(SatId, usize)>,
+    indices_amb: Vec<(SigId, usize)>,
+) -> Vec<PppStateIdentity> {
+    let mut identities = vec![None; state_len];
+    for (index, identity) in base_ppp_state_identities().into_iter().enumerate().take(state_len) {
+        identities[index] = Some(identity);
+    }
+    for (constellation, index) in indices_isb {
+        if index < state_len {
+            identities[index] = Some(PppStateIdentity::InterSystemBias(constellation));
+        }
+    }
+    for (sat, index) in indices_iono {
+        if index < state_len {
+            identities[index] = Some(PppStateIdentity::SlantIonosphere(sat));
+        }
+    }
+    for (sig, index) in indices_amb {
+        if index < state_len {
+            identities[index] = Some(PppStateIdentity::CarrierAmbiguity(sig));
+        }
+    }
+
+    identities
+        .into_iter()
+        .enumerate()
+        .map(|(index, identity)| {
+            identity.unwrap_or_else(|| {
+                PppStateIdentity::CarrierAmbiguity(checkpoint_signal_identity(index))
+            })
+        })
+        .collect()
+}
+
+fn checkpoint_signal_identity(index: usize) -> SigId {
+    SigId {
+        sat: SatId {
+            constellation: Constellation::Unknown,
+            prn: index.min(u8::MAX as usize) as u8,
+        },
+        band: SignalBand::Unknown,
+        code: bijux_gnss_core::api::SignalCode::Unknown,
+    }
 }
 
 fn phase_windup_cycles_for_satellite(
@@ -876,7 +1102,7 @@ fn validate_broadcast_ephemeris(
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeMap;
+    use std::collections::{BTreeMap, BTreeSet};
 
     use super::{
         iono_free_antenna_range_correction_m, iono_free_satellite_representatives,
@@ -1092,6 +1318,116 @@ mod tests {
             decision_reason: Some("accepted_observables_present".to_string()),
             manifest: None,
         }
+    }
+
+    fn ppp_test_satellite(sat: SatId) -> ObsSatellite {
+        ObsSatellite {
+            signal_id: SigId { sat, band: SignalBand::L1, code: SignalCode::Ca },
+            pseudorange_m: Meters(20_000_000.0),
+            pseudorange_var_m2: 1.0,
+            carrier_phase_cycles: Cycles(100.0),
+            carrier_phase_var_cycles2: 0.01,
+            doppler_hz: Hertz(0.0),
+            doppler_var_hz2: 1.0,
+            cn0_dbhz: 45.0,
+            lock_flags: LockFlags {
+                code_lock: true,
+                carrier_lock: true,
+                bit_lock: false,
+                cycle_slip: false,
+            },
+            multipath_suspect: false,
+            observation_status: ObservationStatus::Accepted,
+            observation_reject_reasons: Vec::new(),
+            elevation_deg: None,
+            azimuth_deg: None,
+            weight: None,
+            timing: None,
+            error_model: None,
+            metadata: ObsMetadata {
+                tracking_mode: "test".to_string(),
+                integration_ms: 1,
+                lock_quality: 45.0,
+                smoothing_window: 0,
+                smoothing_age: 0,
+                smoothing_resets: 0,
+                signal: signal_spec_gps_l1_ca(),
+                ..ObsMetadata::default()
+            },
+        }
+    }
+
+    #[test]
+    fn ppp_filter_aligns_dynamic_state_identities_with_indices() {
+        let gps = ppp_test_satellite(SatId { constellation: Constellation::Gps, prn: 7 });
+        let galileo = ppp_test_satellite(SatId { constellation: Constellation::Galileo, prn: 11 });
+        let mut filter =
+            PppFilter::new(PppConfig { enable_iono_state: true, ..PppConfig::default() });
+
+        filter.ensure_states(&[&gps, &galileo]);
+
+        assert_eq!(filter.ekf.x.len(), filter.state_identities.len());
+        assert_eq!(filter.ekf.labels.len(), filter.state_identities.len());
+        for (constellation, index) in &filter.indices.isb {
+            assert_eq!(
+                filter.state_identities[*index],
+                super::PppStateIdentity::InterSystemBias(*constellation)
+            );
+            assert_eq!(
+                filter.ekf.labels[*index],
+                super::ppp_state_label(&filter.state_identities[*index])
+            );
+        }
+        for (sat, index) in &filter.indices.iono {
+            assert_eq!(
+                filter.state_identities[*index],
+                super::PppStateIdentity::SlantIonosphere(*sat)
+            );
+        }
+        for (sig, index) in &filter.indices.ambiguity {
+            assert_eq!(
+                filter.state_identities[*index],
+                super::PppStateIdentity::CarrierAmbiguity(*sig)
+            );
+        }
+    }
+
+    #[test]
+    fn ppp_filter_compacts_removed_satellite_states_without_covariance_index_corruption() {
+        let stale = ppp_test_satellite(SatId { constellation: Constellation::Gps, prn: 7 });
+        let retained = ppp_test_satellite(SatId { constellation: Constellation::Gps, prn: 11 });
+        let mut filter =
+            PppFilter::new(PppConfig { enable_iono_state: true, ..PppConfig::default() });
+        filter.ensure_states(&[&stale, &retained]);
+        let retained_ambiguity_index = filter.indices.ambiguity[&retained.signal_id];
+        let retained_iono_index = filter.indices.iono[&retained.signal_id.sat];
+        filter.ekf.x[retained_ambiguity_index] = 42.0;
+        filter.ekf.p[(retained_ambiguity_index, retained_ambiguity_index)] = 123.0;
+        filter.ekf.p[(retained_iono_index, retained_ambiguity_index)] = 7.5;
+        filter.ekf.p[(retained_ambiguity_index, retained_iono_index)] = 7.5;
+        let original_state_count = filter.ekf.x.len();
+
+        let mut removed = BTreeSet::new();
+        removed.insert(super::PppStateIdentity::SlantIonosphere(stale.signal_id.sat));
+        removed.insert(super::PppStateIdentity::CarrierAmbiguity(stale.signal_id));
+        let removed_count = filter.remove_state_identities(&removed);
+
+        assert_eq!(removed_count, 2);
+        assert_eq!(filter.ekf.x.len(), original_state_count - 2);
+        assert!(!filter.indices.iono.contains_key(&stale.signal_id.sat));
+        assert!(!filter.indices.ambiguity.contains_key(&stale.signal_id));
+        let compacted_ambiguity_index = filter.indices.ambiguity[&retained.signal_id];
+        let compacted_iono_index = filter.indices.iono[&retained.signal_id.sat];
+        assert_eq!(filter.ekf.x[compacted_ambiguity_index], 42.0);
+        assert_eq!(filter.ekf.p[(compacted_ambiguity_index, compacted_ambiguity_index)], 123.0);
+        assert!(
+            (filter.ekf.p[(compacted_iono_index, compacted_ambiguity_index)] - 7.5).abs() < 1e-9
+        );
+        assert_eq!(
+            filter.state_identities[compacted_ambiguity_index],
+            super::PppStateIdentity::CarrierAmbiguity(retained.signal_id)
+        );
+        assert_eq!(filter.ekf.labels.len(), filter.ekf.x.len());
     }
 
     #[test]

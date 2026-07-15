@@ -138,6 +138,9 @@ impl PppFilter {
         let x = vec![0.0_f64; 9];
         let p = Matrix::identity(9);
         self.ekf = Ekf::new(x, p, self.ekf.config.clone());
+        self.state_identities = super::filter::base_ppp_state_identities();
+        self.ekf.labels =
+            self.state_identities.iter().map(super::filter::ppp_state_label).collect();
         self.indices.isb.clear();
         self.indices.iono.clear();
         self.indices.ambiguity.clear();
@@ -162,6 +165,7 @@ impl PppFilter {
         PppCheckpoint {
             x: self.ekf.x.clone(),
             p,
+            state_identities: self.state_identities.clone(),
             indices_isb: self.indices.isb.iter().map(|(k, v)| (*k, *v)).collect(),
             indices_iono: self.indices.iono.iter().map(|(k, v)| (*k, *v)).collect(),
             indices_amb: self.indices.ambiguity.iter().map(|(k, v)| (*k, *v)).collect(),
@@ -183,9 +187,23 @@ impl PppFilter {
         }
         self.ekf.x = ck.x;
         self.ekf.p = mat;
-        self.indices.isb = ck.indices_isb.into_iter().collect();
-        self.indices.iono = ck.indices_iono.into_iter().collect();
-        self.indices.ambiguity = ck.indices_amb.into_iter().collect();
+        self.state_identities = if ck.state_identities.len() == self.ekf.x.len() {
+            ck.state_identities
+        } else {
+            super::filter::state_identities_from_checkpoint_indices(
+                self.ekf.x.len(),
+                ck.indices_isb,
+                ck.indices_iono,
+                ck.indices_amb,
+            )
+        };
+        if let Some(indices) =
+            super::filter::ppp_indices_from_state_identities(&self.state_identities)
+        {
+            self.indices = indices;
+        }
+        self.ekf.labels =
+            self.state_identities.iter().map(super::filter::ppp_state_label).collect();
         self.last_t_rx_s = ck.last_t_rx_s;
         self.epoch0_t_s = ck.epoch0_t_s;
         self.last_pos = ck.last_pos;

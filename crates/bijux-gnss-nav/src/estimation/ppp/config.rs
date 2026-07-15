@@ -663,10 +663,28 @@ pub struct PppIndices {
     pub ambiguity: BTreeMap<SigId, usize>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PppStateIdentity {
+    ReceiverPositionX,
+    ReceiverPositionY,
+    ReceiverPositionZ,
+    ReceiverVelocityX,
+    ReceiverVelocityY,
+    ReceiverVelocityZ,
+    ReceiverClockBias,
+    ReceiverClockDrift,
+    ZenithTroposphereDelay,
+    InterSystemBias(Constellation),
+    SlantIonosphere(SatId),
+    CarrierAmbiguity(SigId),
+}
+
 pub struct PppFilter {
     pub ekf: Ekf,
     pub config: PppConfig,
     pub indices: PppIndices,
+    pub state_identities: Vec<PppStateIdentity>,
     pub last_t_rx_s: Option<f64>,
     pub last_pos: Option<[f64; 3]>,
     pub epoch0_t_s: Option<f64>,
@@ -687,6 +705,8 @@ pub struct PppFilter {
 pub struct PppCheckpoint {
     pub x: Vec<f64>,
     pub p: Vec<Vec<f64>>,
+    #[serde(default)]
+    pub state_identities: Vec<PppStateIdentity>,
     pub indices_isb: Vec<(Constellation, usize)>,
     pub indices_iono: Vec<(SatId, usize)>,
     pub indices_amb: Vec<(SigId, usize)>,
