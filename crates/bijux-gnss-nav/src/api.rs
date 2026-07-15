@@ -263,8 +263,8 @@ pub use crate::formats::precise_products::{
     BroadcastProductsProvider, ProductDiagnostics, Products, ProductsProvider,
 };
 pub use crate::formats::rinex::{
-    parse_rinex_broadcast_navigation, parse_rinex_nav, parse_rinex_obs_header,
-    write_rinex_broadcast_navigation, write_rinex_nav, write_rinex_obs,
+    parse_rinex_broadcast_navigation, parse_rinex_nav, parse_rinex_navigation_dataset,
+    parse_rinex_obs_header, write_rinex_broadcast_navigation, write_rinex_nav, write_rinex_obs,
     RinexBroadcastNavigationDataset, RinexNavigationTimeSystemCorrection,
 };
 pub use crate::formats::rinex_obs::{

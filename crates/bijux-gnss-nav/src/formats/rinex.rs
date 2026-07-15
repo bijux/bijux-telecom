@@ -510,16 +510,19 @@ pub fn parse_rinex_nav(data: &str) -> Result<Vec<GpsEphemeris>, ParseError> {
     Ok(parse_rinex_broadcast_navigation(data)?.ephemerides)
 }
 
-pub fn parse_rinex_broadcast_navigation(
+pub fn parse_rinex_navigation_dataset(
     data: &str,
-) -> Result<GpsBroadcastNavigationData, ParseError> {
+) -> Result<RinexBroadcastNavigationDataset, ParseError> {
     let (header, header_line_count) = parse_rinex_nav_header(data)?;
     let lines = data
         .lines()
         .skip(header_line_count)
         .filter(|line| !line.trim().is_empty())
         .collect::<Vec<_>>();
-    let mut ephemerides = Vec::new();
+    let mut gps = Vec::new();
+    let galileo = Vec::new();
+    let beidou = Vec::new();
+    let glonass = Vec::new();
     let mut index = 0usize;
 
     while index < lines.len() {
@@ -535,16 +538,29 @@ pub fn parse_rinex_broadcast_navigation(
                 ),
             });
         }
-        if header.version >= 3.0 && !line.starts_with('G') {
-            index += line_count;
-            continue;
-        }
         let record = &lines[index..index + line_count];
-        ephemerides.push(parse_gps_rinex_nav_record(&header, record)?);
+        if header.version < 3.0 || line.starts_with('G') {
+            gps.push(parse_gps_rinex_nav_record(&header, record)?);
+        }
         index += line_count;
     }
 
-    Ok(GpsBroadcastNavigationData { ephemerides, klobuchar: header.klobuchar })
+    Ok(RinexBroadcastNavigationDataset {
+        version: header.version,
+        klobuchar: header.klobuchar,
+        time_system_corrections: header.time_system_corrections,
+        gps,
+        galileo,
+        beidou,
+        glonass,
+    })
+}
+
+pub fn parse_rinex_broadcast_navigation(
+    data: &str,
+) -> Result<GpsBroadcastNavigationData, ParseError> {
+    let dataset = parse_rinex_navigation_dataset(data)?;
+    Ok(GpsBroadcastNavigationData { ephemerides: dataset.gps, klobuchar: dataset.klobuchar })
 }
 
 pub fn write_rinex_obs(path: &Path, epochs: &[ObsEpoch], _strict: bool) -> Result<(), IoError> {
@@ -854,8 +870,8 @@ mod tests {
     use super::{
         format_rinex_nav_float, parse_rinex_broadcast_navigation, parse_rinex_epoch_utc,
         parse_rinex_epoch_utc_civil, parse_rinex_float, parse_rinex_nav, parse_rinex_nav_header,
-        parse_rinex_numeric_fields, write_rinex_broadcast_navigation, write_rinex_nav,
-        write_rinex_obs,
+        parse_rinex_navigation_dataset, parse_rinex_numeric_fields,
+        write_rinex_broadcast_navigation, write_rinex_nav, write_rinex_obs,
     };
     use crate::formats::rinex_obs::{parse_rinex_observation_dataset, RinexObservationRecord};
     use crate::models::atmosphere::KlobucharCoefficients;
@@ -1188,6 +1204,36 @@ G01 2022 05 13 20 00 00-1.234567890123D-04 2.345678901234D-12 0.000000000000D+00
         assert!((eph.e - 1.234_567_890_123e-2).abs() < 1.0e-15);
         assert!((eph.delta_n - 4.5e-9).abs() < 1.0e-18);
         assert!((eph.tgd + 1.9e-8).abs() < 1.0e-18);
+    }
+
+    #[test]
+    fn parse_rinex_navigation_dataset_preserves_gps_and_header_corrections() {
+        let data = "\
+     3.05           NAVIGATION DATA     M (MIXED)           RINEX VERSION / TYPE
+bijux-gnss                              PGM / RUN BY / DATE
+GPGA  1.0000000000D-09 2.000000000D-15 345600 2209 GPS GAL TIME SYSTEM CORR
+                                                            END OF HEADER
+G01 2022 05 13 20 00 00-1.234567890123D-04 2.345678901234D-12 0.000000000000D+00
+    1.100000000000D+01 2.500000000000D+01 4.500000000000D-09 6.000000000000D-01
+    1.200000000000D-06 1.234567890123D-02 2.300000000000D-06 5.153795477500D+03
+    3.456000000000D+05 4.500000000000D-08 1.500000000000D+00 5.600000000000D-08
+    9.400000000000D-01 3.210000000000D+02 2.100000000000D-01-8.900000000000D-09
+    7.800000000000D-10 0.000000000000D+00 2.209000000000D+03 0.000000000000D+00
+    2.400000000000D+00 0.000000000000D+00-1.900000000000D-08 9.700000000000D+01
+    0.000000000000D+00 4.000000000000D+00 0.000000000000D+00 0.000000000000D+00
+";
+
+        let dataset = parse_rinex_navigation_dataset(data).expect("parse mixed navigation dataset");
+
+        assert_eq!(dataset.version, 3.05);
+        assert_eq!(dataset.gps.len(), 1);
+        assert!(dataset.galileo.is_empty());
+        assert!(dataset.beidou.is_empty());
+        assert!(dataset.glonass.is_empty());
+        assert_eq!(dataset.time_system_corrections.len(), 1);
+        assert_eq!(dataset.time_system_corrections[0].code, "GPGA");
+        assert_eq!(dataset.time_system_corrections[0].provider.as_deref(), Some("GPS"));
+        assert_eq!(dataset.time_system_corrections[0].utc_id.as_deref(), Some("GAL"));
     }
 
     #[test]
