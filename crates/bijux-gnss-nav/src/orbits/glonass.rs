@@ -9,7 +9,9 @@ use bijux_gnss_core::api::{
     glonass_slot_sat, GlonassFrequencyChannel, GlonassSlot, ObsSignalTiming, SatId,
 };
 
-use super::glonass_orbit::{propagate_glonass_orbit_fixed_step, GLONASS_EARTH_ROTATION_RATE_RAD_S};
+use super::glonass_orbit::{
+    propagate_glonass_orbit_refined, GlonassPropagationConfig, GLONASS_EARTH_ROTATION_RATE_RAD_S,
+};
 
 const GLONASS_DAY_S: f64 = 86_400.0;
 const GLONASS_DAY_SECONDS: u32 = 86_400;
@@ -459,8 +461,12 @@ pub fn sat_state_glonass_l1(
     signal_travel_time_s: f64,
 ) -> Option<GlonassSatState> {
     let delta_t_s = glonass_broadcast_delta_time_s(navigation, transmit_gps_tow_s)?;
-    let propagated_state =
-        propagate_glonass_orbit_fixed_step(navigation.immediate.state_vector, delta_t_s);
+    let propagated_state = propagate_glonass_orbit_refined(
+        navigation.immediate.state_vector,
+        delta_t_s,
+        GlonassPropagationConfig::default(),
+    )?
+    .state;
     let clock_correction = glonass_satellite_clock_correction(navigation, transmit_gps_tow_s)?;
 
     let mut x_m = propagated_state.position_m[0] + PZ90_02_TO_ITRF2000_X_M;
