@@ -53,6 +53,7 @@ include!("synthetic/pvt_truth.rs");
 include!("synthetic/acquisition_validation_types.rs");
 include!("synthetic/tracking_validation_types.rs");
 include!("synthetic/tracking_noise_characterization.rs");
+include!("synthetic/tracking_numerical_stability.rs");
 include!("synthetic/capture_tracking.rs");
 include!("synthetic/composite_component_recovery.rs");
 include!("synthetic/acquisition_validation.rs");
