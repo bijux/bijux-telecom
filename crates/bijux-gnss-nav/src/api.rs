@@ -187,9 +187,11 @@ pub use crate::formats::beidou_b1i_navigation_decode::{
     BeidouD1SubframeRejectionReason,
 };
 pub use crate::formats::beidou_d2_navigation_decode::{
+    decode_beidou_d2_clock_continuation_page, decode_beidou_d2_clock_correction_page,
     decode_beidou_d2_clock_status_page, decode_beidou_d2_ionospheric_page, decode_beidou_d2_page,
-    BeidouD2ClockStatusPage, BeidouD2IonosphericPage, BeidouD2Page, BeidouD2PageRejection,
-    BeidouD2PageRejectionReason, BeidouD2ParitySummary,
+    BeidouD2ClockContinuationPage, BeidouD2ClockCorrectionPage, BeidouD2ClockStatusPage,
+    BeidouD2IonosphericPage, BeidouD2Page, BeidouD2PageRejection, BeidouD2PageRejectionReason,
+    BeidouD2ParitySummary,
 };
 pub use crate::formats::bias_sinex::{BiasSinexProvider, BiasSinexWindow};
 /// GPS CNAV packet decoding.

@@ -38,6 +38,22 @@ pub struct BeidouD2IonosphericPage {
     pub ionosphere: BeidouIonosphericCorrection,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct BeidouD2ClockCorrectionPage {
+    pub af0: f64,
+    pub af1_msb4: u8,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct BeidouD2ClockContinuationPage {
+    pub af1_middle6: u8,
+    pub af1_lsb12: u16,
+    pub af2: f64,
+    pub aode: u8,
+    pub delta_n: f64,
+    pub cuc_msb14: u16,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum BeidouD2PageRejectionReason {
@@ -121,6 +137,28 @@ pub fn decode_beidou_d2_ionospheric_page(page: &BeidouD2Page) -> Option<BeidouD2
             beta2: page.concat_signed_bits(&[(111, 2), (121, 6)]) as f64 * 2f64.powi(16),
             beta3: page.signed_bits(127, 8) as f64 * 2f64.powi(16),
         },
+    })
+}
+
+pub fn decode_beidou_d2_clock_correction_page(
+    page: &BeidouD2Page,
+) -> Option<BeidouD2ClockCorrectionPage> {
+    (page.page_number == 3).then(|| BeidouD2ClockCorrectionPage {
+        af0: page.concat_signed_bits(&[(91, 12), (121, 12)]) as f64 * 2f64.powi(-33),
+        af1_msb4: page.unsigned_bits(133, 4) as u8,
+    })
+}
+
+pub fn decode_beidou_d2_clock_continuation_page(
+    page: &BeidouD2Page,
+) -> Option<BeidouD2ClockContinuationPage> {
+    (page.page_number == 4).then(|| BeidouD2ClockContinuationPage {
+        af1_middle6: page.unsigned_bits(47, 6) as u8,
+        af1_lsb12: page.unsigned_bits(61, 12) as u16,
+        af2: page.concat_signed_bits(&[(73, 10), (91, 1)]) as f64 * 2f64.powi(-66),
+        aode: page.unsigned_bits(92, 5) as u8,
+        delta_n: page.signed_bits(97, 16) as f64 * 2f64.powi(-43) * std::f64::consts::PI,
+        cuc_msb14: page.unsigned_bits(121, 14) as u16,
     })
 }
 
@@ -469,5 +507,43 @@ mod tests {
         assert_eq!(ionosphere.ionosphere.beta1, 67.0 * 2f64.powi(14));
         assert_eq!(ionosphere.ionosphere.beta2, -78.0 * 2f64.powi(16));
         assert_eq!(ionosphere.ionosphere.beta3, 89.0 * 2f64.powi(16));
+    }
+
+    #[test]
+    fn clock_correction_page_decodes_af0_and_af1_high_bits() {
+        let mut bits = [0_u8; BEIDOU_D2_PAGE_BITS];
+        set_common_header(&mut bits, 3, 345_684);
+        set_split_signed_bits(&mut bits, &[(91, 12), (121, 12)], -0x12_345);
+        set_unsigned_bits(&mut bits, 133, 4, 0b1010);
+        apply_bch_parity(&mut bits);
+        let page = decode_beidou_d2_page(&bits).expect("valid clock correction page");
+
+        let correction = super::decode_beidou_d2_clock_correction_page(&page).expect("page 3");
+
+        assert_eq!(correction.af0, -0x12_345_i64 as f64 * 2f64.powi(-33));
+        assert_eq!(correction.af1_msb4, 0b1010);
+    }
+
+    #[test]
+    fn clock_continuation_page_decodes_drift_and_first_orbit_terms() {
+        let mut bits = [0_u8; BEIDOU_D2_PAGE_BITS];
+        set_common_header(&mut bits, 4, 345_687);
+        set_unsigned_bits(&mut bits, 47, 6, 0b10_1010);
+        set_unsigned_bits(&mut bits, 61, 12, 0x5A5);
+        set_split_signed_bits(&mut bits, &[(73, 10), (91, 1)], -321);
+        set_unsigned_bits(&mut bits, 92, 5, 19);
+        set_signed_bits(&mut bits, 97, 16, -2_345);
+        set_unsigned_bits(&mut bits, 121, 14, 0x1234);
+        apply_bch_parity(&mut bits);
+        let page = decode_beidou_d2_page(&bits).expect("valid continuation page");
+
+        let continuation = super::decode_beidou_d2_clock_continuation_page(&page).expect("page 4");
+
+        assert_eq!(continuation.af1_middle6, 0b10_1010);
+        assert_eq!(continuation.af1_lsb12, 0x5A5);
+        assert_eq!(continuation.af2, -321.0 * 2f64.powi(-66));
+        assert_eq!(continuation.aode, 19);
+        assert_eq!(continuation.delta_n, -2_345.0 * 2f64.powi(-43) * std::f64::consts::PI);
+        assert_eq!(continuation.cuc_msb14, 0x1234);
     }
 }
