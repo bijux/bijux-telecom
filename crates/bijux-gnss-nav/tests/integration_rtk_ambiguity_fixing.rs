@@ -5,11 +5,12 @@ use bijux_gnss_nav::api::{
     rtk_ambiguity_state_from_fixed_solution, rtk_conditioned_baseline_from_fixed_ambiguities,
     rtk_float_ambiguity_state_from_baseline_solution, rtk_float_baseline_from_double_differences,
     rtk_integer_ambiguity_candidates, rtk_lambda_decorrelate,
-    rtk_lambda_integer_ambiguity_candidates, rtk_transform_fixed_ambiguity_reference,
-    rtk_transform_float_ambiguity_reference, rtk_transform_float_baseline_reference,
-    RtkAmbiguityFixPolicy, RtkAmbiguityFixState, RtkAmbiguityFixStatus,
-    RtkDoubleDifferenceAmbiguityId, RtkFloatAmbiguityEstimate, RtkFloatAmbiguityState,
-    RtkFloatBaselineSolution, RtkRatioTestFixer,
+    rtk_lambda_integer_ambiguity_candidates, rtk_select_partial_ambiguity_fix_with_evidence,
+    rtk_transform_fixed_ambiguity_reference, rtk_transform_float_ambiguity_reference,
+    rtk_transform_float_baseline_reference, RtkAmbiguityFixPolicy, RtkAmbiguityFixState,
+    RtkAmbiguityFixStatus, RtkDoubleDifferenceAmbiguityId, RtkFloatAmbiguityEstimate,
+    RtkFloatAmbiguityState, RtkFloatBaselineSolution, RtkPartialAmbiguitySelectionCriterion,
+    RtkRatioTestFixer,
 };
 use bijux_gnss_testkit::rtk_baseline::clean_gps_l1_short_baseline_case;
 
@@ -250,6 +251,32 @@ fn rtk_lambda_integer_candidates_match_three_dimensional_benchmark() {
     assert!(candidates.windows(2).all(|pair| pair[0].cost <= pair[1].cost));
     assert!((candidates[0].cost - 0.179_505_373_640_877_46).abs() < 1.0e-12);
     assert!((candidates[1].cost - 0.253_353_654_704_292_44).abs() < 1.0e-12);
+}
+
+#[test]
+fn rtk_partial_ambiguity_selection_reports_lowest_variance_criterion() {
+    let float_state = RtkFloatAmbiguityState {
+        ids: vec![gps_l1_dd_id(7, 3), gps_l1_dd_id(11, 3), gps_l1_dd_id(14, 3)],
+        float_cycles: vec![5.45, -2.35, 3.62],
+        covariance_cycles2: vec![vec![4.0, 1.2, -0.6], vec![1.2, 2.25, 0.8], vec![-0.6, 0.8, 1.44]],
+    };
+
+    let (partial, selection) =
+        rtk_select_partial_ambiguity_fix_with_evidence(&float_state, 2).expect("partial selection");
+
+    assert_eq!(selection.criterion, RtkPartialAmbiguitySelectionCriterion::LowestVariance);
+    assert_eq!(selection.requested_count, 2);
+    assert_eq!(selection.selected_indices, vec![2, 1]);
+    assert_eq!(selection.excluded_indices, vec![0]);
+    assert_eq!(selection.selected_ids, vec![gps_l1_dd_id(14, 3), gps_l1_dd_id(11, 3)]);
+    assert_eq!(selection.excluded_ids, vec![gps_l1_dd_id(7, 3)]);
+    assert_eq!(selection.selected_variance_cycles2, vec![1.44, 2.25]);
+    assert_eq!(selection.excluded_variance_cycles2, vec![4.0]);
+    assert_eq!(selection.max_selected_variance_cycles2, Some(2.25));
+    assert_eq!(selection.min_excluded_variance_cycles2, Some(4.0));
+    assert_eq!(partial.ids, selection.selected_ids);
+    assert_eq!(partial.float_cycles, vec![3.62, -2.35]);
+    assert_eq!(partial.covariance_cycles2, vec![vec![1.44, 0.8], vec![0.8, 2.25]]);
 }
 
 #[test]

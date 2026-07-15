@@ -77,6 +77,68 @@ pub struct RtkIntegerAmbiguityCandidate {
     pub cost: f64,
 }
 
+/// Criterion used to choose statistically supportable partial ambiguity subsets.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RtkPartialAmbiguitySelectionCriterion {
+    LowestVariance,
+}
+
+/// Evidence describing which ambiguities were included in a partial integer fix.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RtkPartialAmbiguitySelection {
+    pub criterion: RtkPartialAmbiguitySelectionCriterion,
+    pub requested_count: usize,
+    pub selected_count: usize,
+    pub excluded_count: usize,
+    pub selected_indices: Vec<usize>,
+    pub excluded_indices: Vec<usize>,
+    pub selected_ids: Vec<RtkDoubleDifferenceAmbiguityId>,
+    pub excluded_ids: Vec<RtkDoubleDifferenceAmbiguityId>,
+    pub selected_variance_cycles2: Vec<f64>,
+    pub excluded_variance_cycles2: Vec<f64>,
+    pub max_selected_variance_cycles2: Option<f64>,
+    pub min_excluded_variance_cycles2: Option<f64>,
+}
+
+impl ArtifactPayloadValidate for RtkPartialAmbiguitySelection {
+    fn validate_payload(&self) -> Vec<DiagnosticEvent> {
+        let mut events = Vec::new();
+        if self.selected_count != self.selected_ids.len()
+            || self.selected_count != self.selected_indices.len()
+            || self.selected_count != self.selected_variance_cycles2.len()
+            || self.excluded_count != self.excluded_ids.len()
+            || self.excluded_count != self.excluded_indices.len()
+            || self.excluded_count != self.excluded_variance_cycles2.len()
+        {
+            events.push(DiagnosticEvent::new(
+                DiagnosticSeverity::Error,
+                "RTK_PARTIAL_FIX_SELECTION_SHAPE_INVALID",
+                "partial ambiguity selection dimensions do not match",
+            ));
+        }
+        if self.selected_count == 0 {
+            events.push(DiagnosticEvent::new(
+                DiagnosticSeverity::Error,
+                "RTK_PARTIAL_FIX_SELECTION_EMPTY",
+                "partial ambiguity selection must include at least one ambiguity",
+            ));
+        }
+        if !self
+            .selected_variance_cycles2
+            .iter()
+            .chain(self.excluded_variance_cycles2.iter())
+            .all(|value| value.is_finite() && *value >= 0.0)
+        {
+            events.push(DiagnosticEvent::new(
+                DiagnosticSeverity::Error,
+                "RTK_PARTIAL_FIX_SELECTION_VARIANCE_INVALID",
+                "partial ambiguity selection variance contains invalid values",
+            ));
+        }
+        events
+    }
+}
+
 /// Ratio-test policy for RTK ambiguity fixing.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct RtkAmbiguityFixPolicy {
@@ -741,29 +803,67 @@ pub fn rtk_select_partial_ambiguity_fix(
     float: &RtkFloatAmbiguityState,
     max_count: usize,
 ) -> RtkFloatAmbiguityState {
-    if float.float_cycles.is_empty() {
-        return float.clone();
+    rtk_select_partial_ambiguity_fix_with_evidence(float, max_count)
+        .map(|(partial, _selection)| partial)
+        .unwrap_or_else(|| float.clone())
+}
+
+pub fn rtk_select_partial_ambiguity_fix_with_evidence(
+    float: &RtkFloatAmbiguityState,
+    max_count: usize,
+) -> Option<(RtkFloatAmbiguityState, RtkPartialAmbiguitySelection)> {
+    if !float.validate_payload().is_empty() || float.float_cycles.is_empty() {
+        return None;
     }
     let mut indices: Vec<usize> = (0..float.float_cycles.len()).collect();
     indices.sort_by(|left, right| {
-        float.covariance_cycles2[*left][*left].total_cmp(&float.covariance_cycles2[*right][*right])
+        float.covariance_cycles2[*left][*left]
+            .total_cmp(&float.covariance_cycles2[*right][*right])
+            .then_with(|| float.ids[*left].cmp(&float.ids[*right]))
     });
     let keep = max_count.max(1).min(float.float_cycles.len());
+    let selected_indices = indices.iter().take(keep).copied().collect::<Vec<_>>();
+    let excluded_indices = indices.iter().skip(keep).copied().collect::<Vec<_>>();
     let mut ids = Vec::new();
     let mut float_cycles = Vec::new();
     let mut covariance_cycles2 = Vec::new();
-    for &index in indices.iter().take(keep) {
+    for &index in &selected_indices {
         ids.push(float.ids[index]);
         float_cycles.push(float.float_cycles[index]);
     }
-    for &row_index in indices.iter().take(keep) {
+    for &row_index in &selected_indices {
         let mut row = Vec::new();
-        for &col_index in indices.iter().take(keep) {
+        for &col_index in &selected_indices {
             row.push(float.covariance_cycles2[row_index][col_index]);
         }
         covariance_cycles2.push(row);
     }
-    RtkFloatAmbiguityState { ids, float_cycles, covariance_cycles2 }
+    let selected_variance_cycles2 = selected_indices
+        .iter()
+        .map(|index| float.covariance_cycles2[*index][*index])
+        .collect::<Vec<_>>();
+    let excluded_variance_cycles2 = excluded_indices
+        .iter()
+        .map(|index| float.covariance_cycles2[*index][*index])
+        .collect::<Vec<_>>();
+    let selection = RtkPartialAmbiguitySelection {
+        criterion: RtkPartialAmbiguitySelectionCriterion::LowestVariance,
+        requested_count: max_count,
+        selected_count: selected_indices.len(),
+        excluded_count: excluded_indices.len(),
+        selected_indices: selected_indices.clone(),
+        excluded_indices: excluded_indices.clone(),
+        selected_ids: selected_indices.iter().map(|index| float.ids[*index]).collect(),
+        excluded_ids: excluded_indices.iter().map(|index| float.ids[*index]).collect(),
+        max_selected_variance_cycles2: selected_variance_cycles2.iter().copied().reduce(f64::max),
+        min_excluded_variance_cycles2: excluded_variance_cycles2.iter().copied().reduce(f64::min),
+        selected_variance_cycles2,
+        excluded_variance_cycles2,
+    };
+    if !selection.validate_payload().is_empty() {
+        return None;
+    }
+    Some((RtkFloatAmbiguityState { ids, float_cycles, covariance_cycles2 }, selection))
 }
 
 pub fn rtk_ratio_test_acceptance(
