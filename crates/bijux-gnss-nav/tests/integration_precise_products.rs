@@ -120,7 +120,8 @@ AS G01 2020 01 01 00 15 00.000000  2  0.000000003  0.000000020
 
     let state = products.sat_state(eph.sat, 900.0, &mut diag).expect("broadcast orbit state");
 
-    assert_eq!(state.uncertainty.orbit_source, SatelliteOrbitUncertaintySource::Unavailable);
+    assert_eq!(state.uncertainty.orbit_source, SatelliteOrbitUncertaintySource::GpsUra);
+    assert_eq!(state.uncertainty.orbit_sigma_m, Some(4.85));
     assert_eq!(state.uncertainty.clock_sigma_s, Some(20.0e-9));
     assert_eq!(state.uncertainty.clock_source, SatelliteClockUncertaintySource::ClkSigma);
     assert!(diag.fallbacks.iter().any(|fallback| fallback.contains("SP3 missing")));
