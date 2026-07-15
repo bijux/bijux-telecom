@@ -89,7 +89,8 @@ const REACQUISITION_PULL_IN_EPOCH_BUDGET: u8 = 20;
 const REACQUISITION_REFERENCE_CN0_MARGIN_DBHZ: f64 = 12.0;
 const REACQUISITION_STABLE_TRACKING_EPOCHS: u8 = 5;
 const REACQUISITION_AMBIGUITY_CN0_MARGIN_DB: f64 = 1.5;
-const REACQUISITION_AMBIGUITY_PROMPT_POWER_RATIO: f32 = 0.85;
+const REACQUISITION_AMBIGUITY_PROMPT_POWER_RATIO: f32 = 0.97;
+const REACQUISITION_REFERENCE_PROMPT_POWER_RATIO: f32 = 0.25;
 const TRACKING_CN0_WINDOW_EPOCHS: usize = 8;
 const TRACKING_CN0_MIN_WINDOW_EPOCHS: usize = 4;
 const TRACKING_UNCERTAINTY_WINDOW_EPOCHS: usize = 8;
@@ -1785,6 +1786,7 @@ enum ReacquisitionSelection {
 fn select_reacquisition_candidate(
     candidates: &[ReacquisitionCandidate],
     min_cn0_dbhz: f64,
+    min_prompt_power: f32,
 ) -> ReacquisitionSelection {
     let mut eligible = candidates
         .iter()
@@ -1792,7 +1794,8 @@ fn select_reacquisition_candidate(
         .filter(|candidate| {
             candidate.cn0_dbhz.is_finite()
                 && candidate.prompt_power.is_finite()
-                && candidate.cn0_dbhz >= min_cn0_dbhz
+                && (candidate.cn0_dbhz >= min_cn0_dbhz
+                    || candidate.prompt_power >= min_prompt_power)
         })
         .collect::<Vec<_>>();
     eligible.sort_by(|left, right| {
@@ -1819,13 +1822,30 @@ fn select_reacquisition_candidate(
         candidate.cn0_dbhz >= best.cn0_dbhz - REACQUISITION_AMBIGUITY_CN0_MARGIN_DB
             && candidate.prompt_power
                 >= best.prompt_power * REACQUISITION_AMBIGUITY_PROMPT_POWER_RATIO
-            && candidate.hypothesis != best.hypothesis
+            && !same_reacquisition_signal_location(candidate.hypothesis, best.hypothesis)
     });
     if ambiguous_alternate {
         ReacquisitionSelection::Refused
     } else {
-        ReacquisitionSelection::Accepted(best.seed())
+        let selected = eligible
+            .iter()
+            .copied()
+            .find(|candidate| {
+                candidate.hypothesis.carrier_sign == ReacquisitionCarrierSign::Aligned
+                    && same_reacquisition_signal_location(candidate.hypothesis, best.hypothesis)
+            })
+            .unwrap_or(best);
+        ReacquisitionSelection::Accepted(selected.seed())
     }
+}
+
+fn same_reacquisition_signal_location(
+    left: ReacquisitionHypothesis,
+    right: ReacquisitionHypothesis,
+) -> bool {
+    (left.doppler_bin - right.doppler_bin).abs() <= 1
+        && (left.code_bin - right.code_bin).abs() <= 1
+        && left.secondary_code_phase_periods == right.secondary_code_phase_periods
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -4523,6 +4543,7 @@ impl Tracking {
             sustained_loss_seed.carrier_hz,
             reacquisition_code_phase_samples,
             channel.state.lock_reference_cn0_dbhz,
+            channel.state.prompt_power_reference * REACQUISITION_REFERENCE_PROMPT_POWER_RATIO,
             channel.acquisition_uncertainty.as_ref(),
         ) else {
             channel.state.reacquisition_candidate = None;
@@ -4588,6 +4609,7 @@ impl Tracking {
         carrier_hz: f64,
         code_phase_samples: f64,
         lock_reference_cn0_dbhz: f64,
+        min_prompt_power: f32,
         acquisition_uncertainty: Option<&AcqUncertainty>,
     ) -> Option<ReacquisitionSeed> {
         let doppler_step_hz = self.config.acquisition_doppler_step_hz.max(1) as f64;
@@ -4645,7 +4667,7 @@ impl Tracking {
                 }
             }
         }
-        match select_reacquisition_candidate(&candidates, min_cn0_dbhz) {
+        match select_reacquisition_candidate(&candidates, min_cn0_dbhz, min_prompt_power) {
             ReacquisitionSelection::Accepted(seed) => Some(seed),
             ReacquisitionSelection::Refused => None,
         }
@@ -5942,6 +5964,7 @@ mod tests {
                 ),
             ],
             35.0,
+            0.0,
         );
 
         assert_eq!(
@@ -5969,18 +5992,120 @@ mod tests {
                     300.0,
                 ),
                 reacquisition_candidate(
-                    1,
-                    0,
+                    2,
+                    2,
                     super::ReacquisitionCarrierSign::Inverted,
                     None,
                     43.0,
-                    270.0,
+                    292.0,
                 ),
             ],
             35.0,
+            0.0,
         );
 
         assert_eq!(selection, super::ReacquisitionSelection::Refused);
+    }
+
+    #[test]
+    fn reacquisition_selection_treats_carrier_sign_only_tie_as_same_location() {
+        let selection = super::select_reacquisition_candidate(
+            &[
+                reacquisition_candidate(
+                    0,
+                    0,
+                    super::ReacquisitionCarrierSign::Aligned,
+                    None,
+                    44.0,
+                    300.0,
+                ),
+                reacquisition_candidate(
+                    0,
+                    0,
+                    super::ReacquisitionCarrierSign::Inverted,
+                    None,
+                    44.0,
+                    300.0,
+                ),
+            ],
+            35.0,
+            0.0,
+        );
+
+        assert_eq!(
+            selection,
+            super::ReacquisitionSelection::Accepted(super::ReacquisitionSeed {
+                carrier_hz: 1000.0,
+                code_phase_samples: 42.0,
+                cn0_dbhz: 44.0,
+                carrier_sign: super::ReacquisitionCarrierSign::Aligned,
+                secondary_code_phase_periods: None,
+            })
+        );
+    }
+
+    #[test]
+    fn reacquisition_selection_preserves_aligned_sign_for_same_location() {
+        let selection = super::select_reacquisition_candidate(
+            &[
+                reacquisition_candidate(
+                    0,
+                    0,
+                    super::ReacquisitionCarrierSign::Aligned,
+                    None,
+                    44.0,
+                    300.0,
+                ),
+                reacquisition_candidate(
+                    0,
+                    0,
+                    super::ReacquisitionCarrierSign::Inverted,
+                    None,
+                    44.1,
+                    301.0,
+                ),
+            ],
+            35.0,
+            0.0,
+        );
+
+        assert_eq!(
+            selection,
+            super::ReacquisitionSelection::Accepted(super::ReacquisitionSeed {
+                carrier_hz: 1000.0,
+                code_phase_samples: 42.0,
+                cn0_dbhz: 44.0,
+                carrier_sign: super::ReacquisitionCarrierSign::Aligned,
+                secondary_code_phase_periods: None,
+            })
+        );
+    }
+
+    #[test]
+    fn reacquisition_selection_accepts_strong_prompt_when_cn0_is_conservative() {
+        let selection = super::select_reacquisition_candidate(
+            &[reacquisition_candidate(
+                0,
+                0,
+                super::ReacquisitionCarrierSign::Aligned,
+                None,
+                45.0,
+                300_000.0,
+            )],
+            48.0,
+            100_000.0,
+        );
+
+        assert_eq!(
+            selection,
+            super::ReacquisitionSelection::Accepted(super::ReacquisitionSeed {
+                carrier_hz: 1000.0,
+                code_phase_samples: 42.0,
+                cn0_dbhz: 45.0,
+                carrier_sign: super::ReacquisitionCarrierSign::Aligned,
+                secondary_code_phase_periods: None,
+            })
+        );
     }
 
     #[test]
