@@ -11,7 +11,7 @@ use bijux_gnss_core::api::{
 use bijux_gnss_signal::api::{
     signal_spec_beidou_b1i, signal_spec_beidou_b2i, signal_spec_galileo_e1b,
     signal_spec_galileo_e5a, signal_spec_gps_l1_ca, signal_spec_gps_l2_py, signal_spec_gps_l2c,
-    signal_spec_gps_l5,
+    signal_spec_gps_l5_i, signal_spec_gps_l5_q,
 };
 use time::{Date, Month, PrimitiveDateTime, Time};
 
@@ -1375,11 +1375,19 @@ fn resolve_gps_observation_channels(
         ),
         (
             SignalBand::L5,
-            SignalCode::Unknown,
-            signal_spec_gps_l5(),
-            vec!["C5Q".to_string(), "C5X".to_string(), "C5I".to_string(), "C5".to_string()],
-            vec!["L5Q".to_string(), "L5X".to_string(), "L5I".to_string(), "L5".to_string()],
-            vec!["S5Q".to_string(), "S5X".to_string(), "S5I".to_string(), "S5".to_string()],
+            SignalCode::L5Q,
+            signal_spec_gps_l5_q(),
+            vec!["C5Q".to_string(), "C5X".to_string(), "C5".to_string()],
+            vec!["L5Q".to_string(), "L5X".to_string(), "L5".to_string()],
+            vec!["S5Q".to_string(), "S5X".to_string(), "S5".to_string()],
+        ),
+        (
+            SignalBand::L5,
+            SignalCode::L5I,
+            signal_spec_gps_l5_i(),
+            vec!["C5I".to_string()],
+            vec!["L5I".to_string()],
+            vec!["S5I".to_string()],
         ),
     ] {
         let Some(pseudorange_index) =

@@ -152,7 +152,7 @@ fn parse_rinex_3_l5_observation_epoch() {
 
     assert_eq!(dataset.observation_channels.len(), 2);
     assert_eq!(dataset.observation_channels[1].band, SignalBand::L5);
-    assert_eq!(dataset.observation_channels[1].code, SignalCode::Unknown);
+    assert_eq!(dataset.observation_channels[1].code, SignalCode::L5Q);
     assert_eq!(dataset.observation_channels[1].pseudorange_observation_type, "C5Q");
     assert_eq!(
         dataset.observation_channels[1].carrier_phase_observation_type.as_deref(),
@@ -169,8 +169,8 @@ fn parse_rinex_3_l5_observation_epoch() {
         .iter()
         .find(|sat| sat.signal_id.band == SignalBand::L5)
         .expect("L5 observation");
-    assert_eq!(l5.signal_id.code, SignalCode::Unknown);
-    assert_eq!(l5.metadata.signal, signal_spec_gps_l5());
+    assert_eq!(l5.signal_id.code, SignalCode::L5Q);
+    assert_eq!(l5.metadata.signal, signal_spec_gps_l5_q());
     assert_eq!(l5.cn0_dbhz, 49.5);
 }
 

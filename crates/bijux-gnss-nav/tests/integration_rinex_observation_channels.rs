@@ -93,7 +93,7 @@ fn public_rinex_2_import_exposes_valid_l1_l2_l5_observation_channels() {
     );
     assert_eq!(
         dataset.observation_channels.iter().map(|channel| channel.code).collect::<Vec<_>>(),
-        vec![SignalCode::Ca, SignalCode::Py, SignalCode::Unknown]
+        vec![SignalCode::Ca, SignalCode::Py, SignalCode::L5Q]
     );
     validate_obs_epochs(&dataset.epochs).expect("public RINEX 2 L1/L2/L5 epochs must validate");
 
@@ -129,7 +129,7 @@ fn synthetic_rinex_3_import_exposes_l5_observation_channel() {
     );
     assert_eq!(
         dataset.observation_channels.iter().map(|channel| channel.code).collect::<Vec<_>>(),
-        vec![SignalCode::Ca, SignalCode::Unknown]
+        vec![SignalCode::Ca, SignalCode::L5Q]
     );
     validate_obs_epochs(&dataset.epochs).expect("synthetic RINEX 3 L5 epochs must validate");
 
