@@ -4,6 +4,7 @@
 use std::collections::BTreeMap;
 
 use bijux_gnss_core::api::{GpsTime, SigId};
+use serde::{Deserialize, Serialize};
 
 use crate::formats::bias_sinex::BiasSinexProvider;
 
@@ -17,6 +18,18 @@ pub struct CodeBias {
 pub struct PhaseBias {
     pub sig: SigId,
     pub bias_cycles: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PhaseBiasProvenance {
+    ExternalProduct,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct ResolvedPhaseBias {
+    pub bias_cycles: f64,
+    pub provenance: PhaseBiasProvenance,
 }
 
 pub trait CodeBiasProvider {
@@ -73,11 +86,28 @@ pub trait CodeBiasProvider {
 
 pub trait PhaseBiasProvider {
     fn phase_bias_cycles(&self, sig: SigId) -> Option<f64>;
+
+    fn phase_bias_cycles_at(&self, sig: SigId, _time: Option<GpsTime>) -> Option<f64> {
+        self.phase_bias_cycles(sig)
+    }
+
+    fn phase_bias_for_ambiguity_resolution(
+        &self,
+        _sig: SigId,
+        _time: Option<GpsTime>,
+    ) -> Option<ResolvedPhaseBias> {
+        None
+    }
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct SignalCodeBiases {
     biases_m: BTreeMap<SigId, f64>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct SignalPhaseBiases {
+    biases_cycles: BTreeMap<SigId, f64>,
 }
 
 impl SignalCodeBiases {
@@ -101,6 +131,27 @@ impl SignalCodeBiases {
     }
 }
 
+impl SignalPhaseBiases {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn from_biases<I>(biases: I) -> Self
+    where
+        I: IntoIterator<Item = PhaseBias>,
+    {
+        let mut by_signal = BTreeMap::new();
+        for bias in biases {
+            by_signal.insert(bias.sig, bias.bias_cycles);
+        }
+        Self { biases_cycles: by_signal }
+    }
+
+    pub fn insert(&mut self, sig: SigId, bias_cycles: f64) -> Option<f64> {
+        self.biases_cycles.insert(sig, bias_cycles)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ZeroBiases;
 
@@ -119,6 +170,23 @@ impl PhaseBiasProvider for ZeroBiases {
 impl CodeBiasProvider for SignalCodeBiases {
     fn code_bias_m(&self, sig: SigId) -> Option<f64> {
         self.biases_m.get(&sig).copied()
+    }
+}
+
+impl PhaseBiasProvider for SignalPhaseBiases {
+    fn phase_bias_cycles(&self, sig: SigId) -> Option<f64> {
+        self.biases_cycles.get(&sig).copied()
+    }
+
+    fn phase_bias_for_ambiguity_resolution(
+        &self,
+        sig: SigId,
+        _time: Option<GpsTime>,
+    ) -> Option<ResolvedPhaseBias> {
+        Some(ResolvedPhaseBias {
+            bias_cycles: self.biases_cycles.get(&sig).copied()?,
+            provenance: PhaseBiasProvenance::ExternalProduct,
+        })
     }
 }
 
@@ -216,8 +284,8 @@ mod tests {
     };
 
     use super::{
-        iono_free_code_bias_m, iono_free_code_bias_m_at, CodeBias, CodeBiasProvider,
-        SignalCodeBiases,
+        iono_free_code_bias_m, iono_free_code_bias_m_at, CodeBias, CodeBiasProvider, PhaseBias,
+        PhaseBiasProvenance, PhaseBiasProvider, SignalCodeBiases, SignalPhaseBiases, ZeroBiases,
     };
 
     fn gps_signal(band: SignalBand, code: SignalCode) -> SigId {
@@ -283,5 +351,27 @@ mod tests {
             time,
         )
         .is_some());
+    }
+
+    #[test]
+    fn signal_phase_biases_carry_ambiguity_resolution_provenance() {
+        let l1 = gps_signal(SignalBand::L1, SignalCode::Ca);
+        let biases = SignalPhaseBiases::from_biases([PhaseBias { sig: l1, bias_cycles: 0.25 }]);
+
+        let resolved = biases
+            .phase_bias_for_ambiguity_resolution(l1, Some(GpsTime { week: 2_123, tow_s: 10.0 }))
+            .expect("phase bias provenance");
+
+        assert_eq!(resolved.bias_cycles, 0.25);
+        assert_eq!(resolved.provenance, PhaseBiasProvenance::ExternalProduct);
+    }
+
+    #[test]
+    fn zero_phase_biases_do_not_claim_ambiguity_resolution_provenance() {
+        let l1 = gps_signal(SignalBand::L1, SignalCode::Ca);
+        let biases = ZeroBiases;
+
+        assert_eq!(biases.phase_bias_cycles(l1), Some(0.0));
+        assert!(biases.phase_bias_for_ambiguity_resolution(l1, None).is_none());
     }
 }
