@@ -244,7 +244,8 @@ fn glonass_inertial_dynamics(state: [f64; 6], luni_solar_acceleration_mps2: [f64
 mod tests {
     use super::{
         position_difference_m, propagate_glonass_orbit_refined, propagate_glonass_orbit_with_step,
-        GlonassPropagationConfig,
+        GlonassNumericalState, GlonassPropagationConfig, GLONASS_C20, GLONASS_EARTH_RADIUS_M,
+        GLONASS_EARTH_ROTATION_RATE_RAD_S, GLONASS_MU_M3PS2,
     };
     use crate::orbits::glonass::GlonassStateVector;
 
@@ -313,5 +314,124 @@ mod tests {
         );
 
         assert!(propagation.is_none());
+    }
+
+    #[test]
+    fn glonass_refined_propagation_matches_independent_reference_vectors() {
+        let state_vector = sample_state_vector();
+
+        for delta_t_s in [600.0, -420.0] {
+            let propagation = propagate_glonass_orbit_refined(
+                state_vector,
+                delta_t_s,
+                GlonassPropagationConfig::default(),
+            )
+            .expect("refined GLONASS propagation");
+            let reference = independent_reference_propagation(state_vector, delta_t_s);
+
+            assert!(
+                position_difference_m(propagation.state.position_m, reference.position_m) < 0.05
+            );
+            assert!(
+                position_difference_m(propagation.state.velocity_mps, reference.velocity_mps)
+                    < 5.0e-4
+            );
+        }
+    }
+
+    fn independent_reference_propagation(
+        state_vector: GlonassStateVector,
+        delta_t_s: f64,
+    ) -> GlonassNumericalState {
+        let mut position_m = [state_vector.x_m, state_vector.y_m, state_vector.z_m];
+        let mut velocity_mps = [
+            state_vector.vx_mps - GLONASS_EARTH_ROTATION_RATE_RAD_S * state_vector.y_m,
+            state_vector.vy_mps + GLONASS_EARTH_ROTATION_RATE_RAD_S * state_vector.x_m,
+            state_vector.vz_mps,
+        ];
+        let broadcast_acceleration_mps2 =
+            [state_vector.ax_mps2, state_vector.ay_mps2, state_vector.az_mps2];
+        let mut acceleration_mps2 =
+            independent_reference_acceleration(position_m, broadcast_acceleration_mps2);
+        let mut remaining_s = delta_t_s;
+
+        while remaining_s.abs() > f64::EPSILON {
+            let step_s = remaining_s.signum() * remaining_s.abs().min(0.1);
+            let next_position_m = [
+                position_m[0]
+                    + velocity_mps[0] * step_s
+                    + 0.5 * acceleration_mps2[0] * step_s * step_s,
+                position_m[1]
+                    + velocity_mps[1] * step_s
+                    + 0.5 * acceleration_mps2[1] * step_s * step_s,
+                position_m[2]
+                    + velocity_mps[2] * step_s
+                    + 0.5 * acceleration_mps2[2] * step_s * step_s,
+            ];
+            let next_acceleration_mps2 =
+                independent_reference_acceleration(next_position_m, broadcast_acceleration_mps2);
+            velocity_mps = [
+                velocity_mps[0] + 0.5 * (acceleration_mps2[0] + next_acceleration_mps2[0]) * step_s,
+                velocity_mps[1] + 0.5 * (acceleration_mps2[1] + next_acceleration_mps2[1]) * step_s,
+                velocity_mps[2] + 0.5 * (acceleration_mps2[2] + next_acceleration_mps2[2]) * step_s,
+            ];
+            position_m = next_position_m;
+            acceleration_mps2 = next_acceleration_mps2;
+            remaining_s -= step_s;
+        }
+
+        independent_reference_ecef_state(position_m, velocity_mps, delta_t_s)
+    }
+
+    fn independent_reference_acceleration(
+        position_m: [f64; 3],
+        broadcast_acceleration_mps2: [f64; 3],
+    ) -> [f64; 3] {
+        let radius_squared_m2 = position_m[0] * position_m[0]
+            + position_m[1] * position_m[1]
+            + position_m[2] * position_m[2];
+        let radius_m = radius_squared_m2.sqrt();
+        let radius_cubed_m3 = radius_squared_m2 * radius_m;
+        let radius_fifth_m5 = radius_cubed_m3 * radius_squared_m2;
+        let z_ratio_squared = position_m[2] * position_m[2] / radius_squared_m2;
+        let central_acceleration = -GLONASS_MU_M3PS2 / radius_cubed_m3;
+        let j2_acceleration =
+            1.5 * GLONASS_C20 * GLONASS_MU_M3PS2 * GLONASS_EARTH_RADIUS_M.powi(2) / radius_fifth_m5;
+
+        [
+            central_acceleration * position_m[0]
+                + j2_acceleration * position_m[0] * (1.0 - 5.0 * z_ratio_squared)
+                + broadcast_acceleration_mps2[0],
+            central_acceleration * position_m[1]
+                + j2_acceleration * position_m[1] * (1.0 - 5.0 * z_ratio_squared)
+                + broadcast_acceleration_mps2[1],
+            central_acceleration * position_m[2]
+                + j2_acceleration * position_m[2] * (3.0 - 5.0 * z_ratio_squared)
+                + broadcast_acceleration_mps2[2],
+        ]
+    }
+
+    fn independent_reference_ecef_state(
+        position_m: [f64; 3],
+        velocity_mps: [f64; 3],
+        delta_t_s: f64,
+    ) -> GlonassNumericalState {
+        let rotation_rad = GLONASS_EARTH_ROTATION_RATE_RAD_S * delta_t_s;
+        let cos_rotation = rotation_rad.cos();
+        let sin_rotation = rotation_rad.sin();
+        let x_m = position_m[0] * cos_rotation + position_m[1] * sin_rotation;
+        let y_m = -position_m[0] * sin_rotation + position_m[1] * cos_rotation;
+        let z_m = position_m[2];
+        let rotated_vx_mps = velocity_mps[0] * cos_rotation + velocity_mps[1] * sin_rotation;
+        let rotated_vy_mps = -velocity_mps[0] * sin_rotation + velocity_mps[1] * cos_rotation;
+
+        GlonassNumericalState {
+            position_m: [x_m, y_m, z_m],
+            velocity_mps: [
+                rotated_vx_mps + GLONASS_EARTH_ROTATION_RATE_RAD_S * y_m,
+                rotated_vy_mps - GLONASS_EARTH_ROTATION_RATE_RAD_S * x_m,
+                velocity_mps[2],
+            ],
+        }
     }
 }
