@@ -186,8 +186,20 @@ pub struct SyntheticTrackingNoiseReport {
     pub scenario_ids: Vec<String>,
     /// Minimum stable samples required for each supported signal profile.
     pub required_stable_epoch_count: usize,
-    /// Number of tracking-supported signal identities expected by the receiver.
+    /// Number of signal identities included in the empirical noise matrix.
     pub supported_signal_count: usize,
+    /// Tracking-supported signals that lack executable synthetic acquisition support.
+    #[serde(default)]
+    pub tracking_only_signal_count: usize,
+    /// Tracking-supported signals excluded because acquisition is not executable.
+    #[serde(default)]
+    pub tracking_only_signals: Vec<SyntheticTrackingSignalIdentity>,
+    /// Tracking-supported capture signals that do not produce stable truth rows for noise profiles.
+    #[serde(default)]
+    pub unstable_tracking_truth_signal_count: usize,
+    /// Capture-supported signals excluded because stable tracking truth is unavailable.
+    #[serde(default)]
+    pub unstable_tracking_truth_signals: Vec<SyntheticTrackingSignalIdentity>,
     /// Number of supported signal identities with empirical profiles.
     pub characterized_signal_count: usize,
     /// Tracking-supported signal identities not covered by the input reports.

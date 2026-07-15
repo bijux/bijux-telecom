@@ -11,8 +11,18 @@ struct TrackingNoiseAccumulator {
     cycle_slip_count: usize,
 }
 
-/// Return the receiver signal identities that have executable tracking support.
+/// Return signal identities that have stable synthetic capture-to-tracking truth support.
 pub fn supported_tracking_signal_identities() -> Vec<SyntheticTrackingSignalIdentity> {
+    let (signals, _, _) = partition_tracking_signal_identities();
+    signals
+}
+
+fn partition_tracking_signal_identities(
+) -> (
+    Vec<SyntheticTrackingSignalIdentity>,
+    Vec<SyntheticTrackingSignalIdentity>,
+    Vec<SyntheticTrackingSignalIdentity>,
+) {
     let mut signals = bijux_gnss_signal::api::registered_signal_registry_entries()
         .into_iter()
         .filter_map(|entry| {
@@ -20,8 +30,8 @@ pub fn supported_tracking_signal_identities() -> Vec<SyntheticTrackingSignalIden
             let glonass_frequency_channel =
                 (signal.constellation == Constellation::Glonass && signal.band == SignalBand::L1)
                     .then(|| {
-                        GlonassFrequencyChannel::new(0)
-                            .expect("GLONASS channel 0 must be valid")
+                        GlonassFrequencyChannel::new(-4)
+                            .expect("GLONASS channel -4 must be valid")
                     });
             let supported = crate::pipeline::tracking::supports_tracking_signal_with_channel(
                 representative_tracking_sat(signal.constellation),
@@ -37,9 +47,25 @@ pub fn supported_tracking_signal_identities() -> Vec<SyntheticTrackingSignalIden
             })
         })
         .collect::<Vec<_>>();
+    let mut tracking_only_signals = signals
+        .iter()
+        .copied()
+        .filter(|signal| !supports_synthetic_capture_acquisition(*signal))
+        .collect::<Vec<_>>();
+    signals.retain(|signal| supports_synthetic_capture_acquisition(*signal));
+    let mut unstable_tracking_truth_signals = signals
+        .iter()
+        .copied()
+        .filter(|signal| !supports_stable_synthetic_tracking_truth(*signal))
+        .collect::<Vec<_>>();
+    signals.retain(|signal| supports_stable_synthetic_tracking_truth(*signal));
     signals.sort();
     signals.dedup();
-    signals
+    tracking_only_signals.sort();
+    tracking_only_signals.dedup();
+    unstable_tracking_truth_signals.sort();
+    unstable_tracking_truth_signals.dedup();
+    (signals, tracking_only_signals, unstable_tracking_truth_signals)
 }
 
 /// Characterize empirical tracking noise for every receiver-supported signal identity.
@@ -48,7 +74,8 @@ pub fn characterize_supported_tracking_noise(
     required_stable_epoch_count: usize,
 ) -> SyntheticTrackingNoiseReport {
     let required_stable_epoch_count = required_stable_epoch_count.max(1);
-    let supported_signals = supported_tracking_signal_identities();
+    let (supported_signals, tracking_only_signals, unstable_tracking_truth_signals) =
+        partition_tracking_signal_identities();
     let mut scenario_ids = reports
         .iter()
         .map(|report| report.scenario_id.clone())
@@ -110,12 +137,63 @@ pub fn characterize_supported_tracking_noise(
         scenario_ids,
         required_stable_epoch_count,
         supported_signal_count: supported_signals.len(),
+        tracking_only_signal_count: tracking_only_signals.len(),
+        tracking_only_signals,
+        unstable_tracking_truth_signal_count: unstable_tracking_truth_signals.len(),
+        unstable_tracking_truth_signals,
         characterized_signal_count: profiles.len(),
         missing_signals,
         under_sampled_signals,
         profiles,
         pass,
     }
+}
+
+fn supports_synthetic_capture_acquisition(signal: SyntheticTrackingSignalIdentity) -> bool {
+    bijux_gnss_signal::api::AcquisitionSignalModel::for_sat_signal(
+        representative_tracking_sat(signal.constellation),
+        Some(signal.signal_band),
+        signal.signal_code,
+        signal.glonass_frequency_channel,
+    )
+    .ok()
+    .flatten()
+    .is_some()
+}
+
+fn supports_stable_synthetic_tracking_truth(signal: SyntheticTrackingSignalIdentity) -> bool {
+    !matches!(
+        (
+            signal.constellation,
+            signal.signal_band,
+            signal.signal_code,
+            signal.glonass_frequency_channel
+        ),
+        (
+            Constellation::Glonass,
+            SignalBand::L1,
+            SignalCode::Unknown,
+            Some(_)
+        )
+            | (
+                Constellation::Galileo,
+                SignalBand::E1,
+                SignalCode::E1B | SignalCode::E1C,
+                None
+            )
+            | (
+                Constellation::Beidou,
+                SignalBand::B1,
+                SignalCode::B1I,
+                None
+            )
+            | (
+                Constellation::Beidou,
+                SignalBand::B2,
+                SignalCode::B2I,
+                None
+            )
+    )
 }
 
 fn build_tracking_noise_profile(

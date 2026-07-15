@@ -627,26 +627,51 @@ fn tracking_accuracy_budget_requires_stable_truth_epochs() {
 fn supported_tracking_signal_identities_match_receiver_execution_surface() {
     let signals = super::supported_tracking_signal_identities();
 
-    assert!(signals.contains(&SyntheticTrackingSignalIdentity {
+    let l2c = SyntheticTrackingSignalIdentity {
         constellation: Constellation::Gps,
         signal_band: SignalBand::L2,
         signal_code: SignalCode::L2C,
         glonass_frequency_channel: None,
-    }));
+    };
+
+    assert!(!signals.contains(&l2c));
     assert!(signals.contains(&SyntheticTrackingSignalIdentity {
         constellation: Constellation::Gps,
         signal_band: SignalBand::L5,
         signal_code: SignalCode::L5Q,
         glonass_frequency_channel: None,
     }));
-    assert!(signals.contains(&SyntheticTrackingSignalIdentity {
+    let glonass = SyntheticTrackingSignalIdentity {
         constellation: Constellation::Glonass,
         signal_band: SignalBand::L1,
         signal_code: SignalCode::Unknown,
         glonass_frequency_channel: Some(
-            GlonassFrequencyChannel::new(0).expect("valid GLONASS channel"),
+            GlonassFrequencyChannel::new(-4).expect("valid GLONASS channel"),
         ),
-    }));
+    };
+    let galileo_e1b = SyntheticTrackingSignalIdentity {
+        constellation: Constellation::Galileo,
+        signal_band: SignalBand::E1,
+        signal_code: SignalCode::E1B,
+        glonass_frequency_channel: None,
+    };
+    let beidou_b1i = SyntheticTrackingSignalIdentity {
+        constellation: Constellation::Beidou,
+        signal_band: SignalBand::B1,
+        signal_code: SignalCode::B1I,
+        glonass_frequency_channel: None,
+    };
+    let beidou_b2i = SyntheticTrackingSignalIdentity {
+        constellation: Constellation::Beidou,
+        signal_band: SignalBand::B2,
+        signal_code: SignalCode::B2I,
+        glonass_frequency_channel: None,
+    };
+
+    assert!(!signals.contains(&glonass));
+    assert!(!signals.contains(&galileo_e1b));
+    assert!(!signals.contains(&beidou_b1i));
+    assert!(!signals.contains(&beidou_b2i));
     assert!(!signals.contains(&SyntheticTrackingSignalIdentity {
         constellation: Constellation::Gps,
         signal_band: SignalBand::L2,
@@ -659,6 +684,33 @@ fn supported_tracking_signal_identities_match_receiver_execution_surface() {
         signal_code: SignalCode::E1C,
         glonass_frequency_channel: None,
     }));
+
+    let empty_noise = super::characterize_supported_tracking_noise(&[], 1);
+    assert!(empty_noise.tracking_only_signals.contains(&l2c), "{empty_noise:?}");
+    assert!(
+        empty_noise.unstable_tracking_truth_signals.contains(&glonass),
+        "{empty_noise:?}"
+    );
+    assert!(
+        empty_noise.unstable_tracking_truth_signals.contains(&galileo_e1b),
+        "{empty_noise:?}"
+    );
+    assert!(
+        empty_noise.unstable_tracking_truth_signals.contains(&beidou_b1i),
+        "{empty_noise:?}"
+    );
+    assert!(
+        empty_noise.unstable_tracking_truth_signals.contains(&beidou_b2i),
+        "{empty_noise:?}"
+    );
+    assert_eq!(
+        empty_noise.tracking_only_signal_count,
+        empty_noise.tracking_only_signals.len()
+    );
+    assert_eq!(
+        empty_noise.unstable_tracking_truth_signal_count,
+        empty_noise.unstable_tracking_truth_signals.len()
+    );
 }
 
 #[test]
@@ -671,6 +723,8 @@ fn tracking_noise_report_requires_supported_signal_coverage() {
     assert!(!noise.pass);
     assert_eq!(noise.characterized_signal_count, 1);
     assert_eq!(noise.supported_signal_count, signals.len());
+    assert!(noise.tracking_only_signal_count > 0, "{noise:?}");
+    assert!(noise.unstable_tracking_truth_signal_count > 0, "{noise:?}");
     assert_eq!(noise.missing_signals.len(), signals.len() - 1);
     assert!(noise.under_sampled_signals.is_empty(), "{noise:?}");
 }
