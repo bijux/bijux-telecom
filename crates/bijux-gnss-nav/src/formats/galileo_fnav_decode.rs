@@ -2,9 +2,13 @@
 
 use serde::{Deserialize, Serialize};
 
+use bijux_gnss_core::api::{Constellation, SatId};
+
 use crate::orbits::galileo::{
-    GalileoIonosphericCorrection, GalileoIonosphericDisturbanceFlags, GalileoSystemTime,
+    GalileoEphemeris, GalileoIonosphericCorrection, GalileoIonosphericDisturbanceFlags,
+    GalileoSystemTime,
 };
+use crate::time::{resolve_galileo_week_rollover, RolloverResolutionError};
 
 const GALILEO_FNAV_PAGE_BITS: usize = 244;
 const GALILEO_FNAV_PAYLOAD_BITS: usize = 214;
@@ -81,6 +85,18 @@ pub struct GalileoFnavSupplementaryEphemerisPage {
     pub tow_s: u32,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GalileoFnavBroadcastNavigationData {
+    pub sat: SatId,
+    pub iodnav: u16,
+    pub gst: GalileoSystemTime,
+    pub sisa_e1_e5a: u8,
+    pub signal_status: GalileoFnavSignalStatus,
+    pub clock: GalileoFnavClockCorrection,
+    pub ephemeris: GalileoEphemeris,
+    pub ionosphere: GalileoIonosphericCorrection,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum GalileoFnavPageRejectionReason {
@@ -97,6 +113,25 @@ pub struct GalileoFnavPageRejection {
     pub page_type: Option<u8>,
     pub transmitted_crc: Option<u32>,
     pub computed_crc: Option<u32>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GalileoFnavNavigationRejectionReason {
+    IodnavMismatch,
+    SatelliteIdMismatch,
+    AmbiguousWeekRollover,
+    InvalidWeekRollover,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GalileoFnavNavigationRejection {
+    pub page_type: u8,
+    pub reason: GalileoFnavNavigationRejectionReason,
+    pub existing_iodnav: Option<u16>,
+    pub incoming_iodnav: Option<u16>,
+    pub existing_svid: Option<u8>,
+    pub incoming_svid: Option<u8>,
 }
 
 impl GalileoFnavPage {
@@ -228,6 +263,27 @@ pub fn decode_galileo_fnav_supplementary_ephemeris_page(
     })
 }
 
+pub fn decode_galileo_fnav_broadcast_navigation(
+    pages: &[GalileoFnavPage],
+) -> Result<Option<GalileoFnavBroadcastNavigationData>, GalileoFnavNavigationRejection> {
+    let mut builder = GalileoFnavNavigationBuilder::default();
+    for page in pages {
+        builder.merge(page)?;
+    }
+    builder.try_build_checked()
+}
+
+pub fn decode_galileo_fnav_broadcast_navigation_with_reference_week(
+    pages: &[GalileoFnavPage],
+    reference_week: u32,
+) -> Result<Option<GalileoFnavBroadcastNavigationData>, GalileoFnavNavigationRejection> {
+    let mut builder = GalileoFnavNavigationBuilder::with_reference_week(reference_week);
+    for page in pages {
+        builder.merge(page)?;
+    }
+    builder.try_build_checked()
+}
+
 fn normalize_fnav_bits(bits: &[u8]) -> Result<Vec<u8>, GalileoFnavPageRejection> {
     if bits.len() != GALILEO_FNAV_PAGE_BITS {
         return Err(GalileoFnavPageRejection {
@@ -280,6 +336,171 @@ fn signed_from_unsigned(value: u64, bits: usize) -> i64 {
     ((value << shift) as i64) >> shift
 }
 
+#[derive(Debug, Default, Clone)]
+struct GalileoFnavNavigationBuilder {
+    reference_week: Option<u32>,
+    svid: Option<u8>,
+    iodnav: Option<u16>,
+    clock_status: Option<GalileoFnavClockStatusPage>,
+    keplerian: Option<GalileoFnavKeplerianPage>,
+    harmonic: Option<GalileoFnavHarmonicPage>,
+    supplementary: Option<GalileoFnavSupplementaryEphemerisPage>,
+}
+
+impl GalileoFnavNavigationBuilder {
+    fn with_reference_week(reference_week: u32) -> Self {
+        Self { reference_week: Some(reference_week), ..Self::default() }
+    }
+
+    fn merge(&mut self, page: &GalileoFnavPage) -> Result<(), GalileoFnavNavigationRejection> {
+        match page.page_type {
+            1 => {
+                if let Some(clock_status) = decode_galileo_fnav_clock_status_page(page) {
+                    self.check_iodnav(page.page_type, clock_status.iodnav)?;
+                    self.check_svid(page.page_type, clock_status.svid)?;
+                    self.iodnav = Some(clock_status.iodnav);
+                    self.svid = Some(clock_status.svid);
+                    self.clock_status = Some(clock_status);
+                }
+            }
+            2 => {
+                if let Some(keplerian) = decode_galileo_fnav_keplerian_page(page) {
+                    self.check_iodnav(page.page_type, keplerian.iodnav)?;
+                    self.iodnav = Some(keplerian.iodnav);
+                    self.keplerian = Some(keplerian);
+                }
+            }
+            3 => {
+                if let Some(harmonic) = decode_galileo_fnav_harmonic_page(page) {
+                    self.check_iodnav(page.page_type, harmonic.iodnav)?;
+                    self.iodnav = Some(harmonic.iodnav);
+                    self.harmonic = Some(harmonic);
+                }
+            }
+            4 => {
+                if let Some(supplementary) = decode_galileo_fnav_supplementary_ephemeris_page(page)
+                {
+                    self.check_iodnav(page.page_type, supplementary.iodnav)?;
+                    self.iodnav = Some(supplementary.iodnav);
+                    self.supplementary = Some(supplementary);
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    fn try_build_checked(
+        &self,
+    ) -> Result<Option<GalileoFnavBroadcastNavigationData>, GalileoFnavNavigationRejection> {
+        let (Some(clock_status), Some(keplerian), Some(harmonic), Some(supplementary)) =
+            (&self.clock_status, &self.keplerian, &self.harmonic, &self.supplementary)
+        else {
+            return Ok(None);
+        };
+
+        let sat = SatId { constellation: Constellation::Galileo, prn: clock_status.svid };
+        let mut gst = clock_status.gst;
+        if let Some(reference_week) = self.reference_week {
+            gst.week = resolve_galileo_week_rollover(gst.week, reference_week)
+                .map_err(|error| galileo_fnav_week_rollover_rejection(error, clock_status.iodnav))?
+                .week as u16;
+        }
+
+        Ok(Some(GalileoFnavBroadcastNavigationData {
+            sat,
+            iodnav: clock_status.iodnav,
+            gst,
+            sisa_e1_e5a: clock_status.sisa_e1_e5a,
+            signal_status: clock_status.signal_status,
+            clock: clock_status.clock,
+            ephemeris: GalileoEphemeris {
+                sat,
+                iodnav: clock_status.iodnav,
+                toe_s: harmonic.toe_s,
+                sqrt_a: keplerian.sqrt_a,
+                e: keplerian.e,
+                i0: harmonic.i0,
+                idot: keplerian.idot,
+                omega0: keplerian.omega0,
+                omegadot: keplerian.omegadot,
+                w: harmonic.w,
+                m0: keplerian.m0,
+                delta_n: harmonic.delta_n,
+                cuc: harmonic.cuc,
+                cus: harmonic.cus,
+                crc: harmonic.crc,
+                crs: harmonic.crs,
+                cic: supplementary.cic,
+                cis: supplementary.cis,
+            },
+            ionosphere: clock_status.ionosphere.clone(),
+        }))
+    }
+
+    fn check_iodnav(
+        &self,
+        page_type: u8,
+        incoming_iodnav: u16,
+    ) -> Result<(), GalileoFnavNavigationRejection> {
+        if let Some(existing_iodnav) = self.iodnav {
+            if existing_iodnav != incoming_iodnav {
+                return Err(GalileoFnavNavigationRejection {
+                    page_type,
+                    reason: GalileoFnavNavigationRejectionReason::IodnavMismatch,
+                    existing_iodnav: Some(existing_iodnav),
+                    incoming_iodnav: Some(incoming_iodnav),
+                    existing_svid: self.svid,
+                    incoming_svid: None,
+                });
+            }
+        }
+        Ok(())
+    }
+
+    fn check_svid(
+        &self,
+        page_type: u8,
+        incoming_svid: u8,
+    ) -> Result<(), GalileoFnavNavigationRejection> {
+        if let Some(existing_svid) = self.svid {
+            if existing_svid != incoming_svid {
+                return Err(GalileoFnavNavigationRejection {
+                    page_type,
+                    reason: GalileoFnavNavigationRejectionReason::SatelliteIdMismatch,
+                    existing_iodnav: self.iodnav,
+                    incoming_iodnav: self.iodnav,
+                    existing_svid: Some(existing_svid),
+                    incoming_svid: Some(incoming_svid),
+                });
+            }
+        }
+        Ok(())
+    }
+}
+
+fn galileo_fnav_week_rollover_rejection(
+    error: RolloverResolutionError,
+    iodnav: u16,
+) -> GalileoFnavNavigationRejection {
+    GalileoFnavNavigationRejection {
+        page_type: 1,
+        reason: match error {
+            RolloverResolutionError::AmbiguousReference => {
+                GalileoFnavNavigationRejectionReason::AmbiguousWeekRollover
+            }
+            RolloverResolutionError::InvalidCycle
+            | RolloverResolutionError::TruncatedValueOutOfRange => {
+                GalileoFnavNavigationRejectionReason::InvalidWeekRollover
+            }
+        },
+        existing_iodnav: Some(iodnav),
+        incoming_iodnav: Some(iodnav),
+        existing_svid: None,
+        incoming_svid: None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -287,6 +508,7 @@ mod tests {
         GALILEO_FNAV_CRC_BITS, GALILEO_FNAV_PAGE_BITS, GALILEO_FNAV_PAYLOAD_BITS,
         GALILEO_FNAV_TAIL_BITS,
     };
+    use bijux_gnss_core::api::Constellation;
 
     fn set_bits(bits: &mut [u8], start: usize, len: usize, value: u64) {
         for offset in 0..len {
@@ -312,6 +534,88 @@ mod tests {
         set_bits(&mut bits, 17, 14, 2_345);
         apply_crc(&mut bits);
         bits
+    }
+
+    fn clock_status_page_bits(iodnav: u16, svid: u8) -> Vec<u8> {
+        let mut bits = vec![0_u8; GALILEO_FNAV_PAGE_BITS];
+        set_bits(&mut bits, 1, 6, 1);
+        set_bits(&mut bits, 7, 6, u64::from(svid));
+        set_bits(&mut bits, 13, 10, u64::from(iodnav));
+        set_bits(&mut bits, 23, 14, 1_111);
+        set_bits(&mut bits, 37, 31, encode_signed(-0x1ABCD_i64, 31));
+        set_bits(&mut bits, 68, 21, encode_signed(0x01234_i64, 21));
+        set_bits(&mut bits, 89, 6, encode_signed(-0x09_i64, 6));
+        set_bits(&mut bits, 95, 8, 77);
+        set_bits(&mut bits, 103, 11, 211);
+        set_bits(&mut bits, 114, 11, encode_signed(-87_i64, 11));
+        set_bits(&mut bits, 125, 14, encode_signed(0x00A5_i64, 14));
+        set_bits(&mut bits, 139, 1, 1);
+        set_bits(&mut bits, 140, 1, 1);
+        set_bits(&mut bits, 142, 1, 1);
+        set_bits(&mut bits, 144, 10, encode_signed(-12_i64, 10));
+        set_bits(&mut bits, 154, 2, 2);
+        set_bits(&mut bits, 156, 12, 2_222);
+        set_bits(&mut bits, 168, 20, 456_789);
+        set_bits(&mut bits, 188, 1, 0);
+        apply_crc(&mut bits);
+        bits
+    }
+
+    fn keplerian_page_bits(iodnav: u16) -> Vec<u8> {
+        let mut bits = vec![0_u8; GALILEO_FNAV_PAGE_BITS];
+        set_bits(&mut bits, 1, 6, 2);
+        set_bits(&mut bits, 7, 10, u64::from(iodnav));
+        set_bits(&mut bits, 17, 32, encode_signed(-0x1020_304_i64, 32));
+        set_bits(&mut bits, 49, 24, encode_signed(-0x04_321_i64, 24));
+        set_bits(&mut bits, 73, 32, 0x0123_4567);
+        set_bits(&mut bits, 105, 32, 0x0987_6543);
+        set_bits(&mut bits, 137, 32, encode_signed(0x1020_3040_i64, 32));
+        set_bits(&mut bits, 169, 14, encode_signed(-0x03A5_i64, 14));
+        set_bits(&mut bits, 183, 12, 2_223);
+        set_bits(&mut bits, 195, 20, 456_799);
+        apply_crc(&mut bits);
+        bits
+    }
+
+    fn harmonic_page_bits(iodnav: u16) -> Vec<u8> {
+        let mut bits = vec![0_u8; GALILEO_FNAV_PAGE_BITS];
+        set_bits(&mut bits, 1, 6, 3);
+        set_bits(&mut bits, 7, 10, u64::from(iodnav));
+        set_bits(&mut bits, 17, 32, encode_signed(-0x1234_567_i64, 32));
+        set_bits(&mut bits, 49, 32, encode_signed(0x2345_6789_i64, 32));
+        set_bits(&mut bits, 81, 16, encode_signed(0x0F0F_i64, 16));
+        set_bits(&mut bits, 97, 16, encode_signed(-321_i64, 16));
+        set_bits(&mut bits, 113, 16, encode_signed(654_i64, 16));
+        set_bits(&mut bits, 129, 16, encode_signed(1_111_i64, 16));
+        set_bits(&mut bits, 145, 16, encode_signed(-2_222_i64, 16));
+        set_bits(&mut bits, 161, 14, 2_345);
+        set_bits(&mut bits, 175, 12, 2_224);
+        set_bits(&mut bits, 187, 20, 456_809);
+        apply_crc(&mut bits);
+        bits
+    }
+
+    fn supplementary_page_bits(iodnav: u16) -> Vec<u8> {
+        let mut bits = vec![0_u8; GALILEO_FNAV_PAGE_BITS];
+        set_bits(&mut bits, 1, 6, 4);
+        set_bits(&mut bits, 7, 10, u64::from(iodnav));
+        set_bits(&mut bits, 17, 16, encode_signed(-123_i64, 16));
+        set_bits(&mut bits, 33, 16, encode_signed(456_i64, 16));
+        set_bits(&mut bits, 190, 20, 456_819);
+        apply_crc(&mut bits);
+        bits
+    }
+
+    fn decoded_navigation_pages(iodnav: u16, svid: u8) -> Vec<super::GalileoFnavPage> {
+        [
+            clock_status_page_bits(iodnav, svid),
+            keplerian_page_bits(iodnav),
+            harmonic_page_bits(iodnav),
+            supplementary_page_bits(iodnav),
+        ]
+        .into_iter()
+        .map(|bits| decode_galileo_fnav_page(&bits).expect("valid F/NAV page"))
+        .collect()
     }
 
     #[test]
@@ -504,5 +808,71 @@ mod tests {
         assert_eq!(supplementary.cic, -123.0 * 2f64.powi(-29));
         assert_eq!(supplementary.cis, 456.0 * 2f64.powi(-29));
         assert_eq!(supplementary.tow_s, 456_819);
+    }
+
+    #[test]
+    fn broadcast_navigation_assembles_complete_fnav_record() {
+        let pages = decoded_navigation_pages(0x155, 19);
+
+        let navigation = super::decode_galileo_fnav_broadcast_navigation(&pages)
+            .expect("consistent pages")
+            .expect("complete F/NAV navigation record");
+
+        assert_eq!(navigation.sat.constellation, Constellation::Galileo);
+        assert_eq!(navigation.sat.prn, 19);
+        assert_eq!(navigation.iodnav, 0x155);
+        assert_eq!(navigation.gst.week, 2_222);
+        assert_eq!(navigation.gst.tow_s, 456_789);
+        assert_eq!(navigation.sisa_e1_e5a, 77);
+        assert_eq!(navigation.signal_status.e5a_signal_health, 2);
+        assert!(navigation.signal_status.e5a_data_valid);
+        assert_eq!(navigation.clock.t0c_s, 1_111.0 * 60.0);
+        assert_eq!(navigation.clock.bgd_e1_e5a_s, -12.0 * 2f64.powi(-32));
+        assert_eq!(navigation.ephemeris.sat.prn, 19);
+        assert_eq!(navigation.ephemeris.iodnav, 0x155);
+        assert_eq!(navigation.ephemeris.toe_s, 2_345.0 * 60.0);
+        assert_eq!(navigation.ephemeris.cic, -123.0 * 2f64.powi(-29));
+        assert_eq!(navigation.ephemeris.cis, 456.0 * 2f64.powi(-29));
+        assert_eq!(navigation.ionosphere.ai1, -87.0 * 2f64.powi(-8));
+    }
+
+    #[test]
+    fn broadcast_navigation_waits_for_complete_ephemeris_set() {
+        let pages = decoded_navigation_pages(0x155, 19);
+
+        let navigation = super::decode_galileo_fnav_broadcast_navigation(&pages[..3])
+            .expect("consistent incomplete pages");
+
+        assert!(navigation.is_none());
+    }
+
+    #[test]
+    fn broadcast_navigation_rejects_mismatched_iodnav() {
+        let pages = vec![
+            decode_galileo_fnav_page(&clock_status_page_bits(0x155, 19)).expect("type 1"),
+            decode_galileo_fnav_page(&keplerian_page_bits(0x155)).expect("type 2"),
+            decode_galileo_fnav_page(&harmonic_page_bits(0x156)).expect("mismatched type 3"),
+            decode_galileo_fnav_page(&supplementary_page_bits(0x155)).expect("type 4"),
+        ];
+
+        let rejection =
+            super::decode_galileo_fnav_broadcast_navigation(&pages).expect_err("IODnav rejection");
+
+        assert_eq!(rejection.reason, super::GalileoFnavNavigationRejectionReason::IodnavMismatch);
+        assert_eq!(rejection.page_type, 3);
+        assert_eq!(rejection.existing_iodnav, Some(0x155));
+        assert_eq!(rejection.incoming_iodnav, Some(0x156));
+    }
+
+    #[test]
+    fn broadcast_navigation_resolves_truncated_galileo_week() {
+        let pages = decoded_navigation_pages(0x155, 19);
+
+        let navigation =
+            super::decode_galileo_fnav_broadcast_navigation_with_reference_week(&pages, 6_318)
+                .expect("consistent pages")
+                .expect("complete F/NAV navigation record");
+
+        assert_eq!(navigation.gst.week, 6_318);
     }
 }
