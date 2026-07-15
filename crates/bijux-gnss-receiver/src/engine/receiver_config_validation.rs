@@ -6,6 +6,12 @@ use crate::engine::receiver_config::{
 };
 use bijux_gnss_core::api::{ConfigError, SchemaVersion, ValidateConfig, ValidationReport};
 
+fn validate_finite_non_negative(report: &mut ValidationReport, field: &str, value: f64) {
+    if !value.is_finite() || value < 0.0 {
+        report.errors.push(ConfigError { message: format!("{field} must be finite and >= 0") });
+    }
+}
+
 impl ValidateConfig for ReceiverConfig {
     fn validate(&self) -> ValidationReport {
         let mut report = ValidationReport::default();
@@ -266,6 +272,28 @@ impl ValidateConfig for ReceiverConfig {
                 message: "navigation.ppp.drift_threshold_m must be > 0".to_string(),
             });
         }
+        let ppp = &self.navigation.ppp;
+        for (field, value) in [
+            ("navigation.ppp.noise_position", ppp.noise_position),
+            ("navigation.ppp.noise_velocity", ppp.noise_velocity),
+            ("navigation.ppp.noise_clock_bias", ppp.noise_clock_bias),
+            ("navigation.ppp.noise_clock_drift", ppp.noise_clock_drift),
+            ("navigation.ppp.noise_inter_system_bias", ppp.noise_inter_system_bias),
+            ("navigation.ppp.noise_ztd", ppp.noise_ztd),
+            ("navigation.ppp.noise_iono", ppp.noise_iono),
+            ("navigation.ppp.noise_ambiguity", ppp.noise_ambiguity),
+            ("navigation.ppp.measurement_code_floor_m", ppp.measurement_code_floor_m),
+            ("navigation.ppp.measurement_phase_floor_cycles", ppp.measurement_phase_floor_cycles),
+            ("navigation.ppp.measurement_orbit_sigma_scale", ppp.measurement_orbit_sigma_scale),
+            ("navigation.ppp.measurement_clock_sigma_scale", ppp.measurement_clock_sigma_scale),
+            (
+                "navigation.ppp.measurement_troposphere_residual_m",
+                ppp.measurement_troposphere_residual_m,
+            ),
+            ("navigation.ppp.measurement_antenna_residual_m", ppp.measurement_antenna_residual_m),
+        ] {
+            validate_finite_non_negative(&mut report, field, value);
+        }
         if self.navigation.science_thresholds.min_mean_cn0_dbhz <= 0.0 {
             report.errors.push(ConfigError {
                 message: "navigation.science_thresholds.min_mean_cn0_dbhz must be > 0".to_string(),
@@ -462,6 +490,131 @@ mod tests {
         assert!(report.errors.iter().any(|error| {
             error.message == "acquisition.threshold_policy.confidence_level must be within (0, 1)"
         }));
+    }
+
+    #[test]
+    fn validation_rejects_invalid_ppp_stochastic_configuration() {
+        let mut config = ReceiverConfig::default();
+        config.navigation.ppp.noise_position = -0.1;
+        config.navigation.ppp.measurement_phase_floor_cycles = f64::NAN;
+        config.navigation.ppp.measurement_clock_sigma_scale = f64::INFINITY;
+
+        let report = <ReceiverConfig as ValidateConfig>::validate(&config);
+
+        assert!(report.errors.iter().any(|error| {
+            error.message == "navigation.ppp.noise_position must be finite and >= 0"
+        }));
+        assert!(report.errors.iter().any(|error| {
+            error.message == "navigation.ppp.measurement_phase_floor_cycles must be finite and >= 0"
+        }));
+        assert!(report.errors.iter().any(|error| {
+            error.message == "navigation.ppp.measurement_clock_sigma_scale must be finite and >= 0"
+        }));
+    }
+
+    #[test]
+    fn ppp_stochastic_configuration_round_trips_through_toml() {
+        let mut config = ReceiverConfig::default();
+        config.navigation.ppp.noise_position = 0.12;
+        config.navigation.ppp.noise_velocity = 0.034;
+        config.navigation.ppp.noise_clock_bias = 2.0e-7;
+        config.navigation.ppp.noise_inter_system_bias = 3.0e-9;
+        config.navigation.ppp.measurement_code_floor_m = 0.42;
+        config.navigation.ppp.measurement_phase_floor_cycles = 0.002;
+        config.navigation.ppp.measurement_orbit_sigma_scale = 1.4;
+        config.navigation.ppp.measurement_clock_sigma_scale = 1.6;
+        config.navigation.ppp.measurement_troposphere_residual_m = 0.08;
+        config.navigation.ppp.measurement_antenna_residual_m = 0.02;
+
+        let raw = toml::to_string(&config).expect("serialize receiver config");
+        let reparsed: ReceiverConfig = toml::from_str(&raw).expect("parse receiver config");
+
+        assert_eq!(reparsed.navigation.ppp.noise_position, 0.12);
+        assert_eq!(reparsed.navigation.ppp.noise_velocity, 0.034);
+        assert_eq!(reparsed.navigation.ppp.noise_clock_bias, 2.0e-7);
+        assert_eq!(reparsed.navigation.ppp.noise_inter_system_bias, 3.0e-9);
+        assert_eq!(reparsed.navigation.ppp.measurement_code_floor_m, 0.42);
+        assert_eq!(reparsed.navigation.ppp.measurement_phase_floor_cycles, 0.002);
+        assert_eq!(reparsed.navigation.ppp.measurement_orbit_sigma_scale, 1.4);
+        assert_eq!(reparsed.navigation.ppp.measurement_clock_sigma_scale, 1.6);
+        assert_eq!(reparsed.navigation.ppp.measurement_troposphere_residual_m, 0.08);
+        assert_eq!(reparsed.navigation.ppp.measurement_antenna_residual_m, 0.02);
+        assert!(raw.contains("measurement_code_floor_m = 0.42"));
+    }
+
+    #[test]
+    fn ppp_stochastic_defaults_apply_to_existing_toml_profiles() {
+        let raw = toml::to_string(&ReceiverConfig::default()).expect("serialize receiver config");
+        let omitted_stochastic_fields = [
+            "noise_position",
+            "noise_velocity",
+            "noise_clock_bias",
+            "noise_clock_drift",
+            "noise_inter_system_bias",
+            "noise_ztd",
+            "noise_iono",
+            "noise_ambiguity",
+            "measurement_code_floor_m",
+            "measurement_phase_floor_cycles",
+            "measurement_orbit_sigma_scale",
+            "measurement_clock_sigma_scale",
+            "measurement_troposphere_residual_m",
+            "measurement_antenna_residual_m",
+        ];
+        let legacy_raw = raw
+            .lines()
+            .filter(|line| {
+                let trimmed = line.trim_start();
+                !omitted_stochastic_fields
+                    .iter()
+                    .any(|field| trimmed.starts_with(&format!("{field} =")))
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        let reparsed: ReceiverConfig =
+            toml::from_str(&legacy_raw).expect("parse receiver config without stochastic fields");
+
+        assert_eq!(
+            reparsed.navigation.ppp.noise_position,
+            ReceiverConfig::default().navigation.ppp.noise_position
+        );
+        assert_eq!(
+            reparsed.navigation.ppp.noise_velocity,
+            ReceiverConfig::default().navigation.ppp.noise_velocity
+        );
+        assert_eq!(
+            reparsed.navigation.ppp.noise_clock_bias,
+            ReceiverConfig::default().navigation.ppp.noise_clock_bias
+        );
+        assert_eq!(
+            reparsed.navigation.ppp.noise_inter_system_bias,
+            ReceiverConfig::default().navigation.ppp.noise_inter_system_bias
+        );
+        assert_eq!(
+            reparsed.navigation.ppp.measurement_code_floor_m,
+            ReceiverConfig::default().navigation.ppp.measurement_code_floor_m
+        );
+        assert_eq!(
+            reparsed.navigation.ppp.measurement_phase_floor_cycles,
+            ReceiverConfig::default().navigation.ppp.measurement_phase_floor_cycles
+        );
+        assert_eq!(
+            reparsed.navigation.ppp.measurement_orbit_sigma_scale,
+            ReceiverConfig::default().navigation.ppp.measurement_orbit_sigma_scale
+        );
+        assert_eq!(
+            reparsed.navigation.ppp.measurement_clock_sigma_scale,
+            ReceiverConfig::default().navigation.ppp.measurement_clock_sigma_scale
+        );
+        assert_eq!(
+            reparsed.navigation.ppp.measurement_troposphere_residual_m,
+            ReceiverConfig::default().navigation.ppp.measurement_troposphere_residual_m
+        );
+        assert_eq!(
+            reparsed.navigation.ppp.measurement_antenna_residual_m,
+            ReceiverConfig::default().navigation.ppp.measurement_antenna_residual_m
+        );
     }
 
     #[test]

@@ -21,7 +21,7 @@ use bijux_gnss_nav::api::{
     ecef_to_enu, geometry_free_diagnostics_from_obs_epochs, iono_free_code_from_obs_epochs,
     melbourne_wubbena_diagnostics_from_obs_epochs, GeometryFreeEvent, GeometryFreeThresholds,
     MelbourneWubbenaEvent, MelbourneWubbenaThresholds, PositionWeightingModel, PppConfig,
-    PppConvergenceConfig, PppProcessNoise, WeightingConfig,
+    PppConvergenceConfig, PppMeasurementNoise, PppProcessNoise, WeightingConfig,
 };
 use bijux_gnss_signal::api::{
     check_dual_frequency_observations, check_inter_frequency_alignment,
@@ -1380,13 +1380,23 @@ fn build_ppp_config(profile: &ReceiverConfig) -> PppConfig {
         receiver_antenna_calibrations: None,
         satellite_antenna_calibrations: None,
         process_noise: PppProcessNoise {
+            position_m: p.noise_position,
+            velocity_mps: p.noise_velocity,
+            clock_bias_s: p.noise_clock_bias,
             clock_drift_s: p.noise_clock_drift,
+            inter_system_bias_s: p.noise_inter_system_bias,
             ztd_m: p.noise_ztd,
             iono_m: p.noise_iono,
             ambiguity_cycles: p.noise_ambiguity,
-            ..PppProcessNoise::default()
         },
-        measurement_noise: Default::default(),
+        measurement_noise: PppMeasurementNoise {
+            code_floor_m: p.measurement_code_floor_m,
+            phase_floor_cycles: p.measurement_phase_floor_cycles,
+            orbit_sigma_scale: p.measurement_orbit_sigma_scale,
+            clock_sigma_scale: p.measurement_clock_sigma_scale,
+            troposphere_residual_m: p.measurement_troposphere_residual_m,
+            antenna_residual_m: p.measurement_antenna_residual_m,
+        },
         weighting: WeightingConfig {
             model: match profile.navigation.weighting.mode {
                 crate::engine::receiver_config::NavigationWeightingMode::Elevation => {

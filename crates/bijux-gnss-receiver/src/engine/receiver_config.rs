@@ -611,6 +611,77 @@ fn default_science_threshold_max_gdop() -> f64 {
     12.0
 }
 
+pub(crate) const DEFAULT_PPP_NOISE_POSITION: f64 = 0.02;
+pub(crate) const DEFAULT_PPP_NOISE_VELOCITY: f64 = 0.005;
+pub(crate) const DEFAULT_PPP_NOISE_CLOCK_BIAS: f64 = 1e-7;
+pub(crate) const DEFAULT_PPP_NOISE_CLOCK_DRIFT: f64 = 1e-5;
+pub(crate) const DEFAULT_PPP_NOISE_INTER_SYSTEM_BIAS: f64 = 1e-9;
+pub(crate) const DEFAULT_PPP_NOISE_ZTD: f64 = 0.01;
+pub(crate) const DEFAULT_PPP_NOISE_IONO: f64 = 0.1;
+pub(crate) const DEFAULT_PPP_NOISE_AMBIGUITY: f64 = 0.05;
+pub(crate) const DEFAULT_PPP_MEASUREMENT_CODE_FLOOR_M: f64 = 0.3;
+pub(crate) const DEFAULT_PPP_MEASUREMENT_PHASE_FLOOR_CYCLES: f64 = 0.01;
+pub(crate) const DEFAULT_PPP_MEASUREMENT_ORBIT_SIGMA_SCALE: f64 = 1.0;
+pub(crate) const DEFAULT_PPP_MEASUREMENT_CLOCK_SIGMA_SCALE: f64 = 1.0;
+pub(crate) const DEFAULT_PPP_MEASUREMENT_TROPOSPHERE_RESIDUAL_M: f64 = 0.05;
+pub(crate) const DEFAULT_PPP_MEASUREMENT_ANTENNA_RESIDUAL_M: f64 = 0.01;
+
+fn default_ppp_noise_position() -> f64 {
+    DEFAULT_PPP_NOISE_POSITION
+}
+
+fn default_ppp_noise_velocity() -> f64 {
+    DEFAULT_PPP_NOISE_VELOCITY
+}
+
+fn default_ppp_noise_clock_bias() -> f64 {
+    DEFAULT_PPP_NOISE_CLOCK_BIAS
+}
+
+fn default_ppp_noise_clock_drift() -> f64 {
+    DEFAULT_PPP_NOISE_CLOCK_DRIFT
+}
+
+fn default_ppp_noise_inter_system_bias() -> f64 {
+    DEFAULT_PPP_NOISE_INTER_SYSTEM_BIAS
+}
+
+fn default_ppp_noise_ztd() -> f64 {
+    DEFAULT_PPP_NOISE_ZTD
+}
+
+fn default_ppp_noise_iono() -> f64 {
+    DEFAULT_PPP_NOISE_IONO
+}
+
+fn default_ppp_noise_ambiguity() -> f64 {
+    DEFAULT_PPP_NOISE_AMBIGUITY
+}
+
+fn default_ppp_measurement_code_floor_m() -> f64 {
+    DEFAULT_PPP_MEASUREMENT_CODE_FLOOR_M
+}
+
+fn default_ppp_measurement_phase_floor_cycles() -> f64 {
+    DEFAULT_PPP_MEASUREMENT_PHASE_FLOOR_CYCLES
+}
+
+fn default_ppp_measurement_orbit_sigma_scale() -> f64 {
+    DEFAULT_PPP_MEASUREMENT_ORBIT_SIGMA_SCALE
+}
+
+fn default_ppp_measurement_clock_sigma_scale() -> f64 {
+    DEFAULT_PPP_MEASUREMENT_CLOCK_SIGMA_SCALE
+}
+
+fn default_ppp_measurement_troposphere_residual_m() -> f64 {
+    DEFAULT_PPP_MEASUREMENT_TROPOSPHERE_RESIDUAL_M
+}
+
+fn default_ppp_measurement_antenna_residual_m() -> f64 {
+    DEFAULT_PPP_MEASUREMENT_ANTENNA_RESIDUAL_M
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 /// PPP configuration parameters.
 pub struct PppConfig {
@@ -647,14 +718,48 @@ pub struct PppConfig {
     /// Receiver antenna type used to select ANTEX phase-center corrections.
     #[serde(default)]
     pub receiver_antenna_type: Option<String>,
+    /// Process noise for receiver position.
+    #[serde(default = "default_ppp_noise_position")]
+    pub noise_position: f64,
+    /// Process noise for receiver velocity.
+    #[serde(default = "default_ppp_noise_velocity")]
+    pub noise_velocity: f64,
+    /// Process noise for receiver clock bias.
+    #[serde(default = "default_ppp_noise_clock_bias")]
+    pub noise_clock_bias: f64,
     /// Process noise for clock drift.
+    #[serde(default = "default_ppp_noise_clock_drift")]
     pub noise_clock_drift: f64,
+    /// Process noise for constellation clock offsets.
+    #[serde(default = "default_ppp_noise_inter_system_bias")]
+    pub noise_inter_system_bias: f64,
     /// Process noise for ZTD.
+    #[serde(default = "default_ppp_noise_ztd")]
     pub noise_ztd: f64,
     /// Process noise for ionosphere.
+    #[serde(default = "default_ppp_noise_iono")]
     pub noise_iono: f64,
     /// Process noise for ambiguities.
+    #[serde(default = "default_ppp_noise_ambiguity")]
     pub noise_ambiguity: f64,
+    /// PPP code measurement noise floor, in meters.
+    #[serde(default = "default_ppp_measurement_code_floor_m")]
+    pub measurement_code_floor_m: f64,
+    /// PPP phase measurement noise floor, in cycles.
+    #[serde(default = "default_ppp_measurement_phase_floor_cycles")]
+    pub measurement_phase_floor_cycles: f64,
+    /// Scale factor applied to satellite orbit uncertainty.
+    #[serde(default = "default_ppp_measurement_orbit_sigma_scale")]
+    pub measurement_orbit_sigma_scale: f64,
+    /// Scale factor applied to satellite clock uncertainty.
+    #[serde(default = "default_ppp_measurement_clock_sigma_scale")]
+    pub measurement_clock_sigma_scale: f64,
+    /// Residual zenith troposphere uncertainty, in meters.
+    #[serde(default = "default_ppp_measurement_troposphere_residual_m")]
+    pub measurement_troposphere_residual_m: f64,
+    /// Residual antenna correction uncertainty, in meters.
+    #[serde(default = "default_ppp_measurement_antenna_residual_m")]
+    pub measurement_antenna_residual_m: f64,
     /// Minimum convergence time, in seconds.
     pub convergence_min_time_s: f64,
     /// Convergence position rate threshold, in m/s.
