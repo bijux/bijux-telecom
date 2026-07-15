@@ -10,18 +10,19 @@ use bijux_gnss_nav::api::{
     geodetic_to_ecef, gps_broadcast_group_delay_code_bias_m, parse_rinex_nav,
     position_broadcast_navigation_from_beidou_navigations,
     position_broadcast_navigation_from_glonass_frames,
-    position_broadcast_navigation_from_gps_ephemerides, sat_state_beidou_b1i, sat_state_galileo_e1,
-    sat_state_glonass_l1, sat_state_gps_l1ca, write_rinex_nav, BeidouBroadcastNavigationData,
-    BeidouClockCorrection, BeidouEphemeris, BeidouIonosphericCorrection, BeidouSignalHealth,
-    BeidouSystemTime, Ephemeris, GalileoBroadcastNavigationData, GalileoClockCorrection,
-    GalileoEphemeris, GalileoIonosphericCorrection, GalileoIonosphericDisturbanceFlags,
-    GalileoSignalHealth, GalileoSystemTime, GlonassAlmanacTimeData,
-    GlonassBroadcastNavigationFrame, GlonassFrameTime, GlonassImmediateHealth,
-    GlonassImmediateNavigationData, GlonassSatelliteType, GlonassStateVector, GlonassSystemTime,
-    GpsBroadcastNavigationData, GpsEphemeris, GpsL1CaHowWord, GpsL1CaLnavDecodedSubframe,
-    GpsL1CaLnavSubframe1Clock, GpsL1CaLnavSubframe2Orbit, GpsL1CaLnavSubframe3Orbit,
-    GpsL1CaLnavSubframeAlignment, GpsL1CaTlmWord, GpsL1CaWordParitySummary,
-    PositionBroadcastNavigation, PositionObservation, PositionRobustWeighting, PositionSolver,
+    position_broadcast_navigation_from_gps_ephemerides, position_satellite_state_from_observation,
+    sat_state_beidou_b1i, sat_state_galileo_e1, sat_state_glonass_l1, sat_state_gps_l1ca,
+    write_rinex_nav, BeidouBroadcastNavigationData, BeidouClockCorrection, BeidouEphemeris,
+    BeidouIonosphericCorrection, BeidouSignalHealth, BeidouSystemTime, Ephemeris,
+    GalileoBroadcastNavigationData, GalileoClockCorrection, GalileoEphemeris,
+    GalileoIonosphericCorrection, GalileoIonosphericDisturbanceFlags, GalileoSignalHealth,
+    GalileoSystemTime, GlonassAlmanacTimeData, GlonassBroadcastNavigationFrame, GlonassFrameTime,
+    GlonassImmediateHealth, GlonassImmediateNavigationData, GlonassSatelliteType,
+    GlonassStateVector, GlonassSystemTime, GpsBroadcastNavigationData, GpsEphemeris,
+    GpsL1CaHowWord, GpsL1CaLnavDecodedSubframe, GpsL1CaLnavSubframe1Clock,
+    GpsL1CaLnavSubframe2Orbit, GpsL1CaLnavSubframe3Orbit, GpsL1CaLnavSubframeAlignment,
+    GpsL1CaTlmWord, GpsL1CaWordParitySummary, PositionBroadcastNavigation, PositionObservation,
+    PositionRobustWeighting, PositionSolver, SatelliteOrbitUncertaintySource,
 };
 use support::position_truth::{
     add_klobuchar_delay_to_observations, add_saastamoinen_delay_to_observations,
@@ -243,6 +244,25 @@ fn sample_beidou_navigation_at(
 
 fn sample_beidou_navigation(prn: u8, omega0: f64, m0: f64) -> BeidouBroadcastNavigationData {
     sample_beidou_navigation_at(prn, omega0, m0, 345_618.0)
+}
+
+#[test]
+fn public_satellite_state_query_preserves_broadcast_uncertainty_provenance() {
+    let navigation = sample_galileo_navigation(19, 1.17, 0.84);
+    let signal_travel_time_s = 0.078;
+    let receive_tow_s = navigation.ephemeris.toe_s + signal_travel_time_s;
+    let pseudorange_m = signal_travel_time_s * 299_792_458.0;
+
+    let state = position_satellite_state_from_observation(
+        &PositionBroadcastNavigation::Galileo(navigation),
+        receive_tow_s,
+        pseudorange_m,
+        None,
+    )
+    .expect("position satellite state");
+
+    assert_eq!(state.uncertainty.orbit_source, SatelliteOrbitUncertaintySource::GalileoSisa);
+    assert_eq!(state.uncertainty.orbit_sigma_m, Some(1.08));
 }
 
 struct MixedSecondaryBandCase {
@@ -528,6 +548,7 @@ fn sample_glonass_navigation(
         immediate: GlonassImmediateNavigationData {
             sat,
             frame_time: GlonassFrameTime { hour: 23, minute: 18, half_minute: false },
+            resolved_day_index: Some(864),
             ephemeris_reference_time_s: 83_700,
             tb_update_interval_min: 30,
             tb_is_odd: Some(true),
