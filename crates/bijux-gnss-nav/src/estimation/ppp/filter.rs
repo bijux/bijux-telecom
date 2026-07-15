@@ -453,10 +453,10 @@ impl PppFilter {
             self.reset("mass_slip");
         }
         self.remove_state_identities(&removed_state_identities);
+        self.prune_states(obs.epoch_idx);
         if used < 4 {
             return None;
         }
-        self.prune_states(obs.epoch_idx);
 
         Some(self.solution_epoch(
             obs.epoch_idx,
@@ -709,11 +709,14 @@ impl PppFilter {
 
     fn prune_states(&mut self, epoch_idx: u64) {
         let mut removed_state_identities = BTreeSet::new();
+        let mut removed_satellites = BTreeSet::new();
+        let mut removed_signals = BTreeSet::new();
         let cutoff = self.config.prune_after_epochs;
         self.last_seen_iono.retain(|sat, last| {
             let keep = epoch_idx.saturating_sub(*last) <= cutoff;
             if !keep {
                 self.indices.iono.remove(sat);
+                removed_satellites.insert(*sat);
                 removed_state_identities.insert(PppStateIdentity::SlantIonosphere(*sat));
             }
             keep
@@ -722,12 +725,46 @@ impl PppFilter {
             let keep = epoch_idx.saturating_sub(*last) <= cutoff;
             if !keep {
                 self.indices.ambiguity.remove(sig);
+                removed_signals.insert(*sig);
+                removed_satellites.insert(sig.sat);
                 removed_state_identities.insert(PppStateIdentity::CarrierAmbiguity(*sig));
             }
             keep
         });
+        for signal in &removed_signals {
+            self.residual_history.remove(signal);
+        }
+        for sat in &removed_satellites {
+            let has_remaining_ambiguity = self.indices.ambiguity.keys().any(|sig| sig.sat == *sat);
+            let has_remaining_iono = self.indices.iono.contains_key(sat);
+            if !has_remaining_ambiguity && !has_remaining_iono {
+                self.phase_windup.remove(sat);
+                self.wl_state.remove(sat);
+            }
+        }
         let pruned = self.remove_state_identities(&removed_state_identities);
         self.health.pruned_states += pruned;
+        if pruned > 0 {
+            for sat in removed_satellites {
+                let removed_states = removed_state_identities
+                    .iter()
+                    .copied()
+                    .filter(|identity| match identity {
+                        PppStateIdentity::SlantIonosphere(identity_sat) => *identity_sat == sat,
+                        PppStateIdentity::CarrierAmbiguity(identity_sig) => identity_sig.sat == sat,
+                        _ => false,
+                    })
+                    .collect::<Vec<_>>();
+                self.health.lifecycle_events.push(PppLifecycleEvent {
+                    kind: PppLifecycleEventKind::SatelliteStatePruned,
+                    epoch_idx: Some(epoch_idx),
+                    sat: Some(sat),
+                    signal: None,
+                    removed_states,
+                    reason: "satellite_not_seen_within_prune_window".to_string(),
+                });
+            }
+        }
     }
 
     fn remove_state_identities(&mut self, removed: &BTreeSet<PppStateIdentity>) -> usize {
@@ -1934,6 +1971,51 @@ mod tests {
                 && event.epoch_idx == Some(9)
                 && event.signal == Some(sig)
                 && event.removed_states == vec![super::PppStateIdentity::CarrierAmbiguity(sig)]
+        }));
+    }
+
+    #[test]
+    fn ppp_filter_prunes_stale_satellite_lifecycle_state() {
+        let stale = ppp_test_satellite(SatId { constellation: Constellation::Gps, prn: 19 });
+        let retained = ppp_test_satellite(SatId { constellation: Constellation::Gps, prn: 20 });
+        let mut filter = PppFilter::new(PppConfig {
+            enable_iono_state: true,
+            prune_after_epochs: 1,
+            ..PppConfig::default()
+        });
+        filter.ensure_states(&[&stale, &retained], &PppPhaseBreaks::default());
+        filter.last_seen_iono.insert(stale.signal_id.sat, 1);
+        filter.last_seen_iono.insert(retained.signal_id.sat, 5);
+        filter.last_seen_amb.insert(stale.signal_id, 1);
+        filter.last_seen_amb.insert(retained.signal_id, 5);
+        filter
+            .phase_windup
+            .insert(stale.signal_id.sat, PhaseWindupState { previous_cycles: Some(0.4) });
+        filter.wl_state.insert(
+            stale.signal_id.sat,
+            WlAmbiguity { float_cycles: 2.0, variance: 0.1, fixed: false, last_update_epoch: 1 },
+        );
+        filter.residual_history.insert(stale.signal_id, vec![4.0]);
+
+        filter.prune_states(5);
+
+        assert!(!filter.indices.iono.contains_key(&stale.signal_id.sat));
+        assert!(!filter.indices.ambiguity.contains_key(&stale.signal_id));
+        assert!(filter.indices.iono.contains_key(&retained.signal_id.sat));
+        assert!(filter.indices.ambiguity.contains_key(&retained.signal_id));
+        assert!(!filter.phase_windup.contains_key(&stale.signal_id.sat));
+        assert!(!filter.wl_state.contains_key(&stale.signal_id.sat));
+        assert!(!filter.residual_history.contains_key(&stale.signal_id));
+        assert!(filter.health.lifecycle_events.iter().any(|event| {
+            event.kind == PppLifecycleEventKind::SatelliteStatePruned
+                && event.epoch_idx == Some(5)
+                && event.sat == Some(stale.signal_id.sat)
+                && event
+                    .removed_states
+                    .contains(&super::PppStateIdentity::SlantIonosphere(stale.signal_id.sat))
+                && event
+                    .removed_states
+                    .contains(&super::PppStateIdentity::CarrierAmbiguity(stale.signal_id))
         }));
     }
 

@@ -6,7 +6,9 @@ use super::config::{PppFilter, WlAmbiguity};
 use super::measurements::{ratio_fix, wide_lane_from_obs};
 use crate::estimation::ekf::state::Ekf;
 use crate::estimation::ekf::traits::MeasurementModel;
-use crate::estimation::ppp::config::{PppArMode, PppCheckpoint};
+use crate::estimation::ppp::config::{
+    PppArMode, PppCheckpoint, PppLifecycleEvent, PppLifecycleEventKind,
+};
 use crate::linalg::Matrix;
 
 impl PppFilter {
@@ -136,6 +138,14 @@ impl PppFilter {
 
     pub fn reset(&mut self, reason: &str) {
         self.health.last_reset_reason = Some(reason.to_string());
+        self.health.lifecycle_events.push(PppLifecycleEvent {
+            kind: PppLifecycleEventKind::ReceiverReset,
+            epoch_idx: None,
+            sat: None,
+            signal: None,
+            removed_states: self.state_identities.clone(),
+            reason: reason.to_string(),
+        });
         let x = vec![0.0_f64; 9];
         let p = Matrix::identity(9);
         self.ekf = Ekf::new(x, p, self.ekf.config.clone());
@@ -145,6 +155,8 @@ impl PppFilter {
         self.indices.isb.clear();
         self.indices.iono.clear();
         self.indices.ambiguity.clear();
+        self.last_t_rx_s = None;
+        self.epoch0_t_s = None;
         self.last_seen_iono.clear();
         self.last_seen_amb.clear();
         self.last_pos = None;
@@ -377,7 +389,9 @@ mod convergence_tests {
 mod tests {
     use super::*;
     use crate::corrections::phase_windup::PhaseWindupState;
-    use crate::estimation::ppp::config::{PppConfig, PppStateIdentity, WlAmbiguity};
+    use crate::estimation::ppp::config::{
+        PppConfig, PppLifecycleEventKind, PppStateIdentity, WlAmbiguity,
+    };
     use crate::estimation::ppp::filter::{
         base_ppp_state_identities, ppp_indices_from_state_identities, ppp_state_label,
     };
@@ -571,10 +585,18 @@ mod tests {
         let sat = SatId { constellation: Constellation::Gps, prn: 7 };
         let mut filter = PppFilter::new(PppConfig::default());
         filter.phase_windup.insert(sat, PhaseWindupState { previous_cycles: Some(0.42) });
+        filter.last_t_rx_s = Some(10.0);
+        filter.epoch0_t_s = Some(1.0);
 
         filter.reset("receiver_discontinuity");
 
         assert!(filter.phase_windup.is_empty());
+        assert_eq!(filter.last_t_rx_s, None);
+        assert_eq!(filter.epoch0_t_s, None);
+        assert!(filter.health.lifecycle_events.iter().any(|event| {
+            event.kind == PppLifecycleEventKind::ReceiverReset
+                && event.reason == "receiver_discontinuity"
+        }));
     }
 
     #[test]
