@@ -2337,6 +2337,7 @@ impl Tracking {
             tracking_assumptions: Some(default_tracking_assumptions(&self.config, signal_model)),
             tracking_uncertainty: None,
             signal_delay_alignment: None,
+            transmit_time: None,
             processing_ms: None,
         };
         (track_epoch, correlation)

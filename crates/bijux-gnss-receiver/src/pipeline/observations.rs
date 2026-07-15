@@ -46,8 +46,19 @@ struct PseudorangeComputation {
     pseudorange_m: Meters,
     timing: Option<ObsSignalTiming>,
     model: &'static str,
+    time_source: Option<String>,
+    integer_code_periods: Option<u64>,
+    code_delay_s: Option<Seconds>,
     alignment_source: Option<String>,
     alignment_resolved: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct ResolvedPseudorange {
+    signal_travel_time_s: Seconds,
+    transmit_gps_time: GpsTime,
+    integer_code_periods: u64,
+    code_delay_s: Seconds,
 }
 
 #[derive(Debug, Clone)]
@@ -466,6 +477,9 @@ fn observations_from_tracking_with_provenance(
                 .to_string(),
                 observation_uncertainty_class: observation_uncertainty_label(cn0_dbhz).to_string(),
                 pseudorange_model: pseudorange.model.to_string(),
+                pseudorange_time_source: pseudorange.time_source.unwrap_or_default(),
+                pseudorange_integer_code_periods: pseudorange.integer_code_periods,
+                pseudorange_code_delay_s: pseudorange.code_delay_s,
                 carrier_phase_model: "tracked_carrier_cycles".to_string(),
                 doppler_model: doppler_model_label().to_string(),
                 carrier_phase_continuity: carrier_phase_continuity_label(carrier_phase.continuity)
@@ -680,7 +694,7 @@ pub fn observation_artifacts_from_tracking_results_with_gps_anchor(
                     continue;
                 }
                 let supports_code_carrier_slip_detection =
-                    sat.metadata.pseudorange_model == "tracked_code_phase_alignment";
+                    pseudorange_model_has_resolved_alignment(&sat.metadata.pseudorange_model);
                 let raw_pseudorange_m = sat.pseudorange_m.0;
                 raw_snapshots
                     .insert(snapshot_key, raw_observation_snapshot(&sat, raw_pseudorange_m));
@@ -747,7 +761,7 @@ pub fn observation_artifacts_from_tracking_results_with_gps_anchor(
                 observation_status_label(sat.observation_status).to_string();
             sat.metadata.observation_reject_reasons = sat.observation_reject_reasons.clone();
             let alignment_resolved =
-                sat.metadata.pseudorange_model == "tracked_code_phase_alignment";
+                pseudorange_model_has_resolved_alignment(&sat.metadata.pseudorange_model);
             sat.metadata.observation_support_class =
                 observation_support_label(sat.observation_status, alignment_resolved).to_string();
             sat.metadata.observation_uncertainty_class =
@@ -1108,6 +1122,10 @@ fn doppler_model_label() -> &'static str {
     bijux_gnss_core::api::OBSERVATION_DOPPLER_MODEL_TRACKED_CARRIER_IF_OFFSET
 }
 
+fn pseudorange_model_has_resolved_alignment(model: &str) -> bool {
+    matches!(model, "tracked_code_phase_alignment" | "decoded_transmit_time_code_phase")
+}
+
 fn observation_signal_model(
     config: &ReceiverPipelineConfig,
     epoch: &TrackEpoch,
@@ -1230,13 +1248,50 @@ fn pseudorange_from_tracking_epoch(
     receive_gps_time: Option<GpsTime>,
     clock_bias_s: f64,
 ) -> PseudorangeComputation {
+    let sample_delay_samples = epoch
+        .signal_delay_alignment
+        .as_ref()
+        .map(|alignment| alignment.sample_delay_samples)
+        .unwrap_or_default();
+    let corrected_code_phase_samples = epoch.code_phase_samples.0 + sample_delay_samples as f64;
+    let code_phase_chips = aligned_code_phase_chips(
+        code_length_chips,
+        corrected_code_phase_samples / samples_per_chip,
+    );
+    let code_period_s = code_length_chips / code_rate_hz;
+    let code_delay_s = code_phase_chips / code_rate_hz;
+
+    if let (Some(receive_gps_time), Some(transmit_time)) = (receive_gps_time, &epoch.transmit_time)
+    {
+        if let Some(resolved) = resolve_pseudorange_from_transmit_time(
+            receive_gps_time,
+            transmit_time.transmit_gps_time,
+            code_delay_s,
+            code_period_s,
+        ) {
+            return PseudorangeComputation {
+                pseudorange_m: Meters(
+                    resolved.signal_travel_time_s.0 * SPEED_OF_LIGHT_MPS
+                        + clock_bias_s * SPEED_OF_LIGHT_MPS,
+                ),
+                timing: Some(ObsSignalTiming {
+                    signal_travel_time_s: resolved.signal_travel_time_s,
+                    transmit_gps_time: resolved.transmit_gps_time,
+                }),
+                model: "decoded_transmit_time_code_phase",
+                time_source: Some(transmit_time.source.clone()),
+                integer_code_periods: Some(resolved.integer_code_periods),
+                code_delay_s: Some(resolved.code_delay_s),
+                alignment_source: epoch
+                    .signal_delay_alignment
+                    .as_ref()
+                    .map(|alignment| alignment.source.clone()),
+                alignment_resolved: true,
+            };
+        }
+    }
+
     if let Some(alignment) = &epoch.signal_delay_alignment {
-        let corrected_code_phase_samples =
-            epoch.code_phase_samples.0 + alignment.sample_delay_samples as f64;
-        let code_phase_chips = aligned_code_phase_chips(
-            code_length_chips,
-            corrected_code_phase_samples / samples_per_chip,
-        );
         let code_time_s = (alignment.whole_code_periods as f64 * code_length_chips
             + code_phase_chips)
             / code_rate_hz;
@@ -1251,22 +1306,66 @@ fn pseudorange_from_tracking_epoch(
             pseudorange_m,
             timing,
             model: "tracked_code_phase_alignment",
+            time_source: receive_gps_time.map(|_| "capture_start_gps_time".to_string()),
+            integer_code_periods: Some(alignment.whole_code_periods),
+            code_delay_s: Some(Seconds(code_delay_s)),
             alignment_source: Some(alignment.source.clone()),
             alignment_resolved: true,
         };
     }
 
-    let code_phase_chips =
-        aligned_code_phase_chips(code_length_chips, epoch.code_phase_samples.0 / samples_per_chip);
     let code_epoch = epoch.epoch.index as f64;
     let code_time_s = (code_epoch * code_length_chips + code_phase_chips) / code_rate_hz;
     PseudorangeComputation {
         pseudorange_m: Meters(code_time_s * SPEED_OF_LIGHT_MPS + clock_bias_s * SPEED_OF_LIGHT_MPS),
         timing: None,
         model: "receiver_epoch_fallback",
+        time_source: None,
+        integer_code_periods: None,
+        code_delay_s: Some(Seconds(code_delay_s)),
         alignment_source: None,
         alignment_resolved: false,
     }
+}
+
+fn resolve_pseudorange_from_transmit_time(
+    receive_gps_time: GpsTime,
+    decoded_transmit_gps_time: GpsTime,
+    code_delay_s: f64,
+    code_period_s: f64,
+) -> Option<ResolvedPseudorange> {
+    if !code_delay_s.is_finite()
+        || !code_period_s.is_finite()
+        || code_delay_s < 0.0
+        || code_delay_s >= code_period_s
+        || code_period_s <= 0.0
+        || !decoded_transmit_gps_time.tow_s.is_finite()
+        || !receive_gps_time.tow_s.is_finite()
+    {
+        return None;
+    }
+    let decoded_travel_time_s =
+        receive_gps_time.to_seconds() - decoded_transmit_gps_time.to_seconds();
+    if !decoded_travel_time_s.is_finite() || decoded_travel_time_s <= 0.0 {
+        return None;
+    }
+
+    let integer_code_periods_f64 = ((decoded_travel_time_s - code_delay_s) / code_period_s).round();
+    if !integer_code_periods_f64.is_finite() || integer_code_periods_f64 < 0.0 {
+        return None;
+    }
+    let integer_code_periods = integer_code_periods_f64 as u64;
+    let signal_travel_time_s = integer_code_periods as f64 * code_period_s + code_delay_s;
+    if !signal_travel_time_s.is_finite() || signal_travel_time_s <= 0.0 {
+        return None;
+    }
+
+    Some(ResolvedPseudorange {
+        signal_travel_time_s: Seconds(signal_travel_time_s),
+        transmit_gps_time: receive_gps_time.offset_seconds(-signal_travel_time_s),
+        integer_code_periods,
+        code_delay_s: Seconds(code_delay_s),
+    })
 }
 
 fn carrier_phase_observation(
