@@ -4945,6 +4945,7 @@ mod tests {
         BandTrackingSpec, ReceiverPipelineConfig, TrackingParams,
     };
     use crate::engine::runtime::ReceiverRuntime;
+    use crate::pipeline::observations::observations_from_tracking_results_with_gps_anchor;
     use crate::sim::synthetic::{generate_l1_ca, SyntheticSignalParams};
     use bijux_gnss_core::api::{
         AcqHypothesis, AcqUncertainty, Chips, Constellation, Epoch, GpsTime, Hertz,
@@ -6121,6 +6122,74 @@ mod tests {
 
         assert_eq!(transmit_time.week, 2200);
         assert!((transmit_time.tow_s - 604_799.950).abs() <= 1.0e-12);
+    }
+
+    #[cfg(feature = "nav")]
+    #[test]
+    fn decoded_lnav_tracking_time_feeds_absolute_observation_pseudorange() {
+        let signal_model = gps_l1ca_tracking_signal_model();
+        let prompt = lnav_prompt_history_with_offset(7, 1, 57_600);
+        let mut epochs = prompt_history_epochs(&prompt);
+        let tracking_capture_start = GpsTime { week: 2200, tow_s: 345_600.073 };
+        super::annotate_lnav_transmit_times(
+            &signal_model,
+            Some(tracking_capture_start),
+            &mut epochs,
+        );
+
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 4_092_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 1023,
+            ..ReceiverPipelineConfig::default()
+        };
+        let observation_capture_start = GpsTime { week: 2200, tow_s: 345_600.0 };
+        let receive_gps_time = GpsTime { week: 2200, tow_s: 345_600.330 };
+        let mut epoch = epochs[257].clone();
+        epoch.sample_index = ((receive_gps_time.tow_s - observation_capture_start.tow_s)
+            * config.sampling_freq_hz)
+            .round() as u64;
+        epoch.source_time =
+            ReceiverSampleTrace::from_sample_index(epoch.sample_index, config.sampling_freq_hz);
+        epoch.sat = SatId { constellation: Constellation::Gps, prn: 1 };
+        epoch.signal_band = SignalBand::L1;
+        epoch.signal_code = SignalCode::Ca;
+        epoch.code_rate_hz = Hertz(1_023_000.0);
+        epoch.carrier_hz = Hertz(0.0);
+        epoch.code_phase_samples = Chips(0.0);
+        epoch.lock = true;
+        epoch.dll_lock = true;
+        epoch.pll_lock = true;
+        epoch.fll_lock = true;
+        epoch.signal_delay_alignment = None;
+
+        let track = super::TrackingResult {
+            sat: epoch.sat,
+            carrier_hz: epoch.carrier_hz.0,
+            code_phase_samples: epoch.code_phase_samples.0,
+            acquisition_hypothesis: "accepted".to_string(),
+            acquisition_score: 1.0,
+            acquisition_code_phase_samples: 0,
+            acquisition_carrier_hz: epoch.carrier_hz.0,
+            acq_to_track_state: "accepted".to_string(),
+            epochs: vec![epoch],
+            transitions: Vec::new(),
+        };
+
+        let observations = observations_from_tracking_results_with_gps_anchor(
+            &config,
+            Some(observation_capture_start),
+            &[track],
+            10,
+        );
+        let sat = observations.output[0].sats.first().expect("decoded time observation");
+
+        assert_eq!(sat.metadata.pseudorange_model, "decoded_transmit_time_code_phase");
+        assert_eq!(sat.metadata.pseudorange_time_source, "gps_l1ca_lnav_how");
+        assert_eq!(sat.metadata.pseudorange_integer_code_periods, Some(80));
+        assert_eq!(sat.metadata.signal_delay_alignment_source, "");
+        assert!((sat.pseudorange_m.0 - 0.080 * 299_792_458.0).abs() <= 1.0e-6);
     }
 
     #[test]
