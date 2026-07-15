@@ -502,6 +502,9 @@ impl PppFilter {
             horizontal_error_ellipse_minor_axis_m,
             horizontal_error_ellipse_azimuth_deg,
             clock_bias_s: self.ekf.x[self.indices.clock_bias],
+            constellation_clock_state_count: self.indices.isb.len(),
+            slant_ionosphere_state_count: self.indices.iono.len(),
+            carrier_ambiguity_state_count: self.indices.ambiguity.len(),
             rms_m: self.ekf.health.innovation_rms,
             sigma_h_m: sigma_h,
             sigma_v_m: sigma_v,
@@ -1483,6 +1486,25 @@ mod tests {
             filter.state_identities[filter.indices.ambiguity[&l2.signal_id]],
             super::PppStateIdentity::CarrierAmbiguity(l2.signal_id)
         );
+    }
+
+    #[test]
+    fn ppp_solution_reports_uncombined_state_support() {
+        let sat = SatId { constellation: Constellation::Gps, prn: 7 };
+        let l1 = ppp_test_signal_satellite(sat, SignalBand::L1, SignalCode::Ca);
+        let l2 = ppp_test_signal_satellite(sat, SignalBand::L2, SignalCode::Py);
+        let mut filter = PppFilter::new(PppConfig {
+            use_iono_free: false,
+            enable_iono_state: true,
+            ..PppConfig::default()
+        });
+        filter.ensure_states(&[&l1, &l2]);
+
+        let solution = filter.solution_epoch(5, 12.0, Vec::new(), 0);
+
+        assert_eq!(solution.constellation_clock_state_count, 1);
+        assert_eq!(solution.slant_ionosphere_state_count, 1);
+        assert_eq!(solution.carrier_ambiguity_state_count, 2);
     }
 
     #[test]
