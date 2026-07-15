@@ -92,6 +92,7 @@ const TRACKING_CN0_WINDOW_EPOCHS: usize = 8;
 const TRACKING_CN0_MIN_WINDOW_EPOCHS: usize = 4;
 const TRACKING_UNCERTAINTY_WINDOW_EPOCHS: usize = 8;
 const VECTOR_TRACKING_MIN_CONTRIBUTORS: usize = 2;
+const COMMON_TRACKING_FREQUENCY_MIN_CONTRIBUTORS: usize = 2;
 const VECTOR_TRACKING_MIN_CN0_DBHZ: f64 = 35.0;
 const VECTOR_TRACKING_HISTORY_SECONDS: f64 = 0.050;
 const VECTOR_TRACKING_MAX_CARRIER_AID_HZ: f64 = 25.0;
@@ -232,6 +233,7 @@ pub struct TrackingArtifacts {
     pub track_transitions: Vec<TrackTransition>,
     pub channel_state_reports: Vec<TrackingChannelStateReport>,
     pub tracking: Vec<TrackingResult>,
+    pub common_frequency: Option<CommonTrackingFrequencyEstimate>,
 }
 
 #[derive(Debug, Clone)]
@@ -306,6 +308,28 @@ struct VectorTrackingMeasurement {
     channel_state: ChannelState,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct CommonTrackingFrequencySignalEstimate {
+    pub sat: SatId,
+    pub channel_id: u8,
+    pub epoch_idx: u64,
+    pub sample_index: u64,
+    pub cn0_dbhz: f64,
+    pub frequency_error_hz: f64,
+    pub residual_hz: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct CommonTrackingFrequencyEstimate {
+    pub sample_index: u64,
+    pub estimated_frequency_error_hz: f64,
+    pub support_count: usize,
+    pub mean_cn0_dbhz: f64,
+    pub residual_spread_hz: f64,
+    pub max_supporting_residual_hz: f64,
+    pub supporting_channels: Vec<CommonTrackingFrequencySignalEstimate>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct VectorTrackingPrediction {
     sample_index: u64,
@@ -351,6 +375,22 @@ impl VectorTrackingState {
         sample_index: u64,
         sample_rate_hz: f64,
     ) -> Option<VectorTrackingPrediction> {
+        vector_tracking_prediction(&self.latest_measurements_for(sample_index, sample_rate_hz))
+    }
+
+    fn common_frequency_estimate(&self) -> Option<CommonTrackingFrequencyEstimate> {
+        let latest_sample_index =
+            self.measurements.iter().map(|measurement| measurement.sample_index).max()?;
+        common_tracking_frequency_estimate(
+            &self.latest_measurements_for(latest_sample_index, f64::INFINITY),
+        )
+    }
+
+    fn latest_measurements_for(
+        &self,
+        sample_index: u64,
+        sample_rate_hz: f64,
+    ) -> Vec<VectorTrackingMeasurement> {
         let history_samples = vector_tracking_history_samples(sample_rate_hz);
         let mut latest_by_channel = Vec::new();
         for measurement in self.measurements.iter().rev().copied() {
@@ -367,7 +407,7 @@ impl VectorTrackingState {
             }
             latest_by_channel.push(measurement);
         }
-        vector_tracking_prediction(&latest_by_channel)
+        latest_by_channel
     }
 }
 
@@ -441,6 +481,68 @@ fn vector_tracking_prediction(
             0.0
         },
         receiver_motion_frequency_rate_hz_per_s: weighted_motion_rate_hz_per_s / weight_sum,
+    })
+}
+
+fn common_tracking_frequency_estimate(
+    measurements: &[VectorTrackingMeasurement],
+) -> Option<CommonTrackingFrequencyEstimate> {
+    let mut support = measurements
+        .iter()
+        .copied()
+        .filter(|measurement| vector_tracking_measurement_is_usable(*measurement))
+        .map(|measurement| CommonTrackingFrequencySignalEstimate {
+            sat: measurement.sat,
+            channel_id: measurement.channel_id,
+            epoch_idx: measurement.epoch_idx,
+            sample_index: measurement.sample_index,
+            cn0_dbhz: measurement.cn0_dbhz,
+            frequency_error_hz: measurement.fll_error_hz,
+            residual_hz: 0.0,
+        })
+        .collect::<Vec<_>>();
+    if support.len() < COMMON_TRACKING_FREQUENCY_MIN_CONTRIBUTORS {
+        return None;
+    }
+
+    let mut weighted_frequency_error_hz = 0.0;
+    let mut weighted_cn0_dbhz = 0.0;
+    let mut weight_sum = 0.0;
+    let mut sample_index = 0;
+    for signal in &support {
+        let weight = vector_tracking_cn0_weight(signal.cn0_dbhz);
+        weighted_frequency_error_hz += signal.frequency_error_hz * weight;
+        weighted_cn0_dbhz += signal.cn0_dbhz * weight;
+        weight_sum += weight;
+        sample_index = sample_index.max(signal.sample_index);
+    }
+    if weight_sum <= f64::EPSILON {
+        return None;
+    }
+
+    let estimated_frequency_error_hz = weighted_frequency_error_hz / weight_sum;
+    for signal in &mut support {
+        signal.residual_hz = signal.frequency_error_hz - estimated_frequency_error_hz;
+    }
+    let (min_residual_hz, max_residual_hz, max_supporting_residual_hz) = support.iter().fold(
+        (f64::INFINITY, f64::NEG_INFINITY, 0.0_f64),
+        |(min_residual_hz, max_residual_hz, max_supporting_residual_hz), signal| {
+            (
+                min_residual_hz.min(signal.residual_hz),
+                max_residual_hz.max(signal.residual_hz),
+                max_supporting_residual_hz.max(signal.residual_hz.abs()),
+            )
+        },
+    );
+
+    Some(CommonTrackingFrequencyEstimate {
+        sample_index,
+        estimated_frequency_error_hz,
+        support_count: support.len(),
+        mean_cn0_dbhz: weighted_cn0_dbhz / weight_sum,
+        residual_spread_hz: max_residual_hz - min_residual_hz,
+        max_supporting_residual_hz,
+        supporting_channels: support,
     })
 }
 
@@ -2128,6 +2230,7 @@ impl Tracking {
     }
 
     pub fn finish_tracking_session(&self, session: TrackingSession) -> TrackingArtifacts {
+        let common_frequency = session.tracking.vector_state.common_frequency_estimate();
         let tracking = self.finish_incremental_tracking(session.tracking);
         let track_transitions =
             tracking.iter().flat_map(|result| result.transitions.iter().cloned()).collect();
@@ -2139,6 +2242,7 @@ impl Tracking {
             track_transitions,
             channel_state_reports,
             tracking,
+            common_frequency,
         }
     }
 
@@ -6235,6 +6339,67 @@ mod tests {
         assert!((prediction.receiver_clock_frequency_error_hz - 6.0).abs() < 1.0e-9);
         assert!((prediction.receiver_code_rate_error_hz - 0.60).abs() < 1.0e-9);
         assert!((prediction.receiver_motion_frequency_rate_hz_per_s - 10.0).abs() < 1.0e-9);
+    }
+
+    #[test]
+    fn common_tracking_frequency_estimate_uses_weighted_stable_channel_residuals() {
+        let low_weight = vector_measurement(0, 100, 35.0, 4.0, 0.10, 1_000.0);
+        let high_weight = vector_measurement(1, 110, 45.0, 8.0, 0.20, -1_000.0);
+
+        let estimate = super::common_tracking_frequency_estimate(&[low_weight, high_weight])
+            .expect("common tracking frequency estimate");
+
+        assert_eq!(estimate.support_count, 2);
+        assert_eq!(estimate.sample_index, 110);
+        assert!((estimate.estimated_frequency_error_hz - 7.636_363_636_363_637).abs() < 1.0e-9);
+        assert!((estimate.mean_cn0_dbhz - 44.090_909_090_909_09).abs() < 1.0e-9);
+        assert_eq!(estimate.supporting_channels.len(), 2);
+        assert!(estimate.supporting_channels.iter().all(|channel| channel.residual_hz.is_finite()));
+        assert!(
+            estimate.max_supporting_residual_hz > 0.0
+                && estimate.residual_spread_hz > estimate.max_supporting_residual_hz,
+            "estimate should expose residual spread and maximum residual: {estimate:?}"
+        );
+    }
+
+    #[test]
+    fn common_tracking_frequency_estimate_rejects_insufficient_stable_support() {
+        let mut unlocked = vector_measurement(0, 100, 45.0, 4.0, 0.10, 0.0);
+        unlocked.pll_locked = false;
+        let stable = vector_measurement(1, 110, 45.0, 8.0, 0.20, 0.0);
+
+        assert!(super::common_tracking_frequency_estimate(&[unlocked, stable]).is_none());
+    }
+
+    #[test]
+    fn common_tracking_frequency_estimate_does_not_absorb_satellite_specific_motion() {
+        let fast_approaching = vector_measurement(0, 100, 45.0, 6.0, 0.10, 4_000.0);
+        let fast_receding = vector_measurement(1, 110, 45.0, 6.0, 0.20, -4_000.0);
+
+        let estimate =
+            super::common_tracking_frequency_estimate(&[fast_approaching, fast_receding])
+                .expect("common tracking frequency estimate");
+
+        assert!((estimate.estimated_frequency_error_hz - 6.0).abs() < 1.0e-9);
+        assert!(estimate.max_supporting_residual_hz <= f64::EPSILON);
+    }
+
+    #[test]
+    fn vector_tracking_state_reports_latest_common_frequency_estimate() {
+        let mut state = super::VectorTrackingState::default();
+        state.record(vector_measurement(0, 100, 45.0, 2.0, 0.10, 0.0), 1_000.0);
+        state.record(vector_measurement(0, 120, 45.0, 4.0, 0.10, 0.0), 1_000.0);
+        state.record(vector_measurement(1, 118, 45.0, 6.0, 0.10, 0.0), 1_000.0);
+
+        let estimate = state.common_frequency_estimate().expect("common frequency estimate");
+
+        assert_eq!(estimate.support_count, 2);
+        assert_eq!(estimate.sample_index, 120);
+        assert!((estimate.estimated_frequency_error_hz - 5.0).abs() < 1.0e-9);
+        assert!(estimate
+            .supporting_channels
+            .iter()
+            .all(|channel| channel.frequency_error_hz >= 4.0));
     }
 
     #[test]
