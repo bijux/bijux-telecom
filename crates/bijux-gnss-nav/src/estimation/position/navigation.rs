@@ -88,14 +88,14 @@ pub struct PositionObservationCorrectionChain {
 
 impl PositionObservationCorrectionChain {
     pub fn new(raw_pseudorange_m: f64) -> Self {
-        Self { raw_pseudorange_m, components: Vec::new(), corrected_pseudorange_m: raw_pseudorange_m }
+        Self {
+            raw_pseudorange_m,
+            components: Vec::new(),
+            corrected_pseudorange_m: raw_pseudorange_m,
+        }
     }
 
-    pub fn push_component(
-        &mut self,
-        kind: PositionObservationCorrectionKind,
-        delta_m: f64,
-    ) {
+    pub fn push_component(&mut self, kind: PositionObservationCorrectionKind, delta_m: f64) {
         self.corrected_pseudorange_m += delta_m;
         self.components.push(PositionObservationCorrectionComponent {
             kind,
@@ -105,11 +105,9 @@ impl PositionObservationCorrectionChain {
     }
 
     pub fn reconstructed_pseudorange_m(&self) -> f64 {
-        self.components
-            .iter()
-            .fold(self.raw_pseudorange_m, |pseudorange_m, component| {
-                pseudorange_m + component.delta_m
-            })
+        self.components.iter().fold(self.raw_pseudorange_m, |pseudorange_m, component| {
+            pseudorange_m + component.delta_m
+        })
     }
 
     pub fn reconstruction_error_m(&self) -> f64 {
@@ -669,10 +667,23 @@ pub(crate) fn corrected_pseudorange_m(
     navigation: &PositionBroadcastNavigation,
     apply_broadcast_group_delay: bool,
 ) -> f64 {
-    if !apply_broadcast_group_delay {
-        return observation.pseudorange_m;
+    broadcast_group_delay_correction_chain(observation, navigation, apply_broadcast_group_delay)
+        .corrected_pseudorange_m
+}
+
+pub(crate) fn broadcast_group_delay_correction_chain(
+    observation: &PositionObservation,
+    navigation: &PositionBroadcastNavigation,
+    apply_broadcast_group_delay: bool,
+) -> PositionObservationCorrectionChain {
+    let mut chain = PositionObservationCorrectionChain::new(observation.pseudorange_m);
+    if apply_broadcast_group_delay {
+        chain.push_component(
+            PositionObservationCorrectionKind::BroadcastGroupDelay,
+            -broadcast_group_delay_code_bias_m(observation.signal_id, navigation),
+        );
     }
-    observation.pseudorange_m - broadcast_group_delay_code_bias_m(observation.signal_id, navigation)
+    chain
 }
 
 pub(crate) fn observation_consistency_metrics(
@@ -734,12 +745,14 @@ pub(crate) fn observation_consistency_metrics(
 #[cfg(test)]
 mod tests {
     use super::{
+        broadcast_group_delay_correction_chain, corrected_pseudorange_m,
         default_position_signal_id, observation_consistency_metrics, position_signal_id,
         resolve_position_inputs, satellite_state_at_time, select_valid_navigation,
         PositionBroadcastNavigation, PositionObservation, PositionObservationCorrectionChain,
         PositionObservationCorrectionKind, POSITION_OBSERVATION_CORRECTION_ORDER,
         SPEED_OF_LIGHT_MPS,
     };
+    use crate::corrections::broadcast_group_delay::gps_broadcast_group_delay_code_bias_m;
     use crate::estimation::position::solver::geodetic_to_ecef;
     use crate::orbits::beidou::{
         BeidouBroadcastNavigationData, BeidouClockCorrection, BeidouEphemeris,
@@ -983,6 +996,46 @@ mod tests {
             chain.corrected_pseudorange_m,
             24_000_000.0 + 12_500.0 - 2.4 - 4.8 - 2.1 - 9_000.0
         );
+    }
+
+    #[test]
+    fn broadcast_group_delay_correction_chain_records_applied_bias() {
+        let mut ephemeris = sample_gps_ephemeris();
+        ephemeris.tgd = 2.25e-9;
+        let navigation = PositionBroadcastNavigation::Gps(ephemeris.clone());
+        let sat = ephemeris.sat;
+        let signal_id = SigId { sat, band: SignalBand::L1, code: SignalCode::Ca };
+        let observation = PositionObservation {
+            sat,
+            pseudorange_m: 23_500_000.0,
+            doppler_hz: None,
+            doppler_var_hz2: None,
+            cn0_dbhz: 45.0,
+            elevation_deg: None,
+            weight: 1.0,
+            gps_receive_time: None,
+            signal_timing: None,
+            signal_id: Some(signal_id),
+        };
+        let expected_bias_m = gps_broadcast_group_delay_code_bias_m(signal_id, &ephemeris)
+            .expect("gps group delay bias");
+
+        let chain = broadcast_group_delay_correction_chain(&observation, &navigation, true);
+        let disabled_chain =
+            broadcast_group_delay_correction_chain(&observation, &navigation, false);
+
+        assert_eq!(chain.components.len(), 1);
+        assert_eq!(
+            chain.component_delta_m(PositionObservationCorrectionKind::BroadcastGroupDelay),
+            -expected_bias_m
+        );
+        assert_eq!(chain.reconstruction_error_m(), 0.0);
+        assert_eq!(
+            corrected_pseudorange_m(&observation, &navigation, true),
+            chain.corrected_pseudorange_m
+        );
+        assert_eq!(disabled_chain.components.len(), 0);
+        assert_eq!(disabled_chain.corrected_pseudorange_m, observation.pseudorange_m);
     }
 
     #[test]
