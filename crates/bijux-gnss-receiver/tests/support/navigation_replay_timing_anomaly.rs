@@ -278,6 +278,7 @@ fn truth_seeded_tracking_results_with_delay_steps(
                             sample_delay_samples: 0,
                             source: "synthetic_truth".to_string(),
                         }),
+                        transmit_time: None,
                         tracking_uncertainty: None,
                         processing_ms: None,
                     }

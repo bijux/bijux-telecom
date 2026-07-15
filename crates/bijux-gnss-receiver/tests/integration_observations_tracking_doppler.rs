@@ -80,6 +80,7 @@ fn locked_tracking_epoch(
         tracking_provenance: "observation_tracking_fixture".to_string(),
         tracking_assumptions: None,
         signal_delay_alignment: None,
+        transmit_time: None,
         tracking_uncertainty: None,
         processing_ms: None,
     }

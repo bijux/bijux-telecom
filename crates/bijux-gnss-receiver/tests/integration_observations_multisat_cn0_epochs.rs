@@ -73,6 +73,7 @@ fn tracking_epoch(
         tracking_provenance: "integration_observations_multisat_cn0_epochs".to_string(),
         tracking_assumptions: None,
         signal_delay_alignment: None,
+        transmit_time: None,
         tracking_uncertainty: None,
         processing_ms: None,
     }

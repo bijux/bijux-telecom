@@ -367,6 +367,7 @@ fn truth_seeded_motion_tracking_results(
                             sample_delay_samples: 0,
                             source: "synthetic_truth".to_string(),
                         }),
+                        transmit_time: None,
                         tracking_uncertainty: None,
                         processing_ms: None,
                     }

@@ -2085,7 +2085,8 @@ mod tests {
     use std::collections::BTreeSet;
 
     use bijux_gnss_core::api::{
-        Chips, Epoch, Hertz, Meters, SatId, SignalDelayAlignment, TrackingUncertainty,
+        Chips, Epoch, Hertz, Meters, SatId, SignalDelayAlignment, TrackingTransmitTime,
+        TrackingUncertainty,
     };
     use bijux_gnss_signal::api::{
         registered_signal_registry_entries, signal_cycles_to_meters, signal_meters_to_cycles,
@@ -3095,6 +3096,104 @@ mod tests {
     }
 
     #[test]
+    fn pseudorange_resolver_recovers_integer_code_period_ambiguity_from_transmit_time() {
+        let receive_gps_time = GpsTime { week: 2200, tow_s: 345_600.250 };
+        let code_period_s = 0.001;
+        let code_delay_s = 0.000_375;
+        let expected_periods = 72;
+        let decoded_transmit_time = receive_gps_time
+            .offset_seconds(-(expected_periods as f64 * code_period_s + code_delay_s));
+
+        let resolved = resolve_pseudorange_from_transmit_time(
+            receive_gps_time,
+            decoded_transmit_time,
+            code_delay_s,
+            code_period_s,
+        )
+        .expect("resolved pseudorange timing");
+
+        assert_eq!(resolved.integer_code_periods, expected_periods);
+        assert!((resolved.code_delay_s.0 - code_delay_s).abs() <= 1.0e-12);
+        assert!(
+            (resolved.signal_travel_time_s.0
+                - (expected_periods as f64 * code_period_s + code_delay_s))
+                .abs()
+                <= 1.0e-12
+        );
+        assert!((resolved.transmit_gps_time.tow_s - decoded_transmit_time.tow_s).abs() <= 1.0e-12);
+    }
+
+    #[test]
+    fn observations_resolve_absolute_pseudorange_from_decoded_transmit_time() {
+        let signal = signal_spec_gps_l1_ca();
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 4_092_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: signal.code_rate_hz,
+            code_length: 1023,
+            ..ReceiverPipelineConfig::default()
+        };
+        let receive_gps_time = GpsTime { week: 2200, tow_s: 345_600.250 };
+        let whole_code_periods = 72;
+        let aligned_code_phase_chips = 384.0;
+        let code_delay_s = aligned_code_phase_chips / signal.code_rate_hz;
+        let expected_signal_travel_time_s =
+            whole_code_periods as f64 * (1023.0 / signal.code_rate_hz) + code_delay_s;
+        let decoded_transmit_time = receive_gps_time.offset_seconds(-expected_signal_travel_time_s);
+        let epoch_sample_index =
+            ((receive_gps_time.tow_s - 345_600.0) * config.sampling_freq_hz).round() as u64;
+        let epoch = TrackEpoch {
+            sat: SatId { constellation: Constellation::Gps, prn: 7 },
+            signal_band: SignalBand::L1,
+            carrier_hz: Hertz(tracked_signal_center_hz(config.intermediate_freq_hz, signal)),
+            code_rate_hz: Hertz(signal.code_rate_hz),
+            code_phase_samples: Chips(test_tracking_code_phase_samples_for_signal(
+                &config,
+                signal,
+                1023,
+                aligned_code_phase_chips,
+            )),
+            transmit_time: Some(TrackingTransmitTime {
+                transmit_gps_time: decoded_transmit_time,
+                source: "decoded_lnav_how".to_string(),
+            }),
+            sample_index: epoch_sample_index,
+            source_time: ReceiverSampleTrace::from_sample_index(
+                epoch_sample_index,
+                config.sampling_freq_hz,
+            ),
+            ..make_tracking_epoch_with_phase(
+                7,
+                &config,
+                250,
+                tracked_signal_center_hz(config.intermediate_freq_hz, signal),
+                0.0,
+            )
+        };
+
+        let report = observations_from_tracking_results_with_gps_anchor(
+            &config,
+            Some(GpsTime { week: 2200, tow_s: 345_600.0 }),
+            &[track_from_epoch(epoch)],
+            10,
+        );
+        let obs_sat = report.output[0].sats.first().expect("observation satellite");
+        let timing = obs_sat.timing.expect("resolved signal timing");
+
+        assert_eq!(obs_sat.metadata.pseudorange_model, "decoded_transmit_time_code_phase");
+        assert_eq!(obs_sat.metadata.pseudorange_time_source, "decoded_lnav_how");
+        assert_eq!(obs_sat.metadata.pseudorange_integer_code_periods, Some(whole_code_periods));
+        assert_eq!(obs_sat.metadata.signal_delay_alignment_source, "");
+        assert_eq!(obs_sat.metadata.observation_support_class, "supported");
+        assert!(
+            (obs_sat.pseudorange_m.0 - expected_signal_travel_time_s * SPEED_OF_LIGHT_MPS).abs()
+                <= 1.0e-6
+        );
+        assert!((timing.signal_travel_time_s.0 - expected_signal_travel_time_s).abs() <= 1.0e-12);
+        assert!((timing.transmit_gps_time.tow_s - decoded_transmit_time.tow_s).abs() <= 1.0e-12);
+    }
+
+    #[test]
     fn observations_preserve_tracking_uncertainty_and_measurement_variances() {
         let config = ReceiverPipelineConfig {
             sampling_freq_hz: 4_092_000.0,
@@ -3134,6 +3233,7 @@ mod tests {
                 fll_lock: true,
                 lock_state: "tracking".to_string(),
                 lock_state_reason: Some("stable_tracking".to_string()),
+                transmit_time: None,
                 tracking_uncertainty: Some(uncertainty.clone()),
                 ..TrackEpoch::default()
             }],
@@ -3199,6 +3299,7 @@ mod tests {
             cn0_dbhz: 45.0,
             lock_state: "degraded".to_string(),
             lock_state_reason: Some("doppler_estimator_divergence".to_string()),
+            transmit_time: None,
             tracking_uncertainty: Some(uncertainty.clone()),
             ..TrackEpoch::default()
         };

@@ -79,6 +79,7 @@ fn tracking_epoch(
             sample_delay_samples: 0,
             source: "quality_fixture".to_string(),
         }),
+        transmit_time: None,
         tracking_uncertainty: Some(TrackingUncertainty {
             code_phase_samples: 0.05,
             carrier_phase_cycles: 0.02,

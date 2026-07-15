@@ -67,6 +67,7 @@ fn tracking_epoch(config: &ReceiverPipelineConfig, sat: SatId, epoch_idx: u64) -
         tracking_provenance: "integration_observations_common_receiver_time".to_string(),
         tracking_assumptions: None,
         signal_delay_alignment: None,
+        transmit_time: None,
         tracking_uncertainty: None,
         processing_ms: None,
     }

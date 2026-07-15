@@ -261,6 +261,7 @@ fn synthetic_truth_track(
         tracking_provenance: "clean_synthetic_navigation_truth".to_string(),
         tracking_assumptions: None,
         signal_delay_alignment: signal_delay_alignment(whole_code_periods),
+        transmit_time: None,
         tracking_uncertainty: None,
         processing_ms: None,
     };

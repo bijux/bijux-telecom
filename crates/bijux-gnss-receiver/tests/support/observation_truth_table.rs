@@ -302,6 +302,7 @@ fn synthetic_truth_track(
                     sample_delay_samples: 0,
                     source: "synthetic_truth".to_string(),
                 }),
+                transmit_time: None,
                 tracking_uncertainty: Some(TrackingUncertainty {
                     code_phase_samples: 0.25,
                     carrier_phase_cycles: TRACKING_CARRIER_PHASE_SIGMA_CYCLES,
