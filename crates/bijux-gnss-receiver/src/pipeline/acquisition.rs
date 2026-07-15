@@ -51,9 +51,14 @@ use peak_metrics::{
     correlation_metrics, correlation_metrics_in_window, delayed_secondary_peak_diagnostic,
     CorrelationMetrics, DelayedSecondaryPeakDiagnostic,
 };
+use threshold_resolution::{
+    threshold_provenance_for_request, AcquisitionThresholdCacheKey, ResolvedAcquisitionThresholds,
+    ThresholdResolutionCache,
+};
 
 mod cache;
 mod false_alarm_calibration;
+mod threshold_resolution;
 
 /// Acquisition engine (coarse search).
 pub struct Acquisition {
@@ -95,9 +100,6 @@ const ACQUISITION_UNCERTAINTY_LOG_RESPONSE_FLOOR_RATIO: f64 = 1.0e-6;
 const FALSE_ALARM_CALIBRATION_SEARCH_ITERATIONS: usize = 7;
 const WRONG_PRN_DOMINANCE_RATIO_MIN: f32 = 4.0;
 const WRONG_PRN_PEAK_SECOND_RATIO_MAX: f32 = 1.1;
-
-type ThresholdResolutionCache =
-    HashMap<AcquisitionThresholdCacheKey, ResolvedAcquisitionThresholds>;
 
 #[cfg(test)]
 fn fallback_acquisition_signal_model(
@@ -200,81 +202,6 @@ fn request_search_center_hz(
         signal_model.search_center_hz(intermediate_freq_hz),
         request.doppler_center_hz,
     )
-}
-
-fn threshold_provenance_for_request(
-    config: &ReceiverPipelineConfig,
-    request: AcqRequest,
-) -> AcqThresholdProvenance {
-    let threshold_policy = &config.acquisition_threshold_policy;
-    let (mode, false_alarm_probability, calibration_trial_count, calibration_confidence_level) =
-        match threshold_policy.mode {
-            AcquisitionThresholdMode::FixedRatio => ("fixed_ratio", None, None, None),
-            AcquisitionThresholdMode::CalibratedFalseAlarm => (
-                "calibrated_false_alarm",
-                Some(threshold_policy.false_alarm_probability),
-                Some(threshold_policy.calibration_trial_count),
-                Some(threshold_policy.confidence_level),
-            ),
-        };
-    AcqThresholdProvenance {
-        mode: mode.to_string(),
-        coherent_ms: request.coherent_ms,
-        noncoherent: request.noncoherent,
-        doppler_search_hz: request.doppler_search_hz,
-        doppler_step_hz: request.doppler_step_hz.max(1),
-        doppler_rate_search_hz_per_s: request.doppler_rate_search_hz_per_s.max(0),
-        doppler_rate_step_hz_per_s: request.doppler_rate_step_hz_per_s.max(1),
-        peak_mean_threshold: config.acquisition_peak_mean_threshold,
-        peak_second_threshold: config.acquisition_peak_second_threshold,
-        false_alarm_probability,
-        calibration_trial_count,
-        calibration_confidence_level,
-        calibration_false_alarm_rate: None,
-        calibration_false_alarm_interval_low: None,
-        calibration_false_alarm_interval_high: None,
-    }
-}
-
-#[derive(Debug, Clone)]
-struct ResolvedAcquisitionThresholds {
-    peak_mean_threshold: f32,
-    peak_second_threshold: f32,
-    provenance: AcqThresholdProvenance,
-}
-
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
-struct AcquisitionThresholdCacheKey {
-    sat: SatId,
-    signal_band: SignalBand,
-    signal_code: SignalCode,
-    glonass_frequency_channel: Option<bijux_gnss_core::api::GlonassFrequencyChannel>,
-    coherent_ms: u32,
-    noncoherent: u32,
-    doppler_search_hz: i32,
-    doppler_step_hz: i32,
-    samples_per_code: usize,
-}
-
-impl AcquisitionThresholdCacheKey {
-    fn from_request(
-        request: AcqRequest,
-        signal_band: SignalBand,
-        signal_code: SignalCode,
-        samples_per_code: usize,
-    ) -> Self {
-        Self {
-            sat: request.sat,
-            signal_band,
-            signal_code,
-            glonass_frequency_channel: request.glonass_frequency_channel,
-            coherent_ms: request.coherent_ms,
-            noncoherent: request.noncoherent,
-            doppler_search_hz: request.doppler_search_hz,
-            doppler_step_hz: request.doppler_step_hz.max(1),
-            samples_per_code,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
