@@ -360,6 +360,7 @@ fn handle_rtk(command: GnssCommand) -> Result<()> {
                 ids: Vec::new(),
                 float_cycles: Vec::new(),
                 covariance_cycles2: Vec::new(),
+                integer_compatible: false,
             }
         });
         let (fix_result, mut audit) =
