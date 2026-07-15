@@ -153,6 +153,12 @@
             { "type": "null" },
             { "$ref": "#/definitions/CodeCarrierDivergence" }
           ]
+        },
+        "cycle_slip_evidence": {
+          "oneOf": [
+            { "type": "null" },
+            { "$ref": "#/definitions/CycleSlipDecisionEvidence" }
+          ]
         }
       }
     },
@@ -164,6 +170,49 @@
         "carrier_lock": { "type": "boolean" },
         "bit_lock": { "type": "boolean" },
         "cycle_slip": { "type": "boolean" }
+      }
+    },
+    "CycleSlipDetectorEvidence": {
+      "type": "object",
+      "required": ["detector", "triggered", "value", "threshold", "units", "reason"],
+      "properties": {
+        "detector": {
+          "type": "string",
+          "enum": [
+            "tracking_lock",
+            "doppler_predicted_phase",
+            "geometry_free_phase",
+            "melbourne_wubbena",
+            "data_gap",
+            "phase_innovation",
+            "code_carrier_divergence"
+          ]
+        },
+        "triggered": { "type": "boolean" },
+        "value": { "type": ["number", "null"] },
+        "threshold": { "type": ["number", "null"] },
+        "units": { "type": "string" },
+        "reason": { "type": "string" }
+      }
+    },
+    "CycleSlipDecisionEvidence": {
+      "type": "object",
+      "required": [
+        "detected",
+        "primary_reason",
+        "contributors",
+        "detection_probability_budget",
+        "false_alarm_probability_budget"
+      ],
+      "properties": {
+        "detected": { "type": "boolean" },
+        "primary_reason": { "type": ["string", "null"] },
+        "contributors": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/CycleSlipDetectorEvidence" }
+        },
+        "detection_probability_budget": { "type": "number", "minimum": 0, "maximum": 1 },
+        "false_alarm_probability_budget": { "type": "number", "minimum": 0, "maximum": 1 }
       }
     },
     "ObsSignalTiming": {

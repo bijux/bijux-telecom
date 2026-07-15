@@ -3,8 +3,9 @@
 use std::collections::BTreeMap;
 
 use bijux_gnss_core::api::{
-    Chips, Constellation, Cycles, Epoch, Hertz, ReceiverSampleTrace, SatId, SignalBand,
-    SignalDelayAlignment, SignalSpec, TrackEpoch, TrackingUncertainty, GPS_L1_CA_CARRIER_HZ,
+    Chips, Constellation, CycleSlipDetector, Cycles, Epoch, Hertz, ReceiverSampleTrace, SatId,
+    SignalBand, SignalDelayAlignment, SignalSpec, TrackEpoch, TrackingUncertainty,
+    GPS_L1_CA_CARRIER_HZ,
 };
 use bijux_gnss_receiver::api::{
     observation_measurement_quality_from_tracking_results, ReceiverPipelineConfig, TrackingResult,
@@ -226,12 +227,21 @@ fn measurement_quality_reports_supported_signal_bands() {
         assert!(divergence.expected_ionosphere_m.is_finite(), "{divergence:?}");
         assert!(divergence.multipath_m.is_finite(), "{divergence:?}");
         assert!(divergence.unexplained_m.is_finite(), "{divergence:?}");
+        let slip_evidence = sat.cycle_slip_evidence.as_ref().expect("cycle-slip evidence");
+        assert!(slip_evidence.detection_probability_budget > 0.0, "{slip_evidence:?}");
+        assert!(slip_evidence.false_alarm_probability_budget > 0.0, "{slip_evidence:?}");
         assert!(!sat.observation_lock_state.is_empty(), "{sat:?}");
     }
 
     let l5_quality = by_band.get(&SignalBand::L5).expect("L5 measurement quality");
     assert!(l5_quality.cycle_slip, "{l5_quality:?}");
     assert_eq!(l5_quality.cycle_slip_reason.as_deref(), Some("simulated_phase_slip"));
+    assert!(l5_quality
+        .cycle_slip_evidence
+        .as_ref()
+        .expect("L5 cycle-slip evidence")
+        .triggered_detectors()
+        .contains(&CycleSlipDetector::TrackingLock));
 
     let b2_quality = by_band.get(&SignalBand::B2).expect("B2 measurement quality");
     assert!(b2_quality.lock_flags.code_lock, "{b2_quality:?}");

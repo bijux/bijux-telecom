@@ -230,6 +230,7 @@ pub struct ObservationMeasurementQualitySatellite {
     pub cn0_sigma_dbhz: Option<f64>,
     pub measurement_covariance: Option<ObservationMeasurementCovariance>,
     pub code_carrier_divergence: Option<CodeCarrierDivergence>,
+    pub cycle_slip_evidence: Option<CycleSlipDecisionEvidence>,
     pub lock_flags: LockFlags,
     pub observation_lock_state: String,
     pub observation_lock_reason: Option<String>,
@@ -335,6 +336,7 @@ impl ObservationMeasurementQualitySatellite {
                 .and_then(|uncertainty| finite_sigma(Some(uncertainty.cn0_dbhz))),
             measurement_covariance: sat.measurement_covariance(),
             code_carrier_divergence: sat.metadata.code_carrier_divergence,
+            cycle_slip_evidence: sat.metadata.cycle_slip_evidence.clone(),
             lock_flags: sat.lock_flags,
             observation_lock_state: sat.metadata.observation_lock_state.clone(),
             observation_lock_reason: sat.metadata.observation_lock_reason.clone(),
@@ -4866,6 +4868,16 @@ mod tests {
         assert!(covariance.carrier_doppler_m_hz > 0.0);
         assert_eq!(quality_sat.measurement_covariance, Some(covariance));
         assert_eq!(quality_sat.code_carrier_divergence, sat.metadata.code_carrier_divergence);
+        assert_eq!(quality_sat.cycle_slip_evidence, sat.metadata.cycle_slip_evidence);
+        let slip_evidence = quality_sat.cycle_slip_evidence.as_ref().expect("cycle-slip evidence");
+        assert_eq!(
+            slip_evidence.detection_probability_budget,
+            CYCLE_SLIP_DETECTION_PROBABILITY_BUDGET
+        );
+        assert_eq!(
+            slip_evidence.false_alarm_probability_budget,
+            CYCLE_SLIP_FALSE_ALARM_PROBABILITY_BUDGET
+        );
         let divergence =
             quality_sat.code_carrier_divergence.expect("code-carrier divergence quality evidence");
         assert!(divergence.raw_m.is_finite());
@@ -4907,6 +4919,7 @@ mod tests {
         assert!(quality.doppler_sigma_hz.is_none());
         assert!(quality.measurement_covariance.is_none());
         assert_eq!(quality.code_carrier_divergence, sat.metadata.code_carrier_divergence);
+        assert_eq!(quality.cycle_slip_evidence, sat.metadata.cycle_slip_evidence);
         assert!(residual.pseudorange_m.sigma.is_none());
         assert!(residual.carrier_phase_cycles.sigma.is_none());
         assert!(residual.doppler_hz.sigma.is_none());
