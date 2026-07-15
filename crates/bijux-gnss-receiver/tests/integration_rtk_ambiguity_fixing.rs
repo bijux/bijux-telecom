@@ -239,6 +239,7 @@ fn receiver_lambda_integer_candidates_preserve_original_ambiguity_coordinates() 
         ids: vec![gps_l1_dd_id(7, 3), gps_l1_dd_id(11, 3)],
         float_cycles: vec![-0.5, -0.45],
         covariance_cycles2: vec![vec![1.0, 0.8], vec![0.8, 1.0]],
+        integer_compatible: true,
     };
 
     let candidates = rtk_lambda_integer_ambiguity_candidates(&float_state, 3);
@@ -256,6 +257,7 @@ fn receiver_partial_ambiguity_selection_reports_excluded_ids() {
         ids: vec![gps_l1_dd_id(7, 3), gps_l1_dd_id(11, 3), gps_l1_dd_id(14, 3)],
         float_cycles: vec![5.45, -2.35, 3.62],
         covariance_cycles2: vec![vec![4.0, 1.2, -0.6], vec![1.2, 2.25, 0.8], vec![-0.6, 0.8, 1.44]],
+        integer_compatible: true,
     };
 
     let (partial, selection) =

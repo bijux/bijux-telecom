@@ -1,12 +1,15 @@
 use std::collections::BTreeMap;
 
 use bijux_gnss_core::api::{
-    AmbiguityId, AmbiguityState, AmbiguityStatus, ArtifactPayloadValidate, DiagnosticEvent,
-    DiagnosticSeverity, ObsSatellite, SigId,
+    AmbiguityId, AmbiguityState, AmbiguityStatus, ArtifactPayloadValidate, Constellation,
+    DiagnosticEvent, DiagnosticSeverity, ObsSatellite, SigId,
 };
 use serde::{Deserialize, Serialize};
 
 use super::baseline::RtkFloatBaselineSolution;
+use super::double_difference::{
+    rtk_glonass_inter_frequency_bias_is_integer_compatible, RtkDoubleDifferenceObservation,
+};
 use crate::linalg::Matrix;
 
 /// One double-difference ambiguity identifier keyed by signal and reference signal.
@@ -27,6 +30,9 @@ pub struct RtkFloatAmbiguityState {
     pub float_cycles: Vec<f64>,
     /// Full covariance matrix in square cycles.
     pub covariance_cycles2: Vec<Vec<f64>>,
+    /// Whether every ambiguity has the evidence required for integer treatment.
+    #[serde(default)]
+    pub integer_compatible: bool,
 }
 
 impl ArtifactPayloadValidate for RtkFloatAmbiguityState {
@@ -53,6 +59,13 @@ impl ArtifactPayloadValidate for RtkFloatAmbiguityState {
                 DiagnosticSeverity::Error,
                 "RTK_FLOAT_STATE_NUMERIC_INVALID",
                 "float ambiguity state contains NaN/Inf",
+            ));
+        }
+        if !self.integer_compatible {
+            events.push(DiagnosticEvent::new(
+                DiagnosticSeverity::Error,
+                "RTK_FLOAT_STATE_INTEGER_COMPATIBILITY_MISSING",
+                "float ambiguity state is missing evidence required for integer ambiguity fixing",
             ));
         }
         events
@@ -247,6 +260,26 @@ impl RtkRatioTestFixer {
                 ratio: None,
                 status: result.status,
                 reason: "no_ambiguities".to_string(),
+                fixed_count: 0,
+                partial_selection: None,
+            };
+            return (result, audit);
+        }
+        if !float.integer_compatible {
+            let result = RtkAmbiguityFixResult {
+                candidates: Vec::new(),
+                ratio: None,
+                status: RtkAmbiguityFixStatus::Failed,
+                fixed_count: 0,
+                selected_ids: None,
+                selected_integers: None,
+                partial_selection: None,
+            };
+            let audit = RtkAmbiguityFixAudit {
+                epoch_idx,
+                ratio: None,
+                status: result.status,
+                reason: "integer_compatibility_missing".to_string(),
                 fixed_count: 0,
                 partial_selection: None,
             };
@@ -628,6 +661,10 @@ pub fn rtk_float_ambiguity_state_from_baseline_solution(
     {
         return None;
     }
+    let integer_compatible = solution
+        .float_ambiguities
+        .iter()
+        .all(|ambiguity| !ambiguity_contains_glonass(ambiguity.sig, ambiguity.ref_sig));
     Some(RtkFloatAmbiguityState {
         ids: solution
             .float_ambiguities
@@ -643,7 +680,43 @@ pub fn rtk_float_ambiguity_state_from_baseline_solution(
             .map(|ambiguity| ambiguity.float_cycles)
             .collect(),
         covariance_cycles2: solution.ambiguity_covariance_cycles2.clone(),
+        integer_compatible,
     })
+}
+
+pub fn rtk_float_ambiguity_state_from_baseline_solution_with_bias_evidence(
+    solution: &RtkFloatBaselineSolution,
+    observations: &[RtkDoubleDifferenceObservation],
+) -> Option<RtkFloatAmbiguityState> {
+    let mut state = rtk_float_ambiguity_state_from_baseline_solution(solution)?;
+    state.integer_compatible = state
+        .ids
+        .iter()
+        .all(|id| ambiguity_id_is_integer_compatible_with_bias_evidence(id, observations));
+    if state.integer_compatible {
+        Some(state)
+    } else {
+        None
+    }
+}
+
+fn ambiguity_id_is_integer_compatible_with_bias_evidence(
+    id: &RtkDoubleDifferenceAmbiguityId,
+    observations: &[RtkDoubleDifferenceObservation],
+) -> bool {
+    if !ambiguity_contains_glonass(id.sig, id.ref_sig) {
+        return true;
+    }
+    observations
+        .iter()
+        .find(|observation| observation.sig == id.sig && observation.ref_sig == id.ref_sig)
+        .map(rtk_glonass_inter_frequency_bias_is_integer_compatible)
+        .unwrap_or(false)
+}
+
+fn ambiguity_contains_glonass(sig: SigId, ref_sig: SigId) -> bool {
+    sig.sat.constellation == Constellation::Glonass
+        || ref_sig.sat.constellation == Constellation::Glonass
 }
 
 pub fn rtk_ambiguity_state_from_fixed_solution(
@@ -932,7 +1005,8 @@ pub fn rtk_float_ambiguity_state_from_filter_state(
         }
         covariance_cycles2.push(out_row);
     }
-    RtkFloatAmbiguityState { ids, float_cycles, covariance_cycles2 }
+    let integer_compatible = ids.iter().all(|id| !ambiguity_contains_glonass(id.sig, id.ref_sig));
+    RtkFloatAmbiguityState { ids, float_cycles, covariance_cycles2, integer_compatible }
 }
 
 /// Transform a float double-difference ambiguity state to a different reference signal.
@@ -951,6 +1025,7 @@ pub fn rtk_transform_float_ambiguity_reference(
         ids: transform.ids,
         float_cycles: matrix_column_values(&new_float),
         covariance_cycles2: matrix_rows(&new_covariance),
+        integer_compatible: float.integer_compatible,
     })
 }
 
@@ -1327,7 +1402,15 @@ pub fn rtk_select_partial_ambiguity_fix_with_evidence(
     if !selection.validate_payload().is_empty() {
         return None;
     }
-    Some((RtkFloatAmbiguityState { ids, float_cycles, covariance_cycles2 }, selection))
+    Some((
+        RtkFloatAmbiguityState {
+            ids,
+            float_cycles,
+            covariance_cycles2,
+            integer_compatible: float.integer_compatible,
+        },
+        selection,
+    ))
 }
 
 pub fn rtk_ratio_test_acceptance(
