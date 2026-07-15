@@ -21,7 +21,6 @@ use bijux_gnss_signal::api::{default_acquisition_signal, signal_id_wavelength_m}
 use super::solver::{PositionBroadcastNavigation, PositionObservation};
 
 const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
-const SATELLITE_RATE_STEP_S: f64 = 1.0e-3;
 
 #[derive(Debug, Clone)]
 pub(crate) struct PositionSolveInput {
@@ -199,82 +198,55 @@ pub(crate) fn satellite_state_at_time(
     transmit_tow_s: f64,
     signal_travel_time_s: f64,
 ) -> Option<SatelliteState> {
-    let center = satellite_state_sample_at_time(navigation, transmit_tow_s, signal_travel_time_s)?;
-    let previous = satellite_state_sample_at_time(
-        navigation,
-        transmit_tow_s - SATELLITE_RATE_STEP_S,
-        signal_travel_time_s,
-    )?;
-    let next = satellite_state_sample_at_time(
-        navigation,
-        transmit_tow_s + SATELLITE_RATE_STEP_S,
-        signal_travel_time_s,
-    )?;
-    let inverse_dt = 1.0 / (2.0 * SATELLITE_RATE_STEP_S);
-
-    Some(SatelliteState {
-        x_m: center.x_m,
-        y_m: center.y_m,
-        z_m: center.z_m,
-        vx_mps: (next.x_m - previous.x_m) * inverse_dt,
-        vy_mps: (next.y_m - previous.y_m) * inverse_dt,
-        vz_mps: (next.z_m - previous.z_m) * inverse_dt,
-        clock_bias_s: center.clock_bias_s,
-        clock_drift_s_per_s: center.clock_drift_s_per_s,
-    })
-}
-
-#[derive(Debug, Clone, Copy)]
-struct SatelliteStateSample {
-    x_m: f64,
-    y_m: f64,
-    z_m: f64,
-    clock_bias_s: f64,
-    clock_drift_s_per_s: f64,
-}
-
-fn satellite_state_sample_at_time(
-    navigation: &PositionBroadcastNavigation,
-    transmit_tow_s: f64,
-    signal_travel_time_s: f64,
-) -> Option<SatelliteStateSample> {
     match navigation {
         PositionBroadcastNavigation::Gps(ephemeris) => {
             let state = sat_state_gps_l1ca(ephemeris, transmit_tow_s, signal_travel_time_s);
-            Some(SatelliteStateSample {
+            Some(SatelliteState {
                 x_m: state.x_m,
                 y_m: state.y_m,
                 z_m: state.z_m,
+                vx_mps: state.vx_mps,
+                vy_mps: state.vy_mps,
+                vz_mps: state.vz_mps,
                 clock_bias_s: state.clock_correction.bias_s,
                 clock_drift_s_per_s: state.clock_correction.drift_s_per_s,
             })
         }
         PositionBroadcastNavigation::Galileo(navigation) => {
             let state = sat_state_galileo_e1(navigation, transmit_tow_s, signal_travel_time_s);
-            Some(SatelliteStateSample {
+            Some(SatelliteState {
                 x_m: state.x_m,
                 y_m: state.y_m,
                 z_m: state.z_m,
+                vx_mps: state.vx_mps,
+                vy_mps: state.vy_mps,
+                vz_mps: state.vz_mps,
                 clock_bias_s: state.clock_correction.bias_s,
                 clock_drift_s_per_s: state.clock_correction.drift_s_per_s,
             })
         }
         PositionBroadcastNavigation::Beidou(navigation) => {
             let state = sat_state_beidou_b1i(navigation, transmit_tow_s, signal_travel_time_s);
-            Some(SatelliteStateSample {
+            Some(SatelliteState {
                 x_m: state.x_m,
                 y_m: state.y_m,
                 z_m: state.z_m,
+                vx_mps: state.vx_mps,
+                vy_mps: state.vy_mps,
+                vz_mps: state.vz_mps,
                 clock_bias_s: state.clock_correction.bias_s,
                 clock_drift_s_per_s: state.clock_correction.drift_s_per_s,
             })
         }
         PositionBroadcastNavigation::Glonass(navigation) => {
             let state = sat_state_glonass_l1(navigation, transmit_tow_s, signal_travel_time_s)?;
-            Some(SatelliteStateSample {
+            Some(SatelliteState {
                 x_m: state.x_m,
                 y_m: state.y_m,
                 z_m: state.z_m,
+                vx_mps: state.vx_mps,
+                vy_mps: state.vy_mps,
+                vz_mps: state.vz_mps,
                 clock_bias_s: state.clock_correction.bias_s,
                 clock_drift_s_per_s: state.clock_correction.drift_s_per_s,
             })
@@ -387,7 +359,7 @@ mod tests {
         SPEED_OF_LIGHT_MPS,
     };
     use crate::estimation::position::solver::geodetic_to_ecef;
-    use crate::orbits::gps::GpsEphemeris;
+    use crate::orbits::gps::{sat_state_gps_l1ca, GpsEphemeris};
     use bijux_gnss_core::api::{
         Constellation, GpsTime, ObsSignalTiming, SatId, Seconds, SigId, SignalBand, SignalCode,
     };
@@ -436,20 +408,30 @@ mod tests {
 
     #[test]
     fn satellite_state_at_time_reports_finite_rate_terms() {
-        let navigation = PositionBroadcastNavigation::Gps(sample_gps_ephemeris());
+        let ephemeris = sample_gps_ephemeris();
+        let navigation = PositionBroadcastNavigation::Gps(ephemeris.clone());
+        let transmit_tow_s = 504_018.0;
+        let signal_travel_time_s = 0.078;
 
-        let state =
-            satellite_state_at_time(&navigation, 504_018.0, 0.078).expect("satellite state");
+        let state = satellite_state_at_time(&navigation, transmit_tow_s, signal_travel_time_s)
+            .expect("satellite state");
+        let direct_state = sat_state_gps_l1ca(&ephemeris, transmit_tow_s, signal_travel_time_s);
         let speed_mps = (state.vx_mps * state.vx_mps
             + state.vy_mps * state.vy_mps
             + state.vz_mps * state.vz_mps)
             .sqrt();
 
-        assert!(state.x_m.is_finite());
-        assert!(state.y_m.is_finite());
-        assert!(state.z_m.is_finite());
-        assert!(state.clock_bias_s.is_finite());
-        assert!(state.clock_drift_s_per_s.is_finite());
+        assert!((state.x_m - direct_state.x_m).abs() < 1.0e-9);
+        assert!((state.y_m - direct_state.y_m).abs() < 1.0e-9);
+        assert!((state.z_m - direct_state.z_m).abs() < 1.0e-9);
+        assert!((state.vx_mps - direct_state.vx_mps).abs() < 1.0e-12);
+        assert!((state.vy_mps - direct_state.vy_mps).abs() < 1.0e-12);
+        assert!((state.vz_mps - direct_state.vz_mps).abs() < 1.0e-12);
+        assert!((state.clock_bias_s - direct_state.clock_correction.bias_s).abs() < 1.0e-18);
+        assert!(
+            (state.clock_drift_s_per_s - direct_state.clock_correction.drift_s_per_s).abs()
+                < 1.0e-18
+        );
         assert!(speed_mps > 100.0, "speed_mps={speed_mps}");
     }
 
