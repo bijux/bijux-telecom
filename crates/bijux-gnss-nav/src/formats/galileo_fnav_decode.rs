@@ -2,6 +2,10 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::orbits::galileo::{
+    GalileoIonosphericCorrection, GalileoIonosphericDisturbanceFlags, GalileoSystemTime,
+};
+
 const GALILEO_FNAV_PAGE_BITS: usize = 244;
 const GALILEO_FNAV_PAYLOAD_BITS: usize = 214;
 const GALILEO_FNAV_CRC_BITS: usize = 24;
@@ -15,6 +19,32 @@ pub struct GalileoFnavPage {
     pub bits: Vec<u8>,
     pub transmitted_crc: u32,
     pub computed_crc: u32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GalileoFnavSignalStatus {
+    pub e5a_signal_health: u8,
+    pub e5a_data_valid: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct GalileoFnavClockCorrection {
+    pub t0c_s: f64,
+    pub af0: f64,
+    pub af1: f64,
+    pub af2: f64,
+    pub bgd_e1_e5a_s: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GalileoFnavClockStatusPage {
+    pub svid: u8,
+    pub iodnav: u16,
+    pub sisa_e1_e5a: u8,
+    pub clock: GalileoFnavClockCorrection,
+    pub ionosphere: GalileoIonosphericCorrection,
+    pub signal_status: GalileoFnavSignalStatus,
+    pub gst: GalileoSystemTime,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -76,6 +106,43 @@ pub fn decode_galileo_fnav_page(bits: &[u8]) -> Result<GalileoFnavPage, GalileoF
     }
 
     Ok(GalileoFnavPage { page_type, bits: normalized, transmitted_crc, computed_crc })
+}
+
+pub fn decode_galileo_fnav_clock_status_page(
+    page: &GalileoFnavPage,
+) -> Option<GalileoFnavClockStatusPage> {
+    (page.page_type == 1).then(|| GalileoFnavClockStatusPage {
+        svid: page.unsigned_bits(7, 6) as u8,
+        iodnav: page.unsigned_bits(13, 10) as u16,
+        clock: GalileoFnavClockCorrection {
+            t0c_s: page.unsigned_bits(23, 14) as f64 * 60.0,
+            af0: page.signed_bits(37, 31) as f64 * 2f64.powi(-34),
+            af1: page.signed_bits(68, 21) as f64 * 2f64.powi(-46),
+            af2: page.signed_bits(89, 6) as f64 * 2f64.powi(-59),
+            bgd_e1_e5a_s: page.signed_bits(144, 10) as f64 * 2f64.powi(-32),
+        },
+        sisa_e1_e5a: page.unsigned_bits(95, 8) as u8,
+        ionosphere: GalileoIonosphericCorrection {
+            ai0: page.unsigned_bits(103, 11) as f64 * 2f64.powi(-2),
+            ai1: page.signed_bits(114, 11) as f64 * 2f64.powi(-8),
+            ai2: page.signed_bits(125, 14) as f64 * 2f64.powi(-15),
+            disturbance_flags: GalileoIonosphericDisturbanceFlags {
+                region_1: page.unsigned_bits(139, 1) != 0,
+                region_2: page.unsigned_bits(140, 1) != 0,
+                region_3: page.unsigned_bits(141, 1) != 0,
+                region_4: page.unsigned_bits(142, 1) != 0,
+                region_5: page.unsigned_bits(143, 1) != 0,
+            },
+        },
+        signal_status: GalileoFnavSignalStatus {
+            e5a_signal_health: page.unsigned_bits(154, 2) as u8,
+            e5a_data_valid: page.unsigned_bits(188, 1) == 0,
+        },
+        gst: GalileoSystemTime {
+            week: page.unsigned_bits(156, 12) as u16,
+            tow_s: page.unsigned_bits(168, 20) as u32,
+        },
+    })
 }
 
 fn normalize_fnav_bits(bits: &[u8]) -> Result<Vec<u8>, GalileoFnavPageRejection> {
@@ -145,6 +212,11 @@ mod tests {
         }
     }
 
+    fn encode_signed(value: i64, bits: usize) -> u64 {
+        let mask = (1_u64 << bits) - 1;
+        value as u64 & mask
+    }
+
     fn apply_crc(bits: &mut [u8]) {
         let crc = fnav_crc24q(&bits[..GALILEO_FNAV_PAYLOAD_BITS]);
         set_bits(bits, GALILEO_FNAV_PAYLOAD_BITS + 1, GALILEO_FNAV_CRC_BITS, u64::from(crc));
@@ -212,5 +284,54 @@ mod tests {
             GALILEO_FNAV_PAYLOAD_BITS + GALILEO_FNAV_CRC_BITS + GALILEO_FNAV_TAIL_BITS,
             GALILEO_FNAV_PAGE_BITS
         );
+    }
+
+    #[test]
+    fn clock_status_page_decodes_e5a_clock_and_status_fields() {
+        let mut bits = vec![0_u8; GALILEO_FNAV_PAGE_BITS];
+        set_bits(&mut bits, 1, 6, 1);
+        set_bits(&mut bits, 7, 6, 19);
+        set_bits(&mut bits, 13, 10, 0x1A5);
+        set_bits(&mut bits, 23, 14, 1_111);
+        set_bits(&mut bits, 37, 31, encode_signed(-0x1ABCD_i64, 31));
+        set_bits(&mut bits, 68, 21, encode_signed(0x01234_i64, 21));
+        set_bits(&mut bits, 89, 6, encode_signed(-0x09_i64, 6));
+        set_bits(&mut bits, 95, 8, 77);
+        set_bits(&mut bits, 103, 11, 211);
+        set_bits(&mut bits, 114, 11, encode_signed(-87_i64, 11));
+        set_bits(&mut bits, 125, 14, encode_signed(0x00A5_i64, 14));
+        set_bits(&mut bits, 139, 1, 1);
+        set_bits(&mut bits, 140, 1, 1);
+        set_bits(&mut bits, 142, 1, 1);
+        set_bits(&mut bits, 144, 10, encode_signed(-12_i64, 10));
+        set_bits(&mut bits, 154, 2, 2);
+        set_bits(&mut bits, 156, 12, 2_222);
+        set_bits(&mut bits, 168, 20, 456_789);
+        set_bits(&mut bits, 188, 1, 0);
+        apply_crc(&mut bits);
+        let page = decode_galileo_fnav_page(&bits).expect("valid type 1 page");
+
+        let status = super::decode_galileo_fnav_clock_status_page(&page).expect("type 1 payload");
+
+        assert_eq!(status.svid, 19);
+        assert_eq!(status.iodnav, 0x1A5);
+        assert_eq!(status.sisa_e1_e5a, 77);
+        assert_eq!(status.clock.t0c_s, 1_111.0 * 60.0);
+        assert_eq!(status.clock.af0, -0x1ABCD_i64 as f64 * 2f64.powi(-34));
+        assert_eq!(status.clock.af1, 0x01234_i64 as f64 * 2f64.powi(-46));
+        assert_eq!(status.clock.af2, -0x09_i64 as f64 * 2f64.powi(-59));
+        assert_eq!(status.clock.bgd_e1_e5a_s, -12.0 * 2f64.powi(-32));
+        assert_eq!(status.ionosphere.ai0, 211.0 * 2f64.powi(-2));
+        assert_eq!(status.ionosphere.ai1, -87.0 * 2f64.powi(-8));
+        assert_eq!(status.ionosphere.ai2, 0x00A5_i64 as f64 * 2f64.powi(-15));
+        assert!(status.ionosphere.disturbance_flags.region_1);
+        assert!(status.ionosphere.disturbance_flags.region_2);
+        assert!(!status.ionosphere.disturbance_flags.region_3);
+        assert!(status.ionosphere.disturbance_flags.region_4);
+        assert!(!status.ionosphere.disturbance_flags.region_5);
+        assert_eq!(status.signal_status.e5a_signal_health, 2);
+        assert!(status.signal_status.e5a_data_valid);
+        assert_eq!(status.gst.week, 2_222);
+        assert_eq!(status.gst.tow_s, 456_789);
     }
 }
