@@ -3,7 +3,7 @@
 use std::path::PathBuf;
 
 use bijux_gnss_core::api::{Constellation, SatId};
-use bijux_gnss_nav::api::ClkProvider;
+use bijux_gnss_nav::api::{ClkInterpolationEdgePolicy, ClkInterpolationWindowPolicy, ClkProvider};
 
 const REDUCED_IGS_MAX_BIAS_ERROR_S: f64 = 1.0e-10;
 const REDUCED_IGS_RMS_BIAS_ERROR_S: f64 = 8.0e-11;
@@ -40,7 +40,15 @@ fn reduced_igs_clk_fixtures_measure_subnanosecond_interpolation_error() {
             .interpolation_summary(sat)
             .unwrap_or_else(|| panic!("clock interpolation summary for {name}"));
 
+        assert_eq!(summary.policy.support_point_count, 4);
+        assert_eq!(summary.policy.polynomial_order, 3);
+        assert_eq!(summary.policy.window_policy, ClkInterpolationWindowPolicy::NearestCentered);
+        assert_eq!(summary.policy.edge_policy, ClkInterpolationEdgePolicy::InsideCoverageOnly);
+        assert_eq!(summary.policy.max_gap_multiplier, 1.5);
+        assert_eq!(summary.policy.max_gap_margin_s, 1.0);
+        assert_eq!(summary.policy.max_bias_step_s, 1.0e-6);
         assert_eq!(summary.sample_count, 3);
+        assert_eq!(summary.withheld_edge_sample_count, 2);
         assert!(
             summary.max_bias_error_s <= REDUCED_IGS_MAX_BIAS_ERROR_S,
             "{name} exceeded reduced-IGS max bias interpolation budget: {:.6} ns",
