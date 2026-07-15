@@ -52,10 +52,11 @@
             id: "composite_component_recovery_clean".to_string(),
         };
         let frame = generate_l1_ca_multi_signal_only(&config, &scenario);
-        let bundle = build_iq16_capture_bundle(
+        let bundle = build_quantized_capture_bundle(
             &scenario.id,
             &scenario,
             &frame,
+            IqQuantization::Float32,
             "2026-07-13T00:00:00Z",
             Some("synthetic composite component recovery clean".to_string()),
         );

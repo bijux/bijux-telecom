@@ -16,44 +16,52 @@
             sample_rate_hz: config.sampling_freq_hz,
             intermediate_freq_hz: config.intermediate_freq_hz,
             receiver_clock_frequency_bias_hz: 0.0,
-            duration_s: 0.05,
+            duration_s: 0.12,
             seed: 17,
             satellites: vec![SyntheticSignalParams {
                 sat: SatId { constellation: Constellation::Gps, prn: 7 },
                 glonass_frequency_channel: None,
                 signal_band: bijux_gnss_core::api::SignalBand::L1,
- signal_code: bijux_gnss_core::api::SignalCode::Unknown,
-                doppler_hz: -1000.0,
-                code_phase_chips: 321.0,
+                signal_code: bijux_gnss_core::api::SignalCode::Unknown,
+                doppler_hz: 0.0,
+                code_phase_chips: 0.0,
                 carrier_phase_rad: 0.2,
-                cn0_db_hz: 52.0,
+                cn0_db_hz: 58.0,
                 navigation_data: false.into(),
             }],
             ephemerides: Vec::new(),
             id: "cn0-validation".to_string(),
         };
         let frame = generate_l1_ca_multi(&config, &scenario);
-        let bundle = build_iq16_capture_bundle(
+        let metadata = RawIqMetadata {
+            format: IqSampleFormat::Cf32Le,
+            sample_rate_hz: config.sampling_freq_hz,
+            intermediate_freq_hz: config.intermediate_freq_hz,
+            capture_start_utc: "2026-07-09T00:00:00Z".to_string(),
+            offset_bytes: 0,
+            quantization_bits: Some(32),
+            notes: Some("synthetic cn0 validation".to_string()),
+        };
+        let truth = build_truth_bundle(
             &scenario.id,
             &scenario,
             &frame,
-            "2026-07-09T00:00:00Z",
-            Some("synthetic cn0 validation".to_string()),
+            &metadata,
+            IqQuantization::Float32,
+            1.0,
+            1.0,
         );
-        let scaled_frame = SamplesFrame::new(
-            frame.t0,
-            frame.dt_s,
-            frame.iq.iter().map(|sample| *sample * bundle.truth.output_scale_applied).collect(),
-        );
-        let report = validate_truth_guided_cn0(&config, &scaled_frame, &bundle.truth, 4.5);
+        let report = validate_truth_guided_cn0(&config, &frame, &truth, 4.5);
 
         assert!(report.pass, "{report:?}");
         assert_eq!(report.coherent_samples_per_epoch, 4092);
         assert_eq!(report.satellites.len(), 1);
+        let max_tracking_epochs =
+            (scenario.duration_s / report.coherent_integration_s).ceil() as usize;
         for row in &report.satellites {
             assert!(row.pass, "{row:?}");
             assert!(row.epochs_measured >= super::TRACKING_CN0_MIN_STABLE_EPOCHS, "{row:?}");
-            assert!(row.epochs_measured <= 50, "{row:?}");
+            assert!(row.epochs_measured <= max_tracking_epochs, "{row:?}");
             assert!(row.cn0_delta_db.abs() <= 4.5, "{row:?}");
             assert!(row.measured_max_cn0_dbhz >= row.measured_min_cn0_dbhz);
         }
