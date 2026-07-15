@@ -103,6 +103,64 @@ fn ekf_reset_epoch_health_clears_ephemeral_metrics() {
 }
 
 #[test]
+fn ekf_retain_states_preserves_selected_covariance_rows() {
+    let mut ekf = Ekf::new(
+        vec![10.0, 20.0, 30.0, 40.0],
+        Matrix::new(4, 4, 0.0),
+        EkfConfig {
+            gating_chi2_code: None,
+            gating_chi2_phase: None,
+            gating_chi2_doppler: None,
+            innovation_consistency: Some(InnovationConsistencyConfig::default()),
+            huber_k: None,
+            square_root: false,
+            covariance_epsilon: 1e-9,
+            divergence_max_variance: 1e12,
+        },
+    );
+    ekf.labels = vec!["pos_x".into(), "clock".into(), "iono_g07".into(), "amb_g11".into()];
+    for row in 0..4 {
+        for col in 0..4 {
+            ekf.p[(row, col)] = (row * 10 + col) as f64 + 1.0;
+        }
+    }
+
+    assert!(ekf.retain_states(&[0, 2, 3]));
+
+    assert_eq!(ekf.x, vec![10.0, 30.0, 40.0]);
+    assert_eq!(ekf.labels, vec!["pos_x", "iono_g07", "amb_g11"]);
+    assert_eq!(ekf.p.rows(), 3);
+    assert_eq!(ekf.p.cols(), 3);
+    assert_eq!(ekf.p[(0, 0)], 1.0);
+    assert_eq!(ekf.p[(0, 1)], 0.5 * (3.0 + 21.0));
+    assert_eq!(ekf.p[(1, 2)], 0.5 * (24.0 + 33.0));
+    assert_eq!(ekf.p[(2, 2)], 34.0);
+}
+
+#[test]
+fn ekf_retain_states_rejects_duplicate_or_out_of_range_indices() {
+    let mut ekf = Ekf::new(
+        vec![1.0, 2.0],
+        Matrix::identity(2),
+        EkfConfig {
+            gating_chi2_code: None,
+            gating_chi2_phase: None,
+            gating_chi2_doppler: None,
+            innovation_consistency: Some(InnovationConsistencyConfig::default()),
+            huber_k: None,
+            square_root: false,
+            covariance_epsilon: 1e-9,
+            divergence_max_variance: 1e12,
+        },
+    );
+
+    assert!(!ekf.retain_states(&[0, 0]));
+    assert!(!ekf.retain_states(&[0, 2]));
+    assert_eq!(ekf.x, vec![1.0, 2.0]);
+    assert_eq!(ekf.p.rows(), 2);
+}
+
+#[test]
 fn ekf_records_innovation_consistency_anomaly_when_nis_exceeds_bounds() {
     let mut covariance = Matrix::identity(8);
     for index in 0..8 {

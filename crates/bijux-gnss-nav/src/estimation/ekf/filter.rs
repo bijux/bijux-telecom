@@ -103,6 +103,39 @@ impl Ekf {
         self.labels.push(label.to_string());
     }
 
+    pub fn retain_states(&mut self, retained_indices: &[usize]) -> bool {
+        if retained_indices.is_empty() {
+            return false;
+        }
+        let n = self.x.len();
+        let mut seen = vec![false; n];
+        for &index in retained_indices {
+            if index >= n || seen[index] {
+                return false;
+            }
+            seen[index] = true;
+        }
+
+        let mut x = Vec::with_capacity(retained_indices.len());
+        let mut labels = Vec::with_capacity(retained_indices.len());
+        let mut p = Matrix::new(retained_indices.len(), retained_indices.len(), 0.0);
+        for (new_row, &old_row) in retained_indices.iter().enumerate() {
+            x.push(self.x[old_row]);
+            if let Some(label) = self.labels.get(old_row) {
+                labels.push(label.clone());
+            }
+            for (new_col, &old_col) in retained_indices.iter().enumerate() {
+                p[(new_row, new_col)] = self.p[(old_row, old_col)];
+            }
+        }
+
+        self.x = x;
+        self.p = p;
+        self.labels = labels;
+        self.sanitize_covariance();
+        true
+    }
+
     pub fn predict<M: StateModel>(&mut self, model: &M, dt_s: f64) {
         model.propagate(&mut self.x, &mut self.p, dt_s);
         self.sanitize_covariance();
