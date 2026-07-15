@@ -3348,27 +3348,16 @@ fn solve_weighted_least_squares(
     if h.len() != v.len() || h.len() < dimension {
         return None;
     }
-    let mut weighted_design = vec![vec![0.0_f64; dimension]; h.len()];
     let mut weighted_residuals = vec![0.0_f64; h.len()];
-    for (row_index, row) in h.iter().enumerate() {
-        if row.len() != dimension {
-            return None;
-        }
+    for row_index in 0..h.len() {
         let weight = w.get(row_index).copied().unwrap_or(1.0);
         if !weight.is_finite() || weight < 0.0 || !v[row_index].is_finite() {
             return None;
         }
-        let scale = weight.sqrt();
-        weighted_residuals[row_index] = v[row_index] * scale;
-        for col in 0..dimension {
-            if !row[col].is_finite() {
-                return None;
-            }
-            weighted_design[row_index][col] = row[col] * scale;
-        }
+        weighted_residuals[row_index] = v[row_index] * weight.sqrt();
     }
 
-    let decomposition = pivoted_qr(&weighted_design)?;
+    let decomposition = decompose_weighted_design(h, w)?;
     if decomposition.rank < dimension {
         return None;
     }
@@ -3382,6 +3371,31 @@ fn solve_weighted_least_squares(
         rank: decomposition.rank,
         condition_number: decomposition.condition_number,
     })
+}
+
+fn decompose_weighted_design(h: &[Vec<f64>], w: &[f64]) -> Option<PivotedQr> {
+    let dimension = h.first()?.len();
+    if h.len() < dimension {
+        return None;
+    }
+    let mut weighted_design = vec![vec![0.0_f64; dimension]; h.len()];
+    for (row_index, row) in h.iter().enumerate() {
+        if row.len() != dimension {
+            return None;
+        }
+        let weight = w.get(row_index).copied().unwrap_or(1.0);
+        if !weight.is_finite() || weight < 0.0 {
+            return None;
+        }
+        let scale = weight.sqrt();
+        for col in 0..dimension {
+            if !row[col].is_finite() {
+                return None;
+            }
+            weighted_design[row_index][col] = row[col] * scale;
+        }
+    }
+    pivoted_qr(&weighted_design)
 }
 
 fn pivoted_qr(a: &[Vec<f64>]) -> Option<PivotedQr> {
@@ -3613,62 +3627,6 @@ pub fn invert_4x4(a: [[f64; 4]; 4]) -> Option<[[f64; 4]; 4]> {
     Some(inv)
 }
 
-fn invert_matrix(mut matrix: Vec<Vec<f64>>) -> Option<Vec<Vec<f64>>> {
-    let dimension = matrix.len();
-    if dimension == 0 || matrix.iter().any(|row| row.len() != dimension) {
-        return None;
-    }
-    let mut augmented = vec![vec![0.0_f64; dimension * 2]; dimension];
-    for row in 0..dimension {
-        for col in 0..dimension {
-            augmented[row][col] = matrix[row][col];
-        }
-        augmented[row][row + dimension] = 1.0;
-    }
-    for pivot_col in 0..dimension {
-        let mut pivot_row = pivot_col;
-        let mut pivot_abs = augmented[pivot_col][pivot_col].abs();
-        for (row_index, row) in augmented.iter().enumerate().skip(pivot_col + 1) {
-            if row[pivot_col].abs() > pivot_abs {
-                pivot_abs = row[pivot_col].abs();
-                pivot_row = row_index;
-            }
-        }
-        if pivot_abs < 1.0e-12 {
-            return None;
-        }
-        if pivot_row != pivot_col {
-            augmented.swap(pivot_col, pivot_row);
-        }
-        let pivot_inverse = 1.0 / augmented[pivot_col][pivot_col];
-        for col in pivot_col..(dimension * 2) {
-            augmented[pivot_col][col] *= pivot_inverse;
-        }
-        for row in 0..dimension {
-            if row == pivot_col {
-                continue;
-            }
-            let factor = augmented[row][pivot_col];
-            for col in pivot_col..(dimension * 2) {
-                augmented[row][col] -= factor * augmented[pivot_col][col];
-            }
-        }
-    }
-    let mut inverse = vec![vec![0.0_f64; dimension]; dimension];
-    for row in 0..dimension {
-        for col in 0..dimension {
-            inverse[row][col] = augmented[row][col + dimension];
-        }
-    }
-    matrix.clear();
-    Some(inverse)
-}
-
-fn compute_pdop(h: &[Vec<f64>]) -> Option<f64> {
-    let inv = normal_matrix_inverse(h)?;
-    Some(position_covariance_trace(&inv).sqrt())
-}
-
 pub fn position_dops_from_satellite_positions(
     receiver_ecef_m: [f64; 3],
     satellite_positions_ecef_m: &[[f64; 3]],
@@ -3691,28 +3649,17 @@ pub fn position_dops_from_satellite_positions(
 }
 
 fn compute_dops(receiver_ecef_m: [f64; 3], h: &[Vec<f64>]) -> Option<PositionDops> {
-    let inv = normal_matrix_inverse(h)?;
-    let pdop = position_covariance_trace(&inv).sqrt();
-    let tdop = inv[3][3].max(0.0).sqrt();
-    let gdop = (pdop.powi(2) + tdop.powi(2)).sqrt();
-    let (hdop, vdop) = local_horizontal_vertical_dops(receiver_ecef_m, &inv)?;
-    Some(PositionDops { pdop, hdop, vdop, gdop, tdop })
-}
-
-fn normal_matrix_inverse(h: &[Vec<f64>]) -> Option<Vec<Vec<f64>>> {
-    let dimension = h.first()?.len();
-    let mut n = vec![vec![0.0_f64; dimension]; dimension];
-    for row in h {
-        if row.len() != dimension {
-            return None;
-        }
-        for r in 0..dimension {
-            for c in 0..dimension {
-                n[r][c] += row[r] * row[c];
-            }
-        }
+    let unit_weights = vec![1.0; h.len()];
+    let decomposition = decompose_weighted_design(h, &unit_weights)?;
+    if decomposition.rank < h.first()?.len() {
+        return None;
     }
-    invert_matrix(n)
+    let covariance = covariance_from_upper_triangular(&decomposition.r, &decomposition.pivots)?;
+    let pdop = position_covariance_trace(&covariance).sqrt();
+    let tdop = covariance[3][3].max(0.0).sqrt();
+    let gdop = (pdop.powi(2) + tdop.powi(2)).sqrt();
+    let (hdop, vdop) = local_horizontal_vertical_dops(receiver_ecef_m, &covariance)?;
+    Some(PositionDops { pdop, hdop, vdop, gdop, tdop })
 }
 
 fn position_covariance_trace(inv: &[Vec<f64>]) -> f64 {
