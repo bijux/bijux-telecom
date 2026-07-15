@@ -9,13 +9,13 @@ use bijux_gnss_core::api::{
     gps_to_utc, Constellation, GpsTime, IoError, LeapSeconds, ParseError, SatId,
 };
 use regex::Regex;
-use time::{Date, Month, PrimitiveDateTime, Time};
 
 use bijux_gnss_core::api::ObsEpoch;
 
 use crate::models::atmosphere::KlobucharCoefficients;
 use crate::orbits::gps::GpsBroadcastNavigationData;
 use crate::orbits::gps::GpsEphemeris;
+use crate::time::{utc_civil_to_gps_with_offset, UtcCivilTime, UtcCivilTimeError};
 
 fn write_header_line(writer: &mut BufWriter<File>, line: &str) -> Result<(), IoError> {
     let mut out = line.to_string();
@@ -135,6 +135,7 @@ fn pad_rinex_nav_record_fields(mut fields: Vec<f64>) -> [f64; 4] {
     [fields[0], fields[1], fields[2], fields[3]]
 }
 
+#[cfg(test)]
 fn parse_rinex_epoch_utc(
     year: i32,
     month: u8,
@@ -143,21 +144,39 @@ fn parse_rinex_epoch_utc(
     minute: u8,
     second: f64,
 ) -> Result<bijux_gnss_core::api::UtcTime, ParseError> {
+    let civil = parse_rinex_epoch_utc_civil(year, month, day, hour, minute, second)?;
+    civil.to_utc_time().map_err(rinex_utc_civil_error)
+}
+
+fn parse_rinex_epoch_utc_civil(
+    year: i32,
+    month: u8,
+    day: u8,
+    hour: u8,
+    minute: u8,
+    second: f64,
+) -> Result<UtcCivilTime, ParseError> {
+    if !second.is_finite() {
+        return Err(ParseError { message: "RINEX NAV seconds must be finite".to_string() });
+    }
     let whole_seconds = second.floor();
-    let nanos = ((second - whole_seconds) * 1_000_000_000.0).round();
-    let date = Date::from_calendar_date(
-        year,
-        Month::try_from(month)
-            .map_err(|_| ParseError { message: format!("invalid RINEX NAV month {month}") })?,
-        day,
-    )
-    .map_err(|err| ParseError { message: format!("invalid RINEX NAV date: {err}") })?;
-    let time = Time::from_hms_nano(hour, minute, whole_seconds as u8, nanos as u32)
-        .map_err(|err| ParseError { message: format!("invalid RINEX NAV time: {err}") })?;
-    let utc = PrimitiveDateTime::new(date, time).assume_utc();
-    Ok(bijux_gnss_core::api::UtcTime {
-        unix_s: utc.unix_timestamp_nanos() as f64 / 1_000_000_000.0,
-    })
+    if !(0.0..=60.0).contains(&whole_seconds) {
+        return Err(ParseError { message: format!("invalid RINEX NAV second {second}") });
+    }
+    let mut whole_seconds = whole_seconds as u8;
+    let mut nanos = ((second - whole_seconds as f64) * 1_000_000_000.0).round() as u32;
+    if nanos == 1_000_000_000 {
+        whole_seconds = whole_seconds.saturating_add(1);
+        nanos = 0;
+    }
+    let civil =
+        UtcCivilTime { year, month, day, hour, minute, second: whole_seconds, nanosecond: nanos };
+    civil.validate_leap_second(&LeapSeconds::default_table()).map_err(rinex_utc_civil_error)?;
+    Ok(civil)
+}
+
+fn rinex_utc_civil_error(err: UtcCivilTimeError) -> ParseError {
+    ParseError { message: format!("invalid RINEX NAV UTC epoch: {err:?}") }
 }
 
 fn format_rinex_nav_float(value: f64) -> String {
@@ -367,7 +386,7 @@ fn parse_gps_rinex_nav_record(
     let line7 = pad_rinex_nav_record_fields(line7);
 
     let year = parse_rinex_nav_year(line1[0] as i32, header.version);
-    let utc = parse_rinex_epoch_utc(
+    let utc = parse_rinex_epoch_utc_civil(
         year,
         line1[1] as u8,
         line1[2] as u8,
@@ -375,7 +394,9 @@ fn parse_gps_rinex_nav_record(
         line1[4] as u8,
         line1[5],
     )?;
-    let toc = crate::time::gps_time_from_utc(utc);
+    let toc = utc_civil_to_gps_with_offset(utc, &LeapSeconds::default_table())
+        .map_err(rinex_utc_civil_error)?
+        .time;
     let week = line6[2].round().max(0.0) as u32;
 
     Ok(GpsEphemeris {
@@ -541,8 +562,8 @@ pub fn parse_rinex_obs_header(data: &str) -> Result<(), ParseError> {
 mod tests {
     use super::{
         format_rinex_nav_float, parse_rinex_broadcast_navigation, parse_rinex_epoch_utc,
-        parse_rinex_float, parse_rinex_nav, parse_rinex_nav_header, parse_rinex_numeric_fields,
-        write_rinex_broadcast_navigation, write_rinex_nav,
+        parse_rinex_epoch_utc_civil, parse_rinex_float, parse_rinex_nav, parse_rinex_nav_header,
+        parse_rinex_numeric_fields, write_rinex_broadcast_navigation, write_rinex_nav,
     };
     use crate::models::atmosphere::KlobucharCoefficients;
     use crate::orbits::gps::{GpsBroadcastNavigationData, GpsEphemeris};
@@ -677,6 +698,22 @@ GPSB  1.1670D+05-2.2940D+05-1.3110D+05 1.0490D+06       IONOSPHERIC CORR
     }
 
     #[test]
+    fn rinex_nav_epoch_conversion_preserves_declared_leap_second_in_gps_time() {
+        let civil = parse_rinex_epoch_utc_civil(2016, 12, 31, 23, 59, 60.5).expect("leap epoch");
+        let gps = crate::time::utc_civil_to_gps_with_offset(
+            civil,
+            &bijux_gnss_core::api::LeapSeconds::default_table(),
+        )
+        .expect("gps conversion")
+        .time;
+
+        assert_eq!(civil.format_utc(), "2016-12-31T23:59:60.5Z");
+        assert_eq!(gps.week, 1930);
+        assert!((gps.tow_s - 17.5).abs() < 1.0e-9);
+        assert!(parse_rinex_epoch_utc(2016, 12, 31, 23, 59, 60.0).is_err());
+    }
+
+    #[test]
     fn parse_rinex_nav_reads_gps_rinex_3_ephemeris() {
         let data = "\
      3.04           NAVIGATION DATA     G (GPS)             RINEX VERSION / TYPE
@@ -708,6 +745,29 @@ G01 2022 05 13 20 00 00-1.234567890123D-04 2.345678901234D-12 0.000000000000D+00
         assert!((eph.e - 1.234_567_890_123e-2).abs() < 1.0e-15);
         assert!((eph.delta_n - 4.5e-9).abs() < 1.0e-18);
         assert!((eph.tgd + 1.9e-8).abs() < 1.0e-18);
+    }
+
+    #[test]
+    fn parse_rinex_nav_reads_gps_epoch_on_inserted_leap_second() {
+        let data = "\
+     3.04           NAVIGATION DATA     G (GPS)             RINEX VERSION / TYPE
+bijux-gnss                              PGM / RUN BY / DATE
+                                                            END OF HEADER
+G01 2016 12 31 23 59 60-1.234567890123D-04 2.345678901234D-12 0.000000000000D+00
+    1.100000000000D+01 2.500000000000D+01 4.500000000000D-09 6.000000000000D-01
+    1.200000000000D-06 1.234567890123D-02 2.300000000000D-06 5.153795477500D+03
+    3.456000000000D+05 4.500000000000D-08 1.500000000000D+00 5.600000000000D-08
+    9.400000000000D-01 3.210000000000D+02 2.100000000000D-01-8.900000000000D-09
+    7.800000000000D-10 0.000000000000D+00 1.930000000000D+03 0.000000000000D+00
+    2.400000000000D+00 0.000000000000D+00-1.900000000000D-08 9.700000000000D+01
+    0.000000000000D+00 4.000000000000D+00 0.000000000000D+00 0.000000000000D+00
+";
+
+        let ephs = parse_rinex_nav(data).expect("RINEX NAV leap second parse");
+
+        assert_eq!(ephs.len(), 1);
+        assert_eq!(ephs[0].week, 1930);
+        assert!((ephs[0].toc_s - 17.0).abs() < 1.0e-9);
     }
 
     #[test]
