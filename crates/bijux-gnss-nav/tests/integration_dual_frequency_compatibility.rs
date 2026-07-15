@@ -7,7 +7,7 @@ use bijux_gnss_core::api::{
 };
 use bijux_gnss_nav::api::{
     combinations_from_obs_epochs, iono_free_code_from_obs_epochs, iono_free_phase_from_obs_epochs,
-    measured_ionosphere_from_obs_epochs, narrow_lane_from_obs_epochs,
+    measured_ionosphere_from_obs_epochs, narrow_lane_from_obs_epochs, ppp_ionosphere_delay_scale,
 };
 use bijux_gnss_signal::api::{
     signal_spec_galileo_e1b, signal_spec_galileo_e5a, signal_spec_gps_l1_ca, signal_spec_gps_l2_py,
@@ -122,6 +122,20 @@ fn public_dual_frequency_outputs_refuse_mixed_constellation_requests() {
     assert_eq!(invalid_measured_ionosphere.code_reason, "unsupported_band_pair");
     assert_eq!(invalid_measured_ionosphere.phase_reason, "unsupported_band_pair");
     assert_eq!(invalid_narrow_lane.reason, "unsupported_band_pair");
+}
+
+#[test]
+fn public_ppp_ionosphere_scale_follows_signal_frequency() {
+    let l1 = signal_spec_gps_l1_ca();
+    let l2 = signal_spec_gps_l2_py();
+
+    let l1_scale = ppp_ionosphere_delay_scale(l1);
+    let l2_scale = ppp_ionosphere_delay_scale(l2);
+    let expected_l2_scale = (l1.carrier_hz.value() / l2.carrier_hz.value()).powi(2);
+
+    assert!((l1_scale - 1.0).abs() < 1.0e-12);
+    assert!((l2_scale - expected_l2_scale).abs() < 1.0e-12);
+    assert!(l2_scale > l1_scale);
 }
 
 #[test]

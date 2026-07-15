@@ -120,6 +120,7 @@ pub use crate::estimation::ppp::config::{
     PppArMode, PppConfig, PppConvergenceConfig, PppFilter, PppProcessNoise, PppSolutionEpoch,
     PppTroposphereSource,
 };
+pub use crate::estimation::ppp::measurements::ppp_ionosphere_delay_scale;
 /// RTK float-baseline helpers.
 pub use crate::estimation::rtk::ambiguity::{
     rtk_ambiguity_state_from_fixed_solution, rtk_candidate_ratio,
