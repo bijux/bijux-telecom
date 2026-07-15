@@ -4222,6 +4222,13 @@ mod tests {
         let error_model = sat.error_model.as_ref().expect("error model");
         assert!((error_model.tracking_jitter_m.0 - expected_pseudorange_sigma_m).abs() <= 1.0e-9);
         assert_eq!(error_model.thermal_noise_m, Meters(0.0));
+        let covariance = sat.measurement_covariance().expect("measurement covariance");
+        let covariance_matrix = covariance.matrix();
+        assert!((covariance.code_phase_m2 - sat.pseudorange_var_m2).abs() <= 1.0e-9);
+        assert!((covariance.doppler_hz2 - sat.doppler_var_hz2).abs() <= 1.0e-12);
+        assert_eq!(covariance_matrix[0][1], covariance_matrix[1][0]);
+        assert_eq!(covariance_matrix[1][2], covariance_matrix[2][1]);
+        assert!(covariance.carrier_doppler_m_hz > 0.0);
     }
 
     #[test]
@@ -4251,6 +4258,8 @@ mod tests {
         assert_eq!(sat.carrier_phase_var_cycles2, 0.0);
         assert_eq!(sat.doppler_var_hz2, 0.0);
         assert!(sat.error_model.is_none());
+        assert!(sat.measurement_covariance().is_none());
+        assert!(sat.covariance_pseudorange_sigma_m().is_none());
         assert_eq!(sat.metadata.observation_uncertainty_class, "unknown");
         assert!(quality.pseudorange_sigma_m.is_none());
         assert!(quality.carrier_phase_sigma_cycles.is_none());
