@@ -6,6 +6,7 @@ use crate::estimation::uncertainty::{
 
 const FORMAL_HORIZONTAL_PROTECTION_SCALE: f64 = 6.0;
 const FORMAL_VERTICAL_PROTECTION_SCALE: f64 = 6.0;
+const MIN_MULTI_FAULT_HYPOTHESIS_SIZE: usize = 2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RaimFaultDetectionStatus {
@@ -20,9 +21,23 @@ pub struct RaimSolutionSeparationSubset {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct RaimFaultHypothesis {
+    pub excluded_sats: Vec<SatId>,
+    pub separation_m: f64,
+    pub post_exclusion_rms_m: f64,
+}
+
+impl RaimFaultHypothesis {
+    pub fn fault_count(&self) -> usize {
+        self.excluded_sats.len()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct RaimSolutionSeparationCheck {
     pub reference_sat_count: usize,
     pub compared_subsets: Vec<RaimSolutionSeparationSubset>,
+    pub compared_multi_fault_hypotheses: Vec<RaimFaultHypothesis>,
 }
 
 impl RaimSolutionSeparationCheck {
@@ -30,10 +45,40 @@ impl RaimSolutionSeparationCheck {
         self.compared_subsets.len()
     }
 
+    pub fn compared_multi_fault_hypothesis_count(&self) -> usize {
+        self.compared_multi_fault_hypotheses.len()
+    }
+
     pub fn max_separation(&self) -> Option<RaimSolutionSeparationSubset> {
         self.compared_subsets.iter().copied().max_by(|left, right| {
             left.separation_m.partial_cmp(&right.separation_m).unwrap_or(std::cmp::Ordering::Equal)
         })
+    }
+
+    pub fn best_multi_fault_hypothesis(&self) -> Option<&RaimFaultHypothesis> {
+        self.compared_multi_fault_hypotheses
+            .iter()
+            .filter(|hypothesis| hypothesis.fault_count() >= MIN_MULTI_FAULT_HYPOTHESIS_SIZE)
+            .min_by(|left, right| {
+                left.post_exclusion_rms_m
+                    .total_cmp(&right.post_exclusion_rms_m)
+                    .then_with(|| right.separation_m.total_cmp(&left.separation_m))
+            })
+    }
+
+    pub fn unresolved_multi_fault_hypothesis(
+        &self,
+        threshold_m: f64,
+    ) -> Option<&RaimFaultHypothesis> {
+        self.compared_multi_fault_hypotheses
+            .iter()
+            .filter(|hypothesis| hypothesis.fault_count() >= MIN_MULTI_FAULT_HYPOTHESIS_SIZE)
+            .filter(|hypothesis| hypothesis.separation_m > threshold_m)
+            .max_by(|left, right| {
+                left.separation_m
+                    .total_cmp(&right.separation_m)
+                    .then_with(|| right.post_exclusion_rms_m.total_cmp(&left.post_exclusion_rms_m))
+            })
     }
 }
 
@@ -105,7 +150,11 @@ pub fn formal_protection_levels(
 
 #[cfg(test)]
 mod tests {
-    use super::{formal_protection_levels, PositionProtectionLevels};
+    use super::{
+        formal_protection_levels, PositionProtectionLevels, RaimFaultHypothesis,
+        RaimSolutionSeparationCheck, RaimSolutionSeparationSubset,
+    };
+    use bijux_gnss_core::api::{Constellation, SatId};
 
     #[test]
     fn formal_protection_levels_use_horizontal_major_axis_and_vertical_sigma() {
@@ -143,5 +192,43 @@ mod tests {
             [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
         )
         .is_none());
+    }
+
+    #[test]
+    fn solution_separation_reports_multi_fault_hypothesis_counts() {
+        let check = RaimSolutionSeparationCheck {
+            reference_sat_count: 7,
+            compared_subsets: vec![RaimSolutionSeparationSubset {
+                excluded_sat: sat(3),
+                separation_m: 10.0,
+            }],
+            compared_multi_fault_hypotheses: vec![
+                RaimFaultHypothesis {
+                    excluded_sats: vec![sat(3), sat(7)],
+                    separation_m: 80.0,
+                    post_exclusion_rms_m: 3.0,
+                },
+                RaimFaultHypothesis {
+                    excluded_sats: vec![sat(11), sat(19)],
+                    separation_m: 40.0,
+                    post_exclusion_rms_m: 2.0,
+                },
+            ],
+        };
+
+        assert_eq!(check.compared_subset_count(), 1);
+        assert_eq!(check.compared_multi_fault_hypothesis_count(), 2);
+        assert_eq!(
+            check.best_multi_fault_hypothesis().expect("best").excluded_sats,
+            vec![sat(11), sat(19)]
+        );
+        assert_eq!(
+            check.unresolved_multi_fault_hypothesis(50.0).expect("unresolved").excluded_sats,
+            vec![sat(3), sat(7)]
+        );
+    }
+
+    fn sat(prn: u8) -> SatId {
+        SatId { constellation: Constellation::Gps, prn }
     }
 }

@@ -2993,6 +2993,7 @@ impl PositionSolver {
         (!compared_subsets.is_empty()).then_some(RaimSolutionSeparationCheck {
             reference_sat_count: inputs.len(),
             compared_subsets,
+            compared_multi_fault_hypotheses: Vec::new(),
         })
     }
 }
