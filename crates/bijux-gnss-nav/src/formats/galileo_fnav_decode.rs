@@ -8,7 +8,7 @@ use crate::orbits::galileo::{
     GalileoEphemeris, GalileoIonosphericCorrection, GalileoIonosphericDisturbanceFlags,
     GalileoSystemTime,
 };
-use crate::time::{resolve_galileo_week_rollover, RolloverResolutionError};
+use crate::time::rollover::{resolve_galileo_week_rollover, RolloverResolutionError};
 
 const GALILEO_FNAV_PAGE_BITS: usize = 244;
 const GALILEO_FNAV_PAYLOAD_BITS: usize = 214;

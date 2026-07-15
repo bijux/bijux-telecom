@@ -20,7 +20,7 @@ use crate::corrections::phase_windup::PhaseWindupState;
 use crate::corrections::CorrectionContext;
 use crate::estimation::ekf::state::{Ekf, EkfConfig};
 use crate::estimation::ekf::statistics::InnovationConsistencyConfig;
-use crate::estimation::position::solver::{ecef_to_geodetic, elevation_azimuth_deg};
+use crate::estimation::position::solver::geodesy::{ecef_to_geodetic, elevation_azimuth_deg};
 use crate::estimation::ppp::config::{
     PppConvergenceEvidence, PppConvergenceState, PppHealth, PppLifecycleEvent,
     PppLifecycleEventKind, PppPreciseProductAction, PppProductSupport, PppSolutionEpoch,

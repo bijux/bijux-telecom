@@ -26,15 +26,12 @@ use bijux_gnss_core::api::{
 
 mod atmosphere_explainability;
 mod clock_model;
-mod config;
+pub mod config;
 mod output_identity;
 mod precision_reporting;
 mod solution_status;
 
-pub use config::{
-    PositionConstellationPolicy, PositionRuntimeConfig, PositionRuntimeThresholds,
-    PositionRuntimeWeightingConfig,
-};
+use config::{PositionRuntimeConfig, PositionRuntimeThresholds};
 
 use atmosphere_explainability::{
     apply_atmosphere_explainability, apply_atmosphere_explainability_in_place,

@@ -1,6 +1,6 @@
 #![allow(missing_docs)]
 
-use crate::estimation::position::solver::ecef_to_geodetic;
+use crate::estimation::position::solver::geodesy::ecef_to_geodetic;
 use crate::linalg::Matrix;
 
 #[derive(Debug, Clone, Copy, PartialEq)]

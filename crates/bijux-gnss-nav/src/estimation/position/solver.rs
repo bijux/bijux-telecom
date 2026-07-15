@@ -34,24 +34,20 @@ use bijux_gnss_core::api::{
     Seconds, SigId, SignalBand,
 };
 
-mod dops;
-mod geodesy;
+pub mod dops;
+pub mod geodesy;
 mod least_squares;
 mod matrix;
-mod robust_weighting;
-mod weighting;
+pub mod robust_weighting;
+pub mod weighting;
 use dops::{compute_dops, scaled_position_covariance_ecef_m2};
-pub use dops::{position_dops_from_satellite_positions, PositionDops};
-pub use geodesy::{ecef_to_enu, ecef_to_geodetic, elevation_azimuth_deg, geodetic_to_ecef};
+use geodesy::{ecef_to_geodetic, elevation_azimuth_deg};
 use least_squares::solve_weighted_least_squares;
 #[cfg(test)]
 use robust_weighting::robust_weight;
 use robust_weighting::robust_weights;
-pub use robust_weighting::PositionRobustWeighting;
-pub use weighting::{
-    position_measurement_weight, weight_from_cn0, weight_from_elevation,
-    weight_from_pseudorange_sigma, PositionWeightingModel, WeightingConfig,
-};
+use robust_weighting::PositionRobustWeighting;
+use weighting::weight_from_pseudorange_sigma;
 
 const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
 const SIGNAL_TIMING_CONSISTENCY_TOLERANCE_S: f64 = 1.0e-6;

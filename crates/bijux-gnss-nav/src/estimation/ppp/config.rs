@@ -11,7 +11,7 @@ use crate::corrections::biases::{CodeBiasProvider, PhaseBiasProvider};
 use crate::corrections::phase_windup::PhaseWindupState;
 use crate::corrections::CorrectionContext;
 use crate::estimation::ekf::state::Ekf;
-use crate::estimation::position::solver::WeightingConfig;
+use crate::estimation::position::solver::weighting::WeightingConfig;
 use crate::formats::precise_products::PreciseProductDiscontinuityKind;
 use crate::models::antenna::{ReceiverAntennaCalibrations, SatelliteAntennaCalibrations};
 use crate::models::atmosphere::TroposphereMeteorology;

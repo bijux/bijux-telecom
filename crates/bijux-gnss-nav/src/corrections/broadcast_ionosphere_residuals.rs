@@ -12,8 +12,8 @@ use crate::estimation::position::navigation::{
     satellite_state_from_observation, select_valid_navigation,
 };
 use crate::estimation::position::solver::{
-    ecef_to_geodetic, elevation_azimuth_deg, position_broadcast_navigation_from_gps_ephemerides,
-    PositionBroadcastNavigation,
+    geodesy::{ecef_to_geodetic, elevation_azimuth_deg},
+    position_broadcast_navigation_from_gps_ephemerides, PositionBroadcastNavigation,
 };
 use crate::orbits::galileo::GalileoBroadcastNavigationData;
 use crate::orbits::gps::GpsBroadcastNavigationData;

@@ -9,7 +9,7 @@ use crate::orbits::galileo::{
     GalileoIonosphericCorrection, GalileoIonosphericDisturbanceFlags, GalileoSignalHealth,
     GalileoSystemTime,
 };
-use crate::time::{resolve_galileo_week_rollover, RolloverResolutionError};
+use crate::time::rollover::{resolve_galileo_week_rollover, RolloverResolutionError};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum GalileoInavWord {

@@ -10,7 +10,7 @@ use crate::orbits::glonass::{
     GlonassImmediateHealth, GlonassImmediateNavigationData, GlonassLeapSecondAnnouncement,
     GlonassStateVector, GlonassSuperframeTimeData, GlonassSystemTime, GlonassUt1Correction,
 };
-use crate::time::{resolve_glonass_day_number, RolloverResolutionError};
+use crate::time::rollover::{resolve_glonass_day_number, RolloverResolutionError};
 
 const GLONASS_STRING_BITS: usize = 85;
 

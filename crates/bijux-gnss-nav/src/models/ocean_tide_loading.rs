@@ -5,7 +5,7 @@ use std::f64::consts::TAU;
 use bijux_gnss_core::api::GpsTime;
 use serde::{Deserialize, Serialize};
 
-use crate::estimation::position::solver::ecef_to_geodetic;
+use crate::estimation::position::solver::geodesy::ecef_to_geodetic;
 
 /// Site-specific ocean tide loading model for a static receiver monument.
 ///
@@ -204,7 +204,7 @@ mod tests {
     use bijux_gnss_core::api::GpsTime;
 
     use super::{OceanTideConstituent, OceanTideLoadingConstituent, OceanTideLoadingModel};
-    use crate::estimation::position::solver::geodetic_to_ecef;
+    use crate::estimation::position::solver::geodesy::geodetic_to_ecef;
 
     #[test]
     fn constituent_advances_with_harmonic_frequency() {

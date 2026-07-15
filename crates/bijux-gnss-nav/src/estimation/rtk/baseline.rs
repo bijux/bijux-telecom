@@ -345,12 +345,12 @@ pub fn rtk_float_baseline_from_double_differences_with_satellite_states_and_rove
     let covariance_enu_m2 = covariance_ecef_to_enu(base_ecef_m, covariance_ecef_m2);
     let enu_ambiguity_covariance_m_cycles =
         covariance_enu_ambiguity_block(base_ecef_m, &covariance, 3, ambiguity_count);
-    let (lat_deg, lon_deg, alt_m) = crate::estimation::position::solver::ecef_to_geodetic(
+    let (lat_deg, lon_deg, alt_m) = crate::estimation::position::solver::geodesy::ecef_to_geodetic(
         base_ecef_m[0],
         base_ecef_m[1],
         base_ecef_m[2],
     );
-    let (east_m, north_m, up_m) = crate::estimation::position::solver::ecef_to_enu(
+    let (east_m, north_m, up_m) = crate::estimation::position::solver::geodesy::ecef_to_enu(
         rover_ecef_m[0],
         rover_ecef_m[1],
         rover_ecef_m[2],
@@ -640,7 +640,7 @@ fn covariance_enu_ambiguity_block(
 }
 
 fn ecef_to_enu_rotation(base_ecef_m: [f64; 3]) -> Matrix {
-    let (lat_deg, lon_deg, _alt_m) = crate::estimation::position::solver::ecef_to_geodetic(
+    let (lat_deg, lon_deg, _alt_m) = crate::estimation::position::solver::geodesy::ecef_to_geodetic(
         base_ecef_m[0],
         base_ecef_m[1],
         base_ecef_m[2],
@@ -668,7 +668,7 @@ fn covariance_ecef_to_enu(
     base_ecef_m: [f64; 3],
     covariance_ecef_m2: [[f64; 3]; 3],
 ) -> [[f64; 3]; 3] {
-    let (lat_deg, lon_deg, _alt_m) = crate::estimation::position::solver::ecef_to_geodetic(
+    let (lat_deg, lon_deg, _alt_m) = crate::estimation::position::solver::geodesy::ecef_to_geodetic(
         base_ecef_m[0],
         base_ecef_m[1],
         base_ecef_m[2],

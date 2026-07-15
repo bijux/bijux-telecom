@@ -768,7 +768,7 @@ mod tests {
         SPEED_OF_LIGHT_MPS,
     };
     use crate::corrections::broadcast_group_delay::gps_broadcast_group_delay_code_bias_m;
-    use crate::estimation::position::solver::geodetic_to_ecef;
+    use crate::estimation::position::solver::geodesy::geodetic_to_ecef;
     use crate::orbits::beidou::{
         BeidouBroadcastNavigationData, BeidouClockCorrection, BeidouEphemeris,
         BeidouIonosphericCorrection, BeidouSignalHealth, BeidouSystemTime,

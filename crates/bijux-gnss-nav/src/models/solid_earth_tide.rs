@@ -306,7 +306,7 @@ mod tests {
         DEGREE_TWO_LATITUDE_LOVE_OFFSET, DEGREE_TWO_LOVE_NUMBER, IERS_EARTH_EQUATORIAL_RADIUS_M,
         MOON_GRAVITATIONAL_PARAMETER_M3PS2,
     };
-    use crate::estimation::position::solver::geodetic_to_ecef;
+    use crate::estimation::position::solver::geodesy::geodetic_to_ecef;
 
     #[test]
     fn degree_two_in_phase_matches_aligned_radial_closed_form() {

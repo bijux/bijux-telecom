@@ -19,10 +19,12 @@ use crate::estimation::position::navigation::{
     SatelliteState,
 };
 use crate::estimation::position::solver::{
-    elevation_azimuth_deg, position_broadcast_navigation_from_gps_ephemerides,
-    position_measurement_weight, position_observation_has_valid_satellite_time,
+    geodesy::elevation_azimuth_deg,
+    position_broadcast_navigation_from_gps_ephemerides,
+    position_observation_has_valid_satellite_time,
+    weighting::{position_measurement_weight, WeightingConfig},
     PositionBroadcastNavigation, PositionFilterDivergenceReason, PositionObservation,
-    PositionSolveRefusal, PositionSolveRefusalKind, PositionSolver, WeightingConfig,
+    PositionSolveRefusal, PositionSolveRefusalKind, PositionSolver,
 };
 use crate::estimation::uncertainty::{
     covariance_enu_standard_deviations_m, covariance_horizontal_vertical, horizontal_error_ellipse,
@@ -1160,8 +1162,8 @@ mod tests {
         PositionFilterMotionClass, PositionFilterMotionModel, PositionFilterStaticPositionModel,
     };
     use crate::estimation::position::solver::{
+        weighting::{PositionWeightingModel, WeightingConfig},
         PositionFilterDivergenceReason, PositionObservation, PositionSolveRefusalKind,
-        PositionWeightingModel, WeightingConfig,
     };
     use bijux_gnss_core::api::{Constellation, NavHealthEvent, SatId};
 

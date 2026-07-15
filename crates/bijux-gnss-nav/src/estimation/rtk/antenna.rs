@@ -1,6 +1,6 @@
 use bijux_gnss_core::api::{GpsTime, SatId, SignalBand};
 
-use crate::estimation::position::solver::elevation_azimuth_deg;
+use crate::estimation::position::solver::geodesy::elevation_azimuth_deg;
 use crate::models::antenna::{ReceiverAntennaCalibrations, SatelliteAntennaCalibrations};
 
 /// Antenna calibrations used to evaluate RTK residuals against antenna-aware geometry.

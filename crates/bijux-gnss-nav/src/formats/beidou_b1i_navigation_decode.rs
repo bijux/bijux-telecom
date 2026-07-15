@@ -8,7 +8,7 @@ use crate::orbits::beidou::{
     BeidouBroadcastNavigationData, BeidouClockCorrection, BeidouEphemeris,
     BeidouIonosphericCorrection, BeidouSignalHealth, BeidouSystemTime,
 };
-use crate::time::{resolve_beidou_week_rollover, RolloverResolutionError};
+use crate::time::rollover::{resolve_beidou_week_rollover, RolloverResolutionError};
 
 const BEIDOU_D1_SUBFRAME_BITS: usize = 300;
 const BEIDOU_D1_PREAMBLE: u16 = 0b111_0001_0010;

@@ -960,7 +960,7 @@ enum MeasurementKind {
 }
 
 fn enu_to_ecef(base_ecef_m: [f64; 3], enu_m: [f64; 3]) -> [f64; 3] {
-    let (lat_deg, lon_deg, _alt_m) = crate::estimation::position::solver::ecef_to_geodetic(
+    let (lat_deg, lon_deg, _alt_m) = crate::estimation::position::solver::geodesy::ecef_to_geodetic(
         base_ecef_m[0],
         base_ecef_m[1],
         base_ecef_m[2],
@@ -1005,7 +1005,7 @@ mod tests {
         RtkDoubleDifferenceCovarianceEvidence, RtkDoubleDifferenceObservation,
         RtkGlonassInterFrequencyBiasEvidence,
     };
-    use crate::estimation::position::solver::{ecef_to_enu, ecef_to_geodetic};
+    use crate::estimation::position::solver::geodesy::{ecef_to_enu, ecef_to_geodetic};
     use crate::estimation::rtk::antenna::{
         modeled_pseudorange_with_antenna_corrections_m, RtkAntennaCorrectionConfig,
     };

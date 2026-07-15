@@ -3,7 +3,7 @@
 
 use crate::formats::lnav_bits::GpsWord;
 use crate::orbits::gps::GpsEphemeris;
-use crate::time::{resolve_gps_week_rollover, RolloverResolutionError};
+use crate::time::rollover::{resolve_gps_week_rollover, RolloverResolutionError};
 use bijux_gnss_core::api::{Constellation, SatId};
 use serde::{Deserialize, Serialize};
 
