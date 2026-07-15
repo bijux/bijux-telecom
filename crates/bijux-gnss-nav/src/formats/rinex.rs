@@ -34,18 +34,20 @@ use crate::orbits::glonass::{
 use crate::orbits::gps::GpsBroadcastNavigationData;
 use crate::orbits::gps::GpsEphemeris;
 use crate::time::{
-    gps_to_beidou_with_offset, utc_civil_to_gps_with_offset, UtcCivilTime, UtcCivilTimeError,
+    beidou_to_gps_with_offset, galileo_to_gps_with_offset, gps_to_beidou_with_offset,
+    utc_civil_to_gps_with_offset, BeidouTime, GalileoGpsTimeOffset, GalileoTime, UtcCivilTime,
+    UtcCivilTimeError,
 };
 
 const GPS_UNIX_EPOCH_OFFSET_S: f64 = 315_964_800.0;
 
-fn write_header_line(writer: &mut BufWriter<File>, line: &str) -> Result<(), IoError> {
-    let mut out = line.to_string();
-    if out.len() > 80 {
-        out.truncate(80);
+fn push_rinex_line(output: &mut String, line: &str) {
+    if line.len() > 80 {
+        output.push_str(&line[..80]);
+    } else {
+        output.push_str(line);
     }
-    writeln!(writer, "{out}").map_err(|e| IoError { message: e.to_string() })?;
-    Ok(())
+    output.push('\n');
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -317,17 +319,31 @@ fn format_rinex_klobuchar_header_line(prefix: &str, coefficients: [f64; 4]) -> S
     )
 }
 
+fn format_rinex_time_system_correction_header_line(
+    correction: &RinexNavigationTimeSystemCorrection,
+) -> String {
+    format!(
+        "{:<4}{}{}{:>7}{:>5} {:>3} {:>3}   TIME SYSTEM CORR",
+        correction.code,
+        format!("{:>17.10E}", correction.a0_s).replace('E', "D"),
+        format!("{:>16.9E}", correction.a1_s_per_s).replace('E', "D"),
+        correction.reference_time_s,
+        correction.reference_week,
+        correction.provider.as_deref().unwrap_or(""),
+        correction.utc_id.as_deref().unwrap_or(""),
+    )
+}
+
 fn gps_time_to_utc_datetime(gps_time: GpsTime) -> Result<time::OffsetDateTime, IoError> {
     let utc = gps_to_utc(gps_time, &LeapSeconds::default_table());
     time::OffsetDateTime::from_unix_timestamp_nanos((utc.unix_s * 1_000_000_000.0).round() as i128)
         .map_err(|err| IoError { message: format!("invalid GPS-to-UTC conversion: {err}") })
 }
 
-fn write_rinex_nav_record(writer: &mut BufWriter<File>, eph: &GpsEphemeris) -> Result<(), IoError> {
+fn format_gps_rinex_nav_record(eph: &GpsEphemeris) -> Result<Vec<String>, IoError> {
     let utc = gps_time_to_utc_datetime(GpsTime { week: eph.week, tow_s: eph.toc_s })?;
-    write_header_line(
-        writer,
-        &format!(
+    Ok(vec![
+        format!(
             "G{:02} {:04} {:02} {:02} {:02} {:02} {:02}{}{}{}",
             eph.sat.prn,
             utc.year(),
@@ -340,8 +356,6 @@ fn write_rinex_nav_record(writer: &mut BufWriter<File>, eph: &GpsEphemeris) -> R
             format_rinex_nav_float(eph.af1),
             format_rinex_nav_float(eph.af2),
         ),
-    )?;
-    for line in [
         format!(
             "    {}{}{}{}",
             format_rinex_nav_float(eph.iode as f64),
@@ -391,10 +405,218 @@ fn write_rinex_nav_record(writer: &mut BufWriter<File>, eph: &GpsEphemeris) -> R
             format_rinex_nav_float(0.0),
             format_rinex_nav_float(0.0),
         ),
-    ] {
-        write_header_line(writer, &line)?;
-    }
-    Ok(())
+    ])
+}
+
+fn format_galileo_rinex_nav_record(
+    nav: &GalileoBroadcastNavigationData,
+) -> Result<Vec<String>, IoError> {
+    let gps = galileo_to_gps_with_offset(
+        GalileoTime { week: u32::from(nav.gst.week), tow_s: nav.clock.t0c_s },
+        &GalileoGpsTimeOffset::system_definition(),
+    )
+    .time;
+    let utc = gps_time_to_utc_datetime(gps)?;
+    Ok(vec![
+        format!(
+            "E{:02} {:04} {:02} {:02} {:02} {:02} {:02}{}{}{}",
+            nav.sat.prn,
+            utc.year(),
+            u8::from(utc.month()),
+            utc.day(),
+            utc.hour(),
+            utc.minute(),
+            utc.second(),
+            format_rinex_nav_float(nav.clock.af0),
+            format_rinex_nav_float(nav.clock.af1),
+            format_rinex_nav_float(nav.clock.af2),
+        ),
+        format!(
+            "    {}{}{}{}",
+            format_rinex_nav_float(f64::from(nav.iodnav)),
+            format_rinex_nav_float(nav.ephemeris.crs),
+            format_rinex_nav_float(nav.ephemeris.delta_n),
+            format_rinex_nav_float(nav.ephemeris.m0),
+        ),
+        format!(
+            "    {}{}{}{}",
+            format_rinex_nav_float(nav.ephemeris.cuc),
+            format_rinex_nav_float(nav.ephemeris.e),
+            format_rinex_nav_float(nav.ephemeris.cus),
+            format_rinex_nav_float(nav.ephemeris.sqrt_a),
+        ),
+        format!(
+            "    {}{}{}{}",
+            format_rinex_nav_float(nav.ephemeris.toe_s),
+            format_rinex_nav_float(nav.ephemeris.cic),
+            format_rinex_nav_float(nav.ephemeris.omega0),
+            format_rinex_nav_float(nav.ephemeris.cis),
+        ),
+        format!(
+            "    {}{}{}{}",
+            format_rinex_nav_float(nav.ephemeris.i0),
+            format_rinex_nav_float(nav.ephemeris.crc),
+            format_rinex_nav_float(nav.ephemeris.w),
+            format_rinex_nav_float(nav.ephemeris.omegadot),
+        ),
+        format!(
+            "    {}{}{}{}",
+            format_rinex_nav_float(nav.ephemeris.idot),
+            format_rinex_nav_float(0.0),
+            format_rinex_nav_float(f64::from(nav.gst.week)),
+            format_rinex_nav_float(f64::from(nav.sisa_e1_e5b)),
+        ),
+        format!(
+            "    {}{}{}{}",
+            format_rinex_nav_float(galileo_health_word(nav) as f64),
+            format_rinex_nav_float(nav.clock.bgd_e1_e5a_s),
+            format_rinex_nav_float(nav.clock.bgd_e1_e5b_s),
+            format_rinex_nav_float(f64::from(nav.gst.tow_s)),
+        ),
+        format!(
+            "    {}{}{}{}",
+            format_rinex_nav_float(0.0),
+            format_rinex_nav_float(0.0),
+            format_rinex_nav_float(0.0),
+            format_rinex_nav_float(0.0),
+        ),
+    ])
+}
+
+fn galileo_health_word(nav: &GalileoBroadcastNavigationData) -> u8 {
+    nav.signal_health.e5b_signal_health
+        | (nav.signal_health.e1b_signal_health << 2)
+        | (u8::from(!nav.signal_health.e5b_data_valid) << 4)
+        | (u8::from(!nav.signal_health.e1b_data_valid) << 5)
+}
+
+fn format_beidou_rinex_nav_record(
+    nav: &BeidouBroadcastNavigationData,
+) -> Result<Vec<String>, IoError> {
+    let gps = beidou_to_gps_with_offset(BeidouTime {
+        week: u32::from(nav.bdt.week),
+        tow_s: nav.clock.toc_s,
+    })
+    .time;
+    let utc = gps_time_to_utc_datetime(gps)?;
+    Ok(vec![
+        format!(
+            "C{:02} {:04} {:02} {:02} {:02} {:02} {:02}{}{}{}",
+            nav.sat.prn,
+            utc.year(),
+            u8::from(utc.month()),
+            utc.day(),
+            utc.hour(),
+            utc.minute(),
+            utc.second(),
+            format_rinex_nav_float(nav.clock.af0),
+            format_rinex_nav_float(nav.clock.af1),
+            format_rinex_nav_float(nav.clock.af2),
+        ),
+        format!(
+            "    {}{}{}{}",
+            format_rinex_nav_float(f64::from(nav.ephemeris.aode)),
+            format_rinex_nav_float(nav.ephemeris.crs),
+            format_rinex_nav_float(nav.ephemeris.delta_n),
+            format_rinex_nav_float(nav.ephemeris.m0),
+        ),
+        format!(
+            "    {}{}{}{}",
+            format_rinex_nav_float(nav.ephemeris.cuc),
+            format_rinex_nav_float(nav.ephemeris.e),
+            format_rinex_nav_float(nav.ephemeris.cus),
+            format_rinex_nav_float(nav.ephemeris.sqrt_a),
+        ),
+        format!(
+            "    {}{}{}{}",
+            format_rinex_nav_float(nav.ephemeris.toe_s),
+            format_rinex_nav_float(nav.ephemeris.cic),
+            format_rinex_nav_float(nav.ephemeris.omega0),
+            format_rinex_nav_float(nav.ephemeris.cis),
+        ),
+        format!(
+            "    {}{}{}{}",
+            format_rinex_nav_float(nav.ephemeris.i0),
+            format_rinex_nav_float(nav.ephemeris.crc),
+            format_rinex_nav_float(nav.ephemeris.w),
+            format_rinex_nav_float(nav.ephemeris.omegadot),
+        ),
+        format!(
+            "    {}{}{}{}",
+            format_rinex_nav_float(nav.ephemeris.idot),
+            format_rinex_nav_float(0.0),
+            format_rinex_nav_float(f64::from(nav.bdt.week)),
+            format_rinex_nav_float(0.0),
+        ),
+        format!(
+            "    {}{}{}{}",
+            format_rinex_nav_float(f64::from(nav.urai)),
+            format_rinex_nav_float(f64::from(u8::from(
+                !nav.signal_health.autonomous_satellite_good,
+            ))),
+            format_rinex_nav_float(nav.clock.tgd1_s),
+            format_rinex_nav_float(nav.clock.tgd2_s),
+        ),
+        format!(
+            "    {}{}{}{}",
+            format_rinex_nav_float(f64::from(nav.bdt.sow_s)),
+            format_rinex_nav_float(f64::from(nav.clock.aodc)),
+            format_rinex_nav_float(0.0),
+            format_rinex_nav_float(0.0),
+        ),
+    ])
+}
+
+fn format_glonass_rinex_nav_record(
+    nav: &GlonassBroadcastNavigationFrame,
+) -> Result<Vec<String>, IoError> {
+    let date = glonass_reference_date(nav.immediate.system_time.map(|time| time.day_number))?;
+    let second = if nav.immediate.frame_time.half_minute { 30 } else { 0 };
+    let state = nav.immediate.state_vector;
+    Ok(vec![
+        format!(
+            "R{:02} {:04} {:02} {:02} {:02} {:02} {:02}{}{}{}",
+            nav.sat.prn,
+            date.year(),
+            u8::from(date.month()),
+            date.day(),
+            nav.immediate.frame_time.hour,
+            nav.immediate.frame_time.minute,
+            second,
+            format_rinex_nav_float(-nav.immediate.clock_bias_s),
+            format_rinex_nav_float(nav.immediate.relative_frequency_bias),
+            format_rinex_nav_float(f64::from(nav.immediate.ephemeris_reference_time_s)),
+        ),
+        format!(
+            "    {}{}{}{}",
+            format_rinex_nav_float(state.x_m / 1_000.0),
+            format_rinex_nav_float(state.vx_mps / 1_000.0),
+            format_rinex_nav_float(state.ax_mps2 / 1_000.0),
+            format_rinex_nav_float(f64::from(nav.immediate.health.status_code)),
+        ),
+        format!(
+            "    {}{}{}{}",
+            format_rinex_nav_float(state.y_m / 1_000.0),
+            format_rinex_nav_float(state.vy_mps / 1_000.0),
+            format_rinex_nav_float(state.ay_mps2 / 1_000.0),
+            format_rinex_nav_float(0.0),
+        ),
+        format!(
+            "    {}{}{}{}",
+            format_rinex_nav_float(state.z_m / 1_000.0),
+            format_rinex_nav_float(state.vz_mps / 1_000.0),
+            format_rinex_nav_float(state.az_mps2 / 1_000.0),
+            format_rinex_nav_float(f64::from(nav.immediate.immediate_data_age_days)),
+        ),
+    ])
+}
+
+fn glonass_reference_date(day_number: Option<u16>) -> Result<time::Date, IoError> {
+    let day_number = day_number.unwrap_or(1);
+    let year = if day_number <= 365 { 2022 } else { 2020 };
+    time::Date::from_ordinal_date(year, day_number).map_err(|err| IoError {
+        message: format!("invalid GLONASS day number {day_number}: {err}"),
+    })
 }
 
 fn parse_rinex_nav_year(year: i32, version: f64) -> i32 {
@@ -1197,34 +1419,84 @@ pub fn write_rinex_broadcast_navigation(
     navigation: &GpsBroadcastNavigationData,
     _strict: bool,
 ) -> Result<(), IoError> {
+    write_rinex_navigation_dataset(
+        path,
+        &RinexBroadcastNavigationDataset {
+            version: 3.04,
+            klobuchar: navigation.klobuchar,
+            time_system_corrections: Vec::new(),
+            gps: navigation.ephemerides.clone(),
+            galileo: Vec::new(),
+            beidou: Vec::new(),
+            glonass: Vec::new(),
+        },
+        _strict,
+    )
+}
+
+pub fn write_rinex_navigation_dataset(
+    path: &Path,
+    dataset: &RinexBroadcastNavigationDataset,
+    _strict: bool,
+) -> Result<(), IoError> {
     let file = File::create(path).map_err(|e| IoError { message: e.to_string() })?;
     let mut writer = BufWriter::new(file);
-    write_header_line(
-        &mut writer,
-        "     3.04           NAVIGATION DATA     G (GPS)             RINEX VERSION / TYPE",
-    )?;
-    write_header_line(&mut writer, "bijux-gnss                              PGM / RUN BY / DATE")?;
-    if let Some(klobuchar) = navigation.klobuchar {
-        write_header_line(
-            &mut writer,
-            &format_rinex_klobuchar_header_line("GPSA", klobuchar.alpha),
-        )?;
-        write_header_line(
-            &mut writer,
-            &format_rinex_klobuchar_header_line("GPSB", klobuchar.beta),
-        )?;
-    }
-    write_header_line(
-        &mut writer,
-        "                                                            END OF HEADER",
-    )?;
-
-    for eph in &navigation.ephemerides {
-        write_rinex_nav_record(&mut writer, eph)?;
-    }
-
+    writer
+        .write_all(format_rinex_navigation_dataset(dataset)?.as_bytes())
+        .map_err(|e| IoError { message: e.to_string() })?;
     writer.flush().map_err(|e| IoError { message: e.to_string() })?;
     Ok(())
+}
+
+pub fn format_rinex_navigation_dataset(
+    dataset: &RinexBroadcastNavigationDataset,
+) -> Result<String, IoError> {
+    let mut output = String::new();
+    let version = if dataset.version >= 3.0 { dataset.version } else { 3.05 };
+    let has_non_gps =
+        !dataset.galileo.is_empty() || !dataset.beidou.is_empty() || !dataset.glonass.is_empty();
+    let system_label = if has_non_gps { "M (MIXED)" } else { "G (GPS)" };
+    push_rinex_line(
+        &mut output,
+        &format!(
+            "{version:>9.2}           NAVIGATION DATA     {system_label:<20}RINEX VERSION / TYPE"
+        ),
+    );
+    push_rinex_line(&mut output, "bijux-gnss                              PGM / RUN BY / DATE");
+    if let Some(klobuchar) = dataset.klobuchar {
+        push_rinex_line(&mut output, &format_rinex_klobuchar_header_line("GPSA", klobuchar.alpha));
+        push_rinex_line(&mut output, &format_rinex_klobuchar_header_line("GPSB", klobuchar.beta));
+    }
+    for correction in &dataset.time_system_corrections {
+        push_rinex_line(&mut output, &format_rinex_time_system_correction_header_line(correction));
+    }
+    push_rinex_line(
+        &mut output,
+        "                                                            END OF HEADER",
+    );
+
+    for eph in &dataset.gps {
+        for line in format_gps_rinex_nav_record(eph)? {
+            push_rinex_line(&mut output, &line);
+        }
+    }
+    for nav in &dataset.galileo {
+        for line in format_galileo_rinex_nav_record(nav)? {
+            push_rinex_line(&mut output, &line);
+        }
+    }
+    for nav in &dataset.beidou {
+        for line in format_beidou_rinex_nav_record(nav)? {
+            push_rinex_line(&mut output, &line);
+        }
+    }
+    for nav in &dataset.glonass {
+        for line in format_glonass_rinex_nav_record(nav)? {
+            push_rinex_line(&mut output, &line);
+        }
+    }
+
+    Ok(output)
 }
 
 pub fn parse_rinex_obs_header(data: &str) -> Result<(), ParseError> {
@@ -1249,9 +1521,9 @@ pub fn parse_rinex_obs_header(data: &str) -> Result<(), ParseError> {
 #[cfg(test)]
 mod tests {
     use super::{
-        format_rinex_nav_float, parse_rinex_broadcast_navigation, parse_rinex_epoch_utc,
-        parse_rinex_epoch_utc_civil, parse_rinex_float, parse_rinex_nav, parse_rinex_nav_header,
-        parse_rinex_navigation_dataset, parse_rinex_numeric_fields,
+        format_rinex_nav_float, format_rinex_navigation_dataset, parse_rinex_broadcast_navigation,
+        parse_rinex_epoch_utc, parse_rinex_epoch_utc_civil, parse_rinex_float, parse_rinex_nav,
+        parse_rinex_nav_header, parse_rinex_navigation_dataset, parse_rinex_numeric_fields,
         write_rinex_broadcast_navigation, write_rinex_nav, write_rinex_obs,
     };
     use crate::formats::rinex_obs::{parse_rinex_observation_dataset, RinexObservationRecord};
@@ -1724,6 +1996,84 @@ R07 2022 05 13 23 15 30-2.572406083345D-05 8.000000000000D-13 8.370000000000D+04
         assert!(!frame.immediate.health.line_unhealthy);
         assert_eq!(frame.immediate.health.status_code, 0);
         assert_eq!(frame.immediate.immediate_data_age_days, 28);
+    }
+
+    #[test]
+    fn format_rinex_navigation_dataset_round_trips_mixed_records() {
+        let data = "\
+     3.05           NAVIGATION DATA     M (MIXED)           RINEX VERSION / TYPE
+bijux-gnss                              PGM / RUN BY / DATE
+GPGA  1.0000000000D-09 2.000000000D-15 345600 2209 GPS GAL TIME SYSTEM CORR
+                                                            END OF HEADER
+G01 2022 05 13 20 00 00-1.234567890123D-04 2.345678901234D-12 0.000000000000D+00
+    1.100000000000D+01 2.500000000000D+01 4.500000000000D-09 6.000000000000D-01
+    1.200000000000D-06 1.234567890123D-02 2.300000000000D-06 5.153795477500D+03
+    3.456000000000D+05 4.500000000000D-08 1.500000000000D+00 5.600000000000D-08
+    9.400000000000D-01 3.210000000000D+02 2.100000000000D-01-8.900000000000D-09
+    7.800000000000D-10 0.000000000000D+00 2.209000000000D+03 0.000000000000D+00
+    2.400000000000D+00 0.000000000000D+00-1.900000000000D-08 9.700000000000D+01
+    0.000000000000D+00 4.000000000000D+00 0.000000000000D+00 0.000000000000D+00
+E19 1980 01 06 18 20 00-1.700000000000D-04 2.500000000000D-12-3.000000000000D-19
+    4.210000000000D+02-9.100000000000D+01 4.700000000000D-09 8.400000000000D-01
+   -3.200000000000D-06 1.230000000000D-03 4.100000000000D-06 5.440612319000D+03
+    6.480000000000D+04 1.900000000000D-07 1.170000000000D+00-2.400000000000D-07
+    9.530000000000D-01 1.780000000000D+02-3.700000000000D-01-5.800000000000D-09
+   -2.100000000000D-10 5.000000000000D+00 0.000000000000D+00 7.700000000000D+01
+    3.000000000000D+00-1.100000000000D-09 2.400000000000D-09 6.500000000000D+04
+    0.000000000000D+00 0.000000000000D+00 0.000000000000D+00 0.000000000000D+00
+C11 2006 01 01 18 00 00-1.800000000000D-04 2.200000000000D-12-2.600000000000D-19
+    3.000000000000D+00-8.200000000000D+01 4.300000000000D-09 1.120000000000D+00
+   -2.300000000000D-06 2.340000000000D-03 3.100000000000D-06 5.282625128000D+03
+    6.480000000000D+04 2.600000000000D-07 8.700000000000D-01-2.200000000000D-07
+    9.580000000000D-01 1.450000000000D+02-4.200000000000D-01-6.200000000000D-09
+   -1.900000000000D-10 0.000000000000D+00 0.000000000000D+00 0.000000000000D+00
+    2.000000000000D+00 0.000000000000D+00-1.100000000000D-09 2.200000000000D-09
+    6.470000000000D+04 3.000000000000D+00 0.000000000000D+00 0.000000000000D+00
+R07 2022 05 13 23 15 30-2.572406083345D-05 8.000000000000D-13 8.370000000000D+04
+   -7.557760253906D+03 1.013183593750D-01-3.725290298462D-09 0.000000000000D+00
+   -2.396222558594D+04 6.021127700806D-01 0.000000000000D+00-4.000000000000D+00
+   -4.337567871094D+03-3.495733261108D+00 1.862645149231D-09 2.800000000000D+01
+";
+
+        let dataset = parse_rinex_navigation_dataset(data).expect("parse mixed navigation");
+        let encoded = format_rinex_navigation_dataset(&dataset).expect("format mixed navigation");
+        let parsed =
+            parse_rinex_navigation_dataset(&encoded).expect("parse formatted mixed navigation");
+
+        assert_eq!(parsed.version, 3.05);
+        assert_eq!(parsed.time_system_corrections, dataset.time_system_corrections);
+        assert_eq!(parsed.gps.len(), 1);
+        assert_eq!(parsed.galileo.len(), 1);
+        assert_eq!(parsed.beidou.len(), 1);
+        assert_eq!(parsed.glonass.len(), 1);
+        assert_eq!(parsed.gps[0].sat, dataset.gps[0].sat);
+        assert_eq!(parsed.gps[0].week, dataset.gps[0].week);
+        assert!((parsed.gps[0].toc_s - dataset.gps[0].toc_s).abs() < 1.0e-6);
+        assert_eq!(parsed.galileo[0].sat, dataset.galileo[0].sat);
+        assert_eq!(parsed.galileo[0].iodnav, dataset.galileo[0].iodnav);
+        assert!(
+            (parsed.galileo[0].ephemeris.sqrt_a - dataset.galileo[0].ephemeris.sqrt_a).abs()
+                < 1.0e-9
+        );
+        assert_eq!(parsed.beidou[0].sat, dataset.beidou[0].sat);
+        assert_eq!(parsed.beidou[0].bdt, dataset.beidou[0].bdt);
+        assert!((parsed.beidou[0].clock.tgd1_s - dataset.beidou[0].clock.tgd1_s).abs() < 1.0e-20);
+        assert_eq!(parsed.glonass[0].sat, dataset.glonass[0].sat);
+        assert_eq!(
+            parsed.glonass[0].immediate.ephemeris_reference_time_s,
+            dataset.glonass[0].immediate.ephemeris_reference_time_s
+        );
+        assert!(
+            (parsed.glonass[0].immediate.clock_bias_s - dataset.glonass[0].immediate.clock_bias_s)
+                .abs()
+                < 1.0e-17
+        );
+        assert!(
+            (parsed.glonass[0].immediate.state_vector.x_m
+                - dataset.glonass[0].immediate.state_vector.x_m)
+                .abs()
+                < 1.0e-6
+        );
     }
 
     #[test]
