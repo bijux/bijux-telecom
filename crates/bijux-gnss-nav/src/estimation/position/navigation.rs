@@ -11,8 +11,8 @@ use crate::orbits::galileo::{
     galileo_navigation_age, is_galileo_navigation_valid, sat_state_galileo_e1,
 };
 use crate::orbits::glonass::{
-    glonass_gps_minus_glonass_s, glonass_navigation_age, is_glonass_navigation_valid,
-    sat_state_glonass_l1,
+    glonass_gps_minus_glonass_s, glonass_navigation_age, glonass_slot_channel_association,
+    is_glonass_navigation_valid, sat_state_glonass_l1,
 };
 use crate::orbits::gps::{gps_ephemeris_age, is_ephemeris_valid, sat_state_gps_l1ca};
 use bijux_gnss_core::api::{Constellation, MeasurementRejectReason, ObsSignalTiming, SatId, SigId};
@@ -237,8 +237,7 @@ fn navigation_rejection_reason(
             beidou_navigation_rejection_reason(navigation, receive_tow_s)
         }
         PositionBroadcastNavigation::Glonass(navigation) => {
-            (!is_glonass_navigation_valid(navigation, receive_tow_s))
-                .then_some(MeasurementRejectReason::InvalidEphemeris)
+            glonass_navigation_rejection_reason(navigation, receive_tow_s)
         }
     }
 }
@@ -363,6 +362,57 @@ fn beidou_navigation_is_complete(
         && navigation.clock.af2.is_finite()
         && navigation.clock.tgd1_s.is_finite()
         && navigation.clock.tgd2_s.is_finite()
+}
+
+fn glonass_navigation_rejection_reason(
+    navigation: &crate::orbits::glonass::GlonassBroadcastNavigationFrame,
+    receive_tow_s: f64,
+) -> Option<MeasurementRejectReason> {
+    if navigation.sat.constellation != Constellation::Glonass
+        || navigation.immediate.sat != navigation.sat
+        || !glonass_slot_channel_association(navigation).is_slot_consistent
+    {
+        return Some(MeasurementRejectReason::EphemerisMismatch);
+    }
+    if !glonass_navigation_is_complete(navigation) {
+        return Some(MeasurementRejectReason::IncompleteEphemeris);
+    }
+    if navigation.immediate.health.line_unhealthy || navigation.immediate.health.status_code != 0 {
+        return Some(MeasurementRejectReason::UnhealthySatellite);
+    }
+    let Some(age) = glonass_navigation_age(navigation, receive_tow_s) else {
+        return Some(MeasurementRejectReason::IncompleteEphemeris);
+    };
+    if age.delta_time_s < -NAVIGATION_FUTURE_TOLERANCE_S {
+        return Some(MeasurementRejectReason::EphemerisFuture);
+    }
+    if age.is_stale() {
+        return Some(MeasurementRejectReason::EphemerisStale);
+    }
+    None
+}
+
+fn glonass_navigation_is_complete(
+    navigation: &crate::orbits::glonass::GlonassBroadcastNavigationFrame,
+) -> bool {
+    let state = navigation.immediate.state_vector;
+    let Some(system_time) = navigation.system_time else {
+        return false;
+    };
+    navigation.immediate.ephemeris_reference_time_s < 86_400
+        && state.x_m.is_finite()
+        && state.y_m.is_finite()
+        && state.z_m.is_finite()
+        && state.vx_mps.is_finite()
+        && state.vy_mps.is_finite()
+        && state.vz_mps.is_finite()
+        && state.ax_mps2.is_finite()
+        && state.ay_mps2.is_finite()
+        && state.az_mps2.is_finite()
+        && navigation.immediate.relative_frequency_bias.is_finite()
+        && navigation.immediate.clock_bias_s.is_finite()
+        && system_time.utc_offset_s.is_finite()
+        && system_time.gps_minus_glonass_s.is_finite()
 }
 
 fn gps_ephemeris_rejection_reason(
@@ -628,6 +678,11 @@ mod tests {
         GalileoIonosphericCorrection, GalileoIonosphericDisturbanceFlags, GalileoSignalHealth,
         GalileoSystemTime,
     };
+    use crate::orbits::glonass::{
+        GlonassAlmanacTimeData, GlonassBroadcastNavigationFrame, GlonassFrameTime,
+        GlonassImmediateHealth, GlonassImmediateNavigationData, GlonassSatelliteType,
+        GlonassStateVector, GlonassSystemTime,
+    };
     use crate::orbits::gps::{sat_state_gps_l1ca, GpsEphemeris};
     use bijux_gnss_core::api::{
         Constellation, GpsTime, MeasurementRejectReason, ObsSignalTiming, SatId, Seconds, SigId,
@@ -766,6 +821,50 @@ mod tests {
                 beta2: 3.6e5,
                 beta3: -4.8e5,
             },
+        }
+    }
+
+    fn sample_glonass_navigation() -> GlonassBroadcastNavigationFrame {
+        let sat = SatId { constellation: Constellation::Glonass, prn: 14 };
+        GlonassBroadcastNavigationFrame {
+            sat,
+            immediate: GlonassImmediateNavigationData {
+                sat,
+                frame_time: GlonassFrameTime { hour: 23, minute: 18, half_minute: false },
+                ephemeris_reference_time_s: 83_700,
+                tb_update_interval_min: 30,
+                tb_is_odd: Some(true),
+                state_vector: GlonassStateVector {
+                    x_m: -7_557_760.253_906_25,
+                    y_m: -23_962_225.585_937_5,
+                    z_m: -4_337_567.871_093_75,
+                    vx_mps: 101.318_359_375,
+                    vy_mps: 602.112_770_080_566_4,
+                    vz_mps: -3_495.733_261_108_398_4,
+                    ax_mps2: -3.725_290_298_461_914e-6,
+                    ay_mps2: 0.0,
+                    az_mps2: 1.862_645_149_230_957e-6,
+                },
+                relative_frequency_bias: 0.0,
+                clock_bias_s: -2.572_406_083_345_413_2e-5,
+                l2_l1_delay_s: Some(5.587_935_448e-9),
+                health: GlonassImmediateHealth { line_unhealthy: false, status_code: 0 },
+                immediate_data_age_days: 28,
+                satellite_type: GlonassSatelliteType::GlonassM,
+                reported_slot: None,
+                system_time: Some(GlonassSystemTime {
+                    day_number: 864,
+                    four_year_interval: Some(8),
+                }),
+                resolved_day_index: None,
+                accuracy_code: Some(2),
+            },
+            system_time: Some(GlonassAlmanacTimeData {
+                system_time: GlonassSystemTime { day_number: 864, four_year_interval: Some(8) },
+                utc_offset_s: 0.0,
+                gps_minus_glonass_s: -10_782.0,
+            }),
+            almanac_entries: Vec::new(),
         }
     }
 
@@ -1034,6 +1133,74 @@ mod tests {
         );
 
         assert_eq!(rejected, MeasurementRejectReason::IncompleteEphemeris);
+    }
+
+    #[test]
+    fn glonass_selection_reports_stale_navigation() {
+        let navigation = sample_glonass_navigation();
+
+        let rejected = rejected_navigation_entry_reason(
+            PositionBroadcastNavigation::Glonass(navigation),
+            sample_glonass_navigation().sat,
+            506_000.0,
+        );
+
+        assert_eq!(rejected, MeasurementRejectReason::EphemerisStale);
+    }
+
+    #[test]
+    fn glonass_selection_reports_future_navigation() {
+        let navigation = sample_glonass_navigation();
+
+        let rejected = rejected_navigation_entry_reason(
+            PositionBroadcastNavigation::Glonass(navigation),
+            sample_glonass_navigation().sat,
+            504_900.0,
+        );
+
+        assert_eq!(rejected, MeasurementRejectReason::EphemerisFuture);
+    }
+
+    #[test]
+    fn glonass_selection_reports_unhealthy_satellite() {
+        let mut navigation = sample_glonass_navigation();
+        navigation.immediate.health.line_unhealthy = true;
+
+        let rejected = rejected_navigation_entry_reason(
+            PositionBroadcastNavigation::Glonass(navigation),
+            sample_glonass_navigation().sat,
+            504_918.0,
+        );
+
+        assert_eq!(rejected, MeasurementRejectReason::UnhealthySatellite);
+    }
+
+    #[test]
+    fn glonass_selection_reports_missing_time_relation() {
+        let mut navigation = sample_glonass_navigation();
+        navigation.system_time = None;
+
+        let rejected = rejected_navigation_entry_reason(
+            PositionBroadcastNavigation::Glonass(navigation),
+            sample_glonass_navigation().sat,
+            504_918.0,
+        );
+
+        assert_eq!(rejected, MeasurementRejectReason::IncompleteEphemeris);
+    }
+
+    #[test]
+    fn glonass_selection_reports_immediate_satellite_mismatch() {
+        let mut navigation = sample_glonass_navigation();
+        navigation.immediate.sat = SatId { constellation: Constellation::Glonass, prn: 13 };
+
+        let rejected = rejected_navigation_entry_reason(
+            PositionBroadcastNavigation::Glonass(navigation),
+            sample_glonass_navigation().sat,
+            504_918.0,
+        );
+
+        assert_eq!(rejected, MeasurementRejectReason::EphemerisMismatch);
     }
 
     #[test]
