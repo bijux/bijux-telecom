@@ -87,7 +87,7 @@ pub use crate::estimation::position::navigation_filter::{
 };
 pub use crate::estimation::position::raim::{
     formal_protection_levels, PositionProtectionLevels, RaimFaultDetection,
-    RaimFaultDetectionStatus, RaimFaultExclusion, RaimSolutionSeparationCheck,
+    RaimFaultDetectionStatus, RaimFaultExclusion, RaimFaultHypothesis, RaimSolutionSeparationCheck,
     RaimSolutionSeparationSubset,
 };
 pub use crate::estimation::position::runtime::{

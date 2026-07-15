@@ -94,6 +94,14 @@ pub use bijux_gnss_nav::api::{EkfState, NavigationEngine};
 
 #[cfg(feature = "nav")]
 #[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
+pub use bijux_gnss_nav::api::{
+    formal_protection_levels, PositionProtectionLevels, RaimFaultDetection,
+    RaimFaultDetectionStatus, RaimFaultExclusion, RaimFaultHypothesis, RaimSolutionSeparationCheck,
+    RaimSolutionSeparationSubset,
+};
+
+#[cfg(feature = "nav")]
+#[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
 pub use bijux_gnss_core::api::rtk::{
     RtkBaselineEpochV1, RtkBaselineQualityV1, RtkDdEpochV1, RtkFixAuditV1, RtkPrecisionV1,
     RtkSdEpochV1,
