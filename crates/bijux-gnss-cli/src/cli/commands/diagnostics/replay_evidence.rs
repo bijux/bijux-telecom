@@ -1,4 +1,6 @@
-fn summarize_run_diagnostics(run_dir: &Path) -> Result<Vec<DiagnosticEvent>> {
+use super::*;
+
+pub(crate) fn summarize_run_diagnostics(run_dir: &Path) -> Result<Vec<DiagnosticEvent>> {
     ensure_run_dir_exists(run_dir)?;
     let artifacts_dir = run_dir.join("artifacts");
     if !artifacts_dir.exists() {
@@ -27,7 +29,7 @@ fn summarize_run_diagnostics(run_dir: &Path) -> Result<Vec<DiagnosticEvent>> {
     Ok(events)
 }
 
-fn explain_run_scope(run_dir: &Path) -> Result<serde_json::Value> {
+pub(crate) fn explain_run_scope(run_dir: &Path) -> Result<serde_json::Value> {
     ensure_run_dir_exists(run_dir)?;
     let manifest_path = run_dir.join("manifest.json");
     let run_manifest: serde_json::Value =
@@ -194,7 +196,7 @@ fn explain_run_scope(run_dir: &Path) -> Result<serde_json::Value> {
     }))
 }
 
-fn verify_repro_bundle(run_dir: &Path) -> Result<serde_json::Value> {
+pub(crate) fn verify_repro_bundle(run_dir: &Path) -> Result<serde_json::Value> {
     ensure_run_dir_exists(run_dir)?;
     let manifest_path = run_dir.join("manifest.json");
     let manifest_data = std::fs::read_to_string(&manifest_path)?;
@@ -280,7 +282,7 @@ fn verify_repro_bundle(run_dir: &Path) -> Result<serde_json::Value> {
     }))
 }
 
-fn compare_run_evidence(
+pub(crate) fn compare_run_evidence(
     baseline_run_dir: &Path,
     candidate_run_dir: &Path,
 ) -> Result<serde_json::Value> {
@@ -355,7 +357,7 @@ fn compare_run_evidence(
     }))
 }
 
-fn replay_audit_report(
+pub(crate) fn replay_audit_report(
     baseline_run_dir: &Path,
     candidate_run_dir: &Path,
 ) -> Result<serde_json::Value> {
@@ -434,4 +436,3 @@ fn replay_audit_report(
         )
     }))
 }
-
