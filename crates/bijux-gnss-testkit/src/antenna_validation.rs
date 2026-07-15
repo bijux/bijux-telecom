@@ -168,6 +168,7 @@ fn test_calibrations(
                     SignalBand::L1,
                     ReceiverPhaseCenterOffset::new(0.03, 0.01, 0.82),
                 )]),
+                variations_by_band: BTreeMap::new(),
             },
             ReceiverAntennaCalibration {
                 antenna_type: "TRM57971.00 NONE".to_string(),
@@ -177,6 +178,7 @@ fn test_calibrations(
                     SignalBand::L1,
                     ReceiverPhaseCenterOffset::new(0.15, -0.06, 1.23),
                 )]),
+                variations_by_band: BTreeMap::new(),
             },
         ],
     };
@@ -197,6 +199,7 @@ fn test_calibrations(
                         0.18 - index as f64 * 0.01,
                     ),
                 )]),
+                variations_by_band: BTreeMap::new(),
             })
             .collect(),
     };

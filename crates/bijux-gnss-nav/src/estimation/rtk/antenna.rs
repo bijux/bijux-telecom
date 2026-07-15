@@ -129,6 +129,7 @@ mod tests {
                         SignalBand::L1,
                         ReceiverPhaseCenterOffset::new(0.12, -0.04, 0.95),
                     )]),
+                    variations_by_band: BTreeMap::new(),
                 }],
             }),
             satellite_calibrations: Some(SatelliteAntennaCalibrations {
@@ -141,6 +142,7 @@ mod tests {
                         SignalBand::L1,
                         SatellitePhaseCenterOffset::new(0.05, -0.02, 0.18),
                     )]),
+                    variations_by_band: BTreeMap::new(),
                 }],
             }),
         };

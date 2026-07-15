@@ -1561,6 +1561,7 @@ mod tests {
                     SignalBand::L1,
                     SatellitePhaseCenterOffset::new(0.12, -0.04, 0.95),
                 )]),
+                variations_by_band: BTreeMap::new(),
             }],
         };
 
@@ -1600,6 +1601,7 @@ mod tests {
                     (SignalBand::L1, SatellitePhaseCenterOffset::new(0.08, 0.01, 0.91)),
                     (SignalBand::L2, SatellitePhaseCenterOffset::new(0.14, -0.03, 1.12)),
                 ]),
+                variations_by_band: BTreeMap::new(),
             }],
         };
 
@@ -1648,6 +1650,7 @@ mod tests {
                     SignalBand::L1,
                     ReceiverPhaseCenterOffset::new(0.12, -0.04, 0.95),
                 )]),
+                variations_by_band: BTreeMap::new(),
             }],
         };
 
@@ -1692,6 +1695,7 @@ mod tests {
                     (SignalBand::L1, ReceiverPhaseCenterOffset::new(0.08, 0.01, 0.91)),
                     (SignalBand::L2, ReceiverPhaseCenterOffset::new(0.14, -0.03, 1.12)),
                 ]),
+                variations_by_band: BTreeMap::new(),
             }],
         };
 
@@ -1740,6 +1744,7 @@ mod tests {
                         SignalBand::L1,
                         ReceiverPhaseCenterOffset::new(0.05, 0.01, 0.70),
                     )]),
+                    variations_by_band: BTreeMap::new(),
                 },
                 ReceiverAntennaCalibration {
                     antenna_type: "TRM57971.00 NONE".to_string(),
@@ -1749,6 +1754,7 @@ mod tests {
                         SignalBand::L1,
                         ReceiverPhaseCenterOffset::new(0.25, 0.08, 1.30),
                     )]),
+                    variations_by_band: BTreeMap::new(),
                 },
             ],
         };

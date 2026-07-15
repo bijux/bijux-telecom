@@ -248,6 +248,7 @@ mod tests {
                     SignalBand::L1,
                     ReceiverPhaseCenterOffset::new(0.2, 0.5, 1.0),
                 )]),
+                variations_by_band: BTreeMap::new(),
             }],
         };
         let correction_m = receiver_range_correction_m(
@@ -293,6 +294,7 @@ mod tests {
                     SignalBand::L1,
                     SatellitePhaseCenterOffset::new(0.25, 0.0, 1.0),
                 )]),
+                variations_by_band: BTreeMap::new(),
             }],
         };
         let correction_m = satellite_range_correction_m(

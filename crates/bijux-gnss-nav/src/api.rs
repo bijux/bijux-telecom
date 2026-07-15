@@ -289,8 +289,9 @@ pub use crate::linalg::Matrix;
 pub use crate::models::antenna::{
     canonical_receiver_antenna_type, receiver_antenna_range_correction_m,
     satellite_antenna_range_correction_m, satellite_band_from_antex_frequency,
-    ReceiverAntennaCalibration, ReceiverAntennaCalibrations, ReceiverPhaseCenterOffset,
-    SatelliteAntennaCalibration, SatelliteAntennaCalibrations, SatellitePhaseCenterOffset,
+    AntennaAzimuthPhaseCenterVariation, AntennaPhaseCenterVariation, ReceiverAntennaCalibration,
+    ReceiverAntennaCalibrations, ReceiverPhaseCenterOffset, SatelliteAntennaCalibration,
+    SatelliteAntennaCalibrations, SatellitePhaseCenterOffset,
 };
 /// Atmospheric delay models and coefficients.
 pub use crate::models::atmosphere::{

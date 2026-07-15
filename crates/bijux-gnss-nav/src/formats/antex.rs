@@ -133,6 +133,7 @@ impl PendingSatelliteAntennaCalibration {
                 valid_from_unix_s: self.valid_from_unix_s,
                 valid_until_unix_s: self.valid_until_unix_s,
                 offsets_by_band: self.offsets_by_band.clone(),
+                variations_by_band: BTreeMap::new(),
             })
         });
         let receiver_entry = self.receiver_antenna_type.and_then(|antenna_type| {
@@ -141,6 +142,7 @@ impl PendingSatelliteAntennaCalibration {
                 valid_from_unix_s: self.valid_from_unix_s,
                 valid_until_unix_s: self.valid_until_unix_s,
                 offsets_by_band: self.receiver_offsets_by_band,
+                variations_by_band: BTreeMap::new(),
             })
         });
         (satellite_entry, receiver_entry)

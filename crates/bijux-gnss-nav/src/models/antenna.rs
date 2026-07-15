@@ -24,12 +24,100 @@ impl SatellitePhaseCenterOffset {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AntennaAzimuthPhaseCenterVariation {
+    pub azimuth_deg: f64,
+    pub values_m: Vec<f64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AntennaPhaseCenterVariation {
+    pub zenith_start_deg: f64,
+    pub zenith_step_deg: f64,
+    pub no_azimuth_values_m: Vec<f64>,
+    pub azimuth_values_m: Vec<AntennaAzimuthPhaseCenterVariation>,
+}
+
+impl AntennaPhaseCenterVariation {
+    pub fn no_azimuth(
+        zenith_start_deg: f64,
+        zenith_step_deg: f64,
+        no_azimuth_values_m: Vec<f64>,
+    ) -> Self {
+        Self {
+            zenith_start_deg,
+            zenith_step_deg,
+            no_azimuth_values_m,
+            azimuth_values_m: Vec::new(),
+        }
+    }
+
+    pub fn phase_variation_m(&self, elevation_deg: f64, azimuth_deg: Option<f64>) -> Option<f64> {
+        if !elevation_deg.is_finite() {
+            return None;
+        }
+        let zenith_deg = 90.0 - elevation_deg;
+        if let Some(azimuth_deg) = azimuth_deg {
+            if let Some(value) = self.azimuth_phase_variation_m(zenith_deg, azimuth_deg) {
+                return Some(value);
+            }
+        }
+        interpolate_zenith_values_m(
+            self.zenith_start_deg,
+            self.zenith_step_deg,
+            &self.no_azimuth_values_m,
+            zenith_deg,
+        )
+    }
+
+    fn azimuth_phase_variation_m(&self, zenith_deg: f64, azimuth_deg: f64) -> Option<f64> {
+        if self.azimuth_values_m.is_empty() || !azimuth_deg.is_finite() {
+            return None;
+        }
+        let azimuth_deg = wrap_azimuth_deg(azimuth_deg);
+        let rows = self
+            .azimuth_values_m
+            .iter()
+            .filter_map(|row| {
+                interpolate_zenith_values_m(
+                    self.zenith_start_deg,
+                    self.zenith_step_deg,
+                    &row.values_m,
+                    zenith_deg,
+                )
+                .map(|value| (wrap_azimuth_deg(row.azimuth_deg), value))
+            })
+            .collect::<Vec<_>>();
+        if rows.is_empty() {
+            return None;
+        }
+        if rows.len() == 1 {
+            return Some(rows[0].1);
+        }
+        let mut rows = rows;
+        rows.sort_by(|left, right| left.0.total_cmp(&right.0));
+        for pair in rows.windows(2) {
+            let left = pair[0];
+            let right = pair[1];
+            if azimuth_deg >= left.0 && azimuth_deg <= right.0 {
+                return Some(linear_interpolate(left.0, left.1, right.0, right.1, azimuth_deg));
+            }
+        }
+        let last = *rows.last()?;
+        let first = rows[0];
+        let wrapped_right = first.0 + 360.0;
+        let wrapped_azimuth = if azimuth_deg < first.0 { azimuth_deg + 360.0 } else { azimuth_deg };
+        Some(linear_interpolate(last.0, last.1, wrapped_right, first.1, wrapped_azimuth))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SatelliteAntennaCalibration {
     pub sat: SatId,
     pub antenna_type: String,
     pub valid_from_unix_s: Option<f64>,
     pub valid_until_unix_s: Option<f64>,
     pub offsets_by_band: BTreeMap<SignalBand, SatellitePhaseCenterOffset>,
+    pub variations_by_band: BTreeMap<SignalBand, AntennaPhaseCenterVariation>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -56,6 +144,7 @@ pub struct ReceiverAntennaCalibration {
     pub valid_from_unix_s: Option<f64>,
     pub valid_until_unix_s: Option<f64>,
     pub offsets_by_band: BTreeMap<SignalBand, ReceiverPhaseCenterOffset>,
+    pub variations_by_band: BTreeMap<SignalBand, AntennaPhaseCenterVariation>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -92,6 +181,36 @@ impl SatelliteAntennaCalibrations {
             .map(|(_, offset)| offset)
     }
 
+    pub fn phase_center_variation_m(
+        &self,
+        sat: SatId,
+        band: SignalBand,
+        gps_time: Option<GpsTime>,
+        elevation_deg: f64,
+        azimuth_deg: Option<f64>,
+    ) -> Option<f64> {
+        let unix_s = gps_time.map(|time| gps_to_utc(time, &LeapSeconds::default_table()).unix_s);
+        self.entries
+            .iter()
+            .filter(|entry| entry.sat == sat)
+            .filter(|entry| {
+                calibration_window_matches_time(
+                    entry.valid_from_unix_s,
+                    entry.valid_until_unix_s,
+                    unix_s,
+                )
+            })
+            .filter_map(|entry| {
+                entry.variations_by_band.get(&band).and_then(|variation| {
+                    variation
+                        .phase_variation_m(elevation_deg, azimuth_deg)
+                        .map(|value| (entry.valid_from_unix_s.unwrap_or(f64::NEG_INFINITY), value))
+                })
+            })
+            .max_by(|left, right| left.0.total_cmp(&right.0))
+            .map(|(_, value)| value)
+    }
+
     pub fn range_correction_m(
         &self,
         sat: SatId,
@@ -104,6 +223,24 @@ impl SatelliteAntennaCalibrations {
         let gps_time = gps_time?;
         let sun_pos_m = approximate_sun_position_ecef_m(gps_time);
         Some(satellite_antenna_range_correction_m(sat_pos_m, receiver_pos_m, sun_pos_m, offset))
+    }
+
+    pub fn range_correction_with_phase_variation_m(
+        &self,
+        sat: SatId,
+        band: SignalBand,
+        gps_time: Option<GpsTime>,
+        sat_pos_m: [f64; 3],
+        receiver_pos_m: [f64; 3],
+        elevation_deg: f64,
+        azimuth_deg: Option<f64>,
+    ) -> Option<f64> {
+        let offset_correction_m =
+            self.range_correction_m(sat, band, gps_time, sat_pos_m, receiver_pos_m)?;
+        let phase_variation_m = self
+            .phase_center_variation_m(sat, band, gps_time, elevation_deg, azimuth_deg)
+            .unwrap_or(0.0);
+        Some(offset_correction_m + phase_variation_m)
     }
 
     pub fn iono_free_range_correction_m(
@@ -165,6 +302,39 @@ impl ReceiverAntennaCalibrations {
             .map(|(_, offset)| offset)
     }
 
+    pub fn phase_center_variation_m(
+        &self,
+        antenna_type: &str,
+        band: SignalBand,
+        gps_time: Option<GpsTime>,
+        elevation_deg: f64,
+        azimuth_deg: Option<f64>,
+    ) -> Option<f64> {
+        let unix_s = gps_time.map(|time| gps_to_utc(time, &LeapSeconds::default_table()).unix_s);
+        let canonical_antenna_type = canonical_receiver_antenna_type(antenna_type);
+        self.entries
+            .iter()
+            .filter(|entry| {
+                canonical_receiver_antenna_type(&entry.antenna_type) == canonical_antenna_type
+            })
+            .filter(|entry| {
+                calibration_window_matches_time(
+                    entry.valid_from_unix_s,
+                    entry.valid_until_unix_s,
+                    unix_s,
+                )
+            })
+            .filter_map(|entry| {
+                entry.variations_by_band.get(&band).and_then(|variation| {
+                    variation
+                        .phase_variation_m(elevation_deg, azimuth_deg)
+                        .map(|value| (entry.valid_from_unix_s.unwrap_or(f64::NEG_INFINITY), value))
+                })
+            })
+            .max_by(|left, right| left.0.total_cmp(&right.0))
+            .map(|(_, value)| value)
+    }
+
     pub fn range_correction_m(
         &self,
         antenna_type: &str,
@@ -175,6 +345,24 @@ impl ReceiverAntennaCalibrations {
     ) -> Option<f64> {
         let offset = self.phase_center_offset(antenna_type, band, gps_time)?;
         Some(receiver_antenna_range_correction_m(receiver_pos_m, sat_pos_m, offset))
+    }
+
+    pub fn range_correction_with_phase_variation_m(
+        &self,
+        antenna_type: &str,
+        band: SignalBand,
+        gps_time: Option<GpsTime>,
+        receiver_pos_m: [f64; 3],
+        sat_pos_m: [f64; 3],
+        elevation_deg: f64,
+        azimuth_deg: Option<f64>,
+    ) -> Option<f64> {
+        let offset_correction_m =
+            self.range_correction_m(antenna_type, band, gps_time, receiver_pos_m, sat_pos_m)?;
+        let phase_variation_m = self
+            .phase_center_variation_m(antenna_type, band, gps_time, elevation_deg, azimuth_deg)
+            .unwrap_or(0.0);
+        Some(offset_correction_m + phase_variation_m)
     }
 
     pub fn iono_free_range_correction_m(
@@ -369,6 +557,54 @@ fn calibration_window_matches_time(
     true
 }
 
+fn interpolate_zenith_values_m(
+    zenith_start_deg: f64,
+    zenith_step_deg: f64,
+    values_m: &[f64],
+    zenith_deg: f64,
+) -> Option<f64> {
+    if values_m.is_empty()
+        || !zenith_start_deg.is_finite()
+        || !zenith_step_deg.is_finite()
+        || zenith_step_deg <= 0.0
+        || !zenith_deg.is_finite()
+    {
+        return None;
+    }
+    if values_m.len() == 1 {
+        return Some(values_m[0]);
+    }
+    let max_index = values_m.len() - 1;
+    let position = ((zenith_deg - zenith_start_deg) / zenith_step_deg).clamp(0.0, max_index as f64);
+    let lower_index = position.floor() as usize;
+    let upper_index = position.ceil() as usize;
+    if lower_index == upper_index {
+        return values_m.get(lower_index).copied();
+    }
+    let lower_zenith_deg = zenith_start_deg + lower_index as f64 * zenith_step_deg;
+    let upper_zenith_deg = zenith_start_deg + upper_index as f64 * zenith_step_deg;
+    Some(linear_interpolate(
+        lower_zenith_deg,
+        values_m[lower_index],
+        upper_zenith_deg,
+        values_m[upper_index],
+        zenith_deg.clamp(lower_zenith_deg, upper_zenith_deg),
+    ))
+}
+
+fn linear_interpolate(x0: f64, y0: f64, x1: f64, y1: f64, x: f64) -> f64 {
+    let span = x1 - x0;
+    if !span.is_finite() || span.abs() <= f64::EPSILON {
+        return y0;
+    }
+    let fraction = ((x - x0) / span).clamp(0.0, 1.0);
+    y0 + fraction * (y1 - y0)
+}
+
+fn wrap_azimuth_deg(azimuth_deg: f64) -> f64 {
+    azimuth_deg.rem_euclid(360.0)
+}
+
 fn cross3(left: [f64; 3], right: [f64; 3]) -> [f64; 3] {
     [
         left[1] * right[2] - left[2] * right[1],
@@ -395,6 +631,7 @@ mod tests {
     use super::{
         canonical_receiver_antenna_type, receiver_antenna_range_correction_m,
         satellite_antenna_range_correction_m, satellite_band_from_antex_frequency,
+        AntennaAzimuthPhaseCenterVariation, AntennaPhaseCenterVariation,
         ReceiverAntennaCalibration, ReceiverAntennaCalibrations, ReceiverPhaseCenterOffset,
         SatelliteAntennaCalibration, SatelliteAntennaCalibrations, SatellitePhaseCenterOffset,
     };
@@ -447,6 +684,7 @@ mod tests {
             valid_from_unix_s: Some(1_577_836_800.0),
             valid_until_unix_s: Some(1_609_459_199.0),
             offsets_by_band: offsets_by_band.clone(),
+            variations_by_band: BTreeMap::new(),
         };
         let mut offsets_by_band_new = BTreeMap::new();
         offsets_by_band_new.insert(SignalBand::L1, SatellitePhaseCenterOffset::new(0.0, 0.0, 0.3));
@@ -456,6 +694,7 @@ mod tests {
             valid_from_unix_s: Some(1_609_459_200.0),
             valid_until_unix_s: None,
             offsets_by_band: offsets_by_band_new,
+            variations_by_band: BTreeMap::new(),
         };
         let calibrations = SatelliteAntennaCalibrations { entries: vec![old, new] };
 
@@ -496,6 +735,7 @@ mod tests {
             valid_from_unix_s: Some(1_577_836_800.0),
             valid_until_unix_s: Some(1_609_459_199.0),
             offsets_by_band: offsets_by_band.clone(),
+            variations_by_band: BTreeMap::new(),
         };
         let mut offsets_by_band_new = BTreeMap::new();
         offsets_by_band_new.insert(SignalBand::L1, ReceiverPhaseCenterOffset::new(0.4, 0.5, 0.6));
@@ -504,6 +744,7 @@ mod tests {
             valid_from_unix_s: Some(1_609_459_200.0),
             valid_until_unix_s: None,
             offsets_by_band: offsets_by_band_new,
+            variations_by_band: BTreeMap::new(),
         };
         let ignored = ReceiverAntennaCalibration {
             antenna_type: "TRM57971.00 NONE".to_string(),
@@ -513,6 +754,7 @@ mod tests {
                 SignalBand::L1,
                 ReceiverPhaseCenterOffset::new(1.0, 1.0, 1.0),
             )]),
+            variations_by_band: BTreeMap::new(),
         };
         let calibrations = ReceiverAntennaCalibrations { entries: vec![old, new, ignored] };
 
@@ -526,5 +768,102 @@ mod tests {
 
         assert_eq!(selected, ReceiverPhaseCenterOffset::new(0.4, 0.5, 0.6));
         assert_eq!(canonical_receiver_antenna_type("  aoad/m_t   none "), "AOAD/M_T NONE");
+    }
+
+    #[test]
+    fn antenna_phase_center_variation_interpolates_zenith_and_azimuth() {
+        let variation = AntennaPhaseCenterVariation {
+            zenith_start_deg: 0.0,
+            zenith_step_deg: 10.0,
+            no_azimuth_values_m: vec![0.0, 0.010, 0.020],
+            azimuth_values_m: vec![
+                AntennaAzimuthPhaseCenterVariation {
+                    azimuth_deg: 0.0,
+                    values_m: vec![0.0, 0.020, 0.040],
+                },
+                AntennaAzimuthPhaseCenterVariation {
+                    azimuth_deg: 90.0,
+                    values_m: vec![0.010, 0.030, 0.050],
+                },
+            ],
+        };
+
+        let no_azimuth =
+            variation.phase_variation_m(75.0, None).expect("zenith-only interpolation");
+        let azimuth_dependent =
+            variation.phase_variation_m(75.0, Some(45.0)).expect("azimuth-dependent interpolation");
+
+        assert!((no_azimuth - 0.015).abs() < 1.0e-12);
+        assert!((azimuth_dependent - 0.035).abs() < 1.0e-12);
+    }
+
+    #[test]
+    fn satellite_and_receiver_calibrations_query_variation_by_time_signal_and_type() {
+        let sat = SatId { constellation: Constellation::Gps, prn: 1 };
+        let old_variation = AntennaPhaseCenterVariation::no_azimuth(0.0, 10.0, vec![0.0, 0.01]);
+        let new_variation = AntennaPhaseCenterVariation::no_azimuth(0.0, 10.0, vec![0.0, 0.03]);
+        let satellite_calibrations = SatelliteAntennaCalibrations {
+            entries: vec![
+                SatelliteAntennaCalibration {
+                    sat,
+                    antenna_type: "GPS-A".to_string(),
+                    valid_from_unix_s: Some(1_577_836_800.0),
+                    valid_until_unix_s: Some(1_609_459_199.0),
+                    offsets_by_band: BTreeMap::from([(
+                        SignalBand::L1,
+                        SatellitePhaseCenterOffset::new(0.0, 0.0, 0.1),
+                    )]),
+                    variations_by_band: BTreeMap::from([(SignalBand::L1, old_variation)]),
+                },
+                SatelliteAntennaCalibration {
+                    sat,
+                    antenna_type: "GPS-B".to_string(),
+                    valid_from_unix_s: Some(1_609_459_200.0),
+                    valid_until_unix_s: None,
+                    offsets_by_band: BTreeMap::from([(
+                        SignalBand::L1,
+                        SatellitePhaseCenterOffset::new(0.0, 0.0, 0.1),
+                    )]),
+                    variations_by_band: BTreeMap::from([(SignalBand::L1, new_variation)]),
+                },
+            ],
+        };
+        let receiver_calibrations = ReceiverAntennaCalibrations {
+            entries: vec![ReceiverAntennaCalibration {
+                antenna_type: "AOAD/M_T NONE".to_string(),
+                valid_from_unix_s: None,
+                valid_until_unix_s: None,
+                offsets_by_band: BTreeMap::from([(
+                    SignalBand::L1,
+                    ReceiverPhaseCenterOffset::new(0.0, 0.0, 0.1),
+                )]),
+                variations_by_band: BTreeMap::from([(
+                    SignalBand::L1,
+                    AntennaPhaseCenterVariation::no_azimuth(0.0, 10.0, vec![0.0, 0.02]),
+                )]),
+            }],
+        };
+
+        let satellite_variation = satellite_calibrations
+            .phase_center_variation_m(
+                sat,
+                SignalBand::L1,
+                Some(GpsTime { week: 2200, tow_s: 0.0 }),
+                85.0,
+                None,
+            )
+            .expect("satellite L1 variation");
+        let receiver_variation = receiver_calibrations
+            .phase_center_variation_m(
+                "aoad/m_t none",
+                SignalBand::L1,
+                Some(GpsTime { week: 2200, tow_s: 0.0 }),
+                85.0,
+                None,
+            )
+            .expect("receiver L1 variation");
+
+        assert!((satellite_variation - 0.015).abs() < 1.0e-12);
+        assert!((receiver_variation - 0.010).abs() < 1.0e-12);
     }
 }

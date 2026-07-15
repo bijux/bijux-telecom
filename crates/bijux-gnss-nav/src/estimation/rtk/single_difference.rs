@@ -369,6 +369,7 @@ mod tests {
                             bijux_gnss_core::api::SignalBand::L1,
                             ReceiverPhaseCenterOffset::new(0.03, 0.01, 0.82),
                         )]),
+                        variations_by_band: BTreeMap::new(),
                     },
                     ReceiverAntennaCalibration {
                         antenna_type: "TRM57971.00 NONE".to_string(),
@@ -378,6 +379,7 @@ mod tests {
                             bijux_gnss_core::api::SignalBand::L1,
                             ReceiverPhaseCenterOffset::new(0.15, -0.06, 1.23),
                         )]),
+                        variations_by_band: BTreeMap::new(),
                     },
                 ],
             }),
@@ -391,6 +393,7 @@ mod tests {
                         bijux_gnss_core::api::SignalBand::L1,
                         SatellitePhaseCenterOffset::new(0.04, -0.02, 0.18),
                     )]),
+                    variations_by_band: BTreeMap::new(),
                 }],
             }),
         };
