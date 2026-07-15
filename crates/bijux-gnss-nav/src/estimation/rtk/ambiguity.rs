@@ -793,6 +793,102 @@ pub fn rtk_monitor_fixed_ambiguity_hold(
     }
 }
 
+pub fn rtk_apply_ambiguity_fix_lifecycle(
+    epoch_idx: u64,
+    solution: &RtkFloatBaselineSolution,
+    fix_result: &RtkAmbiguityFixResult,
+    state: &mut RtkAmbiguityHoldState,
+    policy: RtkAmbiguityHoldPolicy,
+) -> RtkAmbiguityHoldUpdate {
+    if fix_result.status == RtkAmbiguityFixStatus::Fixed {
+        let action = if state.held_fix.is_some() {
+            RtkAmbiguityHoldAction::HoldRefreshed
+        } else {
+            RtkAmbiguityHoldAction::HoldStarted
+        };
+        if let Some(hold) =
+            rtk_fixed_ambiguity_hold_from_fix_result(epoch_idx, solution, fix_result)
+        {
+            let baseline = RtkAppliedAmbiguityBaseline::fixed(hold.conditioned_baseline.clone());
+            state.held_fix = Some(hold.clone());
+            return RtkAmbiguityHoldUpdate {
+                epoch_idx,
+                action,
+                baseline,
+                held_fix: Some(hold),
+                monitor: None,
+                reasons: vec!["fix_accepted".to_string()],
+            };
+        }
+        state.held_fix = None;
+        return RtkAmbiguityHoldUpdate {
+            epoch_idx,
+            action: RtkAmbiguityHoldAction::RolledBack,
+            baseline: RtkAppliedAmbiguityBaseline::float(solution),
+            held_fix: None,
+            monitor: None,
+            reasons: vec!["fixed_solution_invalid".to_string()],
+        };
+    }
+
+    if let Some(hold) = state.held_fix.clone() {
+        let monitor = rtk_monitor_fixed_ambiguity_hold(epoch_idx, solution, &hold, policy);
+        if monitor.accepted {
+            if let Some(conditioned) = rtk_conditioned_baseline_from_fixed_ambiguities(
+                solution,
+                &hold.fixed_ids,
+                &hold.fixed_integers,
+            ) {
+                let mut continued = hold;
+                continued.updated_epoch_idx = epoch_idx;
+                continued.conditioned_baseline = conditioned.clone();
+                let baseline = RtkAppliedAmbiguityBaseline::fixed(conditioned);
+                state.held_fix = Some(continued.clone());
+                return RtkAmbiguityHoldUpdate {
+                    epoch_idx,
+                    action: RtkAmbiguityHoldAction::HoldContinued,
+                    baseline,
+                    held_fix: Some(continued),
+                    monitor: Some(monitor),
+                    reasons: vec!["hold_valid".to_string()],
+                };
+            }
+            state.held_fix = None;
+            return RtkAmbiguityHoldUpdate {
+                epoch_idx,
+                action: RtkAmbiguityHoldAction::RolledBack,
+                baseline: RtkAppliedAmbiguityBaseline::float(solution),
+                held_fix: None,
+                monitor: Some(RtkAmbiguityHoldMonitor {
+                    accepted: false,
+                    reasons: vec!["conditioned_baseline_unavailable".to_string()],
+                    ..monitor
+                }),
+                reasons: vec!["conditioned_baseline_unavailable".to_string()],
+            };
+        }
+        let reasons = monitor.reasons.clone();
+        state.held_fix = None;
+        return RtkAmbiguityHoldUpdate {
+            epoch_idx,
+            action: RtkAmbiguityHoldAction::RolledBack,
+            baseline: RtkAppliedAmbiguityBaseline::float(solution),
+            held_fix: None,
+            monitor: Some(monitor),
+            reasons,
+        };
+    }
+
+    RtkAmbiguityHoldUpdate {
+        epoch_idx,
+        action: RtkAmbiguityHoldAction::Float,
+        baseline: RtkAppliedAmbiguityBaseline::float(solution),
+        held_fix: None,
+        monitor: None,
+        reasons: vec!["float_solution".to_string()],
+    }
+}
+
 /// Transform fixed double-difference integer ambiguities to a different reference signal.
 pub fn rtk_transform_fixed_ambiguity_reference(
     fixed_ids: &[RtkDoubleDifferenceAmbiguityId],

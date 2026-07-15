@@ -3,15 +3,16 @@
 use bijux_gnss_core::api::ArtifactPayloadValidate;
 use bijux_gnss_core::api::{Constellation, SatId, SigId, SignalBand};
 use bijux_gnss_nav::api::{
-    rtk_ambiguity_state_from_fixed_solution, rtk_conditioned_baseline_from_fix_result,
-    rtk_conditioned_baseline_from_fixed_ambiguities, rtk_fixed_ambiguity_hold_from_fix_result,
-    rtk_float_ambiguity_state_from_baseline_solution, rtk_float_baseline_from_double_differences,
-    rtk_integer_ambiguity_candidates, rtk_lambda_decorrelate,
-    rtk_lambda_integer_ambiguity_candidates, rtk_monitor_fixed_ambiguity_hold,
-    rtk_select_partial_ambiguity_fix_with_evidence, rtk_transform_fixed_ambiguity_reference,
-    rtk_transform_float_ambiguity_reference, rtk_transform_float_baseline_reference,
-    RtkAmbiguityFixPolicy, RtkAmbiguityFixResult, RtkAmbiguityFixState, RtkAmbiguityFixStatus,
-    RtkAmbiguityHoldPolicy, RtkDoubleDifferenceAmbiguityId, RtkFixedAmbiguityHold,
+    rtk_ambiguity_state_from_fixed_solution, rtk_apply_ambiguity_fix_lifecycle,
+    rtk_conditioned_baseline_from_fix_result, rtk_conditioned_baseline_from_fixed_ambiguities,
+    rtk_fixed_ambiguity_hold_from_fix_result, rtk_float_ambiguity_state_from_baseline_solution,
+    rtk_float_baseline_from_double_differences, rtk_integer_ambiguity_candidates,
+    rtk_lambda_decorrelate, rtk_lambda_integer_ambiguity_candidates,
+    rtk_monitor_fixed_ambiguity_hold, rtk_select_partial_ambiguity_fix_with_evidence,
+    rtk_transform_fixed_ambiguity_reference, rtk_transform_float_ambiguity_reference,
+    rtk_transform_float_baseline_reference, RtkAmbiguityFixPolicy, RtkAmbiguityFixResult,
+    RtkAmbiguityFixState, RtkAmbiguityFixStatus, RtkAmbiguityHoldAction, RtkAmbiguityHoldPolicy,
+    RtkAmbiguityHoldState, RtkDoubleDifferenceAmbiguityId, RtkFixedAmbiguityHold,
     RtkFloatAmbiguityEstimate, RtkFloatAmbiguityState, RtkFloatBaselineSolution,
     RtkIntegerAmbiguityCandidate, RtkPartialAmbiguitySelectionCriterion, RtkRatioTestFixer,
 };
@@ -670,4 +671,130 @@ fn rtk_fixed_ambiguity_hold_monitor_rejects_false_fix_residuals() {
     assert!(monitor.reasons.contains(&"ambiguity_residual".to_string()));
     assert!(monitor.reasons.contains(&"normalized_ambiguity_residual".to_string()));
     assert!(monitor.validate_payload().is_empty());
+}
+
+#[test]
+fn rtk_ambiguity_lifecycle_continues_valid_hold_after_ratio_failure() {
+    let fixed_id = gps_l1_dd_id(7, 3);
+    let initial_solution = RtkFloatBaselineSolution {
+        enu_m: [1.0, 2.0, 3.0],
+        covariance_enu_m2: [[1.0, 0.0, 0.0], [0.0, 1.2, 0.0], [0.0, 0.0, 1.5]],
+        enu_ambiguity_covariance_m_cycles: vec![vec![0.004], vec![0.0], vec![0.0]],
+        float_ambiguities: vec![RtkFloatAmbiguityEstimate {
+            sig: fixed_id.sig,
+            ref_sig: fixed_id.ref_sig,
+            float_cycles: 10.01,
+            variance_cycles2: 0.01,
+        }],
+        ambiguity_covariance_cycles2: vec![vec![0.01]],
+    };
+    let accepted = RtkAmbiguityFixResult {
+        candidates: vec![RtkIntegerAmbiguityCandidate { integers: vec![10], cost: 0.01 }],
+        ratio: Some(12.0),
+        status: RtkAmbiguityFixStatus::Fixed,
+        fixed_count: 1,
+        selected_ids: Some(vec![fixed_id]),
+        selected_integers: Some(vec![10]),
+        partial_selection: None,
+    };
+    let mut lifecycle = RtkAmbiguityHoldState::default();
+    let start = rtk_apply_ambiguity_fix_lifecycle(
+        5,
+        &initial_solution,
+        &accepted,
+        &mut lifecycle,
+        RtkAmbiguityHoldPolicy::default(),
+    );
+
+    let next_solution = RtkFloatBaselineSolution {
+        enu_m: [1.02, 2.0, 3.0],
+        covariance_enu_m2: [[1.1, 0.0, 0.0], [0.0, 1.3, 0.0], [0.0, 0.0, 1.6]],
+        enu_ambiguity_covariance_m_cycles: vec![vec![0.004], vec![0.0], vec![0.0]],
+        float_ambiguities: vec![RtkFloatAmbiguityEstimate {
+            sig: fixed_id.sig,
+            ref_sig: fixed_id.ref_sig,
+            float_cycles: 10.02,
+            variance_cycles2: 0.01,
+        }],
+        ambiguity_covariance_cycles2: vec![vec![0.01]],
+    };
+    let failed = RtkAmbiguityFixResult {
+        candidates: Vec::new(),
+        ratio: Some(1.2),
+        status: RtkAmbiguityFixStatus::Failed,
+        fixed_count: 0,
+        selected_ids: None,
+        selected_integers: None,
+        partial_selection: None,
+    };
+    let continued = rtk_apply_ambiguity_fix_lifecycle(
+        6,
+        &next_solution,
+        &failed,
+        &mut lifecycle,
+        RtkAmbiguityHoldPolicy::default(),
+    );
+
+    assert_eq!(start.action, RtkAmbiguityHoldAction::HoldStarted);
+    assert_eq!(continued.action, RtkAmbiguityHoldAction::HoldContinued);
+    assert_eq!(continued.baseline.status, RtkAmbiguityFixStatus::Fixed);
+    assert_eq!(continued.held_fix.as_ref().expect("hold").updated_epoch_idx, 6);
+    assert!(continued.monitor.as_ref().expect("monitor").accepted);
+    assert!(lifecycle.held_fix.is_some());
+}
+
+#[test]
+fn rtk_ambiguity_lifecycle_rolls_back_false_hold_to_float_covariance() {
+    let fixed_id = gps_l1_dd_id(7, 3);
+    let mut lifecycle = RtkAmbiguityHoldState {
+        held_fix: Some(RtkFixedAmbiguityHold {
+            accepted_epoch_idx: 3,
+            updated_epoch_idx: 3,
+            fixed_ids: vec![fixed_id],
+            fixed_integers: vec![10],
+            ratio: Some(9.0),
+            conditioned_baseline: bijux_gnss_nav::api::RtkConditionedBaselineSolution {
+                enu_m: [1.0, 2.0, 3.0],
+                covariance_enu_m2: [[0.5, 0.0, 0.0], [0.0, 0.6, 0.0], [0.0, 0.0, 0.7]],
+            },
+            partial_selection: None,
+        }),
+    };
+    let float_solution = RtkFloatBaselineSolution {
+        enu_m: [9.0, 8.0, 7.0],
+        covariance_enu_m2: [[7.0, 0.1, 0.2], [0.1, 8.0, 0.3], [0.2, 0.3, 9.0]],
+        enu_ambiguity_covariance_m_cycles: vec![vec![0.004], vec![0.0], vec![0.0]],
+        float_ambiguities: vec![RtkFloatAmbiguityEstimate {
+            sig: fixed_id.sig,
+            ref_sig: fixed_id.ref_sig,
+            float_cycles: 10.8,
+            variance_cycles2: 0.01,
+        }],
+        ambiguity_covariance_cycles2: vec![vec![0.01]],
+    };
+    let failed = RtkAmbiguityFixResult {
+        candidates: Vec::new(),
+        ratio: Some(1.1),
+        status: RtkAmbiguityFixStatus::Failed,
+        fixed_count: 0,
+        selected_ids: None,
+        selected_integers: None,
+        partial_selection: None,
+    };
+
+    let update = rtk_apply_ambiguity_fix_lifecycle(
+        4,
+        &float_solution,
+        &failed,
+        &mut lifecycle,
+        RtkAmbiguityHoldPolicy::default(),
+    );
+
+    assert_eq!(update.action, RtkAmbiguityHoldAction::RolledBack);
+    assert_eq!(update.baseline.status, RtkAmbiguityFixStatus::Float);
+    assert_eq!(update.baseline.enu_m, float_solution.enu_m);
+    assert_eq!(update.baseline.covariance_enu_m2, float_solution.covariance_enu_m2);
+    assert!(update.reasons.contains(&"ambiguity_residual".to_string()));
+    assert!(lifecycle.held_fix.is_none());
+    assert!(update.validate_payload().is_empty());
 }
