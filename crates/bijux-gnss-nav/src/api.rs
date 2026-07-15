@@ -237,9 +237,11 @@ pub use crate::formats::galileo_inav_decode::{
 pub use crate::formats::glonass_navigation_decode::{
     decode_glonass_broadcast_navigation_frame,
     decode_glonass_broadcast_navigation_frame_with_reference_day, decode_glonass_navigation_string,
-    GlonassNavigationFrameRejection, GlonassNavigationFrameRejectionReason,
-    GlonassNavigationString, GlonassNavigationStringRejection,
-    GlonassNavigationStringRejectionReason, GlonassStringParitySummary,
+    decode_glonass_superframe_time_data, GlonassNavigationFrameRejection,
+    GlonassNavigationFrameRejectionReason, GlonassNavigationString,
+    GlonassNavigationStringRejection, GlonassNavigationStringRejectionReason,
+    GlonassStringParitySummary, GlonassSuperframeTimeRejection,
+    GlonassSuperframeTimeRejectionReason,
 };
 /// Format parsing and output.
 pub use crate::formats::lnav_bits::{
@@ -317,14 +319,15 @@ pub use crate::orbits::galileo::{
 /// GLONASS navigation domain types.
 pub use crate::orbits::glonass::{
     glonass_earth_rotation_correction, glonass_gps_minus_glonass_s, glonass_navigation_age,
-    glonass_satellite_clock_correction, glonass_satellite_type_from_word,
+    glonass_satellite_clock_correction, glonass_satellite_type_from_word, glonass_utc_relation,
     is_glonass_navigation_valid, sat_state_glonass_l1, sat_state_glonass_l1_at_receive_time,
     sat_state_glonass_l1_from_observation, select_best_glonass_navigation, semicircles_to_radians,
     GlonassAlmanacEntry, GlonassAlmanacTimeData, GlonassBroadcastNavigationFrame,
     GlonassEarthRotationCorrection, GlonassFrameTime, GlonassImmediateHealth,
-    GlonassImmediateNavigationData, GlonassNavigationAge, GlonassSatState,
-    GlonassSatelliteClockCorrection, GlonassSatelliteType, GlonassStateVector, GlonassStringTiming,
-    GlonassSystemTime,
+    GlonassImmediateNavigationData, GlonassLeapSecondAnnouncement, GlonassNavigationAge,
+    GlonassSatState, GlonassSatelliteClockCorrection, GlonassSatelliteType, GlonassStateVector,
+    GlonassStringTiming, GlonassSuperframeTimeData, GlonassSystemTime, GlonassUt1Correction,
+    GlonassUtcRelation,
 };
 /// Broadcast ephemeris and satellite state.
 pub use crate::orbits::gps::{

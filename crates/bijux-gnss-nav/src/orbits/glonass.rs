@@ -103,6 +103,45 @@ pub struct GlonassAlmanacTimeData {
     pub gps_minus_glonass_s: f64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum GlonassLeapSecondAnnouncement {
+    NoCorrection,
+    PositiveCorrection,
+    DecisionPending,
+    NegativeCorrection,
+}
+
+impl GlonassLeapSecondAnnouncement {
+    pub fn from_kp_word(word: u8) -> Option<Self> {
+        match word {
+            0 => Some(Self::NoCorrection),
+            1 => Some(Self::PositiveCorrection),
+            2 => Some(Self::DecisionPending),
+            3 => Some(Self::NegativeCorrection),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct GlonassUt1Correction {
+    pub utc_su_minus_ut1_at_day_start_s: f64,
+    pub utc_su_minus_ut1_daily_change_s: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct GlonassSuperframeTimeData {
+    pub ut1_correction: GlonassUt1Correction,
+    pub leap_second_announcement: GlonassLeapSecondAnnouncement,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct GlonassUtcRelation {
+    pub system_time: GlonassSystemTime,
+    pub utc_su_plus_three_hours_minus_glonass_s: f64,
+    pub gps_minus_glonass_fractional_s: f64,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct GlonassImmediateNavigationData {
     pub sat: SatId,
@@ -214,6 +253,16 @@ pub fn semicircles_to_radians(value: f64) -> f64 {
 
 pub fn glonass_gps_minus_glonass_s(navigation: &GlonassBroadcastNavigationFrame) -> Option<f64> {
     navigation.system_time.map(|system_time| system_time.gps_minus_glonass_s)
+}
+
+pub fn glonass_utc_relation(
+    navigation: &GlonassBroadcastNavigationFrame,
+) -> Option<GlonassUtcRelation> {
+    navigation.system_time.map(|system_time| GlonassUtcRelation {
+        system_time: system_time.system_time,
+        utc_su_plus_three_hours_minus_glonass_s: system_time.utc_offset_s,
+        gps_minus_glonass_fractional_s: system_time.gps_minus_glonass_s,
+    })
 }
 
 pub fn glonass_navigation_age(
@@ -475,11 +524,11 @@ fn glonass_inertial_dynamics(state: [f64; 6], luni_solar_acceleration_mps2: [f64
 #[cfg(test)]
 mod tests {
     use super::{
-        glonass_navigation_age, glonass_satellite_clock_correction, sat_state_glonass_l1,
-        GlonassAlmanacTimeData, GlonassBroadcastNavigationFrame, GlonassFrameTime,
-        GlonassImmediateHealth, GlonassImmediateNavigationData, GlonassSatelliteType,
-        GlonassStateVector, GlonassSystemTime, PZ90_02_TO_ITRF2000_X_M, PZ90_02_TO_ITRF2000_Y_M,
-        PZ90_02_TO_ITRF2000_Z_M,
+        glonass_navigation_age, glonass_satellite_clock_correction, glonass_utc_relation,
+        sat_state_glonass_l1, GlonassAlmanacTimeData, GlonassBroadcastNavigationFrame,
+        GlonassFrameTime, GlonassImmediateHealth, GlonassImmediateNavigationData,
+        GlonassLeapSecondAnnouncement, GlonassSatelliteType, GlonassStateVector, GlonassSystemTime,
+        PZ90_02_TO_ITRF2000_X_M, PZ90_02_TO_ITRF2000_Y_M, PZ90_02_TO_ITRF2000_Z_M,
     };
     use bijux_gnss_core::api::{Constellation, SatId};
 
@@ -566,6 +615,39 @@ mod tests {
         assert_eq!(last.start_seconds_of_day, 86_398);
         assert_eq!(last.end_day_offset, 1);
         assert_eq!(last.end_seconds_of_day, 0);
+    }
+
+    #[test]
+    fn glonass_utc_relation_preserves_broadcast_offsets() {
+        let navigation = sample_navigation();
+
+        let relation = glonass_utc_relation(&navigation).expect("UTC relation");
+
+        assert_eq!(relation.system_time.day_number, 864);
+        assert_eq!(relation.system_time.four_year_interval, Some(8));
+        assert_eq!(relation.utc_su_plus_three_hours_minus_glonass_s, 0.0);
+        assert_eq!(relation.gps_minus_glonass_fractional_s, -10_782.0);
+    }
+
+    #[test]
+    fn glonass_leap_second_announcement_decodes_kp_word() {
+        assert_eq!(
+            GlonassLeapSecondAnnouncement::from_kp_word(0),
+            Some(GlonassLeapSecondAnnouncement::NoCorrection)
+        );
+        assert_eq!(
+            GlonassLeapSecondAnnouncement::from_kp_word(1),
+            Some(GlonassLeapSecondAnnouncement::PositiveCorrection)
+        );
+        assert_eq!(
+            GlonassLeapSecondAnnouncement::from_kp_word(2),
+            Some(GlonassLeapSecondAnnouncement::DecisionPending)
+        );
+        assert_eq!(
+            GlonassLeapSecondAnnouncement::from_kp_word(3),
+            Some(GlonassLeapSecondAnnouncement::NegativeCorrection)
+        );
+        assert_eq!(GlonassLeapSecondAnnouncement::from_kp_word(4), None);
     }
 
     #[test]

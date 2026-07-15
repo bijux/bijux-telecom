@@ -7,7 +7,8 @@ use bijux_gnss_core::api::{glonass_slot_sat, GlonassFrequencyChannel, GlonassSlo
 use crate::orbits::glonass::{
     glonass_satellite_type_from_word, semicircles_to_radians, GlonassAlmanacEntry,
     GlonassAlmanacTimeData, GlonassBroadcastNavigationFrame, GlonassFrameTime,
-    GlonassImmediateHealth, GlonassImmediateNavigationData, GlonassStateVector, GlonassSystemTime,
+    GlonassImmediateHealth, GlonassImmediateNavigationData, GlonassLeapSecondAnnouncement,
+    GlonassStateVector, GlonassSuperframeTimeData, GlonassSystemTime, GlonassUt1Correction,
 };
 use crate::time::{resolve_glonass_day_number, RolloverResolutionError};
 
@@ -88,6 +89,19 @@ pub struct GlonassNavigationFrameRejection {
     pub reported_slot: Option<GlonassSlot>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GlonassSuperframeTimeRejectionReason {
+    UnexpectedStringNumber,
+    InvalidLeapSecondAnnouncement,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GlonassSuperframeTimeRejection {
+    pub reason: GlonassSuperframeTimeRejectionReason,
+    pub string_number: u8,
+}
+
 pub fn decode_glonass_navigation_string(
     bits: &[u8],
 ) -> Result<GlonassNavigationString, GlonassNavigationStringRejection> {
@@ -150,6 +164,32 @@ pub fn decode_glonass_broadcast_navigation_frame_with_reference_day(
     reference_day_index: i64,
 ) -> Result<Option<GlonassBroadcastNavigationFrame>, GlonassNavigationFrameRejection> {
     decode_glonass_broadcast_navigation_frame_inner(slot, strings, Some(reference_day_index))
+}
+
+pub fn decode_glonass_superframe_time_data(
+    string_74: &GlonassNavigationString,
+) -> Result<GlonassSuperframeTimeData, GlonassSuperframeTimeRejection> {
+    if string_74.string_number != 14 {
+        return Err(GlonassSuperframeTimeRejection {
+            reason: GlonassSuperframeTimeRejectionReason::UnexpectedStringNumber,
+            string_number: string_74.string_number,
+        });
+    }
+    let kp_word = string_74.unsigned_bits(58, 59) as u8;
+    let Some(leap_second_announcement) = GlonassLeapSecondAnnouncement::from_kp_word(kp_word)
+    else {
+        return Err(GlonassSuperframeTimeRejection {
+            reason: GlonassSuperframeTimeRejectionReason::InvalidLeapSecondAnnouncement,
+            string_number: string_74.string_number,
+        });
+    };
+    Ok(GlonassSuperframeTimeData {
+        ut1_correction: GlonassUt1Correction {
+            utc_su_minus_ut1_at_day_start_s: string_74.sign_magnitude(70, 80, 2f64.powi(-10)),
+            utc_su_minus_ut1_daily_change_s: string_74.sign_magnitude(60, 69, 2f64.powi(-16)),
+        },
+        leap_second_announcement,
+    })
 }
 
 fn decode_glonass_broadcast_navigation_frame_inner(
@@ -510,10 +550,11 @@ mod tests {
         checksum_c1, checksum_c2, checksum_c3, checksum_c4, checksum_c5, checksum_c6, checksum_c7,
         decode_glonass_broadcast_navigation_frame,
         decode_glonass_broadcast_navigation_frame_with_reference_day,
-        decode_glonass_navigation_string, flip_bit, GlonassNavigationFrameRejectionReason,
-        GlonassNavigationStringRejectionReason, GLONASS_STRING_BITS,
+        decode_glonass_navigation_string, decode_glonass_superframe_time_data, flip_bit,
+        GlonassNavigationFrameRejectionReason, GlonassNavigationStringRejectionReason,
+        GlonassSuperframeTimeRejectionReason, GLONASS_STRING_BITS,
     };
-    use crate::orbits::glonass::GlonassSatelliteType;
+    use crate::orbits::glonass::{GlonassLeapSecondAnnouncement, GlonassSatelliteType};
     use bijux_gnss_core::api::GlonassSlot;
 
     #[test]
@@ -837,6 +878,44 @@ mod tests {
             GlonassNavigationFrameRejectionReason::InvalidFrequencyChannel
         );
         assert_eq!(rejection.string_number, Some(7));
+    }
+
+    #[test]
+    fn superframe_time_data_decodes_ut1_and_leap_notice() {
+        let mut string_74 = encoded_string(14, &[]);
+        set_unsigned_bits(&mut string_74, 58, 59, 3);
+        set_sign_magnitude_bits(&mut string_74, 60, 69, 12);
+        set_sign_magnitude_bits(&mut string_74, 70, 80, -256);
+        apply_check_bits(&mut string_74);
+        let string_74 =
+            decode_glonass_navigation_string(&string_74).expect("decoded maintenance string");
+
+        let decoded = decode_glonass_superframe_time_data(&string_74).expect("time data");
+
+        assert_eq!(
+            decoded.leap_second_announcement,
+            GlonassLeapSecondAnnouncement::NegativeCorrection
+        );
+        assert!(
+            (decoded.ut1_correction.utc_su_minus_ut1_at_day_start_s + 256.0 * 2f64.powi(-10)).abs()
+                < 1.0e-15
+        );
+        assert!(
+            (decoded.ut1_correction.utc_su_minus_ut1_daily_change_s - 12.0 * 2f64.powi(-16)).abs()
+                < 1.0e-15
+        );
+    }
+
+    #[test]
+    fn superframe_time_data_rejects_unexpected_local_string_number() {
+        let string_13 =
+            decode_glonass_navigation_string(&encoded_string(13, &[])).expect("decoded string");
+
+        let rejection =
+            decode_glonass_superframe_time_data(&string_13).expect_err("unexpected string");
+
+        assert_eq!(rejection.reason, GlonassSuperframeTimeRejectionReason::UnexpectedStringNumber);
+        assert_eq!(rejection.string_number, 13);
     }
 
     fn encoded_string(string_number: u8, ones: &[(usize, u8)]) -> [u8; GLONASS_STRING_BITS] {
