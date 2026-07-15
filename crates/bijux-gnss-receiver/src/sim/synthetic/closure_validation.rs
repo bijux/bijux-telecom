@@ -210,24 +210,24 @@ fn build_satellite_state_closure_stage(
 }
 
 fn build_correction_closure_stage(run: &crate::api::RunArtifacts) -> SyntheticClosureStageEvidence {
-    let ionosphere_count = solution_reason_count(run, |reason| {
-        reason.starts_with("ionosphere_correction=") && reason != "ionosphere_uncorrected"
+    let ionosphere_decision_count = solution_reason_count(run, |reason| {
+        reason == "ionosphere_uncorrected" || reason.starts_with("ionosphere_correction=")
     });
     let troposphere_count =
         solution_reason_count(run, |reason| reason == "troposphere_correction=saastamoinen");
-    let evidence_count = ionosphere_count.min(troposphere_count);
+    let evidence_count = ionosphere_decision_count.min(troposphere_count);
 
     if evidence_count > 0 {
         passed_closure_stage(
             SyntheticClosureStageKind::Corrections,
             evidence_count,
-            "ionosphere_and_troposphere_corrections_recorded",
+            "ionosphere_decision_and_troposphere_correction_recorded",
         )
     } else {
         failed_closure_stage(
             SyntheticClosureStageKind::Corrections,
             !run.navigation.is_empty(),
-            false,
+            ionosphere_decision_count > 0 || troposphere_count > 0,
             evidence_count,
             "missing_navigation_correction_evidence",
         )

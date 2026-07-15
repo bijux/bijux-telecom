@@ -292,7 +292,7 @@ pub fn validate_truth_guided_observation_table(
                                     receive_time_s,
                                     reference.receiver_ecef_m,
                                 );
-                                reference
+                                let mut pseudorange_m = reference
                                     .ionosphere_delay_model
                                     .map(|model| {
                                         model.pseudorange_m(
@@ -300,7 +300,17 @@ pub fn validate_truth_guided_observation_table(
                                             row.observation.metadata.signal,
                                         )
                                     })
-                                    .unwrap_or(Some(geometric_pseudorange_m))
+                                    .unwrap_or(Some(geometric_pseudorange_m))?;
+                                if reference.troposphere_delay_model
+                                    == Some(SyntheticTroposphereDelayModel::Saastamoinen)
+                                {
+                                    pseudorange_m += synthetic_saastamoinen_delay_m(
+                                        ephemeris,
+                                        receive_time_s,
+                                        reference.receiver_ecef_m,
+                                    );
+                                }
+                                Some(pseudorange_m)
                             })
                             .flatten()
                     });

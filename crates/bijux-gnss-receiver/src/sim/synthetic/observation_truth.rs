@@ -8,6 +8,17 @@ pub struct SyntheticObservationTruthReference {
     /// Optional first-order ionosphere model applied when deriving signal-specific code truth.
     #[serde(default)]
     pub ionosphere_delay_model: Option<SyntheticIonosphereDelayModel>,
+    /// Optional troposphere model applied when deriving code truth.
+    #[serde(default)]
+    pub troposphere_delay_model: Option<SyntheticTroposphereDelayModel>,
+}
+
+/// Troposphere correction model used by synthetic observation truth.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SyntheticTroposphereDelayModel {
+    /// Standard Saastamoinen slant delay evaluated at the truth receiver position.
+    Saastamoinen,
 }
 
 /// Truth-guided value recorded for one observation observable.
