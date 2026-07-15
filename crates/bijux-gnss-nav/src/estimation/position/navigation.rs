@@ -15,12 +15,13 @@ use crate::orbits::glonass::{
     sat_state_glonass_l1,
 };
 use crate::orbits::gps::{gps_ephemeris_age, is_ephemeris_valid, sat_state_gps_l1ca};
-use bijux_gnss_core::api::{MeasurementRejectReason, ObsSignalTiming, SatId, SigId};
+use bijux_gnss_core::api::{Constellation, MeasurementRejectReason, ObsSignalTiming, SatId, SigId};
 use bijux_gnss_signal::api::{default_acquisition_signal, signal_id_wavelength_m};
 
 use super::solver::{PositionBroadcastNavigation, PositionObservation};
 
 const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
+const NAVIGATION_FUTURE_TOLERANCE_S: f64 = 1.0;
 
 #[derive(Debug, Clone)]
 pub(crate) struct PositionSolveInput {
@@ -99,11 +100,14 @@ pub(crate) fn resolve_position_inputs(
         .filter_map(|obs| {
             let receive_tow_s =
                 obs.gps_receive_time.map(|gps_time| gps_time.tow_s).unwrap_or(t_rx_s);
-            let Some(navigation) = select_valid_navigation(navigation, obs.sat, receive_tow_s)
-            else {
-                rejected.push((obs.sat, MeasurementRejectReason::InvalidEphemeris));
-                return None;
-            };
+            let navigation =
+                match select_navigation_with_rejection(navigation, obs.sat, receive_tow_s) {
+                    Ok(navigation) => navigation,
+                    Err(reason) => {
+                        rejected.push((obs.sat, reason));
+                        return None;
+                    }
+                };
             Some(PositionSolveInput {
                 observation: obs.clone(),
                 navigation: navigation.clone(),
@@ -118,15 +122,62 @@ pub(crate) fn select_valid_navigation(
     sat: SatId,
     receive_tow_s: f64,
 ) -> Option<&PositionBroadcastNavigation> {
-    navigation
-        .iter()
-        .filter(|entry| entry.sat() == sat)
-        .filter(|entry| navigation_is_valid(entry, receive_tow_s))
-        .min_by(|left, right| {
-            let left_age = navigation_age_score(left, receive_tow_s);
-            let right_age = navigation_age_score(right, receive_tow_s);
-            left_age.0.total_cmp(&right_age.0).then_with(|| left_age.1.total_cmp(&right_age.1))
-        })
+    select_navigation_with_rejection(navigation, sat, receive_tow_s).ok()
+}
+
+fn select_navigation_with_rejection(
+    navigation: &[PositionBroadcastNavigation],
+    sat: SatId,
+    receive_tow_s: f64,
+) -> Result<&PositionBroadcastNavigation, MeasurementRejectReason> {
+    let mut saw_constellation = false;
+    let mut saw_satellite = false;
+    let mut best_valid: Option<(&PositionBroadcastNavigation, (f64, f64))> = None;
+    let mut best_rejected: Option<((f64, f64), MeasurementRejectReason)> = None;
+
+    for entry in navigation {
+        if entry.constellation() != sat.constellation {
+            continue;
+        }
+        saw_constellation = true;
+        if entry.sat() != sat {
+            continue;
+        }
+        saw_satellite = true;
+
+        let score =
+            navigation_age_score(entry, receive_tow_s).unwrap_or((f64::INFINITY, f64::INFINITY));
+        match navigation_rejection_reason(entry, receive_tow_s) {
+            None => {
+                if best_valid
+                    .is_none_or(|(_, best_score)| navigation_score_is_better(score, best_score))
+                {
+                    best_valid = Some((entry, score));
+                }
+            }
+            Some(reason) => {
+                if best_rejected
+                    .is_none_or(|(best_score, _)| navigation_score_is_better(score, best_score))
+                {
+                    best_rejected = Some((score, reason));
+                }
+            }
+        }
+    }
+
+    if let Some((entry, _)) = best_valid {
+        return Ok(entry);
+    }
+    if let Some((_, reason)) = best_rejected {
+        return Err(reason);
+    }
+    if saw_satellite {
+        Err(MeasurementRejectReason::InvalidEphemeris)
+    } else if saw_constellation {
+        Err(MeasurementRejectReason::EphemerisMismatch)
+    } else {
+        Err(MeasurementRejectReason::IncompleteEphemeris)
+    }
 }
 
 fn navigation_is_valid(navigation: &PositionBroadcastNavigation, receive_tow_s: f64) -> bool {
@@ -147,26 +198,115 @@ fn navigation_is_valid(navigation: &PositionBroadcastNavigation, receive_tow_s: 
 fn navigation_age_score(
     navigation: &PositionBroadcastNavigation,
     receive_tow_s: f64,
-) -> (f64, f64) {
+) -> Option<(f64, f64)> {
     match navigation {
         PositionBroadcastNavigation::Gps(ephemeris) => {
             let age = gps_ephemeris_age(ephemeris, receive_tow_s);
-            (age.toe_age_s.max(age.toc_age_s), age.toe_age_s + age.toc_age_s)
+            Some((age.toe_age_s.max(age.toc_age_s), age.toe_age_s + age.toc_age_s))
         }
         PositionBroadcastNavigation::Galileo(navigation) => {
             let age = galileo_navigation_age(navigation, receive_tow_s);
-            (age.toe_age_s.max(age.toc_age_s), age.toe_age_s + age.toc_age_s)
+            Some((age.toe_age_s.max(age.toc_age_s), age.toe_age_s + age.toc_age_s))
         }
         PositionBroadcastNavigation::Beidou(navigation) => {
             let age = beidou_navigation_age(navigation, receive_tow_s);
-            (age.toe_age_s.max(age.toc_age_s), age.toe_age_s + age.toc_age_s)
+            Some((age.toe_age_s.max(age.toc_age_s), age.toe_age_s + age.toc_age_s))
         }
         PositionBroadcastNavigation::Glonass(navigation) => {
-            let age = glonass_navigation_age(navigation, receive_tow_s)
-                .expect("valid GLONASS navigation age");
-            (age.age_s, age.age_s)
+            glonass_navigation_age(navigation, receive_tow_s).map(|age| (age.age_s, age.age_s))
         }
     }
+}
+
+fn navigation_score_is_better(candidate: (f64, f64), current: (f64, f64)) -> bool {
+    candidate.0.total_cmp(&current.0).then_with(|| candidate.1.total_cmp(&current.1)).is_lt()
+}
+
+fn navigation_rejection_reason(
+    navigation: &PositionBroadcastNavigation,
+    receive_tow_s: f64,
+) -> Option<MeasurementRejectReason> {
+    match navigation {
+        PositionBroadcastNavigation::Gps(ephemeris) => {
+            gps_ephemeris_rejection_reason(ephemeris, receive_tow_s)
+        }
+        PositionBroadcastNavigation::Galileo(navigation) => {
+            (!is_galileo_navigation_valid(navigation, receive_tow_s))
+                .then_some(MeasurementRejectReason::InvalidEphemeris)
+        }
+        PositionBroadcastNavigation::Beidou(navigation) => {
+            (!is_beidou_navigation_valid(navigation, receive_tow_s))
+                .then_some(MeasurementRejectReason::InvalidEphemeris)
+        }
+        PositionBroadcastNavigation::Glonass(navigation) => {
+            (!is_glonass_navigation_valid(navigation, receive_tow_s))
+                .then_some(MeasurementRejectReason::InvalidEphemeris)
+        }
+    }
+}
+
+fn gps_ephemeris_rejection_reason(
+    ephemeris: &crate::orbits::gps::GpsEphemeris,
+    receive_tow_s: f64,
+) -> Option<MeasurementRejectReason> {
+    if ephemeris.sat.constellation != Constellation::Gps {
+        return Some(MeasurementRejectReason::EphemerisMismatch);
+    }
+    if !gps_ephemeris_is_complete(ephemeris) {
+        return Some(MeasurementRejectReason::IncompleteEphemeris);
+    }
+    if ephemeris.sv_health != 0 {
+        return Some(MeasurementRejectReason::UnhealthySatellite);
+    }
+    if (ephemeris.iodc & 0xff) as u8 != ephemeris.iode {
+        return Some(MeasurementRejectReason::EphemerisMismatch);
+    }
+    if navigation_time_delta_s(receive_tow_s, ephemeris.toe_s) < -NAVIGATION_FUTURE_TOLERANCE_S
+        || navigation_time_delta_s(receive_tow_s, ephemeris.toc_s) < -NAVIGATION_FUTURE_TOLERANCE_S
+    {
+        return Some(MeasurementRejectReason::EphemerisFuture);
+    }
+    if gps_ephemeris_age(ephemeris, receive_tow_s).is_stale() {
+        return Some(MeasurementRejectReason::EphemerisStale);
+    }
+    None
+}
+
+fn gps_ephemeris_is_complete(ephemeris: &crate::orbits::gps::GpsEphemeris) -> bool {
+    ephemeris.sqrt_a.is_finite()
+        && ephemeris.sqrt_a > 0.0
+        && ephemeris.e.is_finite()
+        && (0.0..1.0).contains(&ephemeris.e)
+        && ephemeris.toe_s.is_finite()
+        && ephemeris.toc_s.is_finite()
+        && ephemeris.i0.is_finite()
+        && ephemeris.idot.is_finite()
+        && ephemeris.omega0.is_finite()
+        && ephemeris.omegadot.is_finite()
+        && ephemeris.w.is_finite()
+        && ephemeris.m0.is_finite()
+        && ephemeris.delta_n.is_finite()
+        && ephemeris.cuc.is_finite()
+        && ephemeris.cus.is_finite()
+        && ephemeris.crc.is_finite()
+        && ephemeris.crs.is_finite()
+        && ephemeris.cic.is_finite()
+        && ephemeris.cis.is_finite()
+        && ephemeris.af0.is_finite()
+        && ephemeris.af1.is_finite()
+        && ephemeris.af2.is_finite()
+        && ephemeris.tgd.is_finite()
+}
+
+fn navigation_time_delta_s(reference_time_s: f64, navigation_time_s: f64) -> f64 {
+    let mut delta_s = reference_time_s - navigation_time_s;
+    while delta_s > 302_400.0 {
+        delta_s -= 604_800.0;
+    }
+    while delta_s < -302_400.0 {
+        delta_s += 604_800.0;
+    }
+    delta_s
 }
 
 pub(crate) fn satellite_state_from_observation(
@@ -355,13 +495,14 @@ pub(crate) fn observation_consistency_metrics(
 mod tests {
     use super::{
         default_position_signal_id, observation_consistency_metrics, position_signal_id,
-        satellite_state_at_time, PositionBroadcastNavigation, PositionObservation,
-        SPEED_OF_LIGHT_MPS,
+        resolve_position_inputs, satellite_state_at_time, select_valid_navigation,
+        PositionBroadcastNavigation, PositionObservation, SPEED_OF_LIGHT_MPS,
     };
     use crate::estimation::position::solver::geodetic_to_ecef;
     use crate::orbits::gps::{sat_state_gps_l1ca, GpsEphemeris};
     use bijux_gnss_core::api::{
-        Constellation, GpsTime, ObsSignalTiming, SatId, Seconds, SigId, SignalBand, SignalCode,
+        Constellation, GpsTime, MeasurementRejectReason, ObsSignalTiming, SatId, Seconds, SigId,
+        SignalBand, SignalCode,
     };
     use bijux_gnss_signal::api::signal_id_wavelength_m;
 
@@ -433,6 +574,92 @@ mod tests {
                 < 1.0e-18
         );
         assert!(speed_mps > 100.0, "speed_mps={speed_mps}");
+    }
+
+    #[test]
+    fn gps_selection_prefers_fresh_healthy_matching_issue_data() {
+        let mut stale_ephemeris = sample_gps_ephemeris();
+        stale_ephemeris.toe_s -= 5_000.0;
+        stale_ephemeris.toc_s -= 5_000.0;
+        let fresh_ephemeris = sample_gps_ephemeris();
+        let navigation = [
+            PositionBroadcastNavigation::Gps(stale_ephemeris),
+            PositionBroadcastNavigation::Gps(fresh_ephemeris.clone()),
+        ];
+
+        let selected =
+            select_valid_navigation(&navigation, fresh_ephemeris.sat, 504_018.0).expect("selected");
+
+        assert_eq!(selected.sat(), fresh_ephemeris.sat);
+        match selected {
+            PositionBroadcastNavigation::Gps(ephemeris) => {
+                assert_eq!(ephemeris.toe_s, fresh_ephemeris.toe_s);
+                assert_eq!(ephemeris.toc_s, fresh_ephemeris.toc_s);
+            }
+            _ => panic!("selected non-GPS navigation"),
+        }
+    }
+
+    #[test]
+    fn gps_selection_reports_stale_ephemeris() {
+        let mut ephemeris = sample_gps_ephemeris();
+        ephemeris.toe_s -= 8_000.0;
+        ephemeris.toc_s -= 8_000.0;
+
+        let rejected = rejected_navigation_reason(ephemeris, 504_018.0);
+
+        assert_eq!(rejected, MeasurementRejectReason::EphemerisStale);
+    }
+
+    #[test]
+    fn gps_selection_reports_future_ephemeris() {
+        let mut ephemeris = sample_gps_ephemeris();
+        ephemeris.toe_s += 30.0;
+
+        let rejected = rejected_navigation_reason(ephemeris, 504_018.0);
+
+        assert_eq!(rejected, MeasurementRejectReason::EphemerisFuture);
+    }
+
+    #[test]
+    fn gps_selection_reports_unhealthy_satellite() {
+        let mut ephemeris = sample_gps_ephemeris();
+        ephemeris.sv_health = 1;
+
+        let rejected = rejected_navigation_reason(ephemeris, 504_018.0);
+
+        assert_eq!(rejected, MeasurementRejectReason::UnhealthySatellite);
+    }
+
+    #[test]
+    fn gps_selection_reports_issue_mismatch() {
+        let mut ephemeris = sample_gps_ephemeris();
+        ephemeris.iodc = 0x102;
+        ephemeris.iode = 0x03;
+
+        let rejected = rejected_navigation_reason(ephemeris, 504_018.0);
+
+        assert_eq!(rejected, MeasurementRejectReason::EphemerisMismatch);
+    }
+
+    #[test]
+    fn gps_selection_reports_incomplete_ephemeris() {
+        let mut ephemeris = sample_gps_ephemeris();
+        ephemeris.sqrt_a = 0.0;
+
+        let rejected = rejected_navigation_reason(ephemeris, 504_018.0);
+
+        assert_eq!(rejected, MeasurementRejectReason::IncompleteEphemeris);
+    }
+
+    #[test]
+    fn navigation_selection_reports_satellite_mismatch() {
+        let observation_sat = SatId { constellation: Constellation::Gps, prn: 8 };
+        let ephemeris = sample_gps_ephemeris();
+
+        let rejected = rejected_navigation_reason_for_sat(ephemeris, observation_sat, 504_018.0);
+
+        assert_eq!(rejected, MeasurementRejectReason::EphemerisMismatch);
     }
 
     #[test]
@@ -538,5 +765,39 @@ mod tests {
                 .is_some_and(|doppler_residual_hz| doppler_residual_hz.abs() < 1.0e-6),
             "{metrics:?}"
         );
+    }
+
+    fn rejected_navigation_reason(
+        ephemeris: GpsEphemeris,
+        receive_tow_s: f64,
+    ) -> MeasurementRejectReason {
+        rejected_navigation_reason_for_sat(ephemeris.clone(), ephemeris.sat, receive_tow_s)
+    }
+
+    fn rejected_navigation_reason_for_sat(
+        ephemeris: GpsEphemeris,
+        sat: SatId,
+        receive_tow_s: f64,
+    ) -> MeasurementRejectReason {
+        let observation = PositionObservation {
+            sat,
+            pseudorange_m: 24_000_000.0,
+            doppler_hz: None,
+            doppler_var_hz2: None,
+            cn0_dbhz: 45.0,
+            elevation_deg: None,
+            weight: 1.0,
+            gps_receive_time: Some(GpsTime { week: ephemeris.week, tow_s: receive_tow_s }),
+            signal_timing: None,
+            signal_id: default_position_signal_id(sat),
+        };
+        let navigation = [PositionBroadcastNavigation::Gps(ephemeris)];
+        let mut rejected = Vec::new();
+
+        let inputs =
+            resolve_position_inputs(&[observation], &navigation, receive_tow_s, &mut rejected);
+
+        assert!(inputs.is_empty());
+        rejected.into_iter().map(|(_, reason)| reason).next().expect("rejection reason")
     }
 }
