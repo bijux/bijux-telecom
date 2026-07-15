@@ -6,8 +6,8 @@ use bijux_gnss_core::api::{
 use bijux_gnss_receiver::api::{
     observations_from_tracking_results,
     sim::{
-        generate_l1_ca, generate_l1_ca_with_phase_windows, SyntheticPhaseWindow,
-        SyntheticSignalParams,
+        generate_l1_ca, generate_l1_ca_with_fades, generate_l1_ca_with_phase_windows,
+        SyntheticFadeWindow, SyntheticPhaseWindow, SyntheticSignalParams,
     },
     ReceiverPipelineConfig, ReceiverRuntime, TrackingEngine,
 };
@@ -167,4 +167,74 @@ fn observations_mark_phase_jump_carrier_phase_as_unusable() {
         .observation_reject_reasons
         .iter()
         .any(|reason| reason == "cycle_slip" || reason == "tracking_unlock"));
+}
+
+#[test]
+fn observations_keep_carrier_phase_arc_after_recoverable_fade() {
+    let config = tracking_config();
+    let sat = SatId { constellation: Constellation::Gps, prn: 21 };
+    let doppler_hz = 120.0;
+    let fade_start_s = 0.030;
+    let fade_end_s = 0.040;
+    let fade_start_sample = (fade_start_s * config.sampling_freq_hz).round() as u64;
+    let fade_end_sample = (fade_end_s * config.sampling_freq_hz).round() as u64;
+    let frame = generate_l1_ca_with_fades(
+        &config,
+        SyntheticSignalParams {
+            sat,
+            glonass_frequency_channel: None,
+            signal_band: bijux_gnss_core::api::SignalBand::L1,
+            signal_code: bijux_gnss_core::api::SignalCode::Unknown,
+            doppler_hz,
+            code_phase_chips: 0.0,
+            carrier_phase_rad: 0.0,
+            cn0_db_hz: PRELOCK_CN0_DBHZ,
+            navigation_data: false.into(),
+        },
+        &[SyntheticFadeWindow { start_s: fade_start_s, end_s: fade_end_s, signal_scale: 0.0 }],
+        0xC0A5_7A11,
+        0.090,
+    );
+    let tracking = TrackingEngine::new(config.clone(), ReceiverRuntime::default());
+    let tracks =
+        tracking.track_from_acquisition(&frame, &[accepted_acquisition(sat, doppler_hz, 0)]);
+    let report = observations_from_tracking_results(&config, &tracks, 10);
+    let sats = report.output.iter().flat_map(|epoch| epoch.sats.iter()).collect::<Vec<_>>();
+
+    let pre_fade = sats
+        .iter()
+        .rev()
+        .find(|sat| {
+            sat.metadata.time_tag_sample_index < fade_start_sample
+                && sat.metadata.carrier_phase_continuity == "continuous"
+                && !sat.lock_flags.cycle_slip
+        })
+        .unwrap_or_else(|| panic!("missing pre-fade continuous carrier arc: {:?}", report.output));
+    let coasted_fade = sats
+        .iter()
+        .find(|sat| {
+            sat.metadata.time_tag_sample_index >= fade_start_sample
+                && sat.metadata.time_tag_sample_index < fade_end_sample
+                && sat.metadata.carrier_phase_continuity == "coasted"
+                && !sat.lock_flags.cycle_slip
+        })
+        .unwrap_or_else(|| panic!("missing coasted fade carrier arc: {:?}", report.output));
+    let post_fade = sats
+        .iter()
+        .find(|sat| {
+            sat.metadata.time_tag_sample_index >= fade_end_sample
+                && sat.lock_flags.carrier_lock
+                && sat.metadata.carrier_phase_continuity == "continuous"
+                && !sat.lock_flags.cycle_slip
+        })
+        .unwrap_or_else(|| panic!("missing post-fade continuous carrier arc: {:?}", report.output));
+
+    assert_eq!(
+        coasted_fade.metadata.carrier_phase_arc_start_sample_index,
+        pre_fade.metadata.carrier_phase_arc_start_sample_index
+    );
+    assert_eq!(
+        post_fade.metadata.carrier_phase_arc_start_sample_index,
+        pre_fade.metadata.carrier_phase_arc_start_sample_index
+    );
 }
