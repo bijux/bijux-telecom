@@ -1,4 +1,3 @@
-
 use super::*;
 
 fn gps_l5q_secondary_code_component() -> super::TrackingComponentModel {
