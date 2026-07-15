@@ -2,16 +2,16 @@
 //! Observation error model assumptions:
 //! - code, carrier, Doppler, and C/N0 uncertainty must come from tracking evidence.
 //! - observations without defensible tracking uncertainty are marked missing rather than weighted.
-//! - multipath_proxy_m = |Delta divergence| meters (proxy, not a modeled multipath estimator).
+//! - code-carrier divergence is decomposed before multipath is inferred.
 //! - clock_error_m comes from configured receiver-clock bias uncertainty.
 
 use bijux_gnss_core::api::{
-    Constellation, ConventionsConfig, Cycles, DiagnosticEvent, DiagnosticSeverity, GpsTime,
-    LockFlags, Meters, ObsDecisionArtifact, ObsEpoch, ObsEpochManifest, ObsMetadata, ObsSatellite,
-    ObsSignalTiming, ObservationEpochDecision, ObservationMeasurementCovariance, ObservationStatus,
-    ObservationSupportClass, ObservationUncertaintyClass, ReceiverRole, ReceiverSampleTrace,
-    SatObservationDecision, Seconds, SigId, SignalBand, SignalCode, SignalSpec, TrackEpoch,
-    GPS_L1_CA_CARRIER_HZ,
+    CodeCarrierDivergence, Constellation, ConventionsConfig, Cycles, DiagnosticEvent,
+    DiagnosticSeverity, GpsTime, LockFlags, Meters, ObsDecisionArtifact, ObsEpoch,
+    ObsEpochManifest, ObsMetadata, ObsSatellite, ObsSignalTiming, ObservationEpochDecision,
+    ObservationMeasurementCovariance, ObservationStatus, ObservationSupportClass,
+    ObservationUncertaintyClass, ReceiverRole, ReceiverSampleTrace, SatId, SatObservationDecision,
+    Seconds, SigId, SignalBand, SignalCode, SignalSpec, TrackEpoch, GPS_L1_CA_CARRIER_HZ,
 };
 
 use crate::engine::receiver_config::ReceiverPipelineConfig;
@@ -28,7 +28,7 @@ use bijux_gnss_signal::api::{
 use serde::{Deserialize, Serialize};
 
 #[cfg(test)]
-use bijux_gnss_core::api::{GlonassFrequencyChannel, Hertz, SatId};
+use bijux_gnss_core::api::{GlonassFrequencyChannel, Hertz};
 #[cfg(test)]
 use bijux_gnss_signal::api::glonass_l1_carrier_hz;
 #[cfg(test)]
@@ -255,6 +255,17 @@ struct RawObservationSnapshot {
     raw_carrier_phase_cycles: f64,
     raw_doppler_hz: f64,
     raw_cn0_dbhz: f64,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct IonosphereDelayEvidence {
+    signal_id: SigId,
+    delay_m: f64,
+}
+
+#[derive(Debug, Default)]
+struct CodeCarrierDivergenceState {
+    ionosphere_delay_m_by_signal: std::collections::HashMap<SigId, f64>,
 }
 
 #[derive(Debug, Clone)]
@@ -568,6 +579,7 @@ fn observations_from_tracking_with_provenance(
                 receiver_clock_bias_sigma_s: Seconds(receiver_clock.bias_sigma_s),
                 receiver_clock_source: receiver_clock.source.clone(),
                 tracking_uncertainty,
+                code_carrier_divergence: None,
             },
         };
         apply_cycle_slip_surface(&mut sat, carrier_phase.cycle_slip_reason.as_deref());
@@ -810,8 +822,17 @@ pub fn observation_artifacts_from_tracking_results_with_gps_anchor(
                 sat.metadata.smoothing_window = hatch_window;
                 sat.metadata.smoothing_age = smoothing.smoothing_age_epochs;
                 sat.metadata.smoothing_resets = smoothing.reset_count;
-                sat.multipath_suspect = divergence_jump > threshold_m * 0.8;
-                sat.error_model = observation_error_model(&sat, divergence_jump);
+                let smoothing_transient_m = smoothing.smoothed_pseudorange_m - raw_pseudorange_m;
+                sat.metadata.code_carrier_divergence = Some(CodeCarrierDivergence::from_terms(
+                    raw_divergence_m,
+                    divergence_jump,
+                    0.0,
+                    0.0,
+                    receiver_clock_divergence_drift_m(&sat),
+                    smoothing_transient_m,
+                    0.0,
+                ));
+                classify_code_carrier_divergence(&mut sat, 0.0);
                 apply_pseudorange_physics_rejection(&mut sat);
                 entry.sats.push(sat);
             }
@@ -819,8 +840,10 @@ pub fn observation_artifacts_from_tracking_results_with_gps_anchor(
     }
     let mut out = Vec::new();
     let mut previous_epoch: Option<ObsEpoch> = None;
+    let mut divergence_state = CodeCarrierDivergenceState::default();
     for mut epoch in by_epoch.into_values() {
         bijux_gnss_core::api::sort_obs_sats(&mut epoch);
+        apply_code_carrier_divergence_decomposition(&mut epoch, &mut divergence_state);
         apply_grouped_integer_code_period_ambiguities(
             &mut epoch,
             &ambiguity_inputs,
@@ -2342,6 +2365,148 @@ fn observation_error_model(
         multipath_proxy_m: Meters(multipath_proxy_m),
         clock_error_m: model.clock_error_m,
     })
+}
+
+fn receiver_clock_divergence_drift_m(sat: &ObsSatellite) -> f64 {
+    let carrier_hz = sat.metadata.signal.carrier_hz.value();
+    let integration_s = sat.metadata.integration_ms as f64 / 1_000.0;
+    let frequency_bias_hz = sat.metadata.receiver_clock_frequency_bias_hz;
+    if !carrier_hz.is_finite()
+        || carrier_hz <= 0.0
+        || !integration_s.is_finite()
+        || integration_s <= 0.0
+        || !frequency_bias_hz.is_finite()
+    {
+        return 0.0;
+    }
+    let wavelength_m = SPEED_OF_LIGHT_MPS / carrier_hz;
+    -frequency_bias_hz * wavelength_m * integration_s
+}
+
+fn apply_code_carrier_divergence_decomposition(
+    epoch: &mut ObsEpoch,
+    state: &mut CodeCarrierDivergenceState,
+) {
+    use std::collections::HashMap;
+
+    let mut expected_ionosphere_by_signal = HashMap::<SigId, f64>::new();
+    for evidence in ionosphere_delay_evidence_from_epoch(epoch) {
+        if let Some(previous_delay_m) =
+            state.ionosphere_delay_m_by_signal.insert(evidence.signal_id, evidence.delay_m)
+        {
+            expected_ionosphere_by_signal
+                .insert(evidence.signal_id, 2.0 * (evidence.delay_m - previous_delay_m));
+        }
+    }
+
+    for sat in &mut epoch.sats {
+        let expected_ionosphere_m =
+            expected_ionosphere_by_signal.get(&sat.signal_id).copied().unwrap_or(0.0);
+        classify_code_carrier_divergence(sat, expected_ionosphere_m);
+    }
+}
+
+fn classify_code_carrier_divergence(sat: &mut ObsSatellite, expected_ionosphere_m: f64) {
+    let Some(current) = sat.metadata.code_carrier_divergence else {
+        return;
+    };
+    let without_multipath = CodeCarrierDivergence::from_terms(
+        current.raw_m,
+        current.jump_m,
+        expected_ionosphere_m,
+        current.receiver_clock_m,
+        current.oscillator_m,
+        current.smoothing_transient_m,
+        0.0,
+    );
+    let threshold_m = slip_threshold_m(sat.cn0_dbhz, sat.elevation_deg) * 0.8;
+    let multipath_m = if without_multipath.unexplained_abs_m() > threshold_m {
+        without_multipath.unexplained_m
+    } else {
+        0.0
+    };
+    let decomposed = CodeCarrierDivergence::from_terms(
+        current.raw_m,
+        current.jump_m,
+        expected_ionosphere_m,
+        current.receiver_clock_m,
+        current.oscillator_m,
+        current.smoothing_transient_m,
+        multipath_m,
+    );
+    sat.multipath_suspect = multipath_m.abs() > threshold_m;
+    sat.error_model = observation_error_model(sat, multipath_m.abs());
+    sat.metadata.code_carrier_divergence = Some(decomposed);
+}
+
+fn ionosphere_delay_evidence_from_epoch(epoch: &ObsEpoch) -> Vec<IonosphereDelayEvidence> {
+    use std::collections::BTreeMap;
+
+    let mut by_sat = BTreeMap::<SatId, Vec<&ObsSatellite>>::new();
+    for sat in &epoch.sats {
+        by_sat.entry(sat.signal_id.sat).or_default().push(sat);
+    }
+
+    let mut out = Vec::new();
+    for sats in by_sat.values() {
+        for left_index in 0..sats.len() {
+            for right_index in (left_index + 1)..sats.len() {
+                let left = sats[left_index];
+                let right = sats[right_index];
+                if let Some((left_delay_m, right_delay_m)) =
+                    dual_frequency_code_delay_evidence(left, right)
+                {
+                    out.push(IonosphereDelayEvidence {
+                        signal_id: left.signal_id,
+                        delay_m: left_delay_m,
+                    });
+                    out.push(IonosphereDelayEvidence {
+                        signal_id: right.signal_id,
+                        delay_m: right_delay_m,
+                    });
+                }
+            }
+        }
+    }
+    out
+}
+
+fn dual_frequency_code_delay_evidence(
+    first: &ObsSatellite,
+    second: &ObsSatellite,
+) -> Option<(f64, f64)> {
+    if first.signal_id.sat != second.signal_id.sat
+        || first.signal_id.band == second.signal_id.band
+        || !first.lock_flags.code_lock
+        || !second.lock_flags.code_lock
+    {
+        return None;
+    }
+    let first_frequency_hz = first.metadata.signal.carrier_hz.value();
+    let second_frequency_hz = second.metadata.signal.carrier_hz.value();
+    if !first_frequency_hz.is_finite()
+        || !second_frequency_hz.is_finite()
+        || first_frequency_hz <= 0.0
+        || second_frequency_hz <= 0.0
+        || (first_frequency_hz - second_frequency_hz).abs() <= f64::EPSILON
+        || !first.pseudorange_m.0.is_finite()
+        || !second.pseudorange_m.0.is_finite()
+    {
+        return None;
+    }
+
+    let first_inverse_frequency2 = 1.0 / first_frequency_hz.powi(2);
+    let second_inverse_frequency2 = 1.0 / second_frequency_hz.powi(2);
+    let denominator = second_inverse_frequency2 - first_inverse_frequency2;
+    if !denominator.is_finite() || denominator == 0.0 {
+        return None;
+    }
+    let code_geometry_free_m = second.pseudorange_m.0 - first.pseudorange_m.0;
+    let ionosphere_constant = code_geometry_free_m / denominator;
+    Some((
+        ionosphere_constant * first_inverse_frequency2,
+        ionosphere_constant * second_inverse_frequency2,
+    ))
 }
 
 fn tracking_lock_quality(epoch: &TrackEpoch, observation_cycle_slip: bool) -> f64 {
@@ -5426,5 +5591,222 @@ mod tests {
 
         assert_eq!(decision.decision, ObservationEpochDecision::Rejected);
         assert!(decision.reasons.iter().any(|reason| reason == "non_positive_pseudorange"));
+    }
+
+    #[test]
+    fn code_carrier_divergence_decomposition_exempts_expected_ionosphere_from_multipath() {
+        let mut state = CodeCarrierDivergenceState::default();
+        let l1_delay_before_m = 3.0;
+        let l1_delay_after_m = 9.0;
+        let l1_jump_m = 2.0 * (l1_delay_after_m - l1_delay_before_m);
+        let l2_delay_before_m = scaled_ionosphere_delay_m(
+            l1_delay_before_m,
+            signal_spec_gps_l1_ca(),
+            signal_spec_gps_l2c(),
+        );
+        let l2_delay_after_m = scaled_ionosphere_delay_m(
+            l1_delay_after_m,
+            signal_spec_gps_l1_ca(),
+            signal_spec_gps_l2c(),
+        );
+        let l2_jump_m = 2.0 * (l2_delay_after_m - l2_delay_before_m);
+
+        let mut before = divergence_epoch(l1_delay_before_m, 106.0, 0.0, l2_delay_before_m, 0.0);
+        assert_ne!(before.sats[0].signal_id.band, before.sats[1].signal_id.band);
+        assert_eq!(before.sats[0].signal_id.sat, before.sats[1].signal_id.sat);
+        assert!(before.sats[0].lock_flags.code_lock);
+        assert!(before.sats[1].lock_flags.code_lock);
+        assert!(before.sats[0].metadata.signal.carrier_hz.value() > 0.0);
+        assert!(before.sats[1].metadata.signal.carrier_hz.value() > 0.0);
+        assert_ne!(
+            before.sats[0].metadata.signal.carrier_hz.value(),
+            before.sats[1].metadata.signal.carrier_hz.value()
+        );
+        assert!(before.sats[0].pseudorange_m.0.is_finite());
+        assert!(before.sats[1].pseudorange_m.0.is_finite());
+        assert!(dual_frequency_code_delay_evidence(&before.sats[0], &before.sats[1]).is_some());
+        assert_eq!(ionosphere_delay_evidence_from_epoch(&before).len(), 2);
+        apply_code_carrier_divergence_decomposition(&mut before, &mut state);
+        let mut after = divergence_epoch(
+            l1_delay_after_m,
+            106.0 + l1_jump_m,
+            l1_jump_m,
+            l2_delay_after_m,
+            l2_jump_m,
+        );
+        apply_code_carrier_divergence_decomposition(&mut after, &mut state);
+
+        let sat = after
+            .sats
+            .iter()
+            .find(|sat| sat.signal_id.band == SignalBand::L1)
+            .expect("L1 observation");
+        let divergence =
+            sat.metadata.code_carrier_divergence.expect("code-carrier divergence decomposition");
+
+        assert!(!sat.multipath_suspect, "{sat:?}");
+        assert!((divergence.expected_ionosphere_m - l1_jump_m).abs() < 1.0e-6);
+        assert!(divergence.multipath_m.abs() < 1.0e-9);
+        assert!(divergence.unexplained_m.abs() < 1.0e-6);
+        assert_eq!(sat.error_model.as_ref().expect("error model").multipath_proxy_m, Meters(0.0));
+    }
+
+    #[test]
+    fn code_carrier_divergence_decomposition_keeps_residual_multipath_separate() {
+        let mut state = CodeCarrierDivergenceState::default();
+        let l1_delay_before_m = 3.0;
+        let l1_delay_after_m = 9.0;
+        let residual_multipath_m = 8.0;
+        let l1_ionosphere_jump_m = 2.0 * (l1_delay_after_m - l1_delay_before_m);
+        let l1_jump_m = l1_ionosphere_jump_m + residual_multipath_m;
+        let l2_delay_before_m = scaled_ionosphere_delay_m(
+            l1_delay_before_m,
+            signal_spec_gps_l1_ca(),
+            signal_spec_gps_l2c(),
+        );
+        let l2_delay_after_m = scaled_ionosphere_delay_m(
+            l1_delay_after_m,
+            signal_spec_gps_l1_ca(),
+            signal_spec_gps_l2c(),
+        );
+        let l2_jump_m = 2.0 * (l2_delay_after_m - l2_delay_before_m);
+
+        let mut before = divergence_epoch(l1_delay_before_m, 106.0, 0.0, l2_delay_before_m, 0.0);
+        assert_eq!(ionosphere_delay_evidence_from_epoch(&before).len(), 2);
+        apply_code_carrier_divergence_decomposition(&mut before, &mut state);
+        let mut after = divergence_epoch(
+            l1_delay_after_m,
+            106.0 + l1_jump_m,
+            l1_jump_m,
+            l2_delay_after_m,
+            l2_jump_m,
+        );
+        apply_code_carrier_divergence_decomposition(&mut after, &mut state);
+
+        let sat = after
+            .sats
+            .iter()
+            .find(|sat| sat.signal_id.band == SignalBand::L1)
+            .expect("L1 observation");
+        let divergence =
+            sat.metadata.code_carrier_divergence.expect("code-carrier divergence decomposition");
+
+        assert!(sat.multipath_suspect, "{sat:?}");
+        assert!((divergence.expected_ionosphere_m - l1_ionosphere_jump_m).abs() < 1.0e-6);
+        assert!((divergence.multipath_m - residual_multipath_m).abs() < 1.0e-6);
+        assert!(divergence.unexplained_m.abs() < 1.0e-6);
+        assert!(
+            (sat.error_model.as_ref().expect("error model").multipath_proxy_m.0
+                - residual_multipath_m)
+                .abs()
+                < 1.0e-6
+        );
+    }
+
+    fn scaled_ionosphere_delay_m(
+        reference_delay_m: f64,
+        reference_signal: SignalSpec,
+        target_signal: SignalSpec,
+    ) -> f64 {
+        reference_delay_m * reference_signal.carrier_hz.value().powi(2)
+            / target_signal.carrier_hz.value().powi(2)
+    }
+
+    fn divergence_epoch(
+        l1_ionosphere_delay_m: f64,
+        l1_raw_divergence_m: f64,
+        l1_divergence_jump_m: f64,
+        l2_ionosphere_delay_m: f64,
+        l2_divergence_jump_m: f64,
+    ) -> ObsEpoch {
+        let base_range_m = 20_200_000.0;
+        ObsEpoch {
+            t_rx_s: Seconds(70.0),
+            source_time: ReceiverSampleTrace::from_sample_index(286_440, 4_092_000.0),
+            gps_week: None,
+            tow_s: None,
+            epoch_idx: 70,
+            discontinuity: false,
+            valid: true,
+            processing_ms: None,
+            role: ReceiverRole::Rover,
+            sats: vec![
+                divergence_satellite(
+                    signal_spec_gps_l1_ca(),
+                    l1_ionosphere_delay_m,
+                    l1_raw_divergence_m,
+                    l1_divergence_jump_m,
+                    base_range_m,
+                ),
+                divergence_satellite(
+                    signal_spec_gps_l2c(),
+                    l2_ionosphere_delay_m,
+                    100.0 + l2_divergence_jump_m,
+                    l2_divergence_jump_m,
+                    base_range_m,
+                ),
+            ],
+            decision: ObservationEpochDecision::Accepted,
+            decision_reason: None,
+            manifest: None,
+        }
+    }
+
+    fn divergence_satellite(
+        signal: SignalSpec,
+        ionosphere_delay_m: f64,
+        raw_divergence_m: f64,
+        divergence_jump_m: f64,
+        base_range_m: f64,
+    ) -> ObsSatellite {
+        let pseudorange_m = base_range_m + ionosphere_delay_m;
+        let carrier_phase_m = pseudorange_m - raw_divergence_m;
+        ObsSatellite {
+            signal_id: SigId {
+                sat: SatId { constellation: Constellation::Gps, prn: 9 },
+                band: signal.band,
+                code: signal.code,
+            },
+            pseudorange_m: Meters(pseudorange_m),
+            pseudorange_var_m2: 1.0,
+            carrier_phase_cycles: signal_meters_to_cycles(Meters(carrier_phase_m), signal),
+            carrier_phase_var_cycles2: 1.0,
+            doppler_hz: Hertz(0.0),
+            doppler_var_hz2: 1.0,
+            cn0_dbhz: 45.0,
+            lock_flags: LockFlags {
+                code_lock: true,
+                carrier_lock: true,
+                bit_lock: true,
+                cycle_slip: false,
+            },
+            multipath_suspect: false,
+            observation_status: ObservationStatus::Accepted,
+            observation_reject_reasons: Vec::new(),
+            elevation_deg: Some(45.0),
+            azimuth_deg: Some(0.0),
+            weight: None,
+            timing: None,
+            error_model: Some(bijux_gnss_core::api::MeasurementErrorModel {
+                thermal_noise_m: Meters(0.0),
+                tracking_jitter_m: Meters(1.0),
+                multipath_proxy_m: Meters(0.0),
+                clock_error_m: Meters(0.0),
+            }),
+            metadata: ObsMetadata {
+                signal,
+                integration_ms: 20,
+                code_carrier_divergence: Some(CodeCarrierDivergence::from_terms(
+                    raw_divergence_m,
+                    divergence_jump_m,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                )),
+                ..ObsMetadata::default()
+            },
+        }
     }
 }
