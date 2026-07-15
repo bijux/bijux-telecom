@@ -5,6 +5,7 @@ pub mod beidou_b1i_navigation_decode;
 pub mod bias_sinex;
 pub mod clk;
 pub mod cnav_decode;
+pub mod galileo_fnav_decode;
 pub mod galileo_inav_decode;
 pub mod glonass_navigation_decode;
 pub mod lnav_bits;

@@ -198,6 +198,11 @@ pub use crate::formats::cnav_decode::{
     GpsCnavNavigationRejectionReason, GpsCnavNonElevationAccuracy, GpsCnavOrbitMessage,
     GpsCnavSignalHealth,
 };
+/// Galileo F/NAV page decoding.
+pub use crate::formats::galileo_fnav_decode::{
+    decode_galileo_fnav_page, GalileoFnavPage, GalileoFnavPageRejection,
+    GalileoFnavPageRejectionReason,
+};
 /// Format parsing and output.
 pub use crate::formats::galileo_inav_decode::{
     decode_galileo_broadcast_navigation_data, decode_galileo_broadcast_navigation_data_payloads,
