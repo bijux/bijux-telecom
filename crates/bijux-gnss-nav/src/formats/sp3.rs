@@ -6,6 +6,7 @@ use std::str::FromStr;
 use bijux_gnss_core::api::{Constellation, SatId};
 
 use crate::orbits::gps::{GpsSatState, GpsSatelliteClockCorrection};
+use crate::orbits::satellite_uncertainty::sp3_accuracy_uncertainty;
 
 const SP3_MISSING_ABS_THRESHOLD: f64 = 999_999.0;
 const SP3_INTERPOLATION_SUPPORT_POINTS: usize = 4;
@@ -157,6 +158,7 @@ impl Sp3Provider {
                 relativistic_s: 0.0,
                 group_delay_s: 0.0,
             },
+            uncertainty: sp3_accuracy_uncertainty(state.accuracy),
         })
     }
 

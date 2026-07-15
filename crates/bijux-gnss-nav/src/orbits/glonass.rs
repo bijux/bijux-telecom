@@ -13,6 +13,7 @@ use super::glonass_orbit::{
     propagate_glonass_orbit_refined, GlonassOrbitPropagation, GlonassPropagationConfig,
     GLONASS_EARTH_ROTATION_RATE_RAD_S,
 };
+use super::satellite_uncertainty::{glonass_broadcast_uncertainty, SatelliteStateUncertainty};
 
 const GLONASS_DAY_S: f64 = 86_400.0;
 const GLONASS_DAY_SECONDS: u32 = 86_400;
@@ -223,6 +224,7 @@ pub struct GlonassSatState {
     pub vy_mps: f64,
     pub vz_mps: f64,
     pub clock_correction: GlonassSatelliteClockCorrection,
+    pub uncertainty: SatelliteStateUncertainty,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -498,7 +500,16 @@ pub fn sat_state_glonass_l1(
     vx_mps = rotated_vx_mps;
     vy_mps = rotated_vy_mps;
 
-    Some(GlonassSatState { x_m, y_m, z_m, vx_mps, vy_mps, vz_mps, clock_correction })
+    Some(GlonassSatState {
+        x_m,
+        y_m,
+        z_m,
+        vx_mps,
+        vy_mps,
+        vz_mps,
+        clock_correction,
+        uncertainty: glonass_broadcast_uncertainty(navigation),
+    })
 }
 
 pub fn glonass_numerical_orbit_propagation(

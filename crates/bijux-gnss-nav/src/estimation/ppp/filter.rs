@@ -823,7 +823,7 @@ mod tests {
         ecef_to_geodetic, elevation_azimuth_deg, geodetic_to_ecef, BroadcastProductsProvider,
         GpsEphemeris, GpsSatState, GpsSatelliteClockCorrection, OceanTideConstituent,
         OceanTideLoadingConstituent, OceanTideLoadingModel, PppConfig, ProductDiagnostics,
-        ProductsProvider, SolidEarthTideModel,
+        ProductsProvider, SatelliteStateUncertainty, SolidEarthTideModel,
     };
     use crate::corrections::biases::{CodeBias, CodeBiasProvider, SignalCodeBiases};
     use crate::estimation::ppp::measurements::iono_free_code_observation_from_obs;
@@ -1124,6 +1124,7 @@ mod tests {
                             vy_mps: 0.0,
                             vz_mps: 0.0,
                             clock_correction: GpsSatelliteClockCorrection::from_bias_s(0.0),
+                            uncertainty: SatelliteStateUncertainty::unavailable(),
                         },
                     )
                 })
@@ -1270,6 +1271,7 @@ mod tests {
                             vy_mps: 0.0,
                             vz_mps: 0.0,
                             clock_correction: GpsSatelliteClockCorrection::from_bias_s(0.0),
+                            uncertainty: SatelliteStateUncertainty::unavailable(),
                         },
                     )
                 })

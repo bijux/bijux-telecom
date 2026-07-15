@@ -13,6 +13,9 @@ use crate::orbits::broadcast_orbit::{
     wrap_gnss_week_seconds, BroadcastKeplerianOrbit, BroadcastOrbitAnomaly,
     BroadcastOrbitConstants,
 };
+use crate::orbits::satellite_uncertainty::{
+    galileo_broadcast_uncertainty, SatelliteStateUncertainty,
+};
 
 const OMEGA_E_DOT: f64 = 7.292_115_146_7e-5;
 const MU: f64 = 3.986_004_418e14;
@@ -101,6 +104,7 @@ pub struct GalileoSatState {
     pub vy_mps: f64,
     pub vz_mps: f64,
     pub clock_correction: GalileoSatelliteClockCorrection,
+    pub uncertainty: SatelliteStateUncertainty,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -265,6 +269,7 @@ pub fn sat_state_galileo_e1(
                 galileo_orbit_constants(),
             ),
         ),
+        uncertainty: galileo_broadcast_uncertainty(navigation),
     }
 }
 
@@ -541,6 +546,7 @@ mod tests {
                 bgd_e1_e5a_s: navigation.clock.bgd_e1_e5a_s,
                 bgd_e1_e5b_s: navigation.clock.bgd_e1_e5b_s,
             },
+            uncertainty: galileo_broadcast_uncertainty(navigation),
         }
     }
 

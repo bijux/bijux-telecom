@@ -11,6 +11,9 @@ use crate::orbits::broadcast_orbit::{
     wrap_gnss_week_seconds, BroadcastKeplerianOrbit, BroadcastOrbitAnomaly,
     BroadcastOrbitConstants,
 };
+use crate::orbits::satellite_uncertainty::{
+    beidou_broadcast_uncertainty, SatelliteStateUncertainty,
+};
 
 const OMEGA_E_DOT: f64 = 7.292_115_0e-5;
 const MU: f64 = 3.986_004_418e14;
@@ -86,6 +89,7 @@ pub struct BeidouSatState {
     pub vy_mps: f64,
     pub vz_mps: f64,
     pub clock_correction: BeidouSatelliteClockCorrection,
+    pub uncertainty: SatelliteStateUncertainty,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -226,6 +230,7 @@ pub fn sat_state_beidou_b1i(
                 beidou_orbit_constants(),
             ),
         ),
+        uncertainty: beidou_broadcast_uncertainty(navigation),
     }
 }
 
@@ -495,6 +500,7 @@ mod tests {
                 tgd1_s: navigation.clock.tgd1_s,
                 tgd2_s: navigation.clock.tgd2_s,
             },
+            uncertainty: beidou_broadcast_uncertainty(navigation),
         }
     }
 

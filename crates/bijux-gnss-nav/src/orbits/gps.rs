@@ -14,6 +14,7 @@ use crate::orbits::broadcast_orbit::{
     wrap_gnss_week_seconds, BroadcastKeplerianOrbit, BroadcastOrbitAnomaly,
     BroadcastOrbitConstants,
 };
+use crate::orbits::satellite_uncertainty::{gps_broadcast_uncertainty, SatelliteStateUncertainty};
 
 const OMEGA_E_DOT: f64 = 7.292_115_146_7e-5;
 const MU: f64 = 3.986_005e14;
@@ -107,6 +108,7 @@ pub struct GpsSatState {
     pub vy_mps: f64,
     pub vz_mps: f64,
     pub clock_correction: GpsSatelliteClockCorrection,
+    pub uncertainty: SatelliteStateUncertainty,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -195,6 +197,7 @@ pub fn sat_state_gps_l1ca(eph: &GpsEphemeris, t_tx_s: f64, tau_s: f64) -> GpsSat
         vy_mps: orbit_state.vy_mps,
         vz_mps: orbit_state.vz_mps,
         clock_correction: clock,
+        uncertainty: gps_broadcast_uncertainty(eph),
     }
 }
 
@@ -965,7 +968,16 @@ mod tests {
             eccentric_anomaly_rate_rad_s,
         );
 
-        GpsSatState { x_m, y_m, z_m, vx_mps, vy_mps, vz_mps, clock_correction }
+        GpsSatState {
+            x_m,
+            y_m,
+            z_m,
+            vx_mps,
+            vy_mps,
+            vz_mps,
+            clock_correction,
+            uncertainty: gps_broadcast_uncertainty(eph),
+        }
     }
 
     fn reference_gps_clock_correction(
