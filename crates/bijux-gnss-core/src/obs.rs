@@ -1095,6 +1095,11 @@ pub enum MeasurementRejectReason {
     Geometry,
     CycleSlip,
     InvalidEphemeris,
+    EphemerisMismatch,
+    EphemerisStale,
+    EphemerisFuture,
+    UnhealthySatellite,
+    IncompleteEphemeris,
     TimeInconsistency,
 }
 
