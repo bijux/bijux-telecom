@@ -130,6 +130,7 @@ fn synthetic_signal_source_matches_materialized_generator_with_receiver_oscillat
             knot_interval_samples: 1_023,
             step_std_rad: 0.03,
         },
+        noise: SyntheticReceiverOscillatorNoiseModel::default(),
     };
 
     let expected =

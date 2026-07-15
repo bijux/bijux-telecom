@@ -601,6 +601,7 @@ struct SatState {
     doppler_jerk_hz_per_s2: f64,
     receiver_oscillator_model: SyntheticReceiverOscillatorModel,
     receiver_oscillator_phase_noise_knots: Vec<(u64, f64)>,
+    receiver_oscillator_noise_knots: ReceiverOscillatorNoiseKnots,
     code_phase_chips: f64,
     carrier_phase_rad: f64,
     cn0_db_hz: f32,
@@ -613,6 +614,13 @@ struct SatState {
 }
 
 type SyntheticSignalModel = bijux_gnss_signal::api::ReplicaCodeModel;
+
+#[derive(Debug, Clone, Default)]
+struct ReceiverOscillatorNoiseKnots {
+    white_phase_rad: Vec<(u64, f64)>,
+    frequency_noise_hz: Vec<(u64, f64)>,
+    frequency_noise_phase_rad: Vec<(u64, f64)>,
+}
 
 fn synthetic_replica_model(params: &SyntheticSignalParams) -> SyntheticSignalModel {
     let signal_code = resolved_signal_code(params.sat, params.signal_band, params.signal_code);
@@ -689,6 +697,8 @@ impl SatState {
     ) -> Self {
         let receiver_oscillator_phase_noise_knots =
             receiver_oscillator_phase_noise_knots(&receiver_oscillator_model, sample_count);
+        let receiver_oscillator_noise_knots =
+            receiver_oscillator_noise_knots(&receiver_oscillator_model, sample_count, config.sampling_freq_hz);
         let signal_model = synthetic_replica_model(&params);
         let nav_bit_mode = nav_bit_mode(&params);
         Self {
@@ -697,6 +707,7 @@ impl SatState {
             doppler_jerk_hz_per_s2,
             receiver_oscillator_model,
             receiver_oscillator_phase_noise_knots,
+            receiver_oscillator_noise_knots,
             code_phase_chips: params.code_phase_chips,
             carrier_phase_rad: params.carrier_phase_rad,
             cn0_db_hz: params.cn0_db_hz,
@@ -753,6 +764,39 @@ impl SatState {
         )
     }
 
+    fn receiver_oscillator_noise_phase_rad_at_nominal_time_s(&self, nominal_elapsed_s: f64) -> f64 {
+        let sample_index = ((nominal_elapsed_s * self.sample_rate_hz).round() as u64).min(
+            self.receiver_oscillator_noise_knots
+                .frequency_noise_phase_rad
+                .last()
+                .map(|(index, _)| *index)
+                .unwrap_or(0),
+        );
+        receiver_oscillator_noise_phase_rad_from_knots(
+            &self.receiver_oscillator_noise_knots,
+            sample_index,
+            self.sample_rate_hz,
+        )
+    }
+
+    #[cfg(test)]
+    fn receiver_oscillator_frequency_noise_hz_at_nominal_time_s(
+        &self,
+        nominal_elapsed_s: f64,
+    ) -> f64 {
+        let sample_index = ((nominal_elapsed_s * self.sample_rate_hz).round() as u64).min(
+            self.receiver_oscillator_noise_knots
+                .frequency_noise_hz
+                .last()
+                .map(|(index, _)| *index)
+                .unwrap_or(0),
+        );
+        receiver_oscillator_frequency_noise_hz_from_knots(
+            &self.receiver_oscillator_noise_knots,
+            sample_index,
+        )
+    }
+
     #[cfg(test)]
     fn carrier_hz_at(&self, t: f64) -> f64 {
         let effective_elapsed_s = self.effective_elapsed_s(t);
@@ -764,6 +808,7 @@ impl SatState {
             effective_elapsed_s,
         );
         carrier_hz * (1.0 + self.receiver_oscillator_model.sampling_clock_fractional_error)
+            + self.receiver_oscillator_frequency_noise_hz_at_nominal_time_s(t)
     }
 
     #[cfg(test)]
@@ -781,6 +826,7 @@ impl SatState {
             self.doppler_jerk_hz_per_s2,
             effective_elapsed_s,
         ) + self.receiver_oscillator_phase_noise_rad_at_nominal_time_s(t)
+            + self.receiver_oscillator_noise_phase_rad_at_nominal_time_s(t)
     }
 
     fn sample_at(&self, t: f64) -> Complex<f32> {
@@ -1149,6 +1195,7 @@ fn receiver_oscillator_truth_for_capture(
 ) -> SyntheticReceiverOscillatorTruth {
     let sample_indices =
         receiver_oscillator_truth_sample_indices(model, sample_rate_hz, sample_count);
+    let noise_knots = receiver_oscillator_noise_knots(model, sample_count, sample_rate_hz);
     SyntheticReceiverOscillatorTruth {
         carrier_frequency_bias_hz: sample_indices
             .iter()
@@ -1178,6 +1225,22 @@ fn receiver_oscillator_truth_for_capture(
                     model,
                     sample_index,
                     sample_count,
+                ) + receiver_oscillator_noise_phase_rad_from_knots(
+                    &noise_knots,
+                    sample_index,
+                    sample_rate_hz,
+                ),
+            })
+            .collect(),
+        frequency_noise_hz: sample_indices
+            .iter()
+            .copied()
+            .map(|sample_index| SyntheticReceiverOscillatorTruthPoint {
+                sample_index,
+                time_s: sample_index as f64 / sample_rate_hz,
+                value: receiver_oscillator_frequency_noise_hz_from_knots(
+                    &noise_knots,
+                    sample_index,
                 ),
             })
             .collect(),
@@ -1216,12 +1279,13 @@ fn receiver_oscillator_truth_sample_indices(
     let mut sample_indices = vec![0];
     let last_sample_index = sample_count.saturating_sub(1);
     let truth_step_samples = ((sample_rate_hz * 0.001).round() as u64).max(1);
-    let phase_noise_step_samples = model.phase_noise.knot_interval_samples.max(1);
-    let stride = if model.phase_noise.is_enabled() {
-        truth_step_samples.min(phase_noise_step_samples)
-    } else {
-        truth_step_samples
-    };
+    let mut stride = truth_step_samples;
+    if model.phase_noise.is_enabled() {
+        stride = stride.min(model.phase_noise.knot_interval_samples.max(1));
+    }
+    if model.noise.is_enabled() {
+        stride = stride.min(model.noise.update_interval_samples.max(1));
+    }
     let mut sample_index = stride;
     while sample_index < last_sample_index {
         sample_indices.push(sample_index);
@@ -1290,6 +1354,117 @@ fn receiver_oscillator_phase_noise_rad_from_knots(knots: &[(u64, f64)], sample_i
     }
 
     knots.last().map(|(_, value)| *value).unwrap_or(0.0)
+}
+
+fn receiver_oscillator_noise_knots(
+    model: &SyntheticReceiverOscillatorModel,
+    sample_count: u64,
+    sample_rate_hz: f64,
+) -> ReceiverOscillatorNoiseKnots {
+    if !model.noise.is_enabled() || sample_count == 0 {
+        return ReceiverOscillatorNoiseKnots {
+            white_phase_rad: vec![(0, 0.0)],
+            frequency_noise_hz: vec![(0, 0.0)],
+            frequency_noise_phase_rad: vec![(0, 0.0)],
+        };
+    }
+
+    let last_sample_index = sample_count.saturating_sub(1);
+    let step_samples = model.noise.update_interval_samples.max(1);
+    let mut rng = XorShift64::new(model.noise.seed);
+    let mut white_phase_rad = Vec::new();
+    let mut frequency_noise_hz = Vec::new();
+    let mut frequency_noise_phase_rad = Vec::new();
+    let mut random_walk_frequency_hz = 0.0;
+    let mut integrated_phase_rad = 0.0;
+    let mut previous_sample_index = 0;
+    let mut previous_frequency_noise_hz = 0.0;
+    let mut sample_index = 0;
+
+    loop {
+        if sample_index > 0 {
+            let elapsed_s = (sample_index - previous_sample_index) as f64 / sample_rate_hz;
+            integrated_phase_rad +=
+                std::f64::consts::TAU * previous_frequency_noise_hz * elapsed_s;
+            random_walk_frequency_hz += rng.next_gaussian() as f64
+                * model.noise.random_walk_frequency_step_std_hz;
+        }
+
+        let white_phase = rng.next_gaussian() as f64 * model.noise.white_phase_std_rad;
+        let white_frequency = rng.next_gaussian() as f64 * model.noise.white_frequency_std_hz;
+        let frequency_noise = random_walk_frequency_hz + white_frequency;
+
+        white_phase_rad.push((sample_index, white_phase));
+        frequency_noise_hz.push((sample_index, frequency_noise));
+        frequency_noise_phase_rad.push((sample_index, integrated_phase_rad));
+
+        if sample_index == last_sample_index {
+            break;
+        }
+
+        previous_sample_index = sample_index;
+        previous_frequency_noise_hz = frequency_noise;
+        sample_index = (sample_index + step_samples).min(last_sample_index);
+    }
+
+    ReceiverOscillatorNoiseKnots {
+        white_phase_rad,
+        frequency_noise_hz,
+        frequency_noise_phase_rad,
+    }
+}
+
+fn receiver_oscillator_piecewise_value_from_knots(knots: &[(u64, f64)], sample_index: u64) -> f64 {
+    knots
+        .iter()
+        .rev()
+        .find_map(|(knot_sample_index, value)| {
+            (*knot_sample_index <= sample_index).then_some(*value)
+        })
+        .unwrap_or(0.0)
+}
+
+fn receiver_oscillator_frequency_noise_hz_from_knots(
+    knots: &ReceiverOscillatorNoiseKnots,
+    sample_index: u64,
+) -> f64 {
+    receiver_oscillator_piecewise_value_from_knots(&knots.frequency_noise_hz, sample_index)
+}
+
+fn receiver_oscillator_frequency_noise_phase_rad_from_knots(
+    knots: &ReceiverOscillatorNoiseKnots,
+    sample_index: u64,
+    sample_rate_hz: f64,
+) -> f64 {
+    let start_sample_index = knots
+        .frequency_noise_phase_rad
+        .iter()
+        .rev()
+        .find_map(|(knot_sample_index, _)| {
+            (*knot_sample_index <= sample_index).then_some(*knot_sample_index)
+        })
+        .unwrap_or(0);
+    let start_phase = receiver_oscillator_piecewise_value_from_knots(
+        &knots.frequency_noise_phase_rad,
+        sample_index,
+    );
+    let frequency_noise_hz =
+        receiver_oscillator_frequency_noise_hz_from_knots(knots, sample_index);
+    let elapsed_s = sample_index.saturating_sub(start_sample_index) as f64 / sample_rate_hz;
+    start_phase + std::f64::consts::TAU * frequency_noise_hz * elapsed_s
+}
+
+fn receiver_oscillator_noise_phase_rad_from_knots(
+    knots: &ReceiverOscillatorNoiseKnots,
+    sample_index: u64,
+    sample_rate_hz: f64,
+) -> f64 {
+    receiver_oscillator_piecewise_value_from_knots(&knots.white_phase_rad, sample_index)
+        + receiver_oscillator_frequency_noise_phase_rad_from_knots(
+            knots,
+            sample_index,
+            sample_rate_hz,
+        )
 }
 
 fn peak_component(samples: &[Complex<f32>]) -> f32 {

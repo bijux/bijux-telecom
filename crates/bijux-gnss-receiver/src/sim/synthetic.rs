@@ -28,7 +28,7 @@ use bijux_gnss_signal::api::{
 };
 use serde::{Deserialize, Serialize};
 
-const SYNTHETIC_IQ_TRUTH_SCHEMA_VERSION: u32 = 7;
+const SYNTHETIC_IQ_TRUTH_SCHEMA_VERSION: u32 = 8;
 const SYNTHETIC_GNSS_ACCURACY_ARTIFACT_SCHEMA_VERSION: u32 = 1;
 #[cfg(test)]
 const GPS_L1_CA_NAV_BIT_PERIOD_S: f64 = 0.02;
@@ -110,12 +110,13 @@ mod tests {
         SyntheticPvtTruthTableClockBias, SyntheticPvtTruthTableDop, SyntheticPvtTruthTableEcef,
         SyntheticPvtTruthTableEnuError, SyntheticPvtTruthTableEpoch,
         SyntheticPvtTruthTableGeodetic, SyntheticPvtTruthTableReport,
-        SyntheticReceiverOscillatorModel, SyntheticReceiverPhaseNoiseModel, SyntheticScenario,
-        SyntheticSignalParams, SyntheticSignalSource, SyntheticTrackingLockRateCase,
-        SyntheticTrackingLockRatePoint, SyntheticTrackingLockRateReport,
-        SyntheticTrackingSensitivityTrial, SyntheticTrackingTruthTableEpoch,
-        SyntheticTrackingTruthTableReport, SyntheticTrackingTruthTableSatellite,
-        SPEED_OF_LIGHT_MPS, SYNTHETIC_COMPLEX_NOISE_POWER, SYNTHETIC_NOISE_STD_PER_COMPONENT,
+        SyntheticReceiverOscillatorModel, SyntheticReceiverOscillatorNoiseModel,
+        SyntheticReceiverPhaseNoiseModel, SyntheticScenario, SyntheticSignalParams,
+        SyntheticSignalSource, SyntheticTrackingLockRateCase, SyntheticTrackingLockRatePoint,
+        SyntheticTrackingLockRateReport, SyntheticTrackingSensitivityTrial,
+        SyntheticTrackingTruthTableEpoch, SyntheticTrackingTruthTableReport,
+        SyntheticTrackingTruthTableSatellite, SPEED_OF_LIGHT_MPS, SYNTHETIC_COMPLEX_NOISE_POWER,
+        SYNTHETIC_NOISE_STD_PER_COMPONENT,
     };
     use crate::engine::receiver_config::ReceiverPipelineConfig;
     use crate::reference_validation::ValidationReferenceEpoch;

@@ -143,6 +143,9 @@ pub struct SyntheticReceiverOscillatorModel {
     /// Deterministic phase-noise profile applied as an additive carrier phase offset.
     #[serde(default)]
     pub phase_noise: SyntheticReceiverPhaseNoiseModel,
+    /// Deterministic oscillator noise components applied as carrier phase and frequency stress.
+    #[serde(default)]
+    pub noise: SyntheticReceiverOscillatorNoiseModel,
 }
 
 impl Default for SyntheticReceiverOscillatorModel {
@@ -153,6 +156,7 @@ impl Default for SyntheticReceiverOscillatorModel {
             sampling_clock_fractional_error: 0.0,
             sampling_clock_fractional_drift_per_s: 0.0,
             phase_noise: SyntheticReceiverPhaseNoiseModel::default(),
+            noise: SyntheticReceiverOscillatorNoiseModel::default(),
         }
     }
 }
@@ -169,6 +173,13 @@ impl SyntheticReceiverOscillatorModel {
                 knot_interval_samples: 0,
                 step_std_rad: 0.0,
             },
+            noise: SyntheticReceiverOscillatorNoiseModel {
+                seed: 0,
+                update_interval_samples: 0,
+                white_phase_std_rad: 0.0,
+                white_frequency_std_hz: 0.0,
+                random_walk_frequency_step_std_hz: 0.0,
+            },
         }
     }
 
@@ -178,6 +189,7 @@ impl SyntheticReceiverOscillatorModel {
             && self.sampling_clock_fractional_error.abs() <= f64::EPSILON
             && self.sampling_clock_fractional_drift_per_s.abs() <= f64::EPSILON
             && !self.phase_noise.is_enabled()
+            && !self.noise.is_enabled()
     }
 }
 
@@ -204,6 +216,47 @@ impl Default for SyntheticReceiverPhaseNoiseModel {
 impl SyntheticReceiverPhaseNoiseModel {
     pub fn is_enabled(&self) -> bool {
         self.knot_interval_samples > 0 && self.step_std_rad.abs() > f64::EPSILON
+    }
+}
+
+/// Deterministic receiver-oscillator noise components.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticReceiverOscillatorNoiseModel {
+    /// Seed for white and random-walk oscillator noise sequences.
+    #[serde(default)]
+    pub seed: u64,
+    /// Sample spacing between consecutive noise updates.
+    #[serde(default)]
+    pub update_interval_samples: u64,
+    /// One-sigma independent carrier phase offset at each update, in radians.
+    #[serde(default)]
+    pub white_phase_std_rad: f64,
+    /// One-sigma independent carrier frequency offset at each update, in hertz.
+    #[serde(default)]
+    pub white_frequency_std_hz: f64,
+    /// One-sigma random-walk carrier frequency increment at each update, in hertz.
+    #[serde(default)]
+    pub random_walk_frequency_step_std_hz: f64,
+}
+
+impl Default for SyntheticReceiverOscillatorNoiseModel {
+    fn default() -> Self {
+        Self {
+            seed: 0,
+            update_interval_samples: 0,
+            white_phase_std_rad: 0.0,
+            white_frequency_std_hz: 0.0,
+            random_walk_frequency_step_std_hz: 0.0,
+        }
+    }
+}
+
+impl SyntheticReceiverOscillatorNoiseModel {
+    pub fn is_enabled(&self) -> bool {
+        self.update_interval_samples > 0
+            && (self.white_phase_std_rad.abs() > f64::EPSILON
+                || self.white_frequency_std_hz.abs() > f64::EPSILON
+                || self.random_walk_frequency_step_std_hz.abs() > f64::EPSILON)
     }
 }
 
@@ -374,6 +427,9 @@ pub struct SyntheticReceiverOscillatorTruth {
     /// Additive carrier phase-noise series, in radians.
     #[serde(default)]
     pub phase_noise_rad: Vec<SyntheticReceiverOscillatorTruthPoint>,
+    /// Instantaneous carrier frequency-noise series, in hertz.
+    #[serde(default)]
+    pub frequency_noise_hz: Vec<SyntheticReceiverOscillatorTruthPoint>,
     /// Sampling-clock time-error series, in seconds.
     #[serde(default)]
     pub sampling_clock_time_error_s: Vec<SyntheticReceiverOscillatorTruthPoint>,
