@@ -62,6 +62,27 @@
         "code": { "type": "string" }
       }
     },
+    "CarrierPhaseArc": {
+      "type": "object",
+      "required": [
+        "id",
+        "signal_id",
+        "start_epoch_idx",
+        "start_sample_index",
+        "start_reason",
+        "valid_for_smoothing",
+        "valid_for_ambiguity"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "signal_id": { "$ref": "#/definitions/SigId" },
+        "start_epoch_idx": { "type": "integer", "minimum": 0 },
+        "start_sample_index": { "type": "integer", "minimum": 0 },
+        "start_reason": { "type": "string", "minLength": 1 },
+        "valid_for_smoothing": { "type": "boolean" },
+        "valid_for_ambiguity": { "type": "boolean" }
+      }
+    },
     "LockFlags": {
       "type": "object",
       "required": ["code_lock", "carrier_lock", "bit_lock", "cycle_slip"],
@@ -180,6 +201,7 @@
         "measurement_covariance",
         "code_carrier_divergence",
         "cycle_slip_evidence",
+        "carrier_phase_arc",
         "lock_flags",
         "observation_lock_state",
         "observation_lock_reason",
@@ -215,6 +237,12 @@
         "cycle_slip_evidence": {
           "anyOf": [
             { "$ref": "#/definitions/CycleSlipDecisionEvidence" },
+            { "type": "null" }
+          ]
+        },
+        "carrier_phase_arc": {
+          "anyOf": [
+            { "$ref": "#/definitions/CarrierPhaseArc" },
             { "type": "null" }
           ]
         },

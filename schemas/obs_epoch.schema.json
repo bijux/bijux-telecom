@@ -70,6 +70,27 @@
         "transmit_gps_time": { "$ref": "#/definitions/GpsTime" }
       }
     },
+    "CarrierPhaseArc": {
+      "type": "object",
+      "required": [
+        "id",
+        "signal_id",
+        "start_epoch_idx",
+        "start_sample_index",
+        "start_reason",
+        "valid_for_smoothing",
+        "valid_for_ambiguity"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "signal_id": { "$ref": "#/definitions/SigId" },
+        "start_epoch_idx": { "type": "integer", "minimum": 0 },
+        "start_sample_index": { "type": "integer", "minimum": 0 },
+        "start_reason": { "type": "string", "minLength": 1 },
+        "valid_for_smoothing": { "type": "boolean" },
+        "valid_for_ambiguity": { "type": "boolean" }
+      }
+    },
     "ObsMetadata": {
       "type": "object",
       "required": [
@@ -99,6 +120,12 @@
           "oneOf": [
             { "type": "null" },
             { "$ref": "#/definitions/CycleSlipDecisionEvidence" }
+          ]
+        },
+        "carrier_phase_arc": {
+          "oneOf": [
+            { "type": "null" },
+            { "$ref": "#/definitions/CarrierPhaseArc" }
           ]
         }
       }

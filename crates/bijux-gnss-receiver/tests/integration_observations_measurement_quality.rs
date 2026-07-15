@@ -221,21 +221,30 @@ fn measurement_quality_reports_supported_signal_bands() {
         assert!(covariance.doppler_hz2 > 0.0, "{covariance:?}");
         assert_eq!(covariance.code_carrier_m2, covariance.carrier_code_m2);
         assert_eq!(covariance.carrier_doppler_m_hz, covariance.doppler_carrier_hz_m);
-        let divergence = sat.code_carrier_divergence.expect("code-carrier divergence");
-        assert!(divergence.raw_m.is_finite(), "{divergence:?}");
-        assert!(divergence.jump_m.is_finite(), "{divergence:?}");
-        assert!(divergence.expected_ionosphere_m.is_finite(), "{divergence:?}");
-        assert!(divergence.multipath_m.is_finite(), "{divergence:?}");
-        assert!(divergence.unexplained_m.is_finite(), "{divergence:?}");
+        if let Some(divergence) = sat.code_carrier_divergence {
+            assert!(divergence.raw_m.is_finite(), "{divergence:?}");
+            assert!(divergence.jump_m.is_finite(), "{divergence:?}");
+            assert!(divergence.expected_ionosphere_m.is_finite(), "{divergence:?}");
+            assert!(divergence.multipath_m.is_finite(), "{divergence:?}");
+            assert!(divergence.unexplained_m.is_finite(), "{divergence:?}");
+        }
         let slip_evidence = sat.cycle_slip_evidence.as_ref().expect("cycle-slip evidence");
         assert!(slip_evidence.detection_probability_budget > 0.0, "{slip_evidence:?}");
         assert!(slip_evidence.false_alarm_probability_budget > 0.0, "{slip_evidence:?}");
+        let carrier_phase_arc = sat.carrier_phase_arc.as_ref().expect("carrier-phase arc");
+        assert_eq!(carrier_phase_arc.signal_id, sat.signal_id);
+        assert_eq!(carrier_phase_arc.valid_for_smoothing, sat.lock_flags.carrier_lock);
+        assert_eq!(carrier_phase_arc.valid_for_ambiguity, sat.lock_flags.carrier_lock);
+        assert_eq!(carrier_phase_arc.start_epoch_idx, epoch.epoch_idx);
         assert!(!sat.observation_lock_state.is_empty(), "{sat:?}");
     }
 
     let l5_quality = by_band.get(&SignalBand::L5).expect("L5 measurement quality");
     assert!(l5_quality.cycle_slip, "{l5_quality:?}");
     assert_eq!(l5_quality.cycle_slip_reason.as_deref(), Some("simulated_phase_slip"));
+    let l5_arc = l5_quality.carrier_phase_arc.as_ref().expect("L5 carrier-phase arc");
+    assert_eq!(l5_arc.start_reason, "simulated_phase_slip");
+    assert!(l5_arc.id.contains("gps-05-l5"));
     assert!(l5_quality
         .cycle_slip_evidence
         .as_ref()
@@ -246,4 +255,8 @@ fn measurement_quality_reports_supported_signal_bands() {
     let b2_quality = by_band.get(&SignalBand::B2).expect("B2 measurement quality");
     assert!(b2_quality.lock_flags.code_lock, "{b2_quality:?}");
     assert!(!b2_quality.lock_flags.carrier_lock, "{b2_quality:?}");
+    let b2_arc = b2_quality.carrier_phase_arc.as_ref().expect("B2 carrier-phase boundary");
+    assert_eq!(b2_arc.start_reason, "tracking_lock_unusable");
+    assert!(!b2_arc.valid_for_smoothing);
+    assert!(!b2_arc.valid_for_ambiguity);
 }
