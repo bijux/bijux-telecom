@@ -113,6 +113,8 @@ const CARRIER_AID_MIN_DOPPLER_WINDOW_HZ: f64 = 25_000.0;
 const CARRIER_AID_DOPPLER_WINDOW_MARGIN_HZ: f64 = 500.0;
 const SUBCARRIER_AMBIGUITY_MIN_PROMPT_RELATIVE_POWER: f32 = 0.05;
 const SUBCARRIER_AMBIGUITY_GUARD_OFFSETS_CHIPS: [f64; 2] = [-0.5, 0.5];
+const DOPPLER_ESTIMATOR_SPREAD_LOCK_MULTIPLIER: f64 = 3.0;
+const DOPPLER_ESTIMATOR_MIN_SPREAD_LIMIT_HZ: f64 = 25.0;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChannelState {
     Idle,
@@ -1726,6 +1728,16 @@ struct PromptPhaseDecision {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
+struct DopplerEstimatorConsistency {
+    loop_residual_hz: f64,
+    phase_rate_residual_hz: f64,
+    prompt_correlation_residual_hz: f64,
+    spread_hz: f64,
+    limit_hz: f64,
+    consistent: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
 struct ReacquisitionSeed {
     carrier_hz: f64,
     code_phase_samples: f64,
@@ -2915,6 +2927,14 @@ impl Tracking {
         let raw_pll_lock = pll_err.abs() < lock_detector_thresholds.pll_lock_rad;
         let raw_fll_lock =
             !fll_enabled || (fll_err_hz as f64).abs() <= lock_detector_thresholds.fll_lock_hz;
+        let prompt_correlation_fll_err_hz =
+            if use_nav_bit_aware_fll { nav_bit_aware_fll_err_hz } else { raw_fll_err_hz };
+        let doppler_consistency = doppler_estimator_consistency(
+            0.0,
+            nav_bit_aware_fll_err_hz,
+            prompt_correlation_fll_err_hz,
+            lock_detector_thresholds.fll_lock_hz,
+        );
         let sustained_dll_lock = raw_dll_lock
             || (matches!(
                 from_state,
@@ -2990,6 +3010,7 @@ impl Tracking {
                 && sustained_code_lock
                 && raw_pll_lock
                 && raw_fll_lock
+                && doppler_consistency.consistent
                 && !cycle_slip
                 && !anti_false_lock
         } else {
@@ -2997,6 +3018,7 @@ impl Tracking {
                 && sustained_prompt_lock
                 && sustained_code_lock
                 && sustained_pll_lock
+                && doppler_consistency.consistent
                 && !cycle_slip
                 && !anti_false_lock
         };
@@ -3004,14 +3026,19 @@ impl Tracking {
             if matches!(from_state, ChannelState::Tracking | ChannelState::Degraded) {
                 steady_state_tracking_ready
             } else {
-                cn0_supports_lock && state.pull_in_stable_epochs >= PULL_IN_REQUIRED_STABLE_EPOCHS
+                cn0_supports_lock
+                    && state.pull_in_stable_epochs >= PULL_IN_REQUIRED_STABLE_EPOCHS
+                    && doppler_consistency.consistent
             };
-        let short_fade_relock_evidence =
-            !anti_false_lock && !cycle_slip && (raw_pll_lock || raw_fll_lock);
+        let short_fade_relock_evidence = doppler_consistency.consistent
+            && !anti_false_lock
+            && !cycle_slip
+            && (raw_pll_lock || raw_fll_lock);
         let reliable_reacquisition_reference = cn0_supports_lock
             && sustained_prompt_lock
             && raw_pll_lock
             && raw_fll_lock
+            && doppler_consistency.consistent
             && !cycle_slip
             && !anti_false_lock;
         state.lock_reference_cn0_dbhz = refresh_lock_reference_cn0_dbhz(
@@ -3019,6 +3046,14 @@ impl Tracking {
             cn0_dbhz,
             reliable_reacquisition_reference,
         );
+        let doppler_estimator_degraded = !doppler_consistency.consistent
+            && matches!(from_state, ChannelState::Tracking | ChannelState::Degraded)
+            && sustained_prompt_lock
+            && sustained_code_lock
+            && !cycle_slip
+            && !anti_false_lock;
+        let degraded_tracking_reason =
+            doppler_estimator_degraded.then_some("doppler_estimator_divergence");
 
         let transition = if refuse_lock {
             TransitionDecision {
@@ -3038,6 +3073,7 @@ impl Tracking {
                 state.degraded_epochs,
                 short_fade_epoch_budget(tracking_params),
                 short_fade_relock_evidence,
+                degraded_tracking_reason,
             )
         };
         state.unlocked_count = transition.next_unlocked_count;
@@ -3053,7 +3089,7 @@ impl Tracking {
         );
         push_tracking_uncertainty_sample(
             &mut state.doppler_error_window_hz,
-            (fll_err_hz as f64).abs(),
+            doppler_estimator_uncertainty_sample_hz(doppler_consistency, fll_err_hz as f64),
         );
         push_tracking_uncertainty_sample(&mut state.cn0_estimate_window_dbhz, cn0_dbhz);
         let tracking_uncertainty = Some(estimate_tracking_uncertainty(
@@ -3123,6 +3159,7 @@ impl Tracking {
             && sustained_pll_lock
             && !cycle_slip;
         let fll_lock = state.state != ChannelState::Lost
+            && doppler_consistency.consistent
             && (raw_fll_lock || (tracking_state_locked && pll_lock));
         let navigation_bit_sign = recover_epoch_navigation_bit_sign(
             signal_model,
@@ -3143,7 +3180,9 @@ impl Tracking {
             ));
         }
 
-        let apply_fll = fll_bw > 0.0 && should_apply_fll(state.state, raw_fll_lock);
+        let apply_fll = fll_bw > 0.0
+            && doppler_consistency.consistent
+            && should_apply_fll(state.state, raw_fll_lock);
         let tracked_center_hz =
             tracked_signal_center_hz(self.config.intermediate_freq_hz, signal_model.signal_spec);
         let current_carrier_doppler_hz = tracked_signal_doppler_hz(
@@ -3272,6 +3311,7 @@ impl Tracking {
             });
         }
         tracking_provenance.push_str(&lock_detector_provenance(lock_detector_thresholds));
+        tracking_provenance.push_str(&doppler_estimator_provenance(doppler_consistency));
 
         out.push(TrackEpoch {
             lock: channel_locked,
@@ -3605,6 +3645,57 @@ fn should_apply_fll(state: ChannelState, raw_fll_lock: bool) -> bool {
     matches!(state, ChannelState::PullIn | ChannelState::Degraded) || !raw_fll_lock
 }
 
+fn doppler_estimator_consistency(
+    loop_residual_hz: f64,
+    phase_rate_residual_hz: f64,
+    prompt_correlation_residual_hz: f64,
+    fll_lock_limit_hz: f64,
+) -> DopplerEstimatorConsistency {
+    let estimates = [loop_residual_hz, phase_rate_residual_hz, prompt_correlation_residual_hz];
+    let (min_estimate, max_estimate) = estimates.iter().fold(
+        (f64::INFINITY, f64::NEG_INFINITY),
+        |(min_estimate, max_estimate), estimate| {
+            (min_estimate.min(*estimate), max_estimate.max(*estimate))
+        },
+    );
+    let spread_hz = if estimates.iter().all(|estimate| estimate.is_finite()) {
+        max_estimate - min_estimate
+    } else {
+        f64::INFINITY
+    };
+    let limit_hz = (fll_lock_limit_hz.abs() * DOPPLER_ESTIMATOR_SPREAD_LOCK_MULTIPLIER)
+        .max(DOPPLER_ESTIMATOR_MIN_SPREAD_LIMIT_HZ);
+
+    DopplerEstimatorConsistency {
+        loop_residual_hz,
+        phase_rate_residual_hz,
+        prompt_correlation_residual_hz,
+        spread_hz,
+        limit_hz,
+        consistent: spread_hz <= limit_hz,
+    }
+}
+
+fn doppler_estimator_uncertainty_sample_hz(
+    consistency: DopplerEstimatorConsistency,
+    selected_residual_hz: f64,
+) -> f64 {
+    selected_residual_hz.abs().max(consistency.spread_hz)
+}
+
+fn doppler_estimator_provenance(consistency: DopplerEstimatorConsistency) -> String {
+    let status = if consistency.consistent { "consistent" } else { "divergent" };
+    format!(
+        " doppler_estimator_consistency={} doppler_estimator_spread_hz={:.3} doppler_estimator_limit_hz={:.3} doppler_loop_residual_hz={:.3} doppler_phase_rate_residual_hz={:.3} doppler_prompt_residual_hz={:.3}",
+        status,
+        consistency.spread_hz,
+        consistency.limit_hz,
+        consistency.loop_residual_hz,
+        consistency.phase_rate_residual_hz,
+        consistency.prompt_correlation_residual_hz,
+    )
+}
+
 fn update_windowed_tracking_cn0_estimate(
     prompt_cn0_window: &mut VecDeque<f64>,
     epoch_cn0_dbhz: f64,
@@ -3733,6 +3824,7 @@ fn deterministic_transition_rule(
     degraded_epochs: u16,
     short_fade_epoch_budget: u16,
     short_fade_relock_evidence: bool,
+    degraded_tracking_reason: Option<&str>,
 ) -> TransitionDecision {
     if loss_of_lock_cause == Some(LossOfLockCause::PhaseJump) {
         return TransitionDecision {
@@ -3778,8 +3870,9 @@ fn deterministic_transition_rule(
                 0
             });
         if next_degraded_epochs > effective_short_fade_budget {
-            let loss_reason =
-                loss_of_lock_cause.unwrap_or(LossOfLockCause::PromptPowerDrop).reason().to_string();
+            let loss_reason = degraded_tracking_reason.map(str::to_string).unwrap_or_else(|| {
+                loss_of_lock_cause.unwrap_or(LossOfLockCause::PromptPowerDrop).reason().to_string()
+            });
             return TransitionDecision {
                 to_state: ChannelState::Lost,
                 reason: loss_reason,
@@ -3789,7 +3882,7 @@ fn deterministic_transition_rule(
         }
         return TransitionDecision {
             to_state: ChannelState::Degraded,
-            reason: "signal_fade".to_string(),
+            reason: degraded_tracking_reason.unwrap_or("signal_fade").to_string(),
             next_unlocked_count: 0,
             next_degraded_epochs,
         };
@@ -3797,7 +3890,7 @@ fn deterministic_transition_rule(
     if from_state == ChannelState::Tracking && !ready_for_tracking {
         return TransitionDecision {
             to_state: ChannelState::Degraded,
-            reason: "signal_fade".to_string(),
+            reason: degraded_tracking_reason.unwrap_or("signal_fade").to_string(),
             next_unlocked_count: 0,
             next_degraded_epochs: 1,
         };
@@ -5721,6 +5814,7 @@ mod tests {
             0,
             100,
             false,
+            None,
         );
         assert_eq!(decision.to_state, ChannelState::Lost);
         assert_eq!(decision.reason, "phase_jump");
@@ -5740,6 +5834,7 @@ mod tests {
             0,
             100,
             false,
+            None,
         );
         assert_eq!(decision.to_state, ChannelState::Tracking);
         assert_eq!(decision.reason, "carrier_converged");
@@ -5759,9 +5854,31 @@ mod tests {
             0,
             100,
             false,
+            None,
         );
         assert_eq!(decision.to_state, ChannelState::Degraded);
         assert_eq!(decision.reason, "signal_fade");
+        assert_eq!(decision.next_unlocked_count, 0);
+        assert_eq!(decision.next_degraded_epochs, 1);
+    }
+
+    #[test]
+    fn deterministic_transition_rule_reports_doppler_estimator_divergence() {
+        let decision = super::deterministic_transition_rule(
+            ChannelState::Tracking,
+            true,
+            false,
+            false,
+            None,
+            0,
+            0,
+            100,
+            false,
+            Some("doppler_estimator_divergence"),
+        );
+
+        assert_eq!(decision.to_state, ChannelState::Degraded);
+        assert_eq!(decision.reason, "doppler_estimator_divergence");
         assert_eq!(decision.next_unlocked_count, 0);
         assert_eq!(decision.next_degraded_epochs, 1);
     }
@@ -5778,11 +5895,33 @@ mod tests {
             4,
             100,
             false,
+            None,
         );
         assert_eq!(decision.to_state, ChannelState::Tracking);
         assert_eq!(decision.reason, "fade_recovered");
         assert_eq!(decision.next_unlocked_count, 0);
         assert_eq!(decision.next_degraded_epochs, 0);
+    }
+
+    #[test]
+    fn deterministic_transition_rule_preserves_doppler_reason_while_degraded() {
+        let decision = super::deterministic_transition_rule(
+            ChannelState::Degraded,
+            true,
+            false,
+            false,
+            None,
+            0,
+            4,
+            100,
+            false,
+            Some("doppler_estimator_divergence"),
+        );
+
+        assert_eq!(decision.to_state, ChannelState::Degraded);
+        assert_eq!(decision.reason, "doppler_estimator_divergence");
+        assert_eq!(decision.next_unlocked_count, 0);
+        assert_eq!(decision.next_degraded_epochs, 5);
     }
 
     #[test]
@@ -5797,6 +5936,7 @@ mod tests {
             2,
             100,
             false,
+            None,
         );
         assert_eq!(decision.to_state, ChannelState::Lost);
         assert_eq!(decision.reason, "phase_jump");
@@ -5816,6 +5956,7 @@ mod tests {
             100,
             100,
             false,
+            None,
         );
         assert_eq!(decision.to_state, ChannelState::Lost);
         assert_eq!(decision.reason, "prompt_power_drop");
@@ -5835,6 +5976,7 @@ mod tests {
             super::DEGRADED_FADE_INSTABILITY_GRACE_EPOCHS,
             100,
             false,
+            None,
         );
         assert_eq!(decision.to_state, ChannelState::Degraded);
         assert_eq!(decision.reason, "signal_fade");
@@ -6391,12 +6533,55 @@ mod tests {
             0,
             100,
             false,
+            None,
         );
 
         assert_eq!(decision.to_state, ChannelState::PullIn);
         assert_eq!(decision.reason, "carrier_pull_in");
         assert_eq!(decision.next_unlocked_count, 0);
         assert_eq!(decision.next_degraded_epochs, 0);
+    }
+
+    #[test]
+    fn doppler_estimator_consistency_accepts_aligned_residuals() {
+        let consistency = super::doppler_estimator_consistency(0.0, 4.0, -3.0, 8.0);
+
+        assert!(consistency.consistent, "{consistency:?}");
+        assert_eq!(consistency.spread_hz, 7.0);
+        assert_eq!(consistency.limit_hz, super::DOPPLER_ESTIMATOR_MIN_SPREAD_LIMIT_HZ);
+    }
+
+    #[test]
+    fn doppler_estimator_consistency_rejects_divergent_residuals() {
+        let consistency = super::doppler_estimator_consistency(0.0, 12.0, 95.0, 8.0);
+
+        assert!(!consistency.consistent, "{consistency:?}");
+        assert_eq!(consistency.spread_hz, 95.0);
+    }
+
+    #[test]
+    fn doppler_estimator_consistency_rejects_non_finite_residuals() {
+        let consistency = super::doppler_estimator_consistency(0.0, f64::NAN, 2.0, 8.0);
+
+        assert!(!consistency.consistent, "{consistency:?}");
+        assert!(consistency.spread_hz.is_infinite());
+    }
+
+    #[test]
+    fn doppler_estimator_uncertainty_sample_carries_estimator_spread() {
+        let consistency = super::doppler_estimator_consistency(0.0, -10.0, 88.0, 8.0);
+        let sample = super::doppler_estimator_uncertainty_sample_hz(consistency, 4.0);
+
+        assert_eq!(sample, consistency.spread_hz);
+    }
+
+    #[test]
+    fn doppler_estimator_provenance_reports_divergence() {
+        let consistency = super::doppler_estimator_consistency(0.0, 12.0, 95.0, 8.0);
+        let provenance = super::doppler_estimator_provenance(consistency);
+
+        assert!(provenance.contains("doppler_estimator_consistency=divergent"));
+        assert!(provenance.contains("doppler_estimator_spread_hz=95.000"));
     }
 
     #[test]
@@ -9163,6 +9348,7 @@ mod tests {
                     degraded_epochs,
                     100,
                     false,
+                    None,
                 );
                 state = decision.to_state;
                 unlocked = decision.next_unlocked_count;
