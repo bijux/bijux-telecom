@@ -54,6 +54,39 @@ pub struct BeidouD2ClockContinuationPage {
     pub cuc_msb14: u16,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct BeidouD2EphemerisPages {
+    pub aode: u8,
+    pub toe_s: f64,
+    pub sqrt_a: f64,
+    pub e: f64,
+    pub i0: f64,
+    pub idot: f64,
+    pub omega0: f64,
+    pub omegadot: f64,
+    pub w: f64,
+    pub m0: f64,
+    pub delta_n: f64,
+    pub cuc: f64,
+    pub cus: f64,
+    pub crc: f64,
+    pub crs: f64,
+    pub cic: f64,
+    pub cis: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BeidouD2EphemerisRejectionReason {
+    DuplicatePage,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BeidouD2EphemerisRejection {
+    pub reason: BeidouD2EphemerisRejectionReason,
+    pub page_number: u8,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum BeidouD2PageRejectionReason {
@@ -160,6 +193,16 @@ pub fn decode_beidou_d2_clock_continuation_page(
         delta_n: page.signed_bits(97, 16) as f64 * 2f64.powi(-43) * std::f64::consts::PI,
         cuc_msb14: page.unsigned_bits(121, 14) as u16,
     })
+}
+
+pub fn decode_beidou_d2_ephemeris_pages(
+    pages: &[BeidouD2Page],
+) -> Result<Option<BeidouD2EphemerisPages>, BeidouD2EphemerisRejection> {
+    let mut builder = BeidouD2EphemerisBuilder::default();
+    for page in pages {
+        builder.merge(page)?;
+    }
+    Ok(builder.try_build())
 }
 
 fn normalize_bits(bits: &[u8]) -> Result<[u8; BEIDOU_D2_PAGE_BITS], BeidouD2PageRejection> {
@@ -319,6 +362,120 @@ fn signed_from_unsigned(value: u64, bits: usize) -> i64 {
     ((value << shift) as i64) >> shift
 }
 
+#[derive(Debug, Default, Clone)]
+struct BeidouD2EphemerisBuilder {
+    page_4: Option<BeidouD2ClockContinuationPage>,
+    page_5: Option<BeidouD2Page>,
+    page_6: Option<BeidouD2Page>,
+    page_7: Option<BeidouD2Page>,
+    page_8: Option<BeidouD2Page>,
+    page_9: Option<BeidouD2Page>,
+    page_10: Option<BeidouD2Page>,
+}
+
+impl BeidouD2EphemerisBuilder {
+    fn merge(&mut self, page: &BeidouD2Page) -> Result<(), BeidouD2EphemerisRejection> {
+        match page.page_number {
+            4 => {
+                if self.page_4.is_some() {
+                    return Err(duplicate_ephemeris_page(4));
+                }
+                self.page_4 = decode_beidou_d2_clock_continuation_page(page);
+            }
+            5 => merge_page_slot(&mut self.page_5, page)?,
+            6 => merge_page_slot(&mut self.page_6, page)?,
+            7 => merge_page_slot(&mut self.page_7, page)?,
+            8 => merge_page_slot(&mut self.page_8, page)?,
+            9 => merge_page_slot(&mut self.page_9, page)?,
+            10 => merge_page_slot(&mut self.page_10, page)?,
+            _ => {}
+        }
+        Ok(())
+    }
+
+    fn try_build(&self) -> Option<BeidouD2EphemerisPages> {
+        let (
+            Some(page_4),
+            Some(page_5),
+            Some(page_6),
+            Some(page_7),
+            Some(page_8),
+            Some(page_9),
+            Some(page_10),
+        ) = (
+            self.page_4,
+            self.page_5.as_ref(),
+            self.page_6.as_ref(),
+            self.page_7.as_ref(),
+            self.page_8.as_ref(),
+            self.page_9.as_ref(),
+            self.page_10.as_ref(),
+        )
+        else {
+            return None;
+        };
+
+        let cuc_raw = ((u64::from(page_4.cuc_msb14)) << 4) | page_5.unsigned_bits(47, 4);
+        let m0_raw = page_5.concat_unsigned_bits(&[(51, 2), (61, 22), (91, 8)]);
+        let cus_raw = page_5.concat_unsigned_bits(&[(99, 14), (121, 4)]);
+        let e_raw = (page_5.unsigned_bits(125, 10) << 22) | page_6.unsigned_bits(61, 22);
+        let sqrt_a_raw = page_6.concat_unsigned_bits(&[(91, 22), (121, 10)]);
+        let crs_raw = (page_6.unsigned_bits(131, 12) << 6) | page_7.unsigned_bits(47, 6);
+        let toe_raw = page_7.unsigned_bits(61, 17);
+        let i0_raw = page_7.concat_unsigned_bits(&[(78, 5), (91, 22), (121, 5)]);
+        let cic_raw = (page_7.unsigned_bits(126, 17) << 1) | page_8.unsigned_bits(47, 1);
+        let omegadot_raw = page_8.concat_unsigned_bits(&[(48, 5), (61, 19)]);
+        let cis_raw = page_8.concat_unsigned_bits(&[(80, 3), (91, 15)]);
+        let idot_raw = page_8.concat_unsigned_bits(&[(106, 7), (121, 7)]);
+        let crc_raw = (page_8.unsigned_bits(128, 15) << 3) | page_9.unsigned_bits(47, 3);
+        let omega0_raw = page_9.concat_unsigned_bits(&[(50, 3), (61, 22), (91, 7)]);
+        let w_raw = page_9.concat_unsigned_bits(&[(98, 15), (121, 17)]);
+        let _page_10_time_tag = page_10.sow_s;
+
+        Some(BeidouD2EphemerisPages {
+            aode: page_4.aode,
+            toe_s: toe_raw as f64 * 8.0,
+            sqrt_a: sqrt_a_raw as f64 * 2f64.powi(-19),
+            e: e_raw as f64 * 2f64.powi(-33),
+            i0: signed_from_unsigned(i0_raw, 32) as f64 * 2f64.powi(-31) * std::f64::consts::PI,
+            idot: signed_from_unsigned(idot_raw, 14) as f64 * 2f64.powi(-43) * std::f64::consts::PI,
+            omega0: signed_from_unsigned(omega0_raw, 32) as f64
+                * 2f64.powi(-31)
+                * std::f64::consts::PI,
+            omegadot: signed_from_unsigned(omegadot_raw, 24) as f64
+                * 2f64.powi(-43)
+                * std::f64::consts::PI,
+            w: signed_from_unsigned(w_raw, 32) as f64 * 2f64.powi(-31) * std::f64::consts::PI,
+            m0: signed_from_unsigned(m0_raw, 32) as f64 * 2f64.powi(-31) * std::f64::consts::PI,
+            delta_n: page_4.delta_n,
+            cuc: signed_from_unsigned(cuc_raw, 18) as f64 * 2f64.powi(-31),
+            cus: signed_from_unsigned(cus_raw, 18) as f64 * 2f64.powi(-31),
+            crc: signed_from_unsigned(crc_raw, 18) as f64 * 2f64.powi(-6),
+            crs: signed_from_unsigned(crs_raw, 18) as f64 * 2f64.powi(-6),
+            cic: signed_from_unsigned(cic_raw, 18) as f64 * 2f64.powi(-31),
+            cis: signed_from_unsigned(cis_raw, 18) as f64 * 2f64.powi(-31),
+        })
+    }
+}
+
+fn merge_page_slot(
+    slot: &mut Option<BeidouD2Page>,
+    page: &BeidouD2Page,
+) -> Result<(), BeidouD2EphemerisRejection> {
+    if slot.is_some() {
+        return Err(duplicate_ephemeris_page(page.page_number));
+    }
+    *slot = Some(page.clone());
+    Ok(())
+}
+
+fn duplicate_ephemeris_page(page_number: u8) -> BeidouD2EphemerisRejection {
+    BeidouD2EphemerisRejection {
+        reason: BeidouD2EphemerisRejectionReason::DuplicatePage,
+        page_number,
+    }
+}
+
 fn set_unsigned_bits(bits: &mut [u8; BEIDOU_D2_PAGE_BITS], start: usize, len: usize, value: u64) {
     for offset in 0..len {
         let shift = len - offset - 1;
@@ -397,6 +554,75 @@ mod tests {
         set_common_header(&mut bits, page_number, 345_678);
         set_unsigned_bits(&mut bits, 47, 6, 0x15);
         set_unsigned_bits(&mut bits, 61, 11, 0x321);
+        apply_bch_parity(&mut bits);
+        bits
+    }
+
+    fn decoded_page(bits: &[u8; BEIDOU_D2_PAGE_BITS]) -> super::BeidouD2Page {
+        decode_beidou_d2_page(bits).expect("valid D2 page")
+    }
+
+    fn clock_continuation_page_bits() -> [u8; BEIDOU_D2_PAGE_BITS] {
+        let mut bits = [0_u8; BEIDOU_D2_PAGE_BITS];
+        set_common_header(&mut bits, 4, 345_687);
+        set_unsigned_bits(&mut bits, 47, 6, 0b10_1010);
+        set_unsigned_bits(&mut bits, 61, 12, 0x5A5);
+        set_split_signed_bits(&mut bits, &[(73, 10), (91, 1)], -321);
+        set_unsigned_bits(&mut bits, 92, 5, 19);
+        set_signed_bits(&mut bits, 97, 16, -2_345);
+        set_unsigned_bits(&mut bits, 121, 14, 0x1234);
+        apply_bch_parity(&mut bits);
+        bits
+    }
+
+    fn ephemeris_page_bits(page_number: u8) -> [u8; BEIDOU_D2_PAGE_BITS] {
+        let mut bits = [0_u8; BEIDOU_D2_PAGE_BITS];
+        set_common_header(&mut bits, page_number, 345_690 + u32::from(page_number));
+        match page_number {
+            5 => {
+                set_unsigned_bits(&mut bits, 47, 4, 0x0A);
+                set_unsigned_bits(&mut bits, 51, 2, 0b10);
+                set_unsigned_bits(&mut bits, 61, 22, 0x2A_AAAA);
+                set_unsigned_bits(&mut bits, 91, 8, 0x5A);
+                set_unsigned_bits(&mut bits, 99, 14, 0x2AAA);
+                set_unsigned_bits(&mut bits, 121, 4, 0x0B);
+                set_unsigned_bits(&mut bits, 125, 10, 0x155);
+            }
+            6 => {
+                set_unsigned_bits(&mut bits, 61, 22, 0x12_3456);
+                set_unsigned_bits(&mut bits, 91, 22, 0x23_4567);
+                set_unsigned_bits(&mut bits, 121, 10, 0x2AA);
+                set_unsigned_bits(&mut bits, 131, 12, 0x555);
+            }
+            7 => {
+                set_unsigned_bits(&mut bits, 47, 6, 0x25);
+                set_unsigned_bits(&mut bits, 61, 17, 0x1_2345);
+                set_unsigned_bits(&mut bits, 78, 5, 0x0A);
+                set_unsigned_bits(&mut bits, 91, 22, 0x12_3456);
+                set_unsigned_bits(&mut bits, 121, 5, 0x0B);
+                set_unsigned_bits(&mut bits, 126, 17, 0x1_1111);
+            }
+            8 => {
+                set_unsigned_bits(&mut bits, 47, 1, 1);
+                set_unsigned_bits(&mut bits, 48, 5, 0x12);
+                set_unsigned_bits(&mut bits, 61, 19, 0x5_4321);
+                set_unsigned_bits(&mut bits, 80, 3, 0x05);
+                set_unsigned_bits(&mut bits, 91, 15, 0x4567);
+                set_unsigned_bits(&mut bits, 106, 7, 0x2A);
+                set_unsigned_bits(&mut bits, 121, 7, 0x35);
+                set_unsigned_bits(&mut bits, 128, 15, 0x1234);
+            }
+            9 => {
+                set_unsigned_bits(&mut bits, 47, 3, 0x05);
+                set_unsigned_bits(&mut bits, 50, 3, 0x03);
+                set_unsigned_bits(&mut bits, 61, 22, 0x34_5678);
+                set_unsigned_bits(&mut bits, 91, 7, 0x55);
+                set_unsigned_bits(&mut bits, 98, 15, 0x2345);
+                set_unsigned_bits(&mut bits, 121, 17, 0x1_2345);
+            }
+            10 => {}
+            _ => unreachable!("test page number"),
+        }
         apply_bch_parity(&mut bits);
         bits
     }
@@ -526,15 +752,7 @@ mod tests {
 
     #[test]
     fn clock_continuation_page_decodes_drift_and_first_orbit_terms() {
-        let mut bits = [0_u8; BEIDOU_D2_PAGE_BITS];
-        set_common_header(&mut bits, 4, 345_687);
-        set_unsigned_bits(&mut bits, 47, 6, 0b10_1010);
-        set_unsigned_bits(&mut bits, 61, 12, 0x5A5);
-        set_split_signed_bits(&mut bits, &[(73, 10), (91, 1)], -321);
-        set_unsigned_bits(&mut bits, 92, 5, 19);
-        set_signed_bits(&mut bits, 97, 16, -2_345);
-        set_unsigned_bits(&mut bits, 121, 14, 0x1234);
-        apply_bch_parity(&mut bits);
+        let bits = clock_continuation_page_bits();
         let page = decode_beidou_d2_page(&bits).expect("valid continuation page");
 
         let continuation = super::decode_beidou_d2_clock_continuation_page(&page).expect("page 4");
@@ -545,5 +763,94 @@ mod tests {
         assert_eq!(continuation.aode, 19);
         assert_eq!(continuation.delta_n, -2_345.0 * 2f64.powi(-43) * std::f64::consts::PI);
         assert_eq!(continuation.cuc_msb14, 0x1234);
+    }
+
+    #[test]
+    fn ephemeris_pages_assemble_scaled_orbit_terms() {
+        let pages = [
+            decoded_page(&clock_continuation_page_bits()),
+            decoded_page(&ephemeris_page_bits(5)),
+            decoded_page(&ephemeris_page_bits(6)),
+            decoded_page(&ephemeris_page_bits(7)),
+            decoded_page(&ephemeris_page_bits(8)),
+            decoded_page(&ephemeris_page_bits(9)),
+            decoded_page(&ephemeris_page_bits(10)),
+        ];
+
+        let ephemeris = super::decode_beidou_d2_ephemeris_pages(&pages)
+            .expect("unique pages")
+            .expect("complete ephemeris");
+
+        let cuc_raw = (0x1234_u64 << 4) | 0x0A;
+        let m0_raw = (0b10_u64 << 30) | (0x2A_AAAA_u64 << 8) | 0x5A;
+        let cus_raw = (0x2AAA_u64 << 4) | 0x0B;
+        let e_raw = (0x155_u64 << 22) | 0x12_3456;
+        let sqrt_a_raw = (0x23_4567_u64 << 10) | 0x2AA;
+        let crs_raw = (0x555_u64 << 6) | 0x25;
+        let i0_raw = (0x0A_u64 << 27) | (0x12_3456_u64 << 5) | 0x0B;
+        let cic_raw = (0x1_1111_u64 << 1) | 1;
+        let omegadot_raw = (0x12_u64 << 19) | 0x5_4321;
+        let cis_raw = (0x05_u64 << 15) | 0x4567;
+        let idot_raw = (0x2A_u64 << 7) | 0x35;
+        let crc_raw = (0x1234_u64 << 3) | 0x05;
+        let omega0_raw = (0x03_u64 << 29) | (0x34_5678_u64 << 7) | 0x55;
+        let w_raw = (0x2345_u64 << 17) | 0x1_2345;
+
+        assert_eq!(ephemeris.aode, 19);
+        assert_eq!(ephemeris.toe_s, 0x1_2345_u64 as f64 * 8.0);
+        assert_eq!(ephemeris.sqrt_a, sqrt_a_raw as f64 * 2f64.powi(-19));
+        assert_eq!(ephemeris.e, e_raw as f64 * 2f64.powi(-33));
+        assert_eq!(
+            ephemeris.i0,
+            super::signed_from_unsigned(i0_raw, 32) as f64 * 2f64.powi(-31) * std::f64::consts::PI
+        );
+        assert_eq!(
+            ephemeris.idot,
+            super::signed_from_unsigned(idot_raw, 14) as f64
+                * 2f64.powi(-43)
+                * std::f64::consts::PI
+        );
+        assert_eq!(
+            ephemeris.omega0,
+            super::signed_from_unsigned(omega0_raw, 32) as f64
+                * 2f64.powi(-31)
+                * std::f64::consts::PI
+        );
+        assert_eq!(
+            ephemeris.omegadot,
+            super::signed_from_unsigned(omegadot_raw, 24) as f64
+                * 2f64.powi(-43)
+                * std::f64::consts::PI
+        );
+        assert_eq!(
+            ephemeris.w,
+            super::signed_from_unsigned(w_raw, 32) as f64 * 2f64.powi(-31) * std::f64::consts::PI
+        );
+        assert_eq!(
+            ephemeris.m0,
+            super::signed_from_unsigned(m0_raw, 32) as f64 * 2f64.powi(-31) * std::f64::consts::PI
+        );
+        assert_eq!(ephemeris.delta_n, -2_345.0 * 2f64.powi(-43) * std::f64::consts::PI);
+        assert_eq!(ephemeris.cuc, super::signed_from_unsigned(cuc_raw, 18) as f64 * 2f64.powi(-31));
+        assert_eq!(ephemeris.cus, super::signed_from_unsigned(cus_raw, 18) as f64 * 2f64.powi(-31));
+        assert_eq!(ephemeris.crc, super::signed_from_unsigned(crc_raw, 18) as f64 * 2f64.powi(-6));
+        assert_eq!(ephemeris.crs, super::signed_from_unsigned(crs_raw, 18) as f64 * 2f64.powi(-6));
+        assert_eq!(ephemeris.cic, super::signed_from_unsigned(cic_raw, 18) as f64 * 2f64.powi(-31));
+        assert_eq!(ephemeris.cis, super::signed_from_unsigned(cis_raw, 18) as f64 * 2f64.powi(-31));
+    }
+
+    #[test]
+    fn ephemeris_pages_reject_duplicate_subcommutated_page() {
+        let pages = [
+            decoded_page(&clock_continuation_page_bits()),
+            decoded_page(&ephemeris_page_bits(5)),
+            decoded_page(&ephemeris_page_bits(5)),
+        ];
+
+        let rejection =
+            super::decode_beidou_d2_ephemeris_pages(&pages).expect_err("duplicate page rejection");
+
+        assert_eq!(rejection.reason, super::BeidouD2EphemerisRejectionReason::DuplicatePage);
+        assert_eq!(rejection.page_number, 5);
     }
 }
