@@ -7,8 +7,8 @@ use std::path::Path;
 use std::sync::OnceLock;
 
 use bijux_gnss_core::api::{
-    gps_to_utc, Constellation, GpsTime, IoError, LeapSeconds, ObsEpoch, ObsSatellite, ParseError,
-    SatId, SignalBand, SignalCode,
+    gps_to_utc, Constellation, GlonassSlot, GpsTime, IoError, LeapSeconds, ObsEpoch, ObsSatellite,
+    ParseError, SatId, SignalBand, SignalCode,
 };
 use regex::Regex;
 
@@ -27,7 +27,10 @@ use crate::orbits::galileo::{
     GalileoIonosphericCorrection, GalileoIonosphericDisturbanceFlags, GalileoSignalHealth,
     GalileoSystemTime,
 };
-use crate::orbits::glonass::GlonassBroadcastNavigationFrame;
+use crate::orbits::glonass::{
+    GlonassBroadcastNavigationFrame, GlonassFrameTime, GlonassImmediateHealth,
+    GlonassImmediateNavigationData, GlonassSatelliteType, GlonassStateVector, GlonassSystemTime,
+};
 use crate::orbits::gps::GpsBroadcastNavigationData;
 use crate::orbits::gps::GpsEphemeris;
 use crate::time::{
@@ -263,6 +266,37 @@ fn parse_rinex_epoch_utc_civil(
 
 fn rinex_utc_civil_error(err: UtcCivilTimeError) -> ParseError {
     ParseError { message: format!("invalid RINEX NAV UTC epoch: {err:?}") }
+}
+
+fn civil_day_of_year(year: i32, month: u8, day: u8) -> Result<u16, ParseError> {
+    if !(1..=12).contains(&month) {
+        return Err(ParseError { message: format!("invalid RINEX NAV month {month}") });
+    }
+    let month_lengths = [
+        31,
+        if is_gregorian_leap_year(year) { 29 } else { 28 },
+        31,
+        30,
+        31,
+        30,
+        31,
+        31,
+        30,
+        31,
+        30,
+        31,
+    ];
+    let month_length = month_lengths[usize::from(month - 1)];
+    if day == 0 || day > month_length {
+        return Err(ParseError { message: format!("invalid RINEX NAV day {day}") });
+    }
+    let elapsed_days =
+        month_lengths[..usize::from(month - 1)].iter().map(|days| u16::from(*days)).sum::<u16>();
+    Ok(elapsed_days + u16::from(day))
+}
+
+fn is_gregorian_leap_year(year: i32) -> bool {
+    (year % 4 == 0 && year % 100 != 0) || year % 400 == 0
 }
 
 fn format_rinex_nav_float(value: f64) -> String {
@@ -746,6 +780,107 @@ fn parse_beidou_rinex_nav_record(
     })
 }
 
+fn parse_glonass_rinex_nav_record(
+    header: &RinexNavHeader,
+    lines: &[&str],
+) -> Result<GlonassBroadcastNavigationFrame, ParseError> {
+    if lines.len() != 4 {
+        return Err(ParseError {
+            message: format!("GLONASS RINEX NAV record requires 4 lines, found {}", lines.len()),
+        });
+    }
+
+    let first_line = lines[0];
+    let prn = first_line
+        .get(..3)
+        .unwrap_or_default()
+        .trim()
+        .strip_prefix('R')
+        .ok_or_else(|| ParseError {
+            message: format!(
+                "unsupported GLONASS RINEX NAV satellite identifier '{}'",
+                &first_line[..3.min(first_line.len())]
+            ),
+        })?
+        .parse::<u8>()
+        .map_err(|err| ParseError {
+            message: format!(
+                "invalid GLONASS satellite identifier '{}': {err}",
+                &first_line[..3.min(first_line.len())]
+            ),
+        })?;
+    let slot = GlonassSlot::new(prn).ok_or_else(|| ParseError {
+        message: format!("GLONASS satellite identifier R{prn:02} is outside supported slot range"),
+    })?;
+    let line1 = parse_rinex_numeric_fields(first_line.get(3..).unwrap_or_default())?;
+    if line1.len() < 9 {
+        return Err(ParseError {
+            message: format!(
+                "GLONASS RINEX NAV first line requires 9 numeric fields, found {}",
+                line1.len()
+            ),
+        });
+    }
+    let line2 = pad_rinex_nav_record_fields(parse_rinex_numeric_fields(lines[1])?);
+    let line3 = pad_rinex_nav_record_fields(parse_rinex_numeric_fields(lines[2])?);
+    let line4 = pad_rinex_nav_record_fields(parse_rinex_numeric_fields(lines[3])?);
+
+    let year = parse_rinex_nav_year(line1[0] as i32, header.version);
+    let toc = parse_rinex_epoch_utc_civil(
+        year,
+        line1[1] as u8,
+        line1[2] as u8,
+        line1[3] as u8,
+        line1[4] as u8,
+        line1[5],
+    )?;
+    let frame_time =
+        GlonassFrameTime { hour: toc.hour, minute: toc.minute, half_minute: toc.second >= 30 };
+    let ephemeris_reference_time_s = line1[8].round().max(0.0) as u32;
+    let day_number = civil_day_of_year(year, toc.month, toc.day)?;
+    let sat = SatId { constellation: Constellation::Glonass, prn };
+    let health_status = line2[3].round().max(0.0) as u8;
+    let immediate = GlonassImmediateNavigationData {
+        sat,
+        frame_time,
+        ephemeris_reference_time_s,
+        tb_update_interval_min: 30,
+        tb_is_odd: Some((ephemeris_reference_time_s / 900) % 2 == 1),
+        state_vector: GlonassStateVector {
+            x_m: line2[0] * 1_000.0,
+            y_m: line3[0] * 1_000.0,
+            z_m: line4[0] * 1_000.0,
+            vx_mps: line2[1] * 1_000.0,
+            vy_mps: line3[1] * 1_000.0,
+            vz_mps: line4[1] * 1_000.0,
+            ax_mps2: line2[2] * 1_000.0,
+            ay_mps2: line3[2] * 1_000.0,
+            az_mps2: line4[2] * 1_000.0,
+        },
+        relative_frequency_bias: line1[7],
+        // RINEX stores -TauN; the typed model stores TauN.
+        clock_bias_s: -line1[6],
+        l2_l1_delay_s: None,
+        health: GlonassImmediateHealth {
+            line_unhealthy: health_status != 0,
+            status_code: health_status,
+        },
+        immediate_data_age_days: line4[3].round().max(0.0) as u8,
+        satellite_type: GlonassSatelliteType::GlonassM,
+        reported_slot: Some(slot),
+        system_time: Some(GlonassSystemTime { day_number, four_year_interval: None }),
+        resolved_day_index: None,
+        accuracy_code: None,
+    };
+
+    Ok(GlonassBroadcastNavigationFrame {
+        sat,
+        immediate,
+        system_time: None,
+        almanac_entries: Vec::new(),
+    })
+}
+
 pub fn parse_rinex_nav(data: &str) -> Result<Vec<GpsEphemeris>, ParseError> {
     Ok(parse_rinex_broadcast_navigation(data)?.ephemerides)
 }
@@ -762,7 +897,7 @@ pub fn parse_rinex_navigation_dataset(
     let mut gps = Vec::new();
     let mut galileo = Vec::new();
     let mut beidou = Vec::new();
-    let glonass = Vec::new();
+    let mut glonass = Vec::new();
     let mut index = 0usize;
 
     while index < lines.len() {
@@ -785,6 +920,8 @@ pub fn parse_rinex_navigation_dataset(
             galileo.push(parse_galileo_rinex_nav_record(&header, record)?);
         } else if line.starts_with('C') {
             beidou.push(parse_beidou_rinex_nav_record(&header, record)?);
+        } else if line.starts_with('R') {
+            glonass.push(parse_glonass_rinex_nav_record(&header, record)?);
         }
         index += line_count;
     }
@@ -1121,6 +1258,7 @@ mod tests {
     use crate::models::atmosphere::KlobucharCoefficients;
     use crate::orbits::beidou::BeidouSystemTime;
     use crate::orbits::galileo::GalileoSystemTime;
+    use crate::orbits::glonass::GlonassSystemTime;
     use crate::orbits::gps::{GpsBroadcastNavigationData, GpsEphemeris};
     use bijux_gnss_core::api::{
         Constellation, Cycles, Hertz, LockFlags, Meters, ObsEpoch, ObsMetadata, ObsSatellite,
@@ -1547,6 +1685,45 @@ C11 2006 01 01 18 00 00-1.800000000000D-04 2.200000000000D-12-2.600000000000D-19
         assert_eq!(beidou.ephemeris.aode, 3);
         assert!((beidou.ephemeris.sqrt_a - 5_282.625_128).abs() < 1.0e-12);
         assert!((beidou.ephemeris.toe_s - 64_800.0).abs() < 1.0e-9);
+    }
+
+    #[test]
+    fn parse_rinex_navigation_dataset_reads_glonass_records() {
+        let data = "\
+     3.05           NAVIGATION DATA     M (MIXED)           RINEX VERSION / TYPE
+bijux-gnss                              PGM / RUN BY / DATE
+                                                            END OF HEADER
+R07 2022 05 13 23 15 30-2.572406083345D-05 8.000000000000D-13 8.370000000000D+04
+   -7.557760253906D+03 1.013183593750D-01-3.725290298462D-09 0.000000000000D+00
+   -2.396222558594D+04 6.021127700806D-01 0.000000000000D+00-4.000000000000D+00
+   -4.337567871094D+03-3.495733261108D+00 1.862645149231D-09 2.800000000000D+01
+";
+
+        let dataset = parse_rinex_navigation_dataset(data).expect("parse GLONASS navigation");
+
+        assert!(dataset.gps.is_empty());
+        assert!(dataset.galileo.is_empty());
+        assert!(dataset.beidou.is_empty());
+        assert_eq!(dataset.glonass.len(), 1);
+        let frame = &dataset.glonass[0];
+        assert_eq!(frame.sat, SatId { constellation: Constellation::Glonass, prn: 7 });
+        assert_eq!(frame.immediate.reported_slot.expect("reported slot").value(), 7);
+        assert_eq!(frame.immediate.frame_time.hour, 23);
+        assert_eq!(frame.immediate.frame_time.minute, 15);
+        assert!(frame.immediate.frame_time.half_minute);
+        assert_eq!(frame.immediate.ephemeris_reference_time_s, 83_700);
+        assert_eq!(
+            frame.immediate.system_time,
+            Some(GlonassSystemTime { day_number: 133, four_year_interval: None })
+        );
+        assert!((frame.immediate.clock_bias_s - 2.572_406_083_345e-5).abs() < 1.0e-17);
+        assert!((frame.immediate.relative_frequency_bias - 8.0e-13).abs() < 1.0e-24);
+        assert!((frame.immediate.state_vector.x_m + 7_557_760.253_906).abs() < 1.0e-6);
+        assert!((frame.immediate.state_vector.vy_mps - 602.112_770_080_6).abs() < 1.0e-9);
+        assert!((frame.immediate.state_vector.az_mps2 - 1.862_645_149_231e-6).abs() < 1.0e-18);
+        assert!(!frame.immediate.health.line_unhealthy);
+        assert_eq!(frame.immediate.health.status_code, 0);
+        assert_eq!(frame.immediate.immediate_data_age_days, 28);
     }
 
     #[test]
