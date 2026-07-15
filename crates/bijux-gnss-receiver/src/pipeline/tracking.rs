@@ -2030,5 +2030,5 @@ impl Tracking {
 }
 
 #[cfg(test)]
-#[path = "tracking/tests.rs"]
+#[path = "tracking/tests/mod.rs"]
 mod tests;

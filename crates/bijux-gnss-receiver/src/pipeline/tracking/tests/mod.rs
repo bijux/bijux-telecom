@@ -19,19 +19,19 @@ use bijux_gnss_signal::api::{
 use num_complex::Complex;
 use serde::Deserialize;
 
-#[path = "tests/loop_dynamics.rs"]
+#[path = "loop_dynamics.rs"]
 mod loop_dynamics;
-#[path = "tests/multipath_bias.rs"]
+#[path = "multipath_bias.rs"]
 mod multipath_bias;
-#[path = "tests/navigation_time.rs"]
+#[path = "navigation_time.rs"]
 mod navigation_time;
-#[path = "tests/reporting.rs"]
+#[path = "reporting.rs"]
 mod reporting;
-#[path = "tests/secondary_code_sync.rs"]
+#[path = "secondary_code_sync.rs"]
 mod secondary_code_sync;
-#[path = "tests/signal_model.rs"]
+#[path = "signal_model.rs"]
 mod signal_model;
-#[path = "tests/vector_tracking.rs"]
+#[path = "vector_tracking.rs"]
 mod vector_tracking;
 
 fn empty_loop_state() -> super::LoopState {
