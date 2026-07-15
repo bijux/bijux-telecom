@@ -4,7 +4,7 @@
 //! - thermal_noise_m falls back to a fixed 1.0 m placeholder only when tracking did not emit uncertainty.
 //! - tracking_jitter_m falls back to a CN0-derived heuristic only for legacy epochs without tracking uncertainty.
 //! - multipath_proxy_m = |Δ divergence| meters (proxy, not a modeled multipath estimator).
-//! - clock_error_m = 0.0 m (placeholder).
+//! - clock_error_m comes from configured receiver-clock bias uncertainty.
 //!
 //! TODO(ref-grade): add literature citations for CN0 weighting and multipath heuristics.
 
@@ -150,6 +150,14 @@ struct PseudorangeUncertaintyModel {
     sigma_m: f64,
     thermal_noise_m: f64,
     tracking_jitter_m: f64,
+}
+
+#[derive(Debug, Clone)]
+struct ObservationReceiverClock {
+    bias_s: f64,
+    frequency_bias_hz: f64,
+    bias_sigma_s: f64,
+    source: String,
 }
 
 const BASE_CARRIER_PHASE_DISCONTINUITY_THRESHOLD_CYCLES: f64 = 0.25;
@@ -371,13 +379,14 @@ fn observations_from_tracking_with_provenance(
     let mut diagnostics = Vec::new();
     let mut last_sample_index = None;
     let mut last_locked_sample = None;
-    let clock_bias_s = 0.0_f64;
+    let receiver_clock = observation_receiver_clock(config);
 
     for epoch in epochs {
         let signal_model = observation_signal_model(config, epoch);
         let (time_tag_source, time_tag_sample_index) =
             tracking_time_tag(epoch, &mut last_locked_sample);
-        let t_rx_s = Seconds(epoch.sample_index as f64 / config.sampling_freq_hz + clock_bias_s);
+        let sample_time_s = epoch.sample_index as f64 / config.sampling_freq_hz;
+        let t_rx_s = Seconds(sample_time_s + receiver_clock.bias_s);
 
         let expected_step =
             observation_epoch_interval_samples(config, &signal_model, epoch.signal_band);
@@ -411,22 +420,23 @@ fn observations_from_tracking_with_provenance(
         }
         last_sample_index = Some(epoch.sample_index);
 
-        let receive_gps_time =
-            capture_start_gps_time.map(|gps_time| gps_time.offset_seconds(t_rx_s.0));
+        let receive_gps_time = capture_start_gps_time
+            .map(|gps_time| gps_time.offset_seconds(sample_time_s + receiver_clock.bias_s));
         let pseudorange = pseudorange_from_tracking_epoch(
             epoch,
             signal_model.samples_per_chip,
             signal_model.signal.code_rate_hz,
             signal_model.code_length as f64,
             receive_gps_time,
-            clock_bias_s,
+            receiver_clock.bias_s,
         );
 
-        let tracked_carrier_phase_cycles = epoch.carrier_phase_cycles.0;
-        let doppler_hz = bijux_gnss_core::api::Hertz(doppler_hz_from_carrier_hz(
-            signal_model.carrier_reference_hz,
-            epoch.carrier_hz.0,
-        ));
+        let tracked_carrier_phase_cycles = epoch.carrier_phase_cycles.0
+            + receiver_clock_carrier_phase_cycles(&receiver_clock, signal_model.signal);
+        let doppler_hz = bijux_gnss_core::api::Hertz(
+            doppler_hz_from_carrier_hz(signal_model.carrier_reference_hz, epoch.carrier_hz.0)
+                + receiver_clock.frequency_bias_hz,
+        );
         let carrier_phase = carrier_phase_observation(
             epoch,
             tracked_carrier_phase_cycles,
@@ -493,7 +503,7 @@ fn observations_from_tracking_with_provenance(
                 thermal_noise_m: Meters(pseudorange_uncertainty.thermal_noise_m),
                 tracking_jitter_m: Meters(pseudorange_uncertainty.tracking_jitter_m),
                 multipath_proxy_m: Meters(0.0),
-                clock_error_m: Meters(0.0),
+                clock_error_m: receiver_clock_error_m(&receiver_clock),
             }),
             metadata: ObsMetadata {
                 tracking_mode: "scalar".to_string(),
@@ -540,6 +550,10 @@ fn observations_from_tracking_with_provenance(
                 time_tag_source,
                 time_tag_sample_index,
                 time_tag_sample_rate_hz: config.sampling_freq_hz,
+                receiver_clock_bias_s: Seconds(receiver_clock.bias_s),
+                receiver_clock_frequency_bias_hz: receiver_clock.frequency_bias_hz,
+                receiver_clock_bias_sigma_s: Seconds(receiver_clock.bias_sigma_s),
+                receiver_clock_source: receiver_clock.source.clone(),
                 tracking_uncertainty,
             },
         };
@@ -683,6 +697,7 @@ pub fn observation_artifacts_from_tracking_results_with_gps_anchor(
     let mut hatch: HashMap<SigId, HatchFilterState> = HashMap::new();
     let mut raw_snapshots: HashMap<String, RawObservationSnapshot> = HashMap::new();
     let mut ambiguity_inputs: HashMap<String, CodePeriodAmbiguityInput> = HashMap::new();
+    let receiver_clock = observation_receiver_clock(config);
     let mut diagnostics = Vec::new();
     for track in tracks {
         for epoch in &track.epochs {
@@ -807,7 +822,7 @@ pub fn observation_artifacts_from_tracking_results_with_gps_anchor(
         }
         let source_time = epoch.source_time;
         let artifact_id = format!("obs-epoch-{:010}", epoch.epoch_idx);
-        epoch.t_rx_s = source_time.receiver_time_s;
+        epoch.t_rx_s = Seconds(source_time.receiver_time_s.0 + receiver_clock.bias_s);
         epoch.source_time = source_time;
         let epoch_key = bijux_gnss_core::api::obs_epoch_stability_key(&epoch);
         epoch.manifest = Some(ObsEpochManifest {
@@ -1121,6 +1136,46 @@ fn observation_signal_key(signal_id: SigId) -> String {
     )
 }
 
+fn observation_receiver_clock(config: &ReceiverPipelineConfig) -> ObservationReceiverClock {
+    ObservationReceiverClock {
+        bias_s: finite_receiver_clock_value(config.receiver_clock_bias_s),
+        frequency_bias_hz: finite_receiver_clock_value(config.receiver_clock_frequency_bias_hz),
+        bias_sigma_s: finite_receiver_clock_sigma(config.receiver_clock_bias_sigma_s),
+        source: if config.receiver_clock_source.trim().is_empty() {
+            "config".to_string()
+        } else {
+            config.receiver_clock_source.clone()
+        },
+    }
+}
+
+fn finite_receiver_clock_value(value: f64) -> f64 {
+    if value.is_finite() {
+        value
+    } else {
+        0.0
+    }
+}
+
+fn finite_receiver_clock_sigma(value: f64) -> f64 {
+    if value.is_finite() && value >= 0.0 {
+        value
+    } else {
+        0.0
+    }
+}
+
+fn receiver_clock_error_m(receiver_clock: &ObservationReceiverClock) -> Meters {
+    Meters(receiver_clock.bias_sigma_s * SPEED_OF_LIGHT_MPS)
+}
+
+fn receiver_clock_carrier_phase_cycles(
+    receiver_clock: &ObservationReceiverClock,
+    signal: SignalSpec,
+) -> f64 {
+    receiver_clock.bias_s * signal.carrier_hz.value()
+}
+
 fn finite_value(value: Option<f64>) -> Option<f64> {
     value.filter(|candidate| candidate.is_finite())
 }
@@ -1343,10 +1398,7 @@ fn pseudorange_from_tracking_epoch(
             code_period_s,
         ) {
             return PseudorangeComputation {
-                pseudorange_m: Meters(
-                    resolved.signal_travel_time_s.0 * SPEED_OF_LIGHT_MPS
-                        + clock_bias_s * SPEED_OF_LIGHT_MPS,
-                ),
+                pseudorange_m: Meters(resolved.signal_travel_time_s.0 * SPEED_OF_LIGHT_MPS),
                 timing: Some(ObsSignalTiming {
                     signal_travel_time_s: resolved.signal_travel_time_s,
                     transmit_gps_time: resolved.transmit_gps_time,
@@ -1665,8 +1717,9 @@ fn code_period_ambiguity_input_from_tracking_epoch(
     epoch: &TrackEpoch,
 ) -> Option<CodePeriodAmbiguityInput> {
     let transmit_time = epoch.transmit_time.as_ref()?;
-    let receive_gps_time =
-        capture_start_gps_time?.offset_seconds(epoch.sample_index as f64 / config.sampling_freq_hz);
+    let receive_gps_time = capture_start_gps_time?.offset_seconds(
+        epoch.sample_index as f64 / config.sampling_freq_hz + config.receiver_clock_bias_s,
+    );
     let signal_model = observation_signal_model(config, epoch);
     let code_phase_timing = code_phase_timing_from_tracking_epoch(
         epoch,
@@ -2200,17 +2253,17 @@ fn observation_error_model(
     multipath_proxy_m: f64,
 ) -> bijux_gnss_core::api::MeasurementErrorModel {
     let fallback_sigma_m = sat.pseudorange_var_m2.sqrt();
-    let (thermal_noise_m, tracking_jitter_m) = sat
+    let (thermal_noise_m, tracking_jitter_m, clock_error_m) = sat
         .error_model
         .as_ref()
-        .map(|model| (model.thermal_noise_m, model.tracking_jitter_m))
-        .unwrap_or((Meters(fallback_sigma_m), Meters(fallback_sigma_m)));
+        .map(|model| (model.thermal_noise_m, model.tracking_jitter_m, model.clock_error_m))
+        .unwrap_or((Meters(fallback_sigma_m), Meters(fallback_sigma_m), Meters(0.0)));
 
     bijux_gnss_core::api::MeasurementErrorModel {
         thermal_noise_m,
         tracking_jitter_m,
         multipath_proxy_m: Meters(multipath_proxy_m),
-        clock_error_m: Meters(0.0),
+        clock_error_m,
     }
 }
 
@@ -3522,6 +3575,52 @@ mod tests {
         );
         assert_eq!(timing.transmit_gps_time.week, 2200);
         assert!((timing.transmit_gps_time.tow_s - 345_600.0).abs() <= 1.0e-9);
+    }
+
+    #[test]
+    fn observations_apply_receiver_clock_model_to_observables() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 4_092_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 1023,
+            receiver_clock_bias_s: 2.0e-6,
+            receiver_clock_frequency_bias_hz: 17.5,
+            receiver_clock_bias_sigma_s: 3.0e-8,
+            receiver_clock_source: "synthetic_receiver_clock".to_string(),
+            ..ReceiverPipelineConfig::default()
+        };
+        let raw_carrier_phase_cycles = 125.25;
+        let raw_doppler_hz = 100.0;
+        let carrier_hz = crate::pipeline::doppler::carrier_hz_from_doppler_hz(0.0, raw_doppler_hz);
+        let track = track_from_epoch(make_tracking_epoch_with_alignment(
+            6,
+            &config,
+            70,
+            carrier_hz,
+            raw_carrier_phase_cycles,
+            68,
+            128.0,
+        ));
+
+        let report = observations_from_tracking_results(&config, &[track], 10);
+        let epoch = report.output.first().expect("observation epoch");
+        let sat = epoch.sats.first().expect("observation satellite");
+        let error_model = sat.error_model.as_ref().expect("error model");
+        let expected_pseudorange_m =
+            aligned_pseudorange_m(&config, 68, 128.0) + 2.0e-6 * SPEED_OF_LIGHT_MPS;
+        let expected_carrier_phase_cycles =
+            raw_carrier_phase_cycles + 2.0e-6 * GPS_L1_CA_CARRIER_HZ.value();
+
+        assert!((epoch.t_rx_s.0 - (70.0e-3 + 2.0e-6)).abs() <= 1.0e-12);
+        assert!((sat.pseudorange_m.0 - expected_pseudorange_m).abs() <= 1.0e-6);
+        assert!((sat.carrier_phase_cycles.0 - expected_carrier_phase_cycles).abs() <= 1.0e-6);
+        assert!((sat.doppler_hz.0 - (raw_doppler_hz + 17.5)).abs() <= f64::EPSILON);
+        assert!((error_model.clock_error_m.0 - 3.0e-8 * SPEED_OF_LIGHT_MPS).abs() <= 1.0e-12);
+        assert_eq!(sat.metadata.receiver_clock_bias_s, Seconds(2.0e-6));
+        assert_eq!(sat.metadata.receiver_clock_frequency_bias_hz, 17.5);
+        assert_eq!(sat.metadata.receiver_clock_bias_sigma_s, Seconds(3.0e-8));
+        assert_eq!(sat.metadata.receiver_clock_source, "synthetic_receiver_clock");
     }
 
     #[test]
