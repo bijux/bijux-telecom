@@ -3,7 +3,10 @@
 use std::collections::BTreeMap;
 
 use bijux_gnss_core::api::{AmbiguityId, ObsEpoch, ObsSatellite, ObservationStatus, SigId};
-use bijux_gnss_nav::api::{RtkDoubleDifferenceObservation, RtkSingleDifferenceObservation};
+use bijux_gnss_nav::api::{
+    RtkDoubleDifferenceObservation, RtkEpochAlignmentEvidence, RtkSingleDifferenceObservation,
+    RTK_EPOCH_ALIGNMENT_TOLERANCE_S,
+};
 
 pub(crate) fn single_differences_from_epochs(
     base_epoch: &ObsEpoch,
@@ -24,6 +27,15 @@ pub(crate) fn single_differences_from_epochs(
         {
             continue;
         }
+        let base_receive_time_s = base_epoch.t_rx_s.0;
+        let rover_receive_time_s = rover_epoch.t_rx_s.0;
+        let delta_s = (base_receive_time_s - rover_receive_time_s).abs();
+        if !base_receive_time_s.is_finite()
+            || !rover_receive_time_s.is_finite()
+            || delta_s > RTK_EPOCH_ALIGNMENT_TOLERANCE_S
+        {
+            continue;
+        }
 
         differences.push(RtkSingleDifferenceObservation {
             sig: rover_observation.signal_id,
@@ -34,6 +46,12 @@ pub(crate) fn single_differences_from_epochs(
             rover_signal_timing: rover_observation.timing,
             base_pseudorange_m: base_observation.pseudorange_m.0,
             base_signal_timing: base_observation.timing,
+            epoch_alignment: RtkEpochAlignmentEvidence {
+                base_receive_time_s,
+                rover_receive_time_s,
+                delta_s,
+                tolerance_s: RTK_EPOCH_ALIGNMENT_TOLERANCE_S,
+            },
             code_m: rover_observation.pseudorange_m.0 - base_observation.pseudorange_m.0,
             phase_cycles: rover_observation.carrier_phase_cycles.0
                 - base_observation.carrier_phase_cycles.0,

@@ -160,10 +160,11 @@ pub use crate::estimation::rtk::quality::{
 pub use crate::estimation::rtk::single_difference::{
     choose_rtk_single_difference_reference_signal,
     choose_rtk_single_difference_reference_signals_by_constellation,
-    rtk_single_difference_residual_metrics,
+    rtk_epoch_alignment_evidence, rtk_single_difference_residual_metrics,
     rtk_single_difference_residual_metrics_with_antenna_corrections,
+    rtk_single_differences_from_aligned_obs_epochs,
     rtk_single_differences_from_obs_epochs, RtkSingleDifferenceObservation,
-    RtkSingleDifferenceResidualMetrics,
+    RtkEpochAlignmentEvidence, RtkSingleDifferenceResidualMetrics, RTK_EPOCH_ALIGNMENT_TOLERANCE_S,
 };
 /// RTK double-difference helpers.
 pub use crate::estimation::rtk::{

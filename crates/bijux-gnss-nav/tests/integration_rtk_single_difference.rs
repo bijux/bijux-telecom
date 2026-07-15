@@ -7,8 +7,9 @@ use bijux_gnss_core::api::{
 };
 use bijux_gnss_nav::api::{
     choose_rtk_single_difference_reference_signals_by_constellation, geodetic_to_ecef,
-    rtk_single_difference_residual_metrics, rtk_single_differences_from_obs_epochs,
-    sat_state_gps_l1ca_at_receive_time, GpsEphemeris,
+    rtk_single_difference_residual_metrics, rtk_single_differences_from_aligned_obs_epochs,
+    rtk_single_differences_from_obs_epochs, sat_state_gps_l1ca_at_receive_time, GpsEphemeris,
+    RTK_EPOCH_ALIGNMENT_TOLERANCE_S,
 };
 
 const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
@@ -237,6 +238,32 @@ fn rtk_single_difference_builder_skips_rejected_or_unlocked_inputs() {
     let observations = rtk_single_differences_from_obs_epochs(&base, &rover);
 
     assert!(observations.is_empty());
+}
+
+#[test]
+fn rtk_single_difference_builder_refuses_misaligned_epochs() {
+    let base = make_simple_epoch(14, Constellation::Gps, 20_000_000.0, 45.0);
+    let mut rover = make_simple_epoch(14, Constellation::Gps, 20_000_050.0, 45.0);
+    rover.t_rx_s = Seconds(RTK_EPOCH_ALIGNMENT_TOLERANCE_S * 3.0);
+
+    let observations = rtk_single_differences_from_obs_epochs(&base, &rover);
+
+    assert!(observations.is_empty());
+}
+
+#[test]
+fn rtk_single_difference_builder_records_bounded_epoch_alignment() {
+    let base = make_simple_epoch(15, Constellation::Gps, 20_000_000.0, 45.0);
+    let mut rover = make_simple_epoch(15, Constellation::Gps, 20_000_050.0, 45.0);
+    rover.t_rx_s = Seconds(0.0002);
+
+    let observations = rtk_single_differences_from_aligned_obs_epochs(&base, &rover, 0.00025);
+
+    assert_eq!(observations.len(), 1);
+    assert_eq!(observations[0].epoch_alignment.base_receive_time_s, 0.0);
+    assert_eq!(observations[0].epoch_alignment.rover_receive_time_s, 0.0002);
+    assert!((observations[0].epoch_alignment.delta_s - 0.0002).abs() < 1.0e-12);
+    assert_eq!(observations[0].epoch_alignment.tolerance_s, 0.00025);
 }
 
 #[test]
