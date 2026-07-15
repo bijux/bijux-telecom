@@ -53,6 +53,12 @@ use related_signal_follow_up::{
     annotate_related_signal_follow_up_candidates, annotate_related_signal_follow_up_explain,
     should_replace_related_signal_row,
 };
+use search_window::{
+    append_assisted_search_fallback_reason, assisted_search_fallback_reason,
+    code_phase_outside_search_range, search_window_candidate_reason, should_retry_assisted_search,
+    SearchWindowDiagnostic, SearchWindowDimension, SearchWindowEdge,
+    SEARCH_EDGE_HINT_PEAK_MEAN_RATIO_FRACTION, SEARCH_EDGE_RISE_RATIO_EPSILON,
+};
 #[cfg(test)]
 use signal_model::acquisition_signal_model_for_sat;
 use signal_model::{
@@ -73,6 +79,7 @@ use threshold_resolution::{
 mod cache;
 mod false_alarm_calibration;
 mod related_signal_follow_up;
+mod search_window;
 mod signal_model;
 mod strategy_components;
 mod threshold_resolution;
@@ -103,8 +110,6 @@ pub struct AcquisitionStats {
     pub deferred_count: u64,
 }
 
-const SEARCH_EDGE_HINT_PEAK_MEAN_RATIO_FRACTION: f32 = 0.9;
-const SEARCH_EDGE_RISE_RATIO_EPSILON: f32 = 0.05;
 const JOINT_ACQUISITION_REFINEMENT_METHOD: &str = "quadratic_likelihood_surface";
 const SUB_BIN_DOPPLER_REFINEMENT_METHOD: &str = "parabolic_peak";
 const SUB_BIN_DOPPLER_REFINEMENT_MAX_OFFSET_BINS: f64 = 0.5;
@@ -117,29 +122,6 @@ const ACQUISITION_UNCERTAINTY_LOG_RESPONSE_FLOOR_RATIO: f64 = 1.0e-6;
 const FALSE_ALARM_CALIBRATION_SEARCH_ITERATIONS: usize = 7;
 const WRONG_PRN_DOMINANCE_RATIO_MIN: f32 = 4.0;
 const WRONG_PRN_PEAK_SECOND_RATIO_MAX: f32 = 1.1;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum SearchWindowEdge {
-    Lower,
-    Upper,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum SearchWindowDimension {
-    Doppler,
-    DopplerRate,
-    CodePhase,
-}
-
-#[derive(Debug, Clone)]
-struct SearchWindowDiagnostic {
-    dimension: SearchWindowDimension,
-    edge: SearchWindowEdge,
-    best_axis_value: f64,
-    interior_axis_value: f64,
-    best_peak_mean_ratio: f32,
-    interior_peak_mean_ratio: f32,
-}
 
 #[derive(Debug, Clone)]
 struct AcquisitionSatEvaluation {
@@ -2033,36 +2015,6 @@ fn signal_outside_search_range(
     })
 }
 
-fn search_window_candidate_reason(diagnostic: &SearchWindowDiagnostic) -> String {
-    let edge = match diagnostic.edge {
-        SearchWindowEdge::Lower => "lower",
-        SearchWindowEdge::Upper => "upper",
-    };
-    match diagnostic.dimension {
-        SearchWindowDimension::Doppler => format!(
-            "signal_outside_search_range: best carrier {:.3} Hz sits on the {edge} search edge and exceeds the interior neighbor at {:.3} Hz (peak_mean_ratio {:.6} > {:.6})",
-            diagnostic.best_axis_value,
-            diagnostic.interior_axis_value,
-            diagnostic.best_peak_mean_ratio,
-            diagnostic.interior_peak_mean_ratio,
-        ),
-        SearchWindowDimension::DopplerRate => format!(
-            "signal_outside_search_range: best Doppler rate {:.3} Hz/s sits on the {edge} search edge and exceeds the interior neighbor at {:.3} Hz/s (peak_mean_ratio {:.6} > {:.6})",
-            diagnostic.best_axis_value,
-            diagnostic.interior_axis_value,
-            diagnostic.best_peak_mean_ratio,
-            diagnostic.interior_peak_mean_ratio,
-        ),
-        SearchWindowDimension::CodePhase => format!(
-            "signal_outside_search_range: best code phase {:.0} samples sits on the {edge} search edge and exceeds the interior neighbor at {:.0} samples (peak_mean_ratio {:.6} > {:.6})",
-            diagnostic.best_axis_value,
-            diagnostic.interior_axis_value,
-            diagnostic.best_peak_mean_ratio,
-            diagnostic.interior_peak_mean_ratio,
-        ),
-    }
-}
-
 fn assisted_code_phase_search_window_diagnostic(
     config: &ReceiverPipelineConfig,
     signal_model: &AcquisitionSignalModel,
@@ -2160,110 +2112,6 @@ fn signal_outside_doppler_rate_search_range(
             interior_axis_value: interior_candidate.doppler_rate_hz_per_s,
             best_peak_mean_ratio: edge_candidate.peak_mean_ratio,
             interior_peak_mean_ratio: interior_candidate.peak_mean_ratio,
-        })
-    })
-    .max_by(|left, right| {
-        left.best_peak_mean_ratio
-            .partial_cmp(&right.best_peak_mean_ratio)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    })
-}
-
-fn candidate_is_trackable(candidate: &AcqResult) -> bool {
-    matches!(candidate.hypothesis, AcqHypothesis::Accepted | AcqHypothesis::Ambiguous)
-}
-
-fn should_retry_assisted_search(
-    request: AcqRequest,
-    resolved_bounds: &ResolvedAcquisitionSearchBounds,
-    primary_candidate: Option<&AcqResult>,
-    search_window_diagnostic: Option<&SearchWindowDiagnostic>,
-) -> bool {
-    request.assistance_bounds.is_some()
-        && resolved_bounds.search_domain_reduced
-        && (search_window_diagnostic.is_some()
-            || !primary_candidate.is_some_and(candidate_is_trackable))
-}
-
-fn assisted_search_fallback_reason(
-    primary_candidate: Option<&AcqResult>,
-    search_window_diagnostic: Option<&SearchWindowDiagnostic>,
-) -> String {
-    match search_window_diagnostic {
-        Some(diagnostic) => {
-            format!("assistance_bounds_fallback: {}", search_window_candidate_reason(diagnostic))
-        }
-        None => {
-            let candidate_reason = primary_candidate
-                .and_then(|candidate| candidate.explain_selection_reason.as_deref())
-                .unwrap_or("bounded search returned no trackable candidate");
-            format!("assistance_bounds_fallback: {candidate_reason}")
-        }
-    }
-}
-
-fn append_assisted_search_fallback_reason(candidates: &mut [AcqResult], fallback_reason: &str) {
-    if let Some(primary_candidate) = candidates.first_mut() {
-        let existing_reason = primary_candidate
-            .explain_selection_reason
-            .clone()
-            .unwrap_or_else(|| selected_reason_for_candidate(primary_candidate).to_string());
-        primary_candidate.explain_selection_reason =
-            Some(format!("{existing_reason}; {fallback_reason}"));
-    }
-}
-
-fn code_phase_outside_search_range(
-    correlation_profile: &[f32],
-    search_start_sample: usize,
-    search_step_samples: usize,
-    search_bins: usize,
-    peak_mean_threshold: f32,
-) -> Option<SearchWindowDiagnostic> {
-    if correlation_profile.len() < 2
-        || search_bins < 2
-        || search_bins >= correlation_profile.len()
-        || search_step_samples == 0
-    {
-        return None;
-    }
-
-    let mean = correlation_profile.iter().copied().sum::<f32>() / correlation_profile.len() as f32;
-    let peak_mean_ratio = |idx: usize| correlation_profile[idx] / (mean + 1.0e-6);
-    let best_peak_mean_ratio =
-        correlation_profile.iter().copied().fold(0.0_f32, f32::max) / (mean + 1.0e-6);
-    let hint_threshold =
-        peak_mean_threshold.max(best_peak_mean_ratio * SEARCH_EDGE_HINT_PEAK_MEAN_RATIO_FRACTION);
-    let lower_edge_index = search_start_sample % correlation_profile.len();
-    let lower_interior_index = (lower_edge_index + search_step_samples) % correlation_profile.len();
-    let upper_edge_index =
-        (search_start_sample + (search_bins - 1) * search_step_samples) % correlation_profile.len();
-    let upper_interior_index = (upper_edge_index + correlation_profile.len()
-        - search_step_samples % correlation_profile.len())
-        % correlation_profile.len();
-
-    [
-        (SearchWindowEdge::Lower, lower_edge_index, lower_interior_index),
-        (SearchWindowEdge::Upper, upper_edge_index, upper_interior_index),
-    ]
-    .into_iter()
-    .filter_map(|(edge, edge_index, interior_index)| {
-        let edge_peak_mean_ratio = peak_mean_ratio(edge_index);
-        let interior_peak_mean_ratio = peak_mean_ratio(interior_index);
-        if edge_peak_mean_ratio < hint_threshold {
-            return None;
-        }
-        if edge_peak_mean_ratio <= interior_peak_mean_ratio * (1.0 + SEARCH_EDGE_RISE_RATIO_EPSILON)
-        {
-            return None;
-        }
-        Some(SearchWindowDiagnostic {
-            dimension: SearchWindowDimension::CodePhase,
-            edge,
-            best_axis_value: edge_index as f64,
-            interior_axis_value: interior_index as f64,
-            best_peak_mean_ratio: edge_peak_mean_ratio,
-            interior_peak_mean_ratio,
         })
     })
     .max_by(|left, right| {
