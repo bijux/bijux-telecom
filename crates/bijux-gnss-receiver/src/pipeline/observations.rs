@@ -8,7 +8,7 @@
 use bijux_gnss_core::api::{
     CodeCarrierDivergence, CycleSlipDetector, CycleSlipDetectorEvidence, DiagnosticEvent,
     DiagnosticSeverity, GpsTime, LockFlags, Meters, ObsDecisionArtifact, ObsEpoch,
-    ObsEpochManifest, ObsMetadata, ObsSatellite, ObservationEpochDecision, ReceiverRole, SatId,
+    ObsEpochManifest, ObsMetadata, ObsSatellite, ObservationEpochDecision, ReceiverRole,
     SatObservationDecision, Seconds, SigId, TrackEpoch,
 };
 
@@ -21,6 +21,15 @@ use crate::pipeline::observations::carrier_phase::{
 #[cfg(test)]
 use crate::pipeline::observations::carrier_phase::{
     CYCLE_SLIP_DETECTION_PROBABILITY_BUDGET, CYCLE_SLIP_FALSE_ALARM_PROBABILITY_BUDGET,
+};
+use crate::pipeline::observations::code_carrier_divergence::{
+    apply_code_carrier_divergence_decomposition, classify_code_carrier_divergence,
+    code_carrier_divergence_evidence, receiver_clock_divergence_drift_m, slip_threshold_m,
+    CodeCarrierDivergenceState,
+};
+#[cfg(test)]
+use crate::pipeline::observations::code_carrier_divergence::{
+    dual_frequency_code_delay_evidence, ionosphere_delay_evidence_from_epoch,
 };
 use crate::pipeline::observations::code_period_ambiguity::{
     apply_grouped_integer_code_period_ambiguities, code_period_ambiguity_input_from_tracking_epoch,
@@ -64,7 +73,7 @@ use serde::{Deserialize, Serialize};
 #[cfg(test)]
 use bijux_gnss_core::api::{
     Constellation, Cycles, GlonassFrequencyChannel, Hertz, ObsSignalTiming, ObservationStatus,
-    ReceiverSampleTrace, SignalBand, SignalCode, SignalSpec, GPS_L1_CA_CARRIER_HZ,
+    ReceiverSampleTrace, SatId, SignalBand, SignalCode, SignalSpec, GPS_L1_CA_CARRIER_HZ,
 };
 #[cfg(test)]
 use bijux_gnss_signal::api::{glonass_l1_carrier_hz, samples_per_code};
@@ -77,6 +86,7 @@ use bijux_gnss_signal::api::{
 use timing::observation_interval_samples;
 
 mod carrier_phase;
+mod code_carrier_divergence;
 mod code_period_ambiguity;
 mod labels;
 mod measurement_quality;
@@ -116,17 +126,6 @@ pub struct ObservationPipelineArtifacts {
     pub epochs: Vec<ObsEpoch>,
     pub residuals: Vec<ObservationResidualEpochReport>,
     pub measurement_quality: Vec<ObservationMeasurementQualityEpochReport>,
-}
-
-#[derive(Debug, Clone, Copy)]
-struct IonosphereDelayEvidence {
-    signal_id: SigId,
-    delay_m: f64,
-}
-
-#[derive(Debug, Default)]
-struct CodeCarrierDivergenceState {
-    ionosphere_delay_m_by_signal: std::collections::HashMap<SigId, f64>,
 }
 
 pub fn observations_from_tracking(
@@ -759,171 +758,6 @@ fn cycle_slip_reason(sat: &ObsSatellite) -> Option<String> {
                 .cloned()
         })
         .or_else(|| Some("cycle_slip".to_string()))
-}
-
-fn code_carrier_divergence_evidence(
-    triggered: bool,
-    value_m: f64,
-    threshold_m: f64,
-) -> CycleSlipDetectorEvidence {
-    CycleSlipDetectorEvidence::new(
-        CycleSlipDetector::CodeCarrierDivergence,
-        triggered,
-        Some(value_m),
-        Some(threshold_m),
-        "m",
-        if triggered { "code_carrier_divergence" } else { "code_carrier_divergence_nominal" },
-    )
-}
-
-fn slip_threshold_m(cn0_dbhz: f64, elevation_deg: Option<f64>) -> f64 {
-    let cn0 = cn0_dbhz.clamp(20.0, 60.0);
-    let cn0_factor = 45.0 / cn0;
-    let elev = elevation_deg.unwrap_or(30.0).clamp(0.0, 90.0);
-    let elev_factor = 1.0 + (30.0 - elev).max(0.0) / 30.0;
-    5.0 * cn0_factor * elev_factor
-}
-
-fn receiver_clock_divergence_drift_m(sat: &ObsSatellite) -> f64 {
-    let carrier_hz = sat.metadata.signal.carrier_hz.value();
-    let integration_s = sat.metadata.integration_ms as f64 / 1_000.0;
-    let frequency_bias_hz = sat.metadata.receiver_clock_frequency_bias_hz;
-    if !carrier_hz.is_finite()
-        || carrier_hz <= 0.0
-        || !integration_s.is_finite()
-        || integration_s <= 0.0
-        || !frequency_bias_hz.is_finite()
-    {
-        return 0.0;
-    }
-    let wavelength_m = SPEED_OF_LIGHT_MPS / carrier_hz;
-    -frequency_bias_hz * wavelength_m * integration_s
-}
-
-fn apply_code_carrier_divergence_decomposition(
-    epoch: &mut ObsEpoch,
-    state: &mut CodeCarrierDivergenceState,
-) {
-    use std::collections::HashMap;
-
-    let mut expected_ionosphere_by_signal = HashMap::<SigId, f64>::new();
-    for evidence in ionosphere_delay_evidence_from_epoch(epoch) {
-        if let Some(previous_delay_m) =
-            state.ionosphere_delay_m_by_signal.insert(evidence.signal_id, evidence.delay_m)
-        {
-            expected_ionosphere_by_signal
-                .insert(evidence.signal_id, 2.0 * (evidence.delay_m - previous_delay_m));
-        }
-    }
-
-    for sat in &mut epoch.sats {
-        let expected_ionosphere_m =
-            expected_ionosphere_by_signal.get(&sat.signal_id).copied().unwrap_or(0.0);
-        classify_code_carrier_divergence(sat, expected_ionosphere_m);
-    }
-}
-
-fn classify_code_carrier_divergence(sat: &mut ObsSatellite, expected_ionosphere_m: f64) {
-    let Some(current) = sat.metadata.code_carrier_divergence else {
-        return;
-    };
-    let without_multipath = CodeCarrierDivergence::from_terms(
-        current.raw_m,
-        current.jump_m,
-        expected_ionosphere_m,
-        current.receiver_clock_m,
-        current.oscillator_m,
-        current.smoothing_transient_m,
-        0.0,
-    );
-    let threshold_m = slip_threshold_m(sat.cn0_dbhz, sat.elevation_deg) * 0.8;
-    let multipath_m = if without_multipath.unexplained_abs_m() > threshold_m {
-        without_multipath.unexplained_m
-    } else {
-        0.0
-    };
-    let decomposed = CodeCarrierDivergence::from_terms(
-        current.raw_m,
-        current.jump_m,
-        expected_ionosphere_m,
-        current.receiver_clock_m,
-        current.oscillator_m,
-        current.smoothing_transient_m,
-        multipath_m,
-    );
-    sat.multipath_suspect = multipath_m.abs() > threshold_m;
-    sat.error_model = observation_error_model(sat, multipath_m.abs());
-    sat.metadata.code_carrier_divergence = Some(decomposed);
-}
-
-fn ionosphere_delay_evidence_from_epoch(epoch: &ObsEpoch) -> Vec<IonosphereDelayEvidence> {
-    use std::collections::BTreeMap;
-
-    let mut by_sat = BTreeMap::<SatId, Vec<&ObsSatellite>>::new();
-    for sat in &epoch.sats {
-        by_sat.entry(sat.signal_id.sat).or_default().push(sat);
-    }
-
-    let mut out = Vec::new();
-    for sats in by_sat.values() {
-        for left_index in 0..sats.len() {
-            for right_index in (left_index + 1)..sats.len() {
-                let left = sats[left_index];
-                let right = sats[right_index];
-                if let Some((left_delay_m, right_delay_m)) =
-                    dual_frequency_code_delay_evidence(left, right)
-                {
-                    out.push(IonosphereDelayEvidence {
-                        signal_id: left.signal_id,
-                        delay_m: left_delay_m,
-                    });
-                    out.push(IonosphereDelayEvidence {
-                        signal_id: right.signal_id,
-                        delay_m: right_delay_m,
-                    });
-                }
-            }
-        }
-    }
-    out
-}
-
-fn dual_frequency_code_delay_evidence(
-    first: &ObsSatellite,
-    second: &ObsSatellite,
-) -> Option<(f64, f64)> {
-    if first.signal_id.sat != second.signal_id.sat
-        || first.signal_id.band == second.signal_id.band
-        || !first.lock_flags.code_lock
-        || !second.lock_flags.code_lock
-    {
-        return None;
-    }
-    let first_frequency_hz = first.metadata.signal.carrier_hz.value();
-    let second_frequency_hz = second.metadata.signal.carrier_hz.value();
-    if !first_frequency_hz.is_finite()
-        || !second_frequency_hz.is_finite()
-        || first_frequency_hz <= 0.0
-        || second_frequency_hz <= 0.0
-        || (first_frequency_hz - second_frequency_hz).abs() <= f64::EPSILON
-        || !first.pseudorange_m.0.is_finite()
-        || !second.pseudorange_m.0.is_finite()
-    {
-        return None;
-    }
-
-    let first_inverse_frequency2 = 1.0 / first_frequency_hz.powi(2);
-    let second_inverse_frequency2 = 1.0 / second_frequency_hz.powi(2);
-    let denominator = second_inverse_frequency2 - first_inverse_frequency2;
-    if !denominator.is_finite() || denominator == 0.0 {
-        return None;
-    }
-    let code_geometry_free_m = second.pseudorange_m.0 - first.pseudorange_m.0;
-    let ionosphere_constant = code_geometry_free_m / denominator;
-    Some((
-        ionosphere_constant * first_inverse_frequency2,
-        ionosphere_constant * second_inverse_frequency2,
-    ))
 }
 
 fn apply_dual_frequency_cycle_slip_fusion(
