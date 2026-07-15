@@ -189,10 +189,12 @@ pub use crate::formats::beidou_b1i_navigation_decode::{
 pub use crate::formats::bias_sinex::{BiasSinexProvider, BiasSinexWindow};
 /// GPS CNAV packet decoding.
 pub use crate::formats::cnav_decode::{
-    decode_gps_cnav_ephemeris_message, decode_gps_cnav_message, decode_gps_cnav_message_hex,
-    decode_gps_cnav_orbit_message, GpsCnavCommon, GpsCnavEphemerisMessage, GpsCnavMessage,
-    GpsCnavMessageRejection, GpsCnavMessageRejectionReason, GpsCnavOrbitMessage,
-    GpsCnavSignalHealth,
+    decode_gps_cnav_clock_correction_message, decode_gps_cnav_ephemeris_message,
+    decode_gps_cnav_message, decode_gps_cnav_message_hex, decode_gps_cnav_orbit_message,
+    GpsCnavClockCorrection, GpsCnavClockCorrectionMessage, GpsCnavCommon, GpsCnavEphemerisMessage,
+    GpsCnavGroupDelayCorrection, GpsCnavIonosphericCorrection, GpsCnavMessage,
+    GpsCnavMessageRejection, GpsCnavMessageRejectionReason, GpsCnavNonElevationAccuracy,
+    GpsCnavOrbitMessage, GpsCnavSignalHealth,
 };
 /// Format parsing and output.
 pub use crate::formats::galileo_inav_decode::{

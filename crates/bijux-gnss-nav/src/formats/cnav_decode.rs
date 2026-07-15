@@ -66,6 +66,53 @@ pub struct GpsCnavOrbitMessage {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GpsCnavNonElevationAccuracy {
+    pub uraned0_index: u8,
+    pub uraned1_index: u8,
+    pub uraned2_index: u8,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct GpsCnavClockCorrection {
+    pub toc_s: f64,
+    pub af0_s: f64,
+    pub af1_s_per_s: f64,
+    pub af2_s_per_s2: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct GpsCnavGroupDelayCorrection {
+    pub tgd_s: f64,
+    pub isc_l1ca_s: f64,
+    pub isc_l2c_s: f64,
+    pub isc_l5i5_s: f64,
+    pub isc_l5q5_s: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct GpsCnavIonosphericCorrection {
+    pub alpha0: f64,
+    pub alpha1: f64,
+    pub alpha2: f64,
+    pub alpha3: f64,
+    pub beta0: f64,
+    pub beta1: f64,
+    pub beta2: f64,
+    pub beta3: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GpsCnavClockCorrectionMessage {
+    pub common: GpsCnavCommon,
+    pub top_s: f64,
+    pub accuracy: GpsCnavNonElevationAccuracy,
+    pub clock: GpsCnavClockCorrection,
+    pub group_delay: GpsCnavGroupDelayCorrection,
+    pub ionosphere: GpsCnavIonosphericCorrection,
+    pub propagation_week_modulo_256: u8,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum GpsCnavMessageRejectionReason {
     InvalidBitCount,
@@ -223,6 +270,48 @@ pub fn decode_gps_cnav_orbit_message(message: &GpsCnavMessage) -> Option<GpsCnav
     })
 }
 
+pub fn decode_gps_cnav_clock_correction_message(
+    message: &GpsCnavMessage,
+) -> Option<GpsCnavClockCorrectionMessage> {
+    if message.common.message_type != 30 {
+        return None;
+    }
+
+    Some(GpsCnavClockCorrectionMessage {
+        common: message.common,
+        top_s: message.unsigned_bits(39, 11) as f64 * 300.0,
+        accuracy: GpsCnavNonElevationAccuracy {
+            uraned0_index: message.unsigned_bits(50, 5) as u8,
+            uraned1_index: message.unsigned_bits(55, 3) as u8,
+            uraned2_index: message.unsigned_bits(58, 3) as u8,
+        },
+        clock: GpsCnavClockCorrection {
+            toc_s: message.unsigned_bits(61, 11) as f64 * 300.0,
+            af2_s_per_s2: message.signed_bits(72, 10) as f64 * 2f64.powi(-60),
+            af1_s_per_s: message.signed_bits(82, 20) as f64 * 2f64.powi(-48),
+            af0_s: message.signed_bits(102, 26) as f64 * 2f64.powi(-35),
+        },
+        group_delay: GpsCnavGroupDelayCorrection {
+            tgd_s: message.signed_bits(128, 13) as f64 * 2f64.powi(-35),
+            isc_l1ca_s: message.signed_bits(141, 13) as f64 * 2f64.powi(-35),
+            isc_l2c_s: message.signed_bits(154, 13) as f64 * 2f64.powi(-35),
+            isc_l5i5_s: message.signed_bits(167, 13) as f64 * 2f64.powi(-35),
+            isc_l5q5_s: message.signed_bits(180, 13) as f64 * 2f64.powi(-35),
+        },
+        ionosphere: GpsCnavIonosphericCorrection {
+            alpha0: message.signed_bits(193, 8) as f64 * 2f64.powi(-30),
+            alpha1: message.signed_bits(201, 8) as f64 * 2f64.powi(-27),
+            alpha2: message.signed_bits(209, 8) as f64 * 2f64.powi(-24),
+            alpha3: message.signed_bits(217, 8) as f64 * 2f64.powi(-24),
+            beta0: message.signed_bits(225, 8) as f64 * 2f64.powi(11),
+            beta1: message.signed_bits(233, 8) as f64 * 2f64.powi(14),
+            beta2: message.signed_bits(241, 8) as f64 * 2f64.powi(16),
+            beta3: message.signed_bits(249, 8) as f64 * 2f64.powi(16),
+        },
+        propagation_week_modulo_256: message.unsigned_bits(257, 8) as u8,
+    })
+}
+
 fn normalize_cnav_bits(bits: &[u8]) -> Result<Vec<u8>, GpsCnavMessageRejection> {
     if bits.len() != GPS_CNAV_BITS {
         return Err(GpsCnavMessageRejection {
@@ -279,9 +368,9 @@ fn signed_from_unsigned(value: u64, bits: usize) -> i64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        cnav_crc24q, decode_gps_cnav_ephemeris_message, decode_gps_cnav_message,
-        decode_gps_cnav_orbit_message, GpsCnavMessageRejectionReason, GPS_CNAV_BITS,
-        GPS_CNAV_CRC_BITS, GPS_CNAV_DATA_BITS, GPS_CNAV_PREAMBLE,
+        cnav_crc24q, decode_gps_cnav_clock_correction_message, decode_gps_cnav_ephemeris_message,
+        decode_gps_cnav_message, decode_gps_cnav_orbit_message, GpsCnavMessageRejectionReason,
+        GPS_CNAV_BITS, GPS_CNAV_CRC_BITS, GPS_CNAV_DATA_BITS, GPS_CNAV_PREAMBLE,
     };
 
     fn set_bits(bits: &mut [u8], start: usize, len: usize, value: u64) {
@@ -471,5 +560,66 @@ mod tests {
         assert_eq!(orbit.crc_m, crc_raw as f64 * 2f64.powi(-8));
         assert_eq!(orbit.cus_rad, cus_raw as f64 * 2f64.powi(-30));
         assert_eq!(orbit.cuc_rad, cuc_raw as f64 * 2f64.powi(-30));
+    }
+
+    #[test]
+    fn cnav_clock_correction_message_decodes_type_30_fields() {
+        let top_raw = 1_010_u64;
+        let toc_raw = 1_111_u64;
+        let af2_raw = -123_i64;
+        let af1_raw = 45_678_i64;
+        let af0_raw = -2_345_678_i64;
+        let tgd_raw = -111_i64;
+        let isc_l1ca_raw = 222_i64;
+        let isc_l2c_raw = -333_i64;
+        let isc_l5i5_raw = 444_i64;
+        let isc_l5q5_raw = -555_i64;
+        let iono_raw = [-7_i64, 8, -9, 10, 11, -12, 13, -14];
+        let mut bits = valid_message(30);
+        set_bits(&mut bits, 39, 11, top_raw);
+        set_bits(&mut bits, 50, 5, 17);
+        set_bits(&mut bits, 55, 3, 3);
+        set_bits(&mut bits, 58, 3, 5);
+        set_bits(&mut bits, 61, 11, toc_raw);
+        set_bits(&mut bits, 72, 10, encode_signed(af2_raw, 10));
+        set_bits(&mut bits, 82, 20, encode_signed(af1_raw, 20));
+        set_bits(&mut bits, 102, 26, encode_signed(af0_raw, 26));
+        set_bits(&mut bits, 128, 13, encode_signed(tgd_raw, 13));
+        set_bits(&mut bits, 141, 13, encode_signed(isc_l1ca_raw, 13));
+        set_bits(&mut bits, 154, 13, encode_signed(isc_l2c_raw, 13));
+        set_bits(&mut bits, 167, 13, encode_signed(isc_l5i5_raw, 13));
+        set_bits(&mut bits, 180, 13, encode_signed(isc_l5q5_raw, 13));
+        for (idx, value) in iono_raw.iter().enumerate() {
+            set_bits(&mut bits, 193 + idx * 8, 8, encode_signed(*value, 8));
+        }
+        set_bits(&mut bits, 257, 8, 211);
+        apply_crc(&mut bits);
+
+        let message = decode_gps_cnav_message(&bits).expect("valid CNAV message");
+        let correction =
+            decode_gps_cnav_clock_correction_message(&message).expect("type 30 message");
+
+        assert_eq!(correction.top_s, top_raw as f64 * 300.0);
+        assert_eq!(correction.accuracy.uraned0_index, 17);
+        assert_eq!(correction.accuracy.uraned1_index, 3);
+        assert_eq!(correction.accuracy.uraned2_index, 5);
+        assert_eq!(correction.clock.toc_s, toc_raw as f64 * 300.0);
+        assert_eq!(correction.clock.af2_s_per_s2, af2_raw as f64 * 2f64.powi(-60));
+        assert_eq!(correction.clock.af1_s_per_s, af1_raw as f64 * 2f64.powi(-48));
+        assert_eq!(correction.clock.af0_s, af0_raw as f64 * 2f64.powi(-35));
+        assert_eq!(correction.group_delay.tgd_s, tgd_raw as f64 * 2f64.powi(-35));
+        assert_eq!(correction.group_delay.isc_l1ca_s, isc_l1ca_raw as f64 * 2f64.powi(-35));
+        assert_eq!(correction.group_delay.isc_l2c_s, isc_l2c_raw as f64 * 2f64.powi(-35));
+        assert_eq!(correction.group_delay.isc_l5i5_s, isc_l5i5_raw as f64 * 2f64.powi(-35));
+        assert_eq!(correction.group_delay.isc_l5q5_s, isc_l5q5_raw as f64 * 2f64.powi(-35));
+        assert_eq!(correction.ionosphere.alpha0, iono_raw[0] as f64 * 2f64.powi(-30));
+        assert_eq!(correction.ionosphere.alpha1, iono_raw[1] as f64 * 2f64.powi(-27));
+        assert_eq!(correction.ionosphere.alpha2, iono_raw[2] as f64 * 2f64.powi(-24));
+        assert_eq!(correction.ionosphere.alpha3, iono_raw[3] as f64 * 2f64.powi(-24));
+        assert_eq!(correction.ionosphere.beta0, iono_raw[4] as f64 * 2f64.powi(11));
+        assert_eq!(correction.ionosphere.beta1, iono_raw[5] as f64 * 2f64.powi(14));
+        assert_eq!(correction.ionosphere.beta2, iono_raw[6] as f64 * 2f64.powi(16));
+        assert_eq!(correction.ionosphere.beta3, iono_raw[7] as f64 * 2f64.powi(16));
+        assert_eq!(correction.propagation_week_modulo_256, 211);
     }
 }
