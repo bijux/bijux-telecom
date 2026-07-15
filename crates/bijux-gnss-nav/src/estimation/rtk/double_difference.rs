@@ -7,8 +7,20 @@ use bijux_gnss_core::api::{
 use serde::{Deserialize, Serialize};
 
 use super::antenna::{modeled_pseudorange_with_antenna_corrections_m, RtkAntennaCorrectionConfig};
-use super::single_difference::{RtkEpochAlignmentEvidence, RtkSingleDifferenceObservation};
+use super::single_difference::{
+    RtkEpochAlignmentEvidence, RtkSingleDifferenceCovarianceEvidence,
+    RtkSingleDifferenceObservation,
+};
 use crate::orbits::gps::{sat_state_gps_l1ca_from_observation, GpsEphemeris};
+
+/// Covariance evidence for one double difference and its reference single difference.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq)]
+pub struct RtkDoubleDifferenceCovarianceEvidence {
+    /// Non-reference single-difference covariance evidence.
+    pub signal: RtkSingleDifferenceCovarianceEvidence,
+    /// Reference single-difference covariance evidence.
+    pub reference: RtkSingleDifferenceCovarianceEvidence,
+}
 
 /// RTK double-difference observation formed against a reference satellite.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -40,6 +52,9 @@ pub struct RtkDoubleDifferenceObservation {
     /// Base/rover epoch alignment evidence shared by all four contributing observations.
     #[serde(default)]
     pub epoch_alignment: RtkEpochAlignmentEvidence,
+    /// Covariance evidence for the signal and reference single differences.
+    #[serde(default)]
+    pub covariance_evidence: RtkDoubleDifferenceCovarianceEvidence,
     /// Double-difference code observation in meters.
     pub code_m: f64,
     /// Double-difference carrier phase observation in cycles.
@@ -101,6 +116,13 @@ impl ArtifactPayloadValidate for RtkDoubleDifferenceObservation {
                 "double-difference base/rover epoch alignment is invalid",
             ));
         }
+        if !double_difference_covariance_evidence_is_valid(&self.covariance_evidence) {
+            events.push(DiagnosticEvent::new(
+                DiagnosticSeverity::Error,
+                "RTK_DD_COVARIANCE_EVIDENCE_INVALID",
+                "double-difference covariance evidence is invalid",
+            ));
+        }
         if self.code_variance_m2 < 0.0 || self.phase_variance_cycles2 < 0.0 {
             events.push(DiagnosticEvent::new(
                 DiagnosticSeverity::Error,
@@ -146,12 +168,23 @@ pub fn rtk_double_differences_from_single_differences(
             base_ref_pseudorange_m: reference.base_pseudorange_m,
             base_ref_signal_timing: reference.base_signal_timing,
             epoch_alignment: observation.epoch_alignment,
+            covariance_evidence: RtkDoubleDifferenceCovarianceEvidence {
+                signal: observation.covariance_evidence,
+                reference: reference.covariance_evidence,
+            },
             code_m: observation.code_m - reference.code_m,
             phase_cycles: observation.phase_cycles - reference.phase_cycles,
             doppler_hz: observation.doppler_hz - reference.doppler_hz,
-            code_variance_m2: observation.code_variance_m2 + reference.code_variance_m2,
-            phase_variance_cycles2: observation.phase_variance_cycles2
-                + reference.phase_variance_cycles2,
+            code_variance_m2: double_difference_variance_m2(
+                observation,
+                reference,
+                MeasurementKind::Code,
+            ),
+            phase_variance_cycles2: double_difference_variance_m2(
+                observation,
+                reference,
+                MeasurementKind::Phase,
+            ),
             canceled: vec![
                 observation.ambiguity_rover.clone(),
                 observation.ambiguity_base.clone(),
@@ -180,6 +213,27 @@ pub fn rtk_double_differences_by_constellation(
     }
     out.sort_by_key(|observation| (observation.ref_sig, observation.sig));
     out
+}
+
+/// Build the code covariance matrix for an ordered set of double differences.
+pub fn rtk_double_difference_code_covariance_matrix(
+    observations: &[RtkDoubleDifferenceObservation],
+) -> Option<Vec<Vec<f64>>> {
+    double_difference_covariance_matrix(observations, MeasurementKind::Code)
+}
+
+/// Build the carrier-phase covariance matrix for an ordered set of double differences.
+pub fn rtk_double_difference_phase_covariance_matrix(
+    observations: &[RtkDoubleDifferenceObservation],
+) -> Option<Vec<Vec<f64>>> {
+    double_difference_covariance_matrix(observations, MeasurementKind::Phase)
+}
+
+/// Build the Doppler covariance matrix for an ordered set of double differences.
+pub fn rtk_double_difference_doppler_covariance_matrix(
+    observations: &[RtkDoubleDifferenceObservation],
+) -> Option<Vec<Vec<f64>>> {
+    double_difference_covariance_matrix(observations, MeasurementKind::Doppler)
 }
 
 /// Evaluate double-difference code residuals against a known rover-base baseline.
@@ -364,6 +418,206 @@ fn aligned_receive_times(
     }
 }
 
+fn double_difference_covariance_matrix(
+    observations: &[RtkDoubleDifferenceObservation],
+    measurement: MeasurementKind,
+) -> Option<Vec<Vec<f64>>> {
+    let mut matrix = vec![vec![0.0; observations.len()]; observations.len()];
+    for (row, left) in observations.iter().enumerate() {
+        if !double_difference_covariance_evidence_is_valid(&left.covariance_evidence) {
+            return None;
+        }
+        for (col, right) in observations.iter().enumerate() {
+            if !double_difference_covariance_evidence_is_valid(&right.covariance_evidence) {
+                return None;
+            }
+            matrix[row][col] = if row == col {
+                double_difference_variance_from_observation(left, measurement)
+            } else {
+                double_difference_cross_covariance(left, right, measurement)
+            };
+        }
+    }
+    Some(matrix)
+}
+
+fn double_difference_variance_m2(
+    signal: &RtkSingleDifferenceObservation,
+    reference: &RtkSingleDifferenceObservation,
+    measurement: MeasurementKind,
+) -> f64 {
+    single_difference_variance(&signal.covariance_evidence, measurement)
+        + single_difference_variance(&reference.covariance_evidence, measurement)
+        - 2.0
+            * single_difference_pair_covariance(
+                signal.sig,
+                &signal.covariance_evidence,
+                reference.sig,
+                &reference.covariance_evidence,
+                measurement,
+            )
+}
+
+fn double_difference_variance_from_observation(
+    observation: &RtkDoubleDifferenceObservation,
+    measurement: MeasurementKind,
+) -> f64 {
+    single_difference_variance(&observation.covariance_evidence.signal, measurement)
+        + single_difference_variance(&observation.covariance_evidence.reference, measurement)
+        - 2.0
+            * single_difference_pair_covariance(
+                observation.sig,
+                &observation.covariance_evidence.signal,
+                observation.ref_sig,
+                &observation.covariance_evidence.reference,
+                measurement,
+            )
+}
+
+fn double_difference_cross_covariance(
+    left: &RtkDoubleDifferenceObservation,
+    right: &RtkDoubleDifferenceObservation,
+    measurement: MeasurementKind,
+) -> f64 {
+    single_difference_pair_covariance(
+        left.sig,
+        &left.covariance_evidence.signal,
+        right.sig,
+        &right.covariance_evidence.signal,
+        measurement,
+    ) - single_difference_pair_covariance(
+        left.sig,
+        &left.covariance_evidence.signal,
+        right.ref_sig,
+        &right.covariance_evidence.reference,
+        measurement,
+    ) - single_difference_pair_covariance(
+        left.ref_sig,
+        &left.covariance_evidence.reference,
+        right.sig,
+        &right.covariance_evidence.signal,
+        measurement,
+    ) + single_difference_pair_covariance(
+        left.ref_sig,
+        &left.covariance_evidence.reference,
+        right.ref_sig,
+        &right.covariance_evidence.reference,
+        measurement,
+    )
+}
+
+fn single_difference_variance(
+    evidence: &RtkSingleDifferenceCovarianceEvidence,
+    measurement: MeasurementKind,
+) -> f64 {
+    match measurement {
+        MeasurementKind::Code => (evidence.rover.code_m2 + evidence.base.code_m2
+            - 2.0 * evidence.rover_base_code_covariance_m2)
+            .max(0.0),
+        MeasurementKind::Phase => (evidence.rover.phase_cycles2 + evidence.base.phase_cycles2
+            - 2.0 * evidence.rover_base_phase_covariance_cycles2)
+            .max(0.0),
+        MeasurementKind::Doppler => (evidence.rover.doppler_hz2 + evidence.base.doppler_hz2
+            - 2.0 * evidence.rover_base_doppler_covariance_hz2)
+            .max(0.0),
+    }
+}
+
+fn single_difference_covariance(
+    left: &RtkSingleDifferenceCovarianceEvidence,
+    right: &RtkSingleDifferenceCovarianceEvidence,
+    measurement: MeasurementKind,
+) -> f64 {
+    match measurement {
+        MeasurementKind::Code => {
+            let rover_shared =
+                left.rover.shared_clock_code_m2.min(right.rover.shared_clock_code_m2);
+            let base_shared = left.base.shared_clock_code_m2.min(right.base.shared_clock_code_m2);
+            rover_shared
+                + base_shared
+                + left.shared_code_covariance_m2.min(right.shared_code_covariance_m2)
+        }
+        MeasurementKind::Phase => {
+            left.shared_phase_covariance_cycles2.min(right.shared_phase_covariance_cycles2)
+        }
+        MeasurementKind::Doppler => {
+            left.shared_doppler_covariance_hz2.min(right.shared_doppler_covariance_hz2)
+        }
+    }
+}
+
+fn single_difference_pair_covariance(
+    left_sig: SigId,
+    left: &RtkSingleDifferenceCovarianceEvidence,
+    right_sig: SigId,
+    right: &RtkSingleDifferenceCovarianceEvidence,
+    measurement: MeasurementKind,
+) -> f64 {
+    if left_sig == right_sig {
+        single_difference_variance(left, measurement)
+    } else {
+        single_difference_covariance(left, right, measurement)
+    }
+}
+
+fn double_difference_covariance_evidence_is_valid(
+    evidence: &RtkDoubleDifferenceCovarianceEvidence,
+) -> bool {
+    single_difference_covariance_evidence_is_valid(&evidence.signal)
+        && single_difference_covariance_evidence_is_valid(&evidence.reference)
+}
+
+fn single_difference_covariance_evidence_is_valid(
+    evidence: &RtkSingleDifferenceCovarianceEvidence,
+) -> bool {
+    source_variance_is_valid(&evidence.rover)
+        && source_variance_is_valid(&evidence.base)
+        && covariance_is_bounded(
+            evidence.rover_base_code_covariance_m2,
+            evidence.rover.code_m2,
+            evidence.base.code_m2,
+        )
+        && covariance_is_bounded(
+            evidence.rover_base_phase_covariance_cycles2,
+            evidence.rover.phase_cycles2,
+            evidence.base.phase_cycles2,
+        )
+        && covariance_is_bounded(
+            evidence.rover_base_doppler_covariance_hz2,
+            evidence.rover.doppler_hz2,
+            evidence.base.doppler_hz2,
+        )
+        && nonnegative_finite(evidence.shared_code_covariance_m2)
+        && nonnegative_finite(evidence.shared_phase_covariance_cycles2)
+        && nonnegative_finite(evidence.shared_doppler_covariance_hz2)
+}
+
+fn source_variance_is_valid(
+    source: &super::single_difference::RtkSourceObservationVariance,
+) -> bool {
+    nonnegative_finite(source.code_m2)
+        && nonnegative_finite(source.phase_cycles2)
+        && nonnegative_finite(source.doppler_hz2)
+        && nonnegative_finite(source.shared_clock_code_m2)
+        && source.shared_clock_code_m2 <= source.code_m2
+}
+
+fn covariance_is_bounded(covariance: f64, left_variance: f64, right_variance: f64) -> bool {
+    let bound = (left_variance * right_variance).sqrt();
+    covariance.is_finite() && bound.is_finite() && covariance.abs() <= bound + 1.0e-12
+}
+
+fn nonnegative_finite(value: f64) -> bool {
+    value.is_finite() && value >= 0.0
+}
+
+#[derive(Debug, Clone, Copy)]
+enum MeasurementKind {
+    Code,
+    Phase,
+    Doppler,
+}
+
 fn enu_to_ecef(base_ecef_m: [f64; 3], enu_m: [f64; 3]) -> [f64; 3] {
     let (lat_deg, lon_deg, _alt_m) = crate::estimation::position::solver::ecef_to_geodetic(
         base_ecef_m[0],
@@ -407,14 +661,15 @@ mod tests {
     use super::{
         geometric_range_m, rtk_double_difference_residual_metrics,
         rtk_double_difference_residual_metrics_with_antenna_corrections,
-        RtkDoubleDifferenceObservation,
+        RtkDoubleDifferenceCovarianceEvidence, RtkDoubleDifferenceObservation,
     };
     use crate::estimation::position::solver::{ecef_to_enu, ecef_to_geodetic};
     use crate::estimation::rtk::antenna::{
         modeled_pseudorange_with_antenna_corrections_m, RtkAntennaCorrectionConfig,
     };
     use crate::estimation::rtk::single_difference::{
-        RtkEpochAlignmentEvidence, RTK_EPOCH_ALIGNMENT_TOLERANCE_S,
+        RtkEpochAlignmentEvidence, RtkSingleDifferenceCovarianceEvidence,
+        RtkSourceObservationVariance, RTK_EPOCH_ALIGNMENT_TOLERANCE_S,
     };
     use crate::models::antenna::{
         ReceiverAntennaCalibration, ReceiverAntennaCalibrations, ReceiverPhaseCenterOffset,
@@ -602,6 +857,10 @@ mod tests {
                 delta_s: 0.0,
                 tolerance_s: RTK_EPOCH_ALIGNMENT_TOLERANCE_S,
             },
+            covariance_evidence: RtkDoubleDifferenceCovarianceEvidence {
+                signal: independent_single_difference_covariance(),
+                reference: independent_single_difference_covariance(),
+            },
             code_m: 0.0,
             phase_cycles: 0.0,
             doppler_hz: 0.0,
@@ -670,6 +929,29 @@ mod tests {
             af1: 0.0,
             af2: 0.0,
             tgd: 0.0,
+        }
+    }
+
+    fn independent_single_difference_covariance() -> RtkSingleDifferenceCovarianceEvidence {
+        RtkSingleDifferenceCovarianceEvidence {
+            rover: RtkSourceObservationVariance {
+                code_m2: 0.5,
+                phase_cycles2: 0.5,
+                doppler_hz2: 1.0,
+                shared_clock_code_m2: 0.0,
+            },
+            base: RtkSourceObservationVariance {
+                code_m2: 0.5,
+                phase_cycles2: 0.5,
+                doppler_hz2: 1.0,
+                shared_clock_code_m2: 0.0,
+            },
+            rover_base_code_covariance_m2: 0.0,
+            rover_base_phase_covariance_cycles2: 0.0,
+            rover_base_doppler_covariance_hz2: 0.0,
+            shared_code_covariance_m2: 0.0,
+            shared_phase_covariance_cycles2: 0.0,
+            shared_doppler_covariance_hz2: 0.0,
         }
     }
 

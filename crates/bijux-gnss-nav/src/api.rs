@@ -175,10 +175,13 @@ pub use crate::estimation::rtk::single_difference::{
 pub use crate::estimation::rtk::{
     antenna::RtkAntennaCorrectionConfig,
     double_difference::{
-        rtk_double_difference_residual_metrics,
+        rtk_double_difference_code_covariance_matrix,
+        rtk_double_difference_doppler_covariance_matrix,
+        rtk_double_difference_phase_covariance_matrix, rtk_double_difference_residual_metrics,
         rtk_double_difference_residual_metrics_with_antenna_corrections,
         rtk_double_differences_by_constellation, rtk_double_differences_from_single_differences,
-        RtkDoubleDifferenceObservation, RtkDoubleDifferenceResidualMetrics,
+        RtkDoubleDifferenceCovarianceEvidence, RtkDoubleDifferenceObservation,
+        RtkDoubleDifferenceResidualMetrics,
     },
 };
 /// Advanced PPP/RTK solution claim and refusal surfaces.
