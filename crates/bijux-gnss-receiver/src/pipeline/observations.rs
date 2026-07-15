@@ -69,8 +69,6 @@ use crate::pipeline::observations::variance::{
 };
 use crate::pipeline::tracking::TrackingResult;
 use crate::pipeline::{StepReport, StepStats};
-#[cfg(feature = "reference-checks")]
-use bijux_gnss_signal::api::validate_obs_epochs;
 use bijux_gnss_signal::api::{signal_cycles_to_meters, signal_wavelength_m};
 use serde::{Deserialize, Serialize};
 
@@ -95,6 +93,7 @@ mod code_period_ambiguity;
 mod cycle_slip_fusion;
 mod decision_artifacts;
 mod epoch_manifest;
+mod epoch_validation;
 mod labels;
 mod lock_state;
 mod measurement_quality;
@@ -116,6 +115,7 @@ use code_period_ambiguity::{
 };
 pub use decision_artifacts::observation_decisions_from_epochs;
 use epoch_manifest::stamp_observation_epoch_manifest;
+use epoch_validation::{apply_observation_epoch_sanity, validate_observation_epoch_sequence};
 pub use measurement_quality::{
     ObservationMeasurementQualityEpochReport, ObservationMeasurementQualitySatellite,
 };
@@ -377,14 +377,7 @@ fn observations_from_tracking_with_provenance(
             decision_reason: None,
             manifest: None,
         };
-        let events = bijux_gnss_core::api::check_obs_epoch_sanity(&epoch);
-        if events
-            .iter()
-            .any(|e| matches!(e.severity, bijux_gnss_core::api::DiagnosticSeverity::Error))
-        {
-            epoch.valid = false;
-            diagnostics.extend(events);
-        }
+        apply_observation_epoch_sanity(&mut epoch, &mut diagnostics);
         apply_epoch_decision(&mut epoch);
         out.push(epoch);
     }
@@ -574,26 +567,11 @@ pub fn observation_artifacts_from_tracking_results_with_gps_anchor(
             }
         }
         stamp_observation_epoch_manifest(&mut epoch, &receiver_clock);
-        let events = bijux_gnss_core::api::check_obs_epoch_sanity(&epoch);
-        if events
-            .iter()
-            .any(|e| matches!(e.severity, bijux_gnss_core::api::DiagnosticSeverity::Error))
-        {
-            epoch.valid = false;
-            diagnostics.extend(events);
-        }
+        apply_observation_epoch_sanity(&mut epoch, &mut diagnostics);
         previous_epoch = Some(epoch.clone());
         out.push(epoch);
     }
-    #[cfg(feature = "reference-checks")]
-    {
-        if let Err(err) = validate_obs_epochs(&out) {
-            diagnostics.push(
-                DiagnosticEvent::new(DiagnosticSeverity::Error, "OBS_EPOCH_SEQUENCE_INVALID", err)
-                    .with_context("stage", "observations"),
-            );
-        }
-    }
+    validate_observation_epoch_sequence(&out, &mut diagnostics);
     let residuals = observation_residual_reports_from_epochs(&out, &raw_snapshots);
     let measurement_quality = observation_measurement_quality_from_epochs(&out);
     StepReport {
