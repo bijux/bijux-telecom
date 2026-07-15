@@ -25,6 +25,7 @@ use bijux_gnss_core::api::{
 };
 
 mod atmosphere_explainability;
+mod clock_model;
 mod output_identity;
 mod precision_reporting;
 mod solution_status;
@@ -32,6 +33,7 @@ mod solution_status;
 use atmosphere_explainability::{
     apply_atmosphere_explainability, apply_atmosphere_explainability_in_place,
 };
+use clock_model::ClockModel;
 use output_identity::{
     nav_artifact_id, nav_assumptions, nav_output_stability_signature, source_observation_epoch_id,
 };
@@ -2188,28 +2190,4 @@ fn navigation_satellite_state(
         sat.timing,
     )?;
     Some((state.x_m, state.y_m, state.z_m))
-}
-
-#[derive(Debug, Clone)]
-struct ClockModel {
-    bias_s: f64,
-    drift_s: f64,
-}
-
-impl ClockModel {
-    fn new() -> Self {
-        Self { bias_s: 0.0, drift_s: 0.0 }
-    }
-
-    fn update(&mut self, measurement_bias_s: f64, dt_s: f64) -> (f64, f64) {
-        let alpha = 0.1;
-        let beta = 0.01;
-        let mut bias = self.bias_s + self.drift_s * dt_s;
-        let residual = measurement_bias_s - bias;
-        bias += alpha * residual;
-        let drift = self.drift_s + (beta * residual / dt_s.max(1e-6));
-        self.bias_s = bias;
-        self.drift_s = drift;
-        (self.bias_s, self.drift_s)
-    }
 }
