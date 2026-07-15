@@ -1,6 +1,3 @@
-
-#[cfg(test)]
-mod tests {
     use super::{ChannelState, Tracking};
     use crate::engine::receiver_config::{
         BandTrackingSpec, ReceiverPipelineConfig, TrackingParams,
