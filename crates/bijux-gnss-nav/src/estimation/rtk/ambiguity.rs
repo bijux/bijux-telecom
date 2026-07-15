@@ -542,34 +542,53 @@ pub fn rtk_integer_ambiguity_candidates(
     q_prime: &[Vec<f64>],
     top_k: usize,
 ) -> Vec<RtkIntegerAmbiguityCandidate> {
-    if n_prime.is_empty() {
+    if !valid_integer_search_input(n_prime, q_prime) {
         return Vec::new();
     }
+    let requested = top_k.max(1);
+    let covariance = matrix_from_rows(q_prime);
+    let Some(information) = covariance.invert() else {
+        return Vec::new();
+    };
+    let Some(cholesky) = information.cholesky() else {
+        return Vec::new();
+    };
+    let upper = cholesky.transpose();
+    let rounded = n_prime.iter().map(|value| round_to_i64(*value)).collect::<Option<Vec<_>>>();
+    let Some(rounded) = rounded else {
+        return Vec::new();
+    };
+    let rounded_cost = candidate_cost_with_information(n_prime, &information, &rounded);
+    if !rounded_cost.is_finite() {
+        return Vec::new();
+    }
+
+    let mut radius = rounded_cost.max(1.0e-9) + 1.0;
     let mut best = Vec::new();
-    let mut base = Vec::new();
-    for &value in n_prime {
-        base.push(value.round() as i64);
-    }
-    let cost = candidate_cost(n_prime, q_prime, &base);
-    best.push(RtkIntegerAmbiguityCandidate { integers: base.clone(), cost });
-    let mut neighbor = base;
-    let mut max_index = 0;
-    let mut max_residual = 0.0;
-    for (index, &value) in n_prime.iter().enumerate() {
-        let residual = (value - value.round()).abs();
-        if residual > max_residual {
-            max_residual = residual;
-            max_index = index;
+    for _ in 0..40 {
+        let mut candidates = Vec::new();
+        let mut integers = vec![0_i64; n_prime.len()];
+        enumerate_integer_candidates(
+            n_prime.len(),
+            &upper,
+            n_prime,
+            radius,
+            0.0,
+            &mut integers,
+            &mut candidates,
+        );
+        candidates.sort_by(|left, right| {
+            left.cost.total_cmp(&right.cost).then_with(|| left.integers.cmp(&right.integers))
+        });
+        candidates.dedup_by(|left, right| left.integers == right.integers);
+        if candidates.len() >= requested {
+            candidates.truncate(requested);
+            return candidates;
         }
+        best = candidates;
+        radius = radius * 2.0 + 1.0;
     }
-    if max_residual > 0.0 {
-        let direction = if n_prime[max_index] - n_prime[max_index].round() >= 0.0 { 1 } else { -1 };
-        neighbor[max_index] += direction;
-        let cost = candidate_cost(n_prime, q_prime, &neighbor);
-        best.push(RtkIntegerAmbiguityCandidate { integers: neighbor, cost });
-    }
-    best.sort_by(|left, right| left.cost.total_cmp(&right.cost));
-    best.truncate(top_k.max(1));
+    best.truncate(requested);
     best
 }
 
@@ -706,14 +725,110 @@ pub fn rtk_conditioned_baseline_from_fixed_ambiguities(
 }
 
 fn candidate_cost(n_prime: &[f64], q_prime: &[Vec<f64>], integers: &[i64]) -> f64 {
+    let covariance = matrix_from_rows(q_prime);
+    let Some(information) = covariance.invert() else {
+        return f64::INFINITY;
+    };
+    candidate_cost_with_information(n_prime, &information, integers)
+}
+
+fn candidate_cost_with_information(n_prime: &[f64], information: &Matrix, integers: &[i64]) -> f64 {
+    if n_prime.len() != integers.len()
+        || information.rows() != n_prime.len()
+        || information.cols() != n_prime.len()
+    {
+        return f64::INFINITY;
+    }
     let mut cost = 0.0;
-    for index in 0..n_prime.len() {
-        let variance =
-            q_prime.get(index).and_then(|row| row.get(index)).copied().unwrap_or(1.0).max(1.0e-6);
-        let residual = n_prime[index] - integers[index] as f64;
-        cost += residual * residual / variance;
+    for row in 0..n_prime.len() {
+        let row_residual = integers[row] as f64 - n_prime[row];
+        for col in 0..n_prime.len() {
+            let col_residual = integers[col] as f64 - n_prime[col];
+            cost += row_residual * information[(row, col)] * col_residual;
+        }
     }
     cost
+}
+
+fn valid_integer_search_input(n_prime: &[f64], q_prime: &[Vec<f64>]) -> bool {
+    !n_prime.is_empty()
+        && q_prime.len() == n_prime.len()
+        && q_prime.iter().all(|row| row.len() == n_prime.len())
+        && n_prime.iter().all(|value| value.is_finite())
+        && q_prime.iter().flat_map(|row| row.iter()).all(|value| value.is_finite())
+}
+
+fn enumerate_integer_candidates(
+    level: usize,
+    upper_information_factor: &Matrix,
+    float: &[f64],
+    radius: f64,
+    partial_cost: f64,
+    integers: &mut [i64],
+    candidates: &mut Vec<RtkIntegerAmbiguityCandidate>,
+) {
+    if level == 0 {
+        candidates
+            .push(RtkIntegerAmbiguityCandidate { integers: integers.to_vec(), cost: partial_cost });
+        return;
+    }
+    let index = level - 1;
+    let mut future_term = 0.0;
+    for col in (index + 1)..float.len() {
+        future_term += upper_information_factor[(index, col)] * (integers[col] as f64 - float[col]);
+    }
+    let diagonal = upper_information_factor[(index, index)];
+    if !diagonal.is_finite() || diagonal.abs() < 1.0e-12 {
+        return;
+    }
+    let remaining = radius - partial_cost;
+    if remaining < -1.0e-12 {
+        return;
+    }
+    let center = float[index] - future_term / diagonal;
+    let bound = remaining.max(0.0).sqrt() / diagonal.abs();
+    let lower = (center - bound).ceil();
+    let upper = (center + bound).floor();
+    if !lower.is_finite() || !upper.is_finite() || lower > upper {
+        return;
+    }
+    let mut values = Vec::new();
+    let mut value = lower as i64;
+    while value <= upper as i64 {
+        values.push(value);
+        if value == i64::MAX {
+            break;
+        }
+        value += 1;
+    }
+    values.sort_by(|left, right| {
+        ((*left as f64 - center).abs())
+            .total_cmp(&(*right as f64 - center).abs())
+            .then_with(|| left.cmp(right))
+    });
+    for value in values {
+        let term = diagonal * (value as f64 - float[index]) + future_term;
+        let next_cost = partial_cost + term * term;
+        if next_cost <= radius + 1.0e-9 {
+            integers[index] = value;
+            enumerate_integer_candidates(
+                index,
+                upper_information_factor,
+                float,
+                radius,
+                next_cost,
+                integers,
+                candidates,
+            );
+        }
+    }
+}
+
+fn round_to_i64(value: f64) -> Option<i64> {
+    if !value.is_finite() || value < i64::MIN as f64 || value > i64::MAX as f64 {
+        return None;
+    }
+    Some(value.round() as i64)
 }
 
 fn matrix_from_rows(rows: &[Vec<f64>]) -> Matrix {

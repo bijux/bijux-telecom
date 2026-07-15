@@ -4,10 +4,11 @@ use bijux_gnss_core::api::{Constellation, SatId, SigId, SignalBand};
 use bijux_gnss_nav::api::{
     rtk_ambiguity_state_from_fixed_solution, rtk_conditioned_baseline_from_fixed_ambiguities,
     rtk_float_ambiguity_state_from_baseline_solution, rtk_float_baseline_from_double_differences,
-    rtk_transform_fixed_ambiguity_reference, rtk_transform_float_ambiguity_reference,
-    rtk_transform_float_baseline_reference, RtkAmbiguityFixPolicy, RtkAmbiguityFixState,
-    RtkAmbiguityFixStatus, RtkDoubleDifferenceAmbiguityId, RtkFloatAmbiguityEstimate,
-    RtkFloatAmbiguityState, RtkFloatBaselineSolution, RtkRatioTestFixer,
+    rtk_integer_ambiguity_candidates, rtk_transform_fixed_ambiguity_reference,
+    rtk_transform_float_ambiguity_reference, rtk_transform_float_baseline_reference,
+    RtkAmbiguityFixPolicy, RtkAmbiguityFixState, RtkAmbiguityFixStatus,
+    RtkDoubleDifferenceAmbiguityId, RtkFloatAmbiguityEstimate, RtkFloatAmbiguityState,
+    RtkFloatBaselineSolution, RtkRatioTestFixer,
 };
 use bijux_gnss_testkit::rtk_baseline::clean_gps_l1_short_baseline_case;
 
@@ -121,6 +122,20 @@ fn rtk_float_ambiguity_reference_transform_preserves_satellite_arcs() {
         transformed.covariance_cycles2,
         vec![vec![9.0, 8.0, 7.0], vec![8.0, 11.0, 6.5], vec![7.0, 6.5, 21.0]]
     );
+}
+
+#[test]
+fn rtk_integer_ambiguity_candidates_use_full_covariance_squared_norm() {
+    let candidates =
+        rtk_integer_ambiguity_candidates(&[-0.5, -0.45], &[vec![1.0, 0.8], vec![0.8, 1.0]], 4);
+
+    assert_eq!(
+        candidates.iter().map(|candidate| candidate.integers.clone()).collect::<Vec<_>>(),
+        vec![vec![0, 0], vec![-1, -1], vec![-1, 0], vec![1, 1]]
+    );
+    assert!(candidates.windows(2).all(|pair| pair[0].cost <= pair[1].cost));
+    assert!((candidates[0].cost - 0.256_944_444_444_444_4).abs() < 1.0e-12);
+    assert!((candidates[1].cost - 0.312_5).abs() < 1.0e-12);
 }
 
 #[test]
