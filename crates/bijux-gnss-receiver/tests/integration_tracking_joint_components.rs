@@ -8,16 +8,18 @@ use bijux_gnss_core::api::{
 };
 use bijux_gnss_receiver::api::{
     sim::{
-        expected_acquisition_code_phase_samples, generate_l1_ca_multi, SyntheticNavigationData,
-        SyntheticScenario, SyntheticSignalParams,
+        expected_acquisition_code_phase_samples, generate_l1_ca_multi,
+        summarize_tracking_numerical_stability, SyntheticNavigationData, SyntheticScenario,
+        SyntheticSignalParams,
     },
-    ReceiverPipelineConfig, ReceiverRuntime, TrackingEngine,
+    ReceiverPipelineConfig, ReceiverRuntime, TrackingArtifacts, TrackingEngine, TrackingResult,
 };
 
 use support::tracking_truth::carrier_phase_step_cycles;
 
 const JOINT_TRACKING_MIN_PHASE_STEP_CYCLES: f64 = 0.01;
 const JOINT_TRACKING_MAX_PHASE_STEP_CYCLES: f64 = 0.35;
+const SECONDARY_CODE_STABILITY_REQUIRED_EPOCHS: usize = 40;
 
 fn tracking_config(code_freq_basis_hz: f64, code_length: usize) -> ReceiverPipelineConfig {
     ReceiverPipelineConfig {
@@ -81,14 +83,29 @@ fn run_seeded_tracking(
     scenario: &SyntheticScenario,
     tracked_signal: &SyntheticSignalParams,
 ) -> Vec<TrackEpoch> {
-    let frame = generate_l1_ca_multi(config, scenario);
-    let tracking = TrackingEngine::new(config.clone(), ReceiverRuntime::default());
-    tracking
-        .track_from_acquisition(&frame, &[seeded_acquisition(config, &frame, tracked_signal)])
+    run_seeded_tracking_artifacts(config, scenario, tracked_signal)
+        .tracking
         .first()
         .expect("tracking result")
         .epochs
         .clone()
+}
+
+fn run_seeded_tracking_artifacts(
+    config: &ReceiverPipelineConfig,
+    scenario: &SyntheticScenario,
+    tracked_signal: &SyntheticSignalParams,
+) -> TrackingArtifacts {
+    let frame = generate_l1_ca_multi(config, scenario);
+    let tracking = TrackingEngine::new(config.clone(), ReceiverRuntime::default());
+    let tracking_results: Vec<TrackingResult> = tracking
+        .track_from_acquisition(&frame, &[seeded_acquisition(config, &frame, tracked_signal)]);
+    TrackingArtifacts {
+        processed_input_samples: frame.len() as u64,
+        processed_input_epochs: (scenario.duration_s * 1000.0).round() as u64,
+        tracking: tracking_results,
+        ..TrackingArtifacts::default()
+    }
 }
 
 fn recovered_sign_runs(epochs: &[TrackEpoch]) -> Vec<(i8, usize)> {
@@ -325,6 +342,62 @@ fn gps_l5i_tracking_uses_l5q_pilot_without_corrupting_data_signs() {
     assert_secondary_code_synchronization_accepted(&epochs);
     assert_recovered_signs_follow_alternating_data(&epochs);
     assert_carrier_continuity_across_sign_changes(&epochs);
+}
+
+#[test]
+fn gps_l5i_tracking_reports_bounded_secondary_code_phase_state() {
+    let config = tracking_config(10_230_000.0, 10_230);
+    let sat = SatId { constellation: bijux_gnss_core::api::Constellation::Gps, prn: 18 };
+    let l5i_signal = SyntheticSignalParams {
+        sat,
+        glonass_frequency_channel: None,
+        signal_band: SignalBand::L5,
+        signal_code: SignalCode::L5I,
+        doppler_hz: 180.0,
+        code_phase_chips: 2_048.25,
+        carrier_phase_rad: 0.3,
+        cn0_db_hz: 60.0,
+        navigation_data: SyntheticNavigationData::AlternatingStartPositive,
+    };
+    let l5q_signal = SyntheticSignalParams {
+        sat,
+        glonass_frequency_channel: None,
+        signal_band: SignalBand::L5,
+        signal_code: SignalCode::L5Q,
+        doppler_hz: 180.0,
+        code_phase_chips: 2_048.25,
+        carrier_phase_rad: 0.3,
+        cn0_db_hz: 60.0,
+        navigation_data: SyntheticNavigationData::ConstantPositive,
+    };
+    let scenario = SyntheticScenario {
+        sample_rate_hz: config.sampling_freq_hz,
+        intermediate_freq_hz: config.intermediate_freq_hz,
+        receiver_clock_frequency_bias_hz: 0.0,
+        duration_s: 0.080,
+        seed: 0x15A0_2871,
+        satellites: vec![l5i_signal.clone(), l5q_signal],
+        ephemerides: Vec::new(),
+        id: "tracking-secondary-code-numerical-stability".to_string(),
+    };
+    let artifacts = run_seeded_tracking_artifacts(&config, &scenario, &l5i_signal);
+    let report = summarize_tracking_numerical_stability(
+        &scenario.id,
+        &config,
+        artifacts.processed_input_samples,
+        SECONDARY_CODE_STABILITY_REQUIRED_EPOCHS,
+        &artifacts,
+    );
+
+    assert!(report.pass, "secondary-code numerical stability failed: {report:#?}");
+    let satellite = report.satellites.first().expect("tracked secondary-code satellite");
+    let secondary_code_phase =
+        satellite.secondary_code_phase.as_ref().expect("secondary-code phase stability summary");
+    assert!(secondary_code_phase.pass, "{satellite:#?}");
+    assert!(
+        secondary_code_phase.max_value <= 20.0,
+        "GPS L5 secondary-code phase left expected period range: {satellite:#?}"
+    );
 }
 
 #[test]
