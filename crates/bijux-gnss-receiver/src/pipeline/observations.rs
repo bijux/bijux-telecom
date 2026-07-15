@@ -67,8 +67,10 @@ enum CarrierPhaseContinuity {
     Unusable,
     ArcStart,
     Continuous,
+    Coasted,
     ResetAfterCycleSlip,
     ResetAfterUnlock,
+    ResetAfterReacquisition,
     ResetAfterDiscontinuity,
 }
 
@@ -1292,6 +1294,15 @@ fn carrier_phase_observation(
                 CarrierPhaseContinuity::ResetAfterDiscontinuity,
                 Some("sample_discontinuity"),
             );
+        } else if carrier_phase_arc_can_coast(epoch, state) {
+            return CarrierPhaseObservation {
+                phase_cycles: Cycles(tracked_carrier_phase_cycles),
+                cycle_slip: false,
+                cycle_slip_reason: None,
+                continuity: CarrierPhaseContinuity::Coasted,
+                arc_start_epoch_idx: state.arc_start_epoch_idx,
+                arc_start_sample_index: state.arc_start_sample_index,
+            };
         } else if state.initialized {
             cycle_slip_reason = Some("loss_of_lock".to_string());
             record_pending_reset(
@@ -1330,6 +1341,8 @@ fn carrier_phase_observation(
             CarrierPhaseContinuity::ResetAfterCycleSlip,
             explicit_cycle_slip_reason(epoch, "cycle_slip"),
         ))
+    } else if epoch.lock_state_reason.as_deref() == Some("reacquired") {
+        Some((CarrierPhaseContinuity::ResetAfterReacquisition, "reacquired".to_string()))
     } else if discontinuity && state.initialized {
         Some((CarrierPhaseContinuity::ResetAfterDiscontinuity, "sample_discontinuity".to_string()))
     } else if doppler_jump {
@@ -1345,6 +1358,8 @@ fn carrier_phase_observation(
         None
     };
     let (reset_reason, cycle_slip_reason) = if let Some((continuity, reason)) = explicit_reset {
+        state.pending_reset = None;
+        state.pending_reset_reason = None;
         (Some(continuity), Some(reason))
     } else {
         (state.pending_reset.take(), state.pending_reset_reason.take())
@@ -1362,6 +1377,7 @@ fn carrier_phase_observation(
             continuity,
             CarrierPhaseContinuity::ResetAfterCycleSlip
                 | CarrierPhaseContinuity::ResetAfterUnlock
+                | CarrierPhaseContinuity::ResetAfterReacquisition
                 | CarrierPhaseContinuity::ResetAfterDiscontinuity
         );
 
@@ -1397,6 +1413,17 @@ fn carrier_phase_tracking_usable(epoch: &TrackEpoch) -> bool {
         && epoch.pll_lock
         && epoch.lock_state != "lost"
         && epoch.carrier_phase_cycles.0.is_finite()
+}
+
+fn carrier_phase_arc_can_coast(epoch: &TrackEpoch, state: &CarrierPhaseArcState) -> bool {
+    state.initialized
+        && !epoch.cycle_slip
+        && epoch.carrier_phase_cycles.0.is_finite()
+        && epoch.lock_state == "degraded"
+        && matches!(
+            epoch.lock_state_reason.as_deref(),
+            Some("signal_fade") | Some("fade_recovered")
+        )
 }
 
 fn explicit_cycle_slip_reason(epoch: &TrackEpoch, fallback: &str) -> String {
@@ -1481,11 +1508,13 @@ fn record_pending_reset(
 fn carrier_phase_reset_priority(value: CarrierPhaseContinuity) -> u8 {
     match value {
         CarrierPhaseContinuity::ResetAfterCycleSlip => 3,
-        CarrierPhaseContinuity::ResetAfterDiscontinuity => 2,
+        CarrierPhaseContinuity::ResetAfterDiscontinuity
+        | CarrierPhaseContinuity::ResetAfterReacquisition => 2,
         CarrierPhaseContinuity::ResetAfterUnlock => 1,
         CarrierPhaseContinuity::Unusable
         | CarrierPhaseContinuity::ArcStart
-        | CarrierPhaseContinuity::Continuous => 0,
+        | CarrierPhaseContinuity::Continuous
+        | CarrierPhaseContinuity::Coasted => 0,
     }
 }
 
@@ -1494,8 +1523,10 @@ fn carrier_phase_continuity_label(value: CarrierPhaseContinuity) -> &'static str
         CarrierPhaseContinuity::Unusable => "unusable",
         CarrierPhaseContinuity::ArcStart => "arc_start",
         CarrierPhaseContinuity::Continuous => "continuous",
+        CarrierPhaseContinuity::Coasted => "coasted",
         CarrierPhaseContinuity::ResetAfterCycleSlip => "reset_after_cycle_slip",
         CarrierPhaseContinuity::ResetAfterUnlock => "reset_after_unlock",
+        CarrierPhaseContinuity::ResetAfterReacquisition => "reset_after_reacquisition",
         CarrierPhaseContinuity::ResetAfterDiscontinuity => "reset_after_discontinuity",
     }
 }
@@ -2435,6 +2466,129 @@ mod tests {
         );
         assert!(relocked.lock_flags.cycle_slip);
         assert!((relocked.carrier_phase_cycles.0 - 0.5).abs() <= f64::EPSILON);
+    }
+
+    #[test]
+    fn observations_coast_carrier_phase_arc_through_recoverable_fade() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 4_092_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 1023,
+            ..ReceiverPipelineConfig::default()
+        };
+        let carrier_hz = crate::pipeline::doppler::carrier_hz_from_doppler_hz(0.0, 125.0);
+        let faded_epoch = TrackEpoch {
+            lock: false,
+            pll_lock: false,
+            dll_lock: false,
+            fll_lock: false,
+            lock_state: "degraded".to_string(),
+            lock_state_reason: Some("signal_fade".to_string()),
+            ..make_tracking_epoch_with_phase(13, &config, 71, carrier_hz, 10.125)
+        };
+        let recovered_epoch = TrackEpoch {
+            lock_state_reason: Some("fade_recovered".to_string()),
+            ..make_tracking_epoch_with_phase(13, &config, 72, carrier_hz, 10.250)
+        };
+        let track = TrackingResult {
+            sat: SatId { constellation: Constellation::Gps, prn: 13 },
+            carrier_hz,
+            code_phase_samples: 0.0,
+            acquisition_hypothesis: "accepted".to_string(),
+            acquisition_score: 1.0,
+            acquisition_code_phase_samples: 0,
+            acquisition_carrier_hz: carrier_hz,
+            acq_to_track_state: "accepted".to_string(),
+            epochs: vec![
+                make_tracking_epoch_with_phase(13, &config, 70, carrier_hz, 10.0),
+                faded_epoch,
+                recovered_epoch,
+            ],
+            transitions: Vec::new(),
+        };
+
+        let report = observations_from_tracking_results(&config, &[track], 10);
+        let first = &report.output[0].sats[0];
+        let faded = &report.output[1].sats[0];
+        let recovered = &report.output[2].sats[0];
+
+        assert_eq!(first.metadata.carrier_phase_continuity, "arc_start");
+        assert_eq!(faded.metadata.carrier_phase_continuity, "coasted");
+        assert!(!faded.lock_flags.cycle_slip);
+        assert_eq!(
+            faded.metadata.carrier_phase_arc_start_sample_index,
+            first.metadata.carrier_phase_arc_start_sample_index
+        );
+        assert_eq!(recovered.metadata.carrier_phase_continuity, "continuous");
+        assert!(!recovered.lock_flags.cycle_slip);
+        assert_eq!(
+            recovered.metadata.carrier_phase_arc_start_sample_index,
+            first.metadata.carrier_phase_arc_start_sample_index
+        );
+    }
+
+    #[test]
+    fn observations_start_new_carrier_phase_arc_after_reacquisition() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 4_092_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 1023,
+            ..ReceiverPipelineConfig::default()
+        };
+        let carrier_hz = crate::pipeline::doppler::carrier_hz_from_doppler_hz(0.0, 100.0);
+        let lost_epoch = TrackEpoch {
+            epoch: Epoch { index: 71 },
+            sample_index: epoch_sample_index(&config, 71),
+            source_time: ReceiverSampleTrace::from_sample_index(
+                epoch_sample_index(&config, 71),
+                config.sampling_freq_hz,
+            ),
+            sat: SatId { constellation: Constellation::Gps, prn: 14 },
+            carrier_hz: Hertz(carrier_hz),
+            lock: false,
+            pll_lock: false,
+            dll_lock: false,
+            fll_lock: false,
+            lock_state: "lost".to_string(),
+            lock_state_reason: Some("prompt_power_drop".to_string()),
+            ..TrackEpoch::default()
+        };
+        let reacquired_epoch = TrackEpoch {
+            lock_state_reason: Some("reacquired".to_string()),
+            ..make_tracking_epoch_with_phase(14, &config, 72, carrier_hz, 0.5)
+        };
+        let settled_epoch = make_tracking_epoch_with_phase(14, &config, 73, carrier_hz, 0.6);
+        let track = TrackingResult {
+            sat: SatId { constellation: Constellation::Gps, prn: 14 },
+            carrier_hz,
+            code_phase_samples: 0.0,
+            acquisition_hypothesis: "accepted".to_string(),
+            acquisition_score: 1.0,
+            acquisition_code_phase_samples: 0,
+            acquisition_carrier_hz: carrier_hz,
+            acq_to_track_state: "accepted".to_string(),
+            epochs: vec![
+                make_tracking_epoch_with_phase(14, &config, 70, carrier_hz, 8.0),
+                lost_epoch,
+                reacquired_epoch,
+                settled_epoch,
+            ],
+            transitions: Vec::new(),
+        };
+
+        let report = observations_from_tracking_results(&config, &[track], 10);
+        let lost = &report.output[1].sats[0];
+        let reacquired = &report.output[2].sats[0];
+        let settled = &report.output[3].sats[0];
+
+        assert_eq!(lost.metadata.carrier_phase_continuity, "unusable");
+        assert_eq!(reacquired.metadata.carrier_phase_continuity, "reset_after_reacquisition");
+        assert_eq!(reacquired.metadata.carrier_phase_arc_start_epoch_idx, 72);
+        assert!(reacquired.lock_flags.cycle_slip);
+        assert_eq!(settled.metadata.carrier_phase_continuity, "continuous");
+        assert_eq!(settled.metadata.carrier_phase_arc_start_epoch_idx, 72);
     }
 
     #[test]
