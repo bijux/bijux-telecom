@@ -231,8 +231,7 @@ fn navigation_rejection_reason(
             gps_ephemeris_rejection_reason(ephemeris, receive_tow_s)
         }
         PositionBroadcastNavigation::Galileo(navigation) => {
-            (!is_galileo_navigation_valid(navigation, receive_tow_s))
-                .then_some(MeasurementRejectReason::InvalidEphemeris)
+            galileo_navigation_rejection_reason(navigation, receive_tow_s)
         }
         PositionBroadcastNavigation::Beidou(navigation) => {
             (!is_beidou_navigation_valid(navigation, receive_tow_s))
@@ -243,6 +242,67 @@ fn navigation_rejection_reason(
                 .then_some(MeasurementRejectReason::InvalidEphemeris)
         }
     }
+}
+
+fn galileo_navigation_rejection_reason(
+    navigation: &crate::orbits::galileo::GalileoBroadcastNavigationData,
+    receive_tow_s: f64,
+) -> Option<MeasurementRejectReason> {
+    if navigation.sat.constellation != Constellation::Galileo
+        || navigation.ephemeris.sat != navigation.sat
+    {
+        return Some(MeasurementRejectReason::EphemerisMismatch);
+    }
+    if !galileo_navigation_is_complete(navigation) {
+        return Some(MeasurementRejectReason::IncompleteEphemeris);
+    }
+    if navigation.ephemeris.iodnav != navigation.iodnav {
+        return Some(MeasurementRejectReason::EphemerisMismatch);
+    }
+    if !navigation.signal_health.e1b_data_valid || navigation.signal_health.e1b_signal_health != 0 {
+        return Some(MeasurementRejectReason::UnhealthySatellite);
+    }
+    if navigation_time_delta_s(receive_tow_s, navigation.ephemeris.toe_s)
+        < -NAVIGATION_FUTURE_TOLERANCE_S
+        || navigation_time_delta_s(receive_tow_s, navigation.clock.t0c_s)
+            < -NAVIGATION_FUTURE_TOLERANCE_S
+    {
+        return Some(MeasurementRejectReason::EphemerisFuture);
+    }
+    if galileo_navigation_age(navigation, receive_tow_s).is_stale() {
+        return Some(MeasurementRejectReason::EphemerisStale);
+    }
+    None
+}
+
+fn galileo_navigation_is_complete(
+    navigation: &crate::orbits::galileo::GalileoBroadcastNavigationData,
+) -> bool {
+    let ephemeris = &navigation.ephemeris;
+    ephemeris.sqrt_a.is_finite()
+        && ephemeris.sqrt_a > 0.0
+        && ephemeris.e.is_finite()
+        && (0.0..1.0).contains(&ephemeris.e)
+        && ephemeris.toe_s.is_finite()
+        && ephemeris.i0.is_finite()
+        && ephemeris.idot.is_finite()
+        && ephemeris.omega0.is_finite()
+        && ephemeris.omegadot.is_finite()
+        && ephemeris.w.is_finite()
+        && ephemeris.m0.is_finite()
+        && ephemeris.delta_n.is_finite()
+        && ephemeris.cuc.is_finite()
+        && ephemeris.cus.is_finite()
+        && ephemeris.crc.is_finite()
+        && ephemeris.crs.is_finite()
+        && ephemeris.cic.is_finite()
+        && ephemeris.cis.is_finite()
+        && navigation.clock.t0c_s.is_finite()
+        && navigation.clock.af0.is_finite()
+        && navigation.clock.af1.is_finite()
+        && navigation.clock.af2.is_finite()
+        && navigation.clock.bgd_e1_e5a_s.is_finite()
+        && navigation.clock.bgd_e1_e5b_s.is_finite()
 }
 
 fn gps_ephemeris_rejection_reason(
@@ -499,6 +559,11 @@ mod tests {
         PositionBroadcastNavigation, PositionObservation, SPEED_OF_LIGHT_MPS,
     };
     use crate::estimation::position::solver::geodetic_to_ecef;
+    use crate::orbits::galileo::{
+        GalileoBroadcastNavigationData, GalileoClockCorrection, GalileoEphemeris,
+        GalileoIonosphericCorrection, GalileoIonosphericDisturbanceFlags, GalileoSignalHealth,
+        GalileoSystemTime,
+    };
     use crate::orbits::gps::{sat_state_gps_l1ca, GpsEphemeris};
     use bijux_gnss_core::api::{
         Constellation, GpsTime, MeasurementRejectReason, ObsSignalTiming, SatId, Seconds, SigId,
@@ -534,6 +599,61 @@ mod tests {
             af1: 2.0e-11,
             af2: 0.0,
             tgd: 0.0,
+        }
+    }
+
+    fn sample_galileo_navigation() -> GalileoBroadcastNavigationData {
+        GalileoBroadcastNavigationData {
+            sat: SatId { constellation: Constellation::Galileo, prn: 19 },
+            iodnav: 0x1A5,
+            gst: GalileoSystemTime { week: 2222, tow_s: 64_800 },
+            sisa_e1_e5b: 77,
+            signal_health: GalileoSignalHealth {
+                e5b_signal_health: 0,
+                e1b_signal_health: 0,
+                e5b_data_valid: true,
+                e1b_data_valid: true,
+            },
+            clock: GalileoClockCorrection {
+                t0c_s: 64_800.0,
+                af0: -1.7e-4,
+                af1: 2.5e-12,
+                af2: -3.0e-19,
+                bgd_e1_e5a_s: -1.1e-9,
+                bgd_e1_e5b_s: 2.4e-9,
+            },
+            ephemeris: GalileoEphemeris {
+                sat: SatId { constellation: Constellation::Galileo, prn: 19 },
+                iodnav: 0x1A5,
+                toe_s: 64_800.0,
+                sqrt_a: 5_440.612_319,
+                e: 0.001_23,
+                i0: 0.953,
+                idot: -2.1e-10,
+                omega0: 1.17,
+                omegadot: -5.8e-9,
+                w: -0.37,
+                m0: 0.84,
+                delta_n: 4.7e-9,
+                cuc: -3.2e-6,
+                cus: 4.1e-6,
+                crc: 178.0,
+                crs: -91.0,
+                cic: 1.9e-7,
+                cis: -2.4e-7,
+            },
+            ionosphere: GalileoIonosphericCorrection {
+                ai0: 121.129_893,
+                ai1: 0.351_254_133,
+                ai2: 0.013_463_534_8,
+                disturbance_flags: GalileoIonosphericDisturbanceFlags {
+                    region_1: false,
+                    region_2: false,
+                    region_3: false,
+                    region_4: false,
+                    region_5: false,
+                },
+            },
         }
     }
 
@@ -663,6 +783,77 @@ mod tests {
     }
 
     #[test]
+    fn galileo_selection_reports_stale_navigation() {
+        let mut navigation = sample_galileo_navigation();
+        navigation.ephemeris.toe_s -= 18_000.0;
+        navigation.clock.t0c_s -= 18_000.0;
+
+        let rejected = rejected_navigation_entry_reason(
+            PositionBroadcastNavigation::Galileo(navigation),
+            sample_galileo_navigation().sat,
+            65_000.0,
+        );
+
+        assert_eq!(rejected, MeasurementRejectReason::EphemerisStale);
+    }
+
+    #[test]
+    fn galileo_selection_reports_future_navigation() {
+        let mut navigation = sample_galileo_navigation();
+        navigation.ephemeris.toe_s = 65_030.0;
+
+        let rejected = rejected_navigation_entry_reason(
+            PositionBroadcastNavigation::Galileo(navigation),
+            sample_galileo_navigation().sat,
+            65_000.0,
+        );
+
+        assert_eq!(rejected, MeasurementRejectReason::EphemerisFuture);
+    }
+
+    #[test]
+    fn galileo_selection_reports_unhealthy_e1_signal() {
+        let mut navigation = sample_galileo_navigation();
+        navigation.signal_health.e1b_signal_health = 2;
+
+        let rejected = rejected_navigation_entry_reason(
+            PositionBroadcastNavigation::Galileo(navigation),
+            sample_galileo_navigation().sat,
+            65_000.0,
+        );
+
+        assert_eq!(rejected, MeasurementRejectReason::UnhealthySatellite);
+    }
+
+    #[test]
+    fn galileo_selection_reports_iodnav_mismatch() {
+        let mut navigation = sample_galileo_navigation();
+        navigation.ephemeris.iodnav ^= 0x1;
+
+        let rejected = rejected_navigation_entry_reason(
+            PositionBroadcastNavigation::Galileo(navigation),
+            sample_galileo_navigation().sat,
+            65_000.0,
+        );
+
+        assert_eq!(rejected, MeasurementRejectReason::EphemerisMismatch);
+    }
+
+    #[test]
+    fn galileo_selection_reports_incomplete_navigation() {
+        let mut navigation = sample_galileo_navigation();
+        navigation.ephemeris.sqrt_a = f64::NAN;
+
+        let rejected = rejected_navigation_entry_reason(
+            PositionBroadcastNavigation::Galileo(navigation),
+            sample_galileo_navigation().sat,
+            65_000.0,
+        );
+
+        assert_eq!(rejected, MeasurementRejectReason::IncompleteEphemeris);
+    }
+
+    #[test]
     fn observation_consistency_metrics_match_clean_gps_observation() {
         let ephemeris = sample_gps_ephemeris();
         let navigation = PositionBroadcastNavigation::Gps(ephemeris.clone());
@@ -779,6 +970,18 @@ mod tests {
         sat: SatId,
         receive_tow_s: f64,
     ) -> MeasurementRejectReason {
+        rejected_navigation_entry_reason(
+            PositionBroadcastNavigation::Gps(ephemeris),
+            sat,
+            receive_tow_s,
+        )
+    }
+
+    fn rejected_navigation_entry_reason(
+        navigation: PositionBroadcastNavigation,
+        sat: SatId,
+        receive_tow_s: f64,
+    ) -> MeasurementRejectReason {
         let observation = PositionObservation {
             sat,
             pseudorange_m: 24_000_000.0,
@@ -787,11 +990,11 @@ mod tests {
             cn0_dbhz: 45.0,
             elevation_deg: None,
             weight: 1.0,
-            gps_receive_time: Some(GpsTime { week: ephemeris.week, tow_s: receive_tow_s }),
+            gps_receive_time: Some(GpsTime { week: 2222, tow_s: receive_tow_s }),
             signal_timing: None,
             signal_id: default_position_signal_id(sat),
         };
-        let navigation = [PositionBroadcastNavigation::Gps(ephemeris)];
+        let navigation = [navigation];
         let mut rejected = Vec::new();
 
         let inputs =
