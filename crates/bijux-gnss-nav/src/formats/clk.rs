@@ -64,6 +64,7 @@ pub struct ClkInterpolationPolicy {
 pub struct ClkInterpolationSummary {
     pub policy: ClkInterpolationPolicy,
     pub sample_count: usize,
+    pub withheld_sample_count: usize,
     pub withheld_edge_sample_count: usize,
     pub max_bias_error_s: f64,
     pub rms_bias_error_s: f64,
@@ -498,6 +499,7 @@ fn summarize_interpolation_errors(records: &[ClkRecord]) -> Option<ClkInterpolat
     Some(ClkInterpolationSummary {
         policy: CLK_INTERPOLATION_POLICY,
         sample_count: bias_errors_s.len(),
+        withheld_sample_count: bias_errors_s.len(),
         withheld_edge_sample_count: records
             .iter()
             .enumerate()
@@ -627,6 +629,7 @@ AS G01 2020 01 01 01 00 00.000000  2  0.000000313  0.000000065
         assert_eq!(summary.policy.max_gap_margin_s, 1.0);
         assert_eq!(summary.policy.max_bias_step_s, 1.0e-6);
         assert_eq!(summary.sample_count, 3);
+        assert_eq!(summary.withheld_sample_count, 3);
         assert_eq!(summary.withheld_edge_sample_count, 2);
         assert!(summary.max_bias_error_s.abs() < 1e-18);
         assert!(summary.rms_bias_error_s.abs() < 1e-18);

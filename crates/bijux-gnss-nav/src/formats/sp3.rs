@@ -92,6 +92,7 @@ pub struct Sp3InterpolationPolicy {
 pub struct Sp3InterpolationSummary {
     pub policy: Sp3InterpolationPolicy,
     pub sample_count: usize,
+    pub withheld_sample_count: usize,
     pub withheld_edge_sample_count: usize,
     pub max_position_error_m: f64,
     pub rms_position_error_m: f64,
@@ -562,6 +563,7 @@ fn summarize_interpolation_errors(records: &[Sp3Record]) -> Option<Sp3Interpolat
     Some(Sp3InterpolationSummary {
         policy: SP3_INTERPOLATION_POLICY,
         sample_count,
+        withheld_sample_count: sample_count,
         withheld_edge_sample_count,
         max_position_error_m,
         rms_position_error_m,
@@ -851,6 +853,7 @@ PG01  313.000000  64.000000  21.000000  0.000000
         assert_eq!(summary.policy.max_gap_multiplier, 1.5);
         assert_eq!(summary.policy.max_gap_margin_s, 1.0);
         assert_eq!(summary.sample_count, 3);
+        assert_eq!(summary.withheld_sample_count, 3);
         assert_eq!(summary.withheld_edge_sample_count, 2);
         assert!(summary.max_position_error_m.abs() < 1e-6);
         assert!(summary.rms_position_error_m.abs() < 1e-6);

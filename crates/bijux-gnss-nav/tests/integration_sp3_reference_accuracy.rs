@@ -45,6 +45,7 @@ fn reduced_igs_sp3_fixtures_measure_interpolation_error_within_documented_budget
         assert_eq!(summary.policy.max_gap_multiplier, 1.5);
         assert_eq!(summary.policy.max_gap_margin_s, 1.0);
         assert_eq!(summary.sample_count, 3);
+        assert_eq!(summary.withheld_sample_count, 3);
         assert_eq!(summary.withheld_edge_sample_count, 2);
         assert!(
             summary.max_position_error_m <= REDUCED_IGS_MAX_INTERPOLATION_ERROR_M,

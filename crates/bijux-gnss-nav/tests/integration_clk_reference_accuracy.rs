@@ -48,6 +48,7 @@ fn reduced_igs_clk_fixtures_measure_subnanosecond_interpolation_error() {
         assert_eq!(summary.policy.max_gap_margin_s, 1.0);
         assert_eq!(summary.policy.max_bias_step_s, 1.0e-6);
         assert_eq!(summary.sample_count, 3);
+        assert_eq!(summary.withheld_sample_count, 3);
         assert_eq!(summary.withheld_edge_sample_count, 2);
         assert!(
             summary.max_bias_error_s <= REDUCED_IGS_MAX_BIAS_ERROR_S,
