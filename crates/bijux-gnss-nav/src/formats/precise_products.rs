@@ -10,8 +10,8 @@ use crate::orbits::gps::{
     GpsEphemeris, GpsSatState, GpsSatelliteClockCorrection,
 };
 
-use crate::formats::clk::{ClkInterpolationSummary, ClkProvider};
-use crate::formats::sp3::{Sp3InterpolationSummary, Sp3Provider};
+use crate::formats::clk::{ClkInterpolationStatus, ClkInterpolationSummary, ClkProvider};
+use crate::formats::sp3::{Sp3InterpolationStatus, Sp3InterpolationSummary, Sp3Provider};
 use crate::orbits::satellite_uncertainty::{
     clk_sigma_uncertainty, SatelliteClockUncertaintySource,
 };
@@ -21,6 +21,32 @@ pub struct ProductDiagnostics {
     pub fallbacks: Vec<String>,
     pub sp3_interpolation_summary: Option<Sp3InterpolationSummary>,
     pub clk_interpolation_summary: Option<ClkInterpolationSummary>,
+    pub discontinuities: Vec<PreciseProductDiscontinuity>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PreciseProductSurface {
+    Orbit,
+    Clock,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PreciseProductDiscontinuityKind {
+    MissingSatellite,
+    OutOfCoverage,
+    InsufficientSupport,
+    OrbitGap,
+    OrbitFlag,
+    ClockGap,
+    ClockJump,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PreciseProductDiscontinuity {
+    pub sat: SatId,
+    pub t_s: f64,
+    pub surface: PreciseProductSurface,
+    pub kind: PreciseProductDiscontinuityKind,
 }
 
 impl ProductDiagnostics {
@@ -29,6 +55,7 @@ impl ProductDiagnostics {
             fallbacks: Vec::new(),
             sp3_interpolation_summary: None,
             clk_interpolation_summary: None,
+            discontinuities: Vec::new(),
         }
     }
 
@@ -42,6 +69,16 @@ impl ProductDiagnostics {
 
     pub fn precise_clock_interpolation(&mut self, summary: ClkInterpolationSummary) {
         self.clk_interpolation_summary = Some(summary);
+    }
+
+    pub fn precise_product_discontinuity(
+        &mut self,
+        sat: SatId,
+        t_s: f64,
+        surface: PreciseProductSurface,
+        kind: PreciseProductDiscontinuityKind,
+    ) {
+        self.discontinuities.push(PreciseProductDiscontinuity { sat, t_s, surface, kind });
     }
 }
 
@@ -170,24 +207,20 @@ impl ProductsProvider for Products {
         diag: &mut ProductDiagnostics,
     ) -> Option<GpsSatState> {
         if let Some(sp3) = &self.sp3 {
-            if let Some((start, end)) = sp3.coverage_s(sat) {
-                if t_s >= start && t_s <= end {
+            match sp3.interpolation_status(sat, t_s) {
+                Sp3InterpolationStatus::Usable => {
                     if let Some(state) = sp3.sat_state(sat, t_s) {
                         if let Some(summary) = sp3.interpolation_summary(sat) {
                             diag.precise_orbit_interpolation(summary);
                         }
                         return Some(self.attach_clock_uncertainty(state, sat, t_s));
                     }
-                    diag.fallback(format!(
-                        "SP3 unusable for {:?} at {:.3}s because interpolation crossed a gap, prediction, maneuver, or event",
-                        sat, t_s
-                    ));
-                } else {
-                    diag.fallback(format!("SP3 out of coverage for {:?}", sat));
                 }
+                status => record_sp3_status(diag, sat, t_s, status),
             }
+        } else {
+            diag.fallback(format!("SP3 missing for {:?}, using broadcast", sat));
         }
-        diag.fallback(format!("SP3 missing for {:?}, using broadcast", sat));
         self.broadcast
             .sat_state(sat, t_s, diag)
             .map(|state| self.attach_clock_uncertainty(state, sat, t_s))
@@ -200,24 +233,20 @@ impl ProductsProvider for Products {
         diag: &mut ProductDiagnostics,
     ) -> Option<GpsSatelliteClockCorrection> {
         if let Some(clk) = &self.clk {
-            if let Some((start, end)) = clk.coverage_s(sat) {
-                if t_s >= start && t_s <= end {
+            match clk.interpolation_status(sat, t_s) {
+                ClkInterpolationStatus::Usable => {
                     if let Some(correction) = clk.clock_correction(sat, t_s) {
                         if let Some(summary) = clk.interpolation_summary(sat) {
                             diag.precise_clock_interpolation(summary);
                         }
                         return Some(correction);
                     }
-                    diag.fallback(format!(
-                        "CLK unusable for {:?} at {:.3}s because interpolation crossed a gap or clock jump",
-                        sat, t_s
-                    ));
-                } else {
-                    diag.fallback(format!("CLK out of coverage for {:?}", sat));
                 }
+                status => record_clk_status(diag, sat, t_s, status),
             }
+        } else {
+            diag.fallback(format!("CLK missing for {:?}, using broadcast", sat));
         }
-        diag.fallback(format!("CLK missing for {:?}, using broadcast", sat));
         self.broadcast.clock_correction(sat, t_s, diag)
     }
 
@@ -228,6 +257,92 @@ impl ProductsProvider for Products {
             }
         }
         None
+    }
+}
+
+fn record_sp3_status(
+    diag: &mut ProductDiagnostics,
+    sat: SatId,
+    t_s: f64,
+    status: Sp3InterpolationStatus,
+) {
+    let Some(kind) = sp3_status_discontinuity_kind(status) else {
+        return;
+    };
+    diag.precise_product_discontinuity(sat, t_s, PreciseProductSurface::Orbit, kind);
+    diag.fallback(format!(
+        "SP3 {} for {:?} at {:.3}s, using broadcast",
+        precise_product_discontinuity_label(kind),
+        sat,
+        t_s
+    ));
+}
+
+fn record_clk_status(
+    diag: &mut ProductDiagnostics,
+    sat: SatId,
+    t_s: f64,
+    status: ClkInterpolationStatus,
+) {
+    let Some(kind) = clk_status_discontinuity_kind(status) else {
+        return;
+    };
+    diag.precise_product_discontinuity(sat, t_s, PreciseProductSurface::Clock, kind);
+    diag.fallback(format!(
+        "CLK {} for {:?} at {:.3}s, using broadcast",
+        precise_product_discontinuity_label(kind),
+        sat,
+        t_s
+    ));
+}
+
+fn sp3_status_discontinuity_kind(
+    status: Sp3InterpolationStatus,
+) -> Option<PreciseProductDiscontinuityKind> {
+    match status {
+        Sp3InterpolationStatus::Usable => None,
+        Sp3InterpolationStatus::MissingSatellite => {
+            Some(PreciseProductDiscontinuityKind::MissingSatellite)
+        }
+        Sp3InterpolationStatus::OutOfCoverage => {
+            Some(PreciseProductDiscontinuityKind::OutOfCoverage)
+        }
+        Sp3InterpolationStatus::InsufficientSupport => {
+            Some(PreciseProductDiscontinuityKind::InsufficientSupport)
+        }
+        Sp3InterpolationStatus::OrbitGap => Some(PreciseProductDiscontinuityKind::OrbitGap),
+        Sp3InterpolationStatus::FlaggedRecord => Some(PreciseProductDiscontinuityKind::OrbitFlag),
+    }
+}
+
+fn clk_status_discontinuity_kind(
+    status: ClkInterpolationStatus,
+) -> Option<PreciseProductDiscontinuityKind> {
+    match status {
+        ClkInterpolationStatus::Usable => None,
+        ClkInterpolationStatus::MissingSatellite => {
+            Some(PreciseProductDiscontinuityKind::MissingSatellite)
+        }
+        ClkInterpolationStatus::OutOfCoverage => {
+            Some(PreciseProductDiscontinuityKind::OutOfCoverage)
+        }
+        ClkInterpolationStatus::InsufficientSupport => {
+            Some(PreciseProductDiscontinuityKind::InsufficientSupport)
+        }
+        ClkInterpolationStatus::ClockGap => Some(PreciseProductDiscontinuityKind::ClockGap),
+        ClkInterpolationStatus::ClockJump => Some(PreciseProductDiscontinuityKind::ClockJump),
+    }
+}
+
+fn precise_product_discontinuity_label(kind: PreciseProductDiscontinuityKind) -> &'static str {
+    match kind {
+        PreciseProductDiscontinuityKind::MissingSatellite => "missing_satellite",
+        PreciseProductDiscontinuityKind::OutOfCoverage => "out_of_coverage",
+        PreciseProductDiscontinuityKind::InsufficientSupport => "insufficient_support",
+        PreciseProductDiscontinuityKind::OrbitGap => "orbit_gap",
+        PreciseProductDiscontinuityKind::OrbitFlag => "orbit_flag",
+        PreciseProductDiscontinuityKind::ClockGap => "clock_gap",
+        PreciseProductDiscontinuityKind::ClockJump => "clock_jump",
     }
 }
 
@@ -281,5 +396,106 @@ fn combine_code_bias_terms(left: Option<f64>, right: Option<f64>) -> Option<f64>
         (Some(left), None) => Some(left),
         (None, Some(right)) => Some(right),
         (None, None) => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        BroadcastProductsProvider, PreciseProductDiscontinuityKind, PreciseProductSurface,
+        ProductDiagnostics, Products, ProductsProvider,
+    };
+    use crate::formats::clk::ClkProvider;
+    use crate::formats::sp3::Sp3Provider;
+    use bijux_gnss_core::api::{Constellation, SatId};
+
+    fn gps_sat(prn: u8) -> SatId {
+        SatId { constellation: Constellation::Gps, prn }
+    }
+
+    #[test]
+    fn product_diagnostics_classifies_sp3_orbit_gaps() {
+        let sp3: Sp3Provider = "\
+* 2020 01 01 00 00 00.000000
+PG01  0.000000  0.000000  0.000000  0.000000
+* 2020 01 01 00 15 00.000000
+PG01  9.000000  1.000000  1.000000  0.000000
+* 2020 01 01 01 00 00.000000
+PG01  36.000000  4.000000  4.000000  0.000000
+"
+        .parse()
+        .expect("SP3 gap fixture");
+        let products = Products::new(BroadcastProductsProvider::new(Vec::new())).with_sp3(sp3);
+        let mut diagnostics = ProductDiagnostics::default();
+
+        assert!(products.sat_state(gps_sat(1), 2_700.0, &mut diagnostics).is_none());
+
+        assert!(diagnostics.discontinuities.iter().any(|discontinuity| {
+            discontinuity.surface == PreciseProductSurface::Orbit
+                && discontinuity.kind == PreciseProductDiscontinuityKind::OrbitGap
+                && discontinuity.sat == gps_sat(1)
+        }));
+    }
+
+    #[test]
+    fn product_diagnostics_classifies_sp3_flagged_records() {
+        let sp3: Sp3Provider = "\
+* 2020 01 01 00 00 00.000000
+PG01  0.000000  0.000000  0.000000  0.000000                    M
+"
+        .parse()
+        .expect("SP3 flagged fixture");
+        let products = Products::new(BroadcastProductsProvider::new(Vec::new())).with_sp3(sp3);
+        let mut diagnostics = ProductDiagnostics::default();
+
+        assert!(products.sat_state(gps_sat(1), 0.0, &mut diagnostics).is_none());
+
+        assert!(diagnostics.discontinuities.iter().any(|discontinuity| {
+            discontinuity.surface == PreciseProductSurface::Orbit
+                && discontinuity.kind == PreciseProductDiscontinuityKind::OrbitFlag
+                && discontinuity.sat == gps_sat(1)
+        }));
+    }
+
+    #[test]
+    fn product_diagnostics_classifies_clk_clock_jumps() {
+        let clk: ClkProvider = "\
+AS G01 2020 01 01 00 00 00.000000  1  0.000000001
+AS G01 2020 01 01 00 15 00.000000  1  0.000000002
+AS G01 2020 01 01 00 30 00.000000  1  0.000003500
+"
+        .parse()
+        .expect("CLK jump fixture");
+        let products = Products::new(BroadcastProductsProvider::new(Vec::new())).with_clk(clk);
+        let mut diagnostics = ProductDiagnostics::default();
+
+        assert!(products.clock_correction(gps_sat(1), 1_800.0, &mut diagnostics).is_none());
+
+        assert!(diagnostics.discontinuities.iter().any(|discontinuity| {
+            discontinuity.surface == PreciseProductSurface::Clock
+                && discontinuity.kind == PreciseProductDiscontinuityKind::ClockJump
+                && discontinuity.sat == gps_sat(1)
+        }));
+    }
+
+    #[test]
+    fn product_diagnostics_classifies_clk_clock_gaps() {
+        let clk: ClkProvider = "\
+AS G01 2020 01 01 00 00 00.000000  1  0.000000001
+AS G01 2020 01 01 00 15 00.000000  1  0.000000002
+AS G01 2020 01 01 01 00 00.000000  1  0.000000003
+"
+        .parse()
+        .expect("CLK gap fixture");
+        let products = Products::new(BroadcastProductsProvider::new(Vec::new())).with_clk(clk);
+        let mut diagnostics = ProductDiagnostics::default();
+
+        assert!(products.clock_correction(gps_sat(1), 2_700.0, &mut diagnostics).is_none());
+
+        assert!(diagnostics.discontinuities.iter().any(|discontinuity| {
+            discontinuity.surface == PreciseProductSurface::Clock
+                && discontinuity.kind == PreciseProductDiscontinuityKind::ClockGap
+                && discontinuity.sat == gps_sat(1)
+        }));
     }
 }

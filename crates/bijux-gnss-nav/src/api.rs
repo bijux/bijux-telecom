@@ -270,7 +270,8 @@ pub use crate::formats::lnav_decode::{
 };
 /// Precise product providers (SP3/CLK) and fallbacks.
 pub use crate::formats::precise_products::{
-    BroadcastProductsProvider, ProductDiagnostics, Products, ProductsProvider,
+    BroadcastProductsProvider, PreciseProductDiscontinuity, PreciseProductDiscontinuityKind,
+    PreciseProductSurface, ProductDiagnostics, Products, ProductsProvider,
 };
 pub use crate::formats::rinex::{
     format_rinex_navigation_dataset, parse_rinex_broadcast_navigation, parse_rinex_nav,
@@ -292,13 +293,14 @@ pub use crate::formats::rinex_obs::{
 /// Precise product parsing helpers.
 pub use crate::formats::{
     clk::{
-        ClkInterpolationEdgePolicy, ClkInterpolationPolicy, ClkInterpolationSummary,
-        ClkInterpolationWindowPolicy, ClkProvider, CLK_INTERPOLATION_POLICY,
+        ClkInterpolationEdgePolicy, ClkInterpolationPolicy, ClkInterpolationStatus,
+        ClkInterpolationSummary, ClkInterpolationWindowPolicy, ClkProvider,
+        CLK_INTERPOLATION_POLICY,
     },
     sp3::{
-        Sp3InterpolationEdgePolicy, Sp3InterpolationPolicy, Sp3InterpolationSummary,
-        Sp3InterpolationWindowPolicy, Sp3Provider, Sp3RecordAccuracy, Sp3RecordFlags, Sp3State,
-        SP3_INTERPOLATION_POLICY,
+        Sp3InterpolationEdgePolicy, Sp3InterpolationPolicy, Sp3InterpolationStatus,
+        Sp3InterpolationSummary, Sp3InterpolationWindowPolicy, Sp3Provider, Sp3RecordAccuracy,
+        Sp3RecordFlags, Sp3State, SP3_INTERPOLATION_POLICY,
     },
 };
 /// Linear algebra helper.

@@ -217,11 +217,11 @@ impl Sp3Provider {
         if previous.flags.invalid_for_interpolation() || next.flags.invalid_for_interpolation() {
             return Sp3InterpolationStatus::FlaggedRecord;
         }
-        if list.len() < SP3_INTERPOLATION_SUPPORT_POINTS {
-            return Sp3InterpolationStatus::InsufficientSupport;
-        }
         if !is_valid_interpolation_interval(list, previous.epoch_s, next.epoch_s) {
             return Sp3InterpolationStatus::OrbitGap;
+        }
+        if list.len() < SP3_INTERPOLATION_SUPPORT_POINTS {
+            return Sp3InterpolationStatus::InsufficientSupport;
         }
         match interpolation_support_records(list, t_s, None) {
             Some(_) => Sp3InterpolationStatus::Usable,

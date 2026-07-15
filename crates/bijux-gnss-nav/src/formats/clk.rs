@@ -256,9 +256,6 @@ impl ClkProvider {
         {
             return exact_clock_record_status(list, index);
         }
-        if list.len() < CLK_INTERPOLATION_SUPPORT_POINTS {
-            return ClkInterpolationStatus::InsufficientSupport;
-        }
         let bracket_index = list.partition_point(|record| record.epoch_s < t_s);
         let Some(previous) = bracket_index.checked_sub(1).and_then(|index| list.get(index)) else {
             return ClkInterpolationStatus::InsufficientSupport;
@@ -272,6 +269,9 @@ impl ClkProvider {
         }
         if !is_valid_clock_step(previous.bias_s, next.bias_s) {
             return ClkInterpolationStatus::ClockJump;
+        }
+        if list.len() < CLK_INTERPOLATION_SUPPORT_POINTS {
+            return ClkInterpolationStatus::InsufficientSupport;
         }
         match interpolation_support_records(list, t_s, None) {
             Some(_) => ClkInterpolationStatus::Usable,
