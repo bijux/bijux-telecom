@@ -19,7 +19,9 @@ mod geo;
 mod ids;
 mod nav_solution;
 mod obs;
+mod observation_quality;
 mod stats;
+mod support_matrix;
 mod time;
 mod units;
 
