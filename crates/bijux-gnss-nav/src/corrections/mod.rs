@@ -12,6 +12,7 @@ pub mod iono_free_phase;
 pub mod measured_ionosphere;
 pub mod melbourne_wubbena;
 pub mod narrow_lane;
+pub mod phase_windup;
 
 /// Resolved per-epoch correction inputs for measurement modeling.
 #[derive(Debug, Clone, Default)]

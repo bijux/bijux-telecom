@@ -42,6 +42,9 @@ pub use crate::corrections::melbourne_wubbena::{
     MelbourneWubbenaObservation, MelbourneWubbenaThresholds,
 };
 pub use crate::corrections::narrow_lane::{narrow_lane_from_obs_epochs, NarrowLaneObservation};
+pub use crate::corrections::phase_windup::{
+    phase_windup_correction_maybe_continuous, PhaseWindupCorrection, PhaseWindupState,
+};
 pub use crate::corrections::{compute_corrections, CorrectionContext, Corrections};
 pub use crate::estimation::ekf::models::{
     AmbiguityManager, CarrierPhaseMeasurement, DopplerMeasurement, InterSystemBiasManager,
