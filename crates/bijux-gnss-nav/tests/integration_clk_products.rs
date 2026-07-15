@@ -2,7 +2,8 @@
 
 use bijux_gnss_core::api::{Constellation, SatId};
 use bijux_gnss_nav::api::{
-    BroadcastProductsProvider, GpsEphemeris, ProductDiagnostics, Products, ProductsProvider,
+    BroadcastProductsProvider, ClkInterpolationEdgePolicy, ClkInterpolationWindowPolicy,
+    GpsEphemeris, ProductDiagnostics, Products, ProductsProvider,
 };
 
 fn make_eph(prn: u8) -> GpsEphemeris {
@@ -59,7 +60,14 @@ AS G01 2020 01 01 01 00 00.000000  2  0.000000313  0.000000065
     let summary = diag
         .clk_interpolation_summary
         .expect("CLK interpolation summary in precise clock diagnostics");
+    assert_eq!(summary.policy.support_point_count, 4);
+    assert_eq!(summary.policy.polynomial_order, 3);
+    assert_eq!(summary.policy.window_policy, ClkInterpolationWindowPolicy::NearestCentered);
+    assert_eq!(summary.policy.edge_policy, ClkInterpolationEdgePolicy::InsideCoverageOnly);
+    assert_eq!(summary.policy.max_bias_step_s, 1.0e-6);
     assert_eq!(summary.sample_count, 3);
+    assert_eq!(summary.withheld_sample_count, 3);
+    assert_eq!(summary.withheld_edge_sample_count, 2);
     assert!(summary.max_bias_error_s.abs() < 1e-18);
     assert!(summary.rms_bias_error_s.abs() < 1e-18);
     assert!(summary.max_sigma_error_s.expect("sigma summary").abs() < 1e-18);

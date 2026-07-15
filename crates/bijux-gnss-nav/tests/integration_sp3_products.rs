@@ -3,6 +3,7 @@
 use bijux_gnss_core::api::{Constellation, SatId};
 use bijux_gnss_nav::api::{
     BroadcastProductsProvider, GpsEphemeris, ProductDiagnostics, Products, ProductsProvider,
+    Sp3InterpolationEdgePolicy, Sp3InterpolationWindowPolicy,
 };
 
 fn make_eph(prn: u8) -> GpsEphemeris {
@@ -63,7 +64,13 @@ PG01  313.000000  64.000000  21.000000  0.000000
     let summary = diag
         .sp3_interpolation_summary
         .expect("SP3 interpolation summary in precise orbit diagnostics");
+    assert_eq!(summary.policy.support_point_count, 4);
+    assert_eq!(summary.policy.polynomial_order, 3);
+    assert_eq!(summary.policy.window_policy, Sp3InterpolationWindowPolicy::NearestCentered);
+    assert_eq!(summary.policy.edge_policy, Sp3InterpolationEdgePolicy::InsideCoverageOnly);
     assert_eq!(summary.sample_count, 3);
+    assert_eq!(summary.withheld_sample_count, 3);
+    assert_eq!(summary.withheld_edge_sample_count, 2);
     assert!(summary.max_position_error_m.abs() < 1e-6);
     assert!(summary.rms_position_error_m.abs() < 1e-6);
 }
