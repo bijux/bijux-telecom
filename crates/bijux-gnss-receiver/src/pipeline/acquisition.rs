@@ -8,10 +8,10 @@ use crate::engine::signal_selection::{
 };
 use bijux_gnss_core::api::{
     acq_result_stability_key, stable_acq_result_keys, AcqAssumptions, AcqCodePhaseRefinement,
-    AcqComponentCombinationMode, AcqComponentProvenance, AcqComponentStatistic,
-    AcqDopplerRefinement, AcqEvidence, AcqExplain, AcqExplainCandidate, AcqHypothesis, AcqRequest,
-    AcqResult, AcqThresholdProvenance, AcqUncertainty, AcqUncertaintyCovariance, Hertz,
-    ReceiverSampleTrace, SamplesFrame, SatId, SignalCode,
+    AcqComponentCombinationMode, AcqDopplerRefinement, AcqEvidence, AcqExplain,
+    AcqExplainCandidate, AcqHypothesis, AcqRequest, AcqResult, AcqThresholdProvenance,
+    AcqUncertainty, AcqUncertaintyCovariance, Hertz, ReceiverSampleTrace, SamplesFrame, SatId,
+    SignalCode,
 };
 use num_complex::Complex;
 use rustfft::{num_traits::Zero, FftPlanner};
@@ -26,11 +26,9 @@ use crate::pipeline::acquisition_assistance::{
     RelatedSignalFollowUpRequest, ResolvedAcquisitionSearchBounds,
 };
 use crate::pipeline::acquisition_components::{
-    acquisition_strategies_for_signal, AcquisitionComponentPlan, AcquisitionStrategyPlan,
+    acquisition_strategies_for_signal, AcquisitionComponentPlan,
 };
-use crate::pipeline::acquisition_symbol_hypotheses::{
-    coherent_data_sign_hypotheses, coherent_secondary_code_phase_hypotheses,
-};
+use crate::pipeline::acquisition_symbol_hypotheses::coherent_secondary_code_phase_hypotheses;
 use crate::pipeline::doppler::{carrier_hz_from_doppler_hz, doppler_hz_from_carrier_hz};
 use bijux_gnss_signal::api::{
     measure_iq_front_end_metrics, samples_per_code, wipeoff_carrier,
@@ -57,6 +55,12 @@ use signal_model::{
     acquisition_signal_model_for_request, request_search_center_hz, resolved_request_signal_code,
     resolved_signal_code, unsupported_acquisition_signal_error,
 };
+use strategy_components::{
+    candidate_uses_data_sign_hypotheses, component_data_sign_hypotheses,
+    strategy_component_indexes, strategy_component_provenance,
+    strategy_supports_search_model_refinement, strategy_uses_data_sign_hypotheses,
+    unique_strategy_components,
+};
 use threshold_resolution::{
     threshold_provenance_for_request, AcquisitionThresholdCacheKey, ResolvedAcquisitionThresholds,
     ThresholdResolutionCache,
@@ -65,6 +69,7 @@ use threshold_resolution::{
 mod cache;
 mod false_alarm_calibration;
 mod signal_model;
+mod strategy_components;
 mod threshold_resolution;
 
 /// Acquisition engine (coarse search).
@@ -157,111 +162,6 @@ struct LocalAcquisitionLikelihoodSurface {
 #[derive(Debug, Clone, Copy)]
 struct LocalAcquisitionLikelihoodVolume {
     values: [[[f32; 3]; 3]; 3],
-}
-
-fn unique_strategy_components(
-    strategies: &[AcquisitionStrategyPlan],
-) -> Vec<AcquisitionComponentPlan> {
-    let mut unique = Vec::new();
-    for strategy in strategies {
-        for component in &strategy.components {
-            if unique
-                .iter()
-                .all(|existing: &AcquisitionComponentPlan| !existing.matches_component(component))
-            {
-                unique.push(component.clone());
-            }
-        }
-    }
-    unique
-}
-
-fn strategy_component_indexes(
-    strategy: &AcquisitionStrategyPlan,
-    components: &[AcquisitionComponentPlan],
-) -> Vec<usize> {
-    strategy
-        .components
-        .iter()
-        .map(|component| {
-            components
-                .iter()
-                .position(|existing| existing.matches_component(component))
-                .expect("strategy components must exist in the deduplicated strategy inventory")
-        })
-        .collect()
-}
-
-fn strategy_component_provenance(
-    strategy: &AcquisitionStrategyPlan,
-    component_indexes: &[usize],
-    component_accumulations: &[ComponentCorrelationAccumulation],
-) -> AcqComponentProvenance {
-    AcqComponentProvenance {
-        combination_mode: strategy.combination_mode,
-        components: strategy
-            .components
-            .iter()
-            .zip(component_indexes.iter().copied())
-            .map(|(component, component_index)| {
-                let metrics = correlation_metrics(
-                    &component_accumulations[component_index].noncoherent_accumulator,
-                );
-                AcqComponentStatistic {
-                    role: component.role,
-                    peak: metrics.peak,
-                    second_peak: metrics.second,
-                    mean: metrics.mean,
-                    peak_mean_ratio: metrics.peak / (metrics.mean + 1e-6),
-                    peak_second_ratio: metrics.peak / (metrics.second + 1e-6),
-                    secondary_code_phase_periods: component_accumulations[component_index]
-                        .secondary_code_phase_periods,
-                }
-            })
-            .collect(),
-    }
-}
-
-fn strategy_supports_search_model_refinement(strategy: &AcquisitionStrategyPlan) -> bool {
-    strategy.combination_mode == AcqComponentCombinationMode::SingleComponent
-        && strategy.components.len() == 1
-}
-
-fn strategy_uses_data_sign_hypotheses(
-    strategy: &AcquisitionStrategyPlan,
-    coherent_periods: u32,
-) -> bool {
-    strategy
-        .components
-        .iter()
-        .any(|component| component_data_sign_hypotheses(component, coherent_periods).is_some())
-}
-
-fn strategy_matches_component_provenance(
-    strategy: &AcquisitionStrategyPlan,
-    provenance: &AcqComponentProvenance,
-) -> bool {
-    strategy.combination_mode == provenance.combination_mode
-        && strategy.components.len() == provenance.components.len()
-        && strategy
-            .components
-            .iter()
-            .map(|component| component.role)
-            .eq(provenance.components.iter().map(|component| component.role))
-}
-
-fn candidate_uses_data_sign_hypotheses(
-    candidate: &AcqResult,
-    strategies: &[AcquisitionStrategyPlan],
-    coherent_periods: u32,
-) -> bool {
-    let Some(provenance) = candidate.component_provenance() else {
-        return false;
-    };
-    strategies.iter().any(|strategy| {
-        strategy_matches_component_provenance(strategy, provenance)
-            && strategy_uses_data_sign_hypotheses(strategy, coherent_periods)
-    })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -2770,19 +2670,6 @@ fn wipeoff_search_carrier(
         start_sample_index,
         initial_phase_radians,
     )
-}
-
-fn component_data_sign_hypotheses(
-    component: &AcquisitionComponentPlan,
-    coherent_periods: u32,
-) -> Option<Vec<Vec<i8>>> {
-    if coherent_periods <= 1 {
-        return None;
-    }
-    Some(coherent_data_sign_hypotheses(
-        coherent_periods as usize,
-        component.data_symbol_code_periods()?,
-    ))
 }
 
 fn best_coherent_data_correlation(
