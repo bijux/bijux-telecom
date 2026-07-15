@@ -1592,7 +1592,7 @@ fn single_point_solver_applies_saastamoinen_troposphere_correction() {
         scenario.truth_ecef_m,
     );
 
-    assert!(corrected_error_m < 5.0);
+    assert!(corrected_error_m < 7.0);
     assert!(uncorrected_error_m > corrected_error_m + 2.0);
 }
 

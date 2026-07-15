@@ -2221,7 +2221,12 @@ fn resolve_satellite_geometry(
             klobuchar,
             apply_broadcast_ionosphere,
         );
-        let tropo_delay_m = estimate_saastamoinen_delay_m(&estimate, &state, apply_troposphere);
+        let tropo_delay_m = estimate_saastamoinen_delay_m(
+            &estimate,
+            &state,
+            input.receive_tow_s,
+            apply_troposphere,
+        );
         geometry.push(SatelliteGeometry {
             observation: obs.clone(),
             corrected_pseudorange_m,
@@ -2321,6 +2326,7 @@ fn estimate_broadcast_ionosphere_delay_m(
 fn estimate_saastamoinen_delay_m(
     estimate: &PositionEstimate,
     state: &SatelliteState,
+    receive_tow_s: f64,
     apply_troposphere: bool,
 ) -> f64 {
     if !apply_troposphere {
@@ -2353,7 +2359,7 @@ fn estimate_saastamoinen_delay_m(
         return 0.0;
     }
     let model = SaastamoinenModel;
-    model.delay_m(receiver, elevation_deg, Seconds(0.0))
+    model.delay_m(receiver, elevation_deg, Seconds(receive_tow_s))
 }
 
 fn geometric_range_m(estimate: &PositionEstimate, state: &SatelliteState) -> f64 {

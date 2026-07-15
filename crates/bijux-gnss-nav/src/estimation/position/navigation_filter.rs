@@ -194,8 +194,12 @@ impl NavigationFilter {
                 elevation_azimuth_deg(rx_x, rx_y, rx_z, state.x_m, state.y_m, state.z_m);
             let iono_m =
                 estimate_klobuchar_delay_m(klobuchar, [rx_x, rx_y, rx_z], receive_tow_s, &state);
-            let tropo_m =
-                estimate_saastamoinen_delay_m(self.tropo_enabled, [rx_x, rx_y, rx_z], &state);
+            let tropo_m = estimate_saastamoinen_delay_m(
+                self.tropo_enabled,
+                [rx_x, rx_y, rx_z],
+                receive_tow_s,
+                &state,
+            );
             let measurement_covariance = sat.measurement_covariance();
             let pseudorange_sigma_m =
                 measurement_covariance.and_then(|covariance| covariance.pseudorange_sigma_m());
@@ -742,6 +746,7 @@ fn estimate_klobuchar_delay_m(
 fn estimate_saastamoinen_delay_m(
     tropo_enabled: bool,
     receiver_ecef_m: [f64; 3],
+    receive_tow_s: f64,
     state: &GpsSatState,
 ) -> f64 {
     if !tropo_enabled {
@@ -775,7 +780,7 @@ fn estimate_saastamoinen_delay_m(
         return 0.0;
     }
     let model = crate::api::SaastamoinenModel;
-    crate::api::TroposphereModel::delay_m(&model, receiver, elevation_deg, Seconds(0.0))
+    crate::api::TroposphereModel::delay_m(&model, receiver, elevation_deg, Seconds(receive_tow_s))
 }
 
 fn navigation_satellite_state(
