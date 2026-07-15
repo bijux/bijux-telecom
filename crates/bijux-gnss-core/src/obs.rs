@@ -542,6 +542,12 @@ pub struct SignalDelayAlignment {
     pub source: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct TrackingTransmitTime {
+    pub transmit_gps_time: crate::api::GpsTime,
+    pub source: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AcqTrackingSeed {
     pub sat: SatId,
@@ -852,6 +858,8 @@ pub struct TrackEpoch {
     #[serde(default)]
     pub signal_delay_alignment: Option<SignalDelayAlignment>,
     #[serde(default)]
+    pub transmit_time: Option<TrackingTransmitTime>,
+    #[serde(default)]
     pub tracking_uncertainty: Option<TrackingUncertainty>,
     #[serde(default)]
     pub processing_ms: Option<f64>,
@@ -897,6 +905,7 @@ impl Default for TrackEpoch {
             tracking_provenance: String::new(),
             tracking_assumptions: None,
             signal_delay_alignment: None,
+            transmit_time: None,
             tracking_uncertainty: None,
             processing_ms: None,
         }
@@ -966,6 +975,12 @@ pub struct ObsMetadata {
     #[serde(default)]
     pub pseudorange_model: String,
     #[serde(default)]
+    pub pseudorange_time_source: String,
+    #[serde(default)]
+    pub pseudorange_integer_code_periods: Option<u64>,
+    #[serde(default)]
+    pub pseudorange_code_delay_s: Option<Seconds>,
+    #[serde(default)]
     pub carrier_phase_model: String,
     #[serde(default)]
     pub doppler_model: String,
@@ -1019,6 +1034,9 @@ impl Default for ObsMetadata {
             observation_support_class: "supported".to_string(),
             observation_uncertainty_class: "unknown".to_string(),
             pseudorange_model: "receiver_epoch_fallback".to_string(),
+            pseudorange_time_source: String::new(),
+            pseudorange_integer_code_periods: None,
+            pseudorange_code_delay_s: None,
             carrier_phase_model: "tracked_carrier_cycles".to_string(),
             doppler_model: OBSERVATION_DOPPLER_MODEL_TRACKED_CARRIER_IF_OFFSET.to_string(),
             carrier_phase_continuity: "unusable".to_string(),
