@@ -3,7 +3,8 @@
 use bijux_gnss_core::api::{Constellation, SatId, SigId, SignalBand, SignalCode};
 use bijux_gnss_nav::api::{
     gps_satellite_clock_correction, BiasSinexProvider, BroadcastProductsProvider, CodeBiasProvider,
-    GpsEphemeris, ProductDiagnostics, Products, ProductsProvider,
+    GpsEphemeris, ProductDiagnostics, Products, ProductsProvider, SatelliteClockUncertaintySource,
+    SatelliteOrbitUncertaintySource,
 };
 
 fn make_eph(prn: u8) -> GpsEphemeris {
@@ -75,6 +76,53 @@ AS G01 2020 01 01 00 15 00.000000  1  0.000000003
     assert_eq!(correction.drift_rate_s_per_s2, 0.0);
     assert_eq!(correction.relativistic_s, 0.0);
     assert_eq!(correction.group_delay_s, 0.0);
+}
+
+#[test]
+fn precise_products_attach_clk_sigma_to_satellite_state_uncertainty() {
+    let eph = make_eph(1);
+    let sp3_data = "\
+* 2020 01 01 00 00 00.000000
+PG01  10000.000000  20000.000000  30000.000000  0.000000  4  5  6  7
+* 2020 01 01 00 15 00.000000
+PG01  10001.000000  20001.000000  30001.000000  0.000000  4  5  6  7
+";
+    let clk_data = "\
+AS G01 2020 01 01 00 00 00.000000  2  0.000000001  0.000000010
+AS G01 2020 01 01 00 15 00.000000  2  0.000000003  0.000000020
+";
+    let sp3 = sp3_data.parse().expect("sp3 parse");
+    let clk = clk_data.parse().expect("clk parse");
+    let products = Products::new(BroadcastProductsProvider::new(vec![eph.clone()]))
+        .with_sp3(sp3)
+        .with_clk(clk);
+    let mut diag = ProductDiagnostics::default();
+
+    let state = products.sat_state(eph.sat, 900.0, &mut diag).expect("precise satellite state");
+
+    assert_eq!(state.uncertainty.orbit_sigma_m, Some(0.064));
+    assert_eq!(state.uncertainty.orbit_source, SatelliteOrbitUncertaintySource::Sp3Accuracy);
+    assert_eq!(state.uncertainty.clock_sigma_s, Some(20.0e-9));
+    assert_eq!(state.uncertainty.clock_source, SatelliteClockUncertaintySource::ClkSigma);
+}
+
+#[test]
+fn precise_products_attach_clk_sigma_to_broadcast_orbit_fallback_state() {
+    let eph = make_eph(1);
+    let clk_data = "\
+AS G01 2020 01 01 00 00 00.000000  2  0.000000001  0.000000010
+AS G01 2020 01 01 00 15 00.000000  2  0.000000003  0.000000020
+";
+    let clk = clk_data.parse().expect("clk parse");
+    let products = Products::new(BroadcastProductsProvider::new(vec![eph.clone()])).with_clk(clk);
+    let mut diag = ProductDiagnostics::default();
+
+    let state = products.sat_state(eph.sat, 900.0, &mut diag).expect("broadcast orbit state");
+
+    assert_eq!(state.uncertainty.orbit_source, SatelliteOrbitUncertaintySource::Unavailable);
+    assert_eq!(state.uncertainty.clock_sigma_s, Some(20.0e-9));
+    assert_eq!(state.uncertainty.clock_source, SatelliteClockUncertaintySource::ClkSigma);
+    assert!(diag.fallbacks.iter().any(|fallback| fallback.contains("SP3 missing")));
 }
 
 #[test]

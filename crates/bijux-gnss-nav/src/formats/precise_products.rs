@@ -12,6 +12,9 @@ use crate::orbits::gps::{
 
 use crate::formats::clk::{ClkInterpolationSummary, ClkProvider};
 use crate::formats::sp3::{Sp3InterpolationSummary, Sp3Provider};
+use crate::orbits::satellite_uncertainty::{
+    clk_sigma_uncertainty, SatelliteClockUncertaintySource,
+};
 
 #[derive(Debug, Clone)]
 pub struct ProductDiagnostics {
@@ -142,6 +145,21 @@ impl Products {
         self.dcb = Some(dcb);
         self
     }
+
+    fn attach_clock_uncertainty(
+        &self,
+        mut state: GpsSatState,
+        sat: SatId,
+        t_s: f64,
+    ) -> GpsSatState {
+        if let Some(clk) = &self.clk {
+            state.uncertainty = state.uncertainty.with_clock_sigma_s(
+                clk_sigma_uncertainty(clk, sat, t_s),
+                SatelliteClockUncertaintySource::ClkSigma,
+            );
+        }
+        state
+    }
 }
 
 impl ProductsProvider for Products {
@@ -158,7 +176,7 @@ impl ProductsProvider for Products {
                         if let Some(summary) = sp3.interpolation_summary(sat) {
                             diag.precise_orbit_interpolation(summary);
                         }
-                        return Some(state);
+                        return Some(self.attach_clock_uncertainty(state, sat, t_s));
                     }
                     diag.fallback(format!(
                         "SP3 unusable for {:?} at {:.3}s because interpolation crossed a gap, prediction, maneuver, or event",
@@ -170,7 +188,9 @@ impl ProductsProvider for Products {
             }
         }
         diag.fallback(format!("SP3 missing for {:?}, using broadcast", sat));
-        self.broadcast.sat_state(sat, t_s, diag)
+        self.broadcast
+            .sat_state(sat, t_s, diag)
+            .map(|state| self.attach_clock_uncertainty(state, sat, t_s))
     }
 
     fn clock_correction(
