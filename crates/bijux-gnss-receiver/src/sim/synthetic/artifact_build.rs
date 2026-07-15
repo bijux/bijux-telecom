@@ -147,19 +147,22 @@ pub fn build_truth_guided_gnss_accuracy_artifact(
     let pass = acquisition.summary.pass
         && tracking.summary.pass
         && observation.summary.pass
-        && pvt.summary.pass;
+        && pvt.summary.pass
+        && case.closure.pass;
 
     SyntheticGnssAccuracyArtifact {
         schema_version: SYNTHETIC_GNSS_ACCURACY_ARTIFACT_SCHEMA_VERSION,
         scenario_id: case.scenario_id.to_string(),
         pass,
         truth_coverage_ready,
+        closure_ready: case.closure.pass,
         data_source: case.data_source,
         reference_truth: case.reference_truth,
         acquisition,
         tracking,
         observation,
         pvt,
+        closure: case.closure,
     }
 }
 
@@ -348,6 +351,15 @@ pub fn validate_synthetic_navigation_run(
     let pvt_truth =
         validate_truth_guided_pvt_table(&signal_scenario.id, &solutions, &pvt_reference);
     let pvt_accuracy = validate_pvt_accuracy_budget(&pvt_truth, budgets.pvt);
+    let closure = build_synthetic_navigation_closure_summary(
+        &run,
+        &truth_bundle,
+        scenario,
+        &acquisition_accuracy,
+        &tracking_accuracy,
+        &observation_accuracy,
+        &pvt_accuracy,
+    );
 
     let data_source = SyntheticGnssAccuracyDataSource {
         source_kind: "synthetic_gps_l1_ca_navigation_validation".to_string(),
@@ -371,6 +383,7 @@ pub fn validate_synthetic_navigation_run(
         tracking: &tracking_accuracy,
         observation: &observation_accuracy,
         pvt: &pvt_accuracy,
+        closure: closure.clone(),
     });
 
     Ok(SyntheticNavigationValidationRun {

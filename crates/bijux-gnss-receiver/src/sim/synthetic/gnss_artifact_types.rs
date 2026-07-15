@@ -172,6 +172,89 @@ pub struct SyntheticGnssPvtStageArtifact {
     pub report: SyntheticPvtAccuracyReport,
 }
 
+/// Ordered receiver-chain stage covered by a synthetic closure validation run.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "snake_case")]
+pub enum SyntheticClosureStageKind {
+    /// Raw IQ input and front-end metadata were explicit and consumed by the receiver.
+    IqInput,
+    /// Acquisition produced truth-checked satellite detections.
+    Acquisition,
+    /// Tracking produced truth-checked channel histories.
+    Tracking,
+    /// Observation timing carried explicit navigation-data receive/transmit timing evidence.
+    NavigationDataTiming,
+    /// Observation epochs carried truth-checked pseudorange, phase, Doppler, and C/N0 evidence.
+    Observations,
+    /// Navigation consumed explicit satellite-state evidence from declared broadcast ephemerides.
+    SatelliteStates,
+    /// Navigation applied explicit correction evidence before estimation.
+    Corrections,
+    /// The configured positioning estimator produced truth-checked navigation solutions.
+    Estimator,
+    /// Carrier-ambiguity processing was either executed or explicitly not applicable.
+    AmbiguityProcessing,
+    /// Integrity monitoring emitted an explicit decision and protection evidence.
+    IntegrityDecision,
+}
+
+/// Closure status for one stage in the synthetic validation chain.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SyntheticClosureStageStatus {
+    /// The stage executed and carried enough truth/runtime evidence for a hard closure claim.
+    Passed,
+    /// The stage was required for the configured path but did not carry enough evidence.
+    Failed,
+    /// The stage does not apply to the configured estimator path.
+    NotApplicable,
+}
+
+impl SyntheticClosureStageStatus {
+    fn is_closure_success(self) -> bool {
+        matches!(self, Self::Passed | Self::NotApplicable)
+    }
+}
+
+/// Machine-checkable closure evidence for one stage in the validation chain.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SyntheticClosureStageEvidence {
+    /// Ordered receiver-chain stage.
+    pub stage: SyntheticClosureStageKind,
+    /// Closure status for this stage.
+    pub status: SyntheticClosureStageStatus,
+    /// Whether the receiver produced runtime artifacts for this stage.
+    pub executed: bool,
+    /// Whether the stage had enough independent synthetic truth or explicit runtime evidence.
+    pub truth_backed: bool,
+    /// Number of runtime or truth rows used as evidence for this stage.
+    pub evidence_count: usize,
+    /// Stable reason code for reviewer and machine interpretation.
+    pub reason: String,
+}
+
+impl SyntheticClosureStageEvidence {
+    /// Whether this stage contributes a successful closure outcome.
+    pub fn is_closure_success(&self) -> bool {
+        self.status.is_closure_success()
+    }
+}
+
+/// Final closure summary for the configured synthetic receiver path.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SyntheticClosureSummary {
+    /// Whether every applicable stage closed with hard evidence.
+    pub pass: bool,
+    /// Count of stages that applied to this configured path.
+    pub applicable_stage_count: usize,
+    /// Count of applicable stages that passed.
+    pub passed_stage_count: usize,
+    /// Count of explicitly non-applicable stages.
+    pub not_applicable_stage_count: usize,
+    /// Ordered per-stage closure evidence.
+    pub stages: Vec<SyntheticClosureStageEvidence>,
+}
+
 /// Borrowed inputs for building one final GNSS accuracy artifact.
 #[derive(Debug, Clone)]
 pub struct SyntheticGnssAccuracyArtifactCase<'a> {
@@ -189,6 +272,8 @@ pub struct SyntheticGnssAccuracyArtifactCase<'a> {
     pub observation: &'a SyntheticObservationAccuracyReport,
     /// Detailed PVT-stage accuracy report.
     pub pvt: &'a SyntheticPvtAccuracyReport,
+    /// Machine-checkable closure summary for the configured receiver path.
+    pub closure: SyntheticClosureSummary,
 }
 
 /// Final truth-guided GNSS accuracy artifact for one validation run.
@@ -202,6 +287,8 @@ pub struct SyntheticGnssAccuracyArtifact {
     pub pass: bool,
     /// Whether every stage had enough truth coverage for a hard claim.
     pub truth_coverage_ready: bool,
+    /// Whether the configured receiver path closed every applicable stage with evidence.
+    pub closure_ready: bool,
     /// Validation-run source summary.
     pub data_source: SyntheticGnssAccuracyDataSource,
     /// Validation-run reference-truth summary.
@@ -214,5 +301,6 @@ pub struct SyntheticGnssAccuracyArtifact {
     pub observation: SyntheticGnssObservationStageArtifact,
     /// PVT-stage artifact payload.
     pub pvt: SyntheticGnssPvtStageArtifact,
+    /// Ordered closure evidence for the configured receiver path.
+    pub closure: SyntheticClosureSummary,
 }
-

@@ -44,6 +44,7 @@ include!("synthetic/pvt_profile_types.rs");
 include!("synthetic/observation_validation_types.rs");
 include!("synthetic/gnss_artifact_types.rs");
 include!("synthetic/artifact_validation.rs");
+include!("synthetic/closure_validation.rs");
 include!("synthetic/artifact_build.rs");
 include!("synthetic/pvt_profile_cases.rs");
 include!("synthetic/pvt_profiles_signal_geometry.rs");
