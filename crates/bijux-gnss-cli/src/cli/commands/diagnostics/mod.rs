@@ -6,6 +6,7 @@ mod report_dispatch;
 mod report_rendering;
 mod replay_evidence;
 mod rtk_processing;
+mod run_quality;
 
 pub(super) use ca_code::handle_cacode;
 pub(super) use doctor::handle_doctor;
@@ -18,7 +19,11 @@ pub(super) use replay_evidence::{
     verify_repro_bundle,
 };
 pub(super) use rtk_processing::handle_rtk;
+pub(super) use run_quality::{
+    advanced_gate_report, artifact_inventory_report, benchmark_summary_report,
+    channel_summary_report, debug_plan_report, export_bundle_report, medium_gate_report,
+    operator_status_report,
+};
 
-include!("run_quality.rs");
 include!("operator_guidance.rs");
 include!("tests.rs");

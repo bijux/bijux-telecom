@@ -1,4 +1,9 @@
-fn advanced_gate_report(run_dir: &Path, mode: AdvancedGateMode) -> Result<serde_json::Value> {
+use super::*;
+
+pub(crate) fn advanced_gate_report(
+    run_dir: &Path,
+    mode: AdvancedGateMode,
+) -> Result<serde_json::Value> {
     ensure_run_dir_exists(run_dir)?;
     let mode_label = match mode {
         AdvancedGateMode::Rtk => "Rtk",
@@ -88,7 +93,7 @@ fn advanced_gate_report(run_dir: &Path, mode: AdvancedGateMode) -> Result<serde_
     }))
 }
 
-fn artifact_inventory_report(run_dir: &Path) -> Result<serde_json::Value> {
+pub(crate) fn artifact_inventory_report(run_dir: &Path) -> Result<serde_json::Value> {
     ensure_run_dir_exists(run_dir)?;
     let artifacts_root = run_dir.join("artifacts");
     let mut groups = serde_json::Map::new();
@@ -125,7 +130,7 @@ fn artifact_inventory_report(run_dir: &Path) -> Result<serde_json::Value> {
     }))
 }
 
-fn debug_plan_report(run_dir: &Path) -> Result<serde_json::Value> {
+pub(crate) fn debug_plan_report(run_dir: &Path) -> Result<serde_json::Value> {
     ensure_run_dir_exists(run_dir)?;
     Ok(serde_json::json!({
         "schema_version": 1,
@@ -159,7 +164,7 @@ fn debug_plan_report(run_dir: &Path) -> Result<serde_json::Value> {
     }))
 }
 
-fn benchmark_summary_report(run_dir: &Path) -> Result<serde_json::Value> {
+pub(crate) fn benchmark_summary_report(run_dir: &Path) -> Result<serde_json::Value> {
     ensure_run_dir_exists(run_dir)?;
     let obs_path = run_dir.join("artifacts").join("obs").join("obs.jsonl");
     let pvt_path = run_dir.join("artifacts").join("pvt").join("pvt.jsonl");
@@ -206,7 +211,7 @@ fn benchmark_summary_report(run_dir: &Path) -> Result<serde_json::Value> {
     }))
 }
 
-fn medium_gate_report(run_dir: &Path) -> Result<serde_json::Value> {
+pub(crate) fn medium_gate_report(run_dir: &Path) -> Result<serde_json::Value> {
     ensure_run_dir_exists(run_dir)?;
     let explain = explain_run_scope(run_dir)?;
     let repro = verify_repro_bundle(run_dir)?;
@@ -252,7 +257,7 @@ fn medium_gate_report(run_dir: &Path) -> Result<serde_json::Value> {
     }))
 }
 
-fn operator_status_report(run_dir: &Path) -> Result<serde_json::Value> {
+pub(crate) fn operator_status_report(run_dir: &Path) -> Result<serde_json::Value> {
     ensure_run_dir_exists(run_dir)?;
     let explain = explain_run_scope(run_dir)?;
     let repro = verify_repro_bundle(run_dir)?;
@@ -300,7 +305,7 @@ fn operator_status_report(run_dir: &Path) -> Result<serde_json::Value> {
     }))
 }
 
-fn channel_summary_report(run_dir: &Path) -> Result<serde_json::Value> {
+pub(crate) fn channel_summary_report(run_dir: &Path) -> Result<serde_json::Value> {
     ensure_run_dir_exists(run_dir)?;
     let obs_path = run_dir.join("artifacts").join("obs").join("obs.jsonl");
     let obs =
@@ -336,7 +341,10 @@ fn channel_summary_report(run_dir: &Path) -> Result<serde_json::Value> {
     }))
 }
 
-fn export_bundle_report(run_dir: &Path, out_dir: Option<&PathBuf>) -> Result<serde_json::Value> {
+pub(crate) fn export_bundle_report(
+    run_dir: &Path,
+    out_dir: Option<&PathBuf>,
+) -> Result<serde_json::Value> {
     ensure_run_dir_exists(run_dir)?;
     let bundle_root = out_dir
         .cloned()
@@ -387,4 +395,3 @@ fn export_bundle_report(run_dir: &Path, out_dir: Option<&PathBuf>) -> Result<ser
         "bundle_manifest": bundle_manifest
     }))
 }
-
