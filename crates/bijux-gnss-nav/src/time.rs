@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 
 const UTC_TAI_EPOCH_OFFSET_S: f64 = 19.0;
 const WEEK_SECONDS: f64 = 604_800.0;
+const BEIDOU_EPOCH_GPS_SECONDS: f64 = 1_356.0 * WEEK_SECONDS + 14.0;
+const BEIDOU_GPS_OFFSET_S: f64 = 14.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum GnssTimeSystem {
@@ -52,6 +54,12 @@ pub struct GalileoGpsTimeOffset {
     pub source_detail: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct BeidouTime {
+    pub week: u32,
+    pub tow_s: f64,
+}
+
 impl GalileoTime {
     pub fn from_seconds(total_seconds: f64) -> Self {
         let mut seconds = total_seconds.max(0.0);
@@ -80,6 +88,19 @@ impl GalileoGpsTimeOffset {
             source: TimeOffsetSource::BroadcastNavigationMessage,
             source_detail: source_detail.into(),
         }
+    }
+}
+
+impl BeidouTime {
+    pub fn from_seconds(total_seconds: f64) -> Self {
+        let mut seconds = total_seconds.max(0.0);
+        let week = (seconds / WEEK_SECONDS).floor() as u64;
+        seconds -= week as f64 * WEEK_SECONDS;
+        Self { week: week as u32, tow_s: seconds }
+    }
+
+    pub fn to_seconds(&self) -> f64 {
+        self.week as f64 * WEEK_SECONDS + self.tow_s
     }
 }
 
@@ -210,11 +231,39 @@ pub fn galileo_to_gps_with_offset(
     }
 }
 
+pub fn gps_to_beidou_with_offset(gps: GpsTime) -> TimeConversion<BeidouTime> {
+    TimeConversion {
+        time: BeidouTime::from_seconds(gps.to_seconds() - BEIDOU_EPOCH_GPS_SECONDS),
+        offset: TimeOffsetEvidence {
+            from: GnssTimeSystem::Gpst,
+            to: GnssTimeSystem::Bdt,
+            offset_s: -BEIDOU_GPS_OFFSET_S,
+            source: TimeOffsetSource::FixedSystemDefinition,
+            source_detail: "BDT epoch is 2006-01-01 UTC and BDT is GPST minus 14 seconds"
+                .to_string(),
+        },
+    }
+}
+
+pub fn beidou_to_gps_with_offset(bdt: BeidouTime) -> TimeConversion<GpsTime> {
+    TimeConversion {
+        time: GpsTime::from_seconds(BEIDOU_EPOCH_GPS_SECONDS + bdt.to_seconds()),
+        offset: TimeOffsetEvidence {
+            from: GnssTimeSystem::Bdt,
+            to: GnssTimeSystem::Gpst,
+            offset_s: BEIDOU_GPS_OFFSET_S,
+            source: TimeOffsetSource::FixedSystemDefinition,
+            source_detail: "GPST is BDT plus 14 seconds at the BeiDou time epoch".to_string(),
+        },
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        galileo_to_gps_with_offset, gps_to_galileo_with_offset, gps_to_utc_with_offset,
-        gps_week_rollover, tai_to_utc_with_offset, utc_to_gps_with_offset, utc_to_tai_with_offset,
+        beidou_to_gps_with_offset, galileo_to_gps_with_offset, gps_to_beidou_with_offset,
+        gps_to_galileo_with_offset, gps_to_utc_with_offset, gps_week_rollover,
+        tai_to_utc_with_offset, utc_to_gps_with_offset, utc_to_tai_with_offset, BeidouTime,
         GalileoGpsTimeOffset, GalileoTime, GnssTimeSystem, TimeOffsetSource,
     };
     use bijux_gnss_core::api::{GpsTime, LeapSeconds, TaiTime, UtcTime};
@@ -318,6 +367,33 @@ mod tests {
         assert_eq!(round_trip.offset.from, GnssTimeSystem::Gst);
         assert_eq!(round_trip.offset.to, GnssTimeSystem::Gpst);
         assert_eq!(round_trip.offset.offset_s, -0.75);
+        assert!((round_trip.time.to_seconds() - gps.to_seconds()).abs() < 1.0e-9);
+    }
+
+    #[test]
+    fn beidou_epoch_maps_to_gps_week_with_fixed_offset_evidence() {
+        let bdt = BeidouTime { week: 0, tow_s: 0.0 };
+        let gps = beidou_to_gps_with_offset(bdt);
+        let round_trip = gps_to_beidou_with_offset(gps.time);
+
+        assert_eq!(gps.offset.from, GnssTimeSystem::Bdt);
+        assert_eq!(gps.offset.to, GnssTimeSystem::Gpst);
+        assert_eq!(gps.offset.source, TimeOffsetSource::FixedSystemDefinition);
+        assert_eq!(gps.offset.offset_s, 14.0);
+        assert_eq!(gps.time, GpsTime { week: 1_356, tow_s: 14.0 });
+        assert_eq!(round_trip.offset.offset_s, -14.0);
+        assert_eq!(round_trip.time, bdt);
+    }
+
+    #[test]
+    fn beidou_conversion_crosses_week_boundary_without_losing_epoch_offset() {
+        let gps = GpsTime { week: 1_357, tow_s: 10.0 };
+        let bdt = gps_to_beidou_with_offset(gps);
+        let round_trip = beidou_to_gps_with_offset(bdt.time);
+
+        assert_eq!(bdt.time, BeidouTime { week: 0, tow_s: 604_796.0 });
+        assert_eq!(bdt.offset.source, TimeOffsetSource::FixedSystemDefinition);
+        assert_eq!(bdt.offset.offset_s, -14.0);
         assert!((round_trip.time.to_seconds() - gps.to_seconds()).abs() < 1.0e-9);
     }
 }
