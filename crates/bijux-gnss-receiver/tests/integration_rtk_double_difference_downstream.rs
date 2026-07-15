@@ -10,7 +10,12 @@ use bijux_gnss_nav::api::{
     rtk_double_differences_from_single_differences, sat_state_gps_l1ca_at_receive_time,
     GpsEphemeris,
 };
-use bijux_gnss_receiver::api::{build_dd, build_sd, choose_ref_sat, dd_residual_metrics};
+use bijux_gnss_receiver::api::{
+    build_dd, build_sd, choose_ref_sat, dd_residual_metrics,
+    rtk_double_difference_code_covariance_matrix, rtk_single_difference_code_covariance_matrix,
+    rtk_single_differences_from_aligned_obs_epochs_with_covariance, RtkDifferencedCovarianceConfig,
+    RTK_EPOCH_ALIGNMENT_TOLERANCE_S,
+};
 
 const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
 
@@ -187,6 +192,61 @@ fn receiver_double_difference_builder_matches_nav_owner() {
             && receiver_observation.ref_sig == nav_observation.ref_sig
             && (receiver_observation.code_m - nav_observation.code_m).abs() < 1.0e-12
     ));
+}
+
+#[test]
+fn receiver_rtk_covariance_reexports_match_direct_transformation() {
+    let base = geodetic_to_ecef(37.0, -122.0, 10.0);
+    let rover = geodetic_to_ecef(37.0001, -121.9999, 12.0);
+    let receive_gps_time = GpsTime { week: 2200, tow_s: 345_600.08 };
+    let ephemerides = vec![
+        make_eph(3, 0.0, 0.0, 345_600.0),
+        make_eph(7, 0.8, 0.9, 345_600.0),
+        make_eph(11, 1.6, 1.8, 345_600.0),
+    ];
+
+    let mut base_epoch = make_obs_epoch(
+        ReceiverRole::Base,
+        receive_gps_time,
+        [base.0, base.1, base.2],
+        &ephemerides,
+    );
+    let mut rover_epoch = make_obs_epoch(
+        ReceiverRole::Rover,
+        receive_gps_time,
+        [rover.0, rover.1, rover.2],
+        &ephemerides,
+    );
+    for sat in &mut base_epoch.sats {
+        sat.pseudorange_var_m2 = 9.0;
+    }
+    for sat in &mut rover_epoch.sats {
+        sat.pseudorange_var_m2 = 4.0;
+    }
+
+    let single_differences = rtk_single_differences_from_aligned_obs_epochs_with_covariance(
+        &base_epoch,
+        &rover_epoch,
+        RTK_EPOCH_ALIGNMENT_TOLERANCE_S,
+        RtkDifferencedCovarianceConfig {
+            rover_base_code_correlation: 0.5,
+            shared_environment_code_m2: 5.25,
+            ..RtkDifferencedCovarianceConfig::default()
+        },
+    );
+    let single_covariance =
+        rtk_single_difference_code_covariance_matrix(&single_differences).expect("SD covariance");
+    assert_eq!(single_covariance.len(), 3);
+    assert!((single_covariance[0][0] - 7.0).abs() < 1.0e-12);
+    assert!((single_covariance[0][1] - 5.25).abs() < 1.0e-12);
+
+    let reference = choose_ref_sat(&single_differences).expect("reference");
+    let double_differences = build_dd(&single_differences, reference);
+    let double_covariance =
+        rtk_double_difference_code_covariance_matrix(&double_differences).expect("DD covariance");
+    assert_eq!(double_differences.len(), 2);
+    assert!((double_covariance[0][0] - 3.5).abs() < 1.0e-12);
+    assert!((double_covariance[0][1] - 1.75).abs() < 1.0e-12);
 }
 
 #[test]
