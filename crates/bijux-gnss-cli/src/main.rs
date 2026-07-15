@@ -8,7 +8,12 @@ include!("cli/output.rs");
 include!("cli/commands/ingest.rs");
 include!("cli/commands/run_pipeline.rs");
 include!("cli/commands/synthetic.rs");
-include!("cli/commands/diagnostics.rs");
+mod diagnostics {
+    use super::*;
+
+    include!("cli/commands/diagnostics/mod.rs");
+}
+use diagnostics::{handle_cacode, handle_diagnostics, handle_doctor, handle_nav, handle_rtk};
 include!("cli/commands/validate.rs");
 include!("cli/commands/analyze.rs");
 include!("cli/run_command.rs");
