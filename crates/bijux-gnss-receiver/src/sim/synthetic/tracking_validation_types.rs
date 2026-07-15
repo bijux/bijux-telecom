@@ -212,6 +212,74 @@ pub struct SyntheticTrackingNoiseReport {
     pub pass: bool,
 }
 
+/// Boundedness summary for one numerical tracking state family.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticTrackingNumericalStateSummary {
+    /// Number of epochs inspected for this state family.
+    pub epoch_count: usize,
+    /// Number of inspected epochs that contained finite values.
+    pub finite_epoch_count: usize,
+    /// Minimum observed state value.
+    pub min_value: f64,
+    /// Maximum observed state value.
+    pub max_value: f64,
+    /// Maximum absolute adjacent state step after wrapping rules are applied.
+    pub max_abs_step: f64,
+    /// Whether every inspected value stayed finite and inside the configured bound.
+    pub pass: bool,
+}
+
+/// Long-duration boundedness verdict for one tracked satellite signal.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticTrackingNumericalStabilitySatellite {
+    /// Satellite identifier.
+    pub sat: SatId,
+    /// Explicit signal band validated for this satellite.
+    pub signal_band: SignalBand,
+    /// Explicit signal code validated for this satellite.
+    pub signal_code: SignalCode,
+    /// GLONASS FDMA channel when the validated signal uses GLONASS L1.
+    #[serde(default)]
+    pub glonass_frequency_channel: Option<GlonassFrequencyChannel>,
+    /// Number of tracking epochs inspected for this satellite signal.
+    pub epoch_count: usize,
+    /// Whether timestamp sample indices and receiver sample traces stayed monotonic and finite.
+    pub timestamps: SyntheticTrackingNumericalStateSummary,
+    /// Whether receiver code phase stayed finite and inside one code period.
+    pub code_phase: SyntheticTrackingNumericalStateSummary,
+    /// Whether accumulated carrier phase stayed finite and adjacent steps stayed bounded.
+    pub carrier_phase: SyntheticTrackingNumericalStateSummary,
+    /// Whether NCO-driving loop state stayed finite and bounded.
+    pub nco_state: SyntheticTrackingNumericalStateSummary,
+    /// Whether secondary-code phase stayed finite and bounded when the signal reports one.
+    pub secondary_code_phase: Option<SyntheticTrackingNumericalStateSummary>,
+    /// Whether every state family passed for this satellite signal.
+    pub pass: bool,
+}
+
+/// Long-duration numerical boundedness verdict for synthetic receiver tracking outputs.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticTrackingNumericalStabilityReport {
+    /// Stable scenario identifier for this capture.
+    pub scenario_id: String,
+    /// Capture sample rate in Hz.
+    pub sample_rate_hz: f64,
+    /// Number of samples in one receiver code period at the configured rate.
+    pub period_samples: usize,
+    /// Expected input samples consumed by the long-duration stream.
+    pub expected_input_samples: u64,
+    /// Actual input samples consumed by receiver tracking.
+    pub processed_input_samples: u64,
+    /// Minimum tracking epochs required per satellite signal.
+    pub required_epoch_count: usize,
+    /// Number of tracked satellite signals included in the report.
+    pub tracked_signal_count: usize,
+    /// Per-satellite numerical boundedness verdicts.
+    pub satellites: Vec<SyntheticTrackingNumericalStabilitySatellite>,
+    /// Whether every inspected tracking output stayed finite and bounded.
+    pub pass: bool,
+}
+
 /// Noise-only false-alarm summary for a synthetic acquisition profile.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SyntheticAcquisitionFalseAlarmReport {
