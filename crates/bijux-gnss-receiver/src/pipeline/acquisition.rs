@@ -8,11 +8,14 @@ use crate::engine::signal_selection::{
 };
 #[cfg(test)]
 use bijux_gnss_core::api::AcqThresholdProvenance;
+#[cfg(test)]
+use bijux_gnss_core::api::SignalCode;
 use bijux_gnss_core::api::{
     acq_result_stability_key, stable_acq_result_keys, AcqAssumptions, AcqCodePhaseRefinement,
     AcqEvidence, AcqExplain, AcqExplainCandidate, AcqHypothesis, AcqRequest, AcqResult, Hertz,
-    ReceiverSampleTrace, SamplesFrame, SatId, SignalCode,
+    ReceiverSampleTrace, SamplesFrame, SatId,
 };
+#[cfg(test)]
 use num_complex::Complex;
 use rustfft::FftPlanner;
 
@@ -24,9 +27,9 @@ use crate::pipeline::acquisition_assistance::{
     build_related_signal_follow_up_requests, resolve_acquisition_search_bounds,
     ResolvedAcquisitionSearchBounds,
 };
-use crate::pipeline::acquisition_components::{
-    acquisition_strategies_for_signal, AcquisitionComponentPlan,
-};
+use crate::pipeline::acquisition_components::acquisition_strategies_for_signal;
+#[cfg(test)]
+use crate::pipeline::acquisition_components::AcquisitionComponentPlan;
 #[cfg(test)]
 use crate::pipeline::acquisition_symbol_hypotheses::coherent_data_sign_hypotheses;
 use crate::pipeline::doppler::carrier_hz_from_doppler_hz;
@@ -36,10 +39,7 @@ use bijux_gnss_signal::api::{measure_iq_front_end_metrics, AcquisitionSignalMode
 
 mod peak_metrics;
 
-use cache::{
-    CacheMissReason, CodeFftCache, CodeFftCacheKey, ACQUISITION_CACHE_MODEL_VERSION,
-    ACQUISITION_CACHE_POLICY_VERSION,
-};
+use cache::CodeFftCache;
 use candidate_decision::{
     acquisition_decision, multipath_candidate_reason, multipath_suspect_decision,
     ranked_alternative_candidate_reason, selected_candidate_reason, selected_reason_for_candidate,
@@ -1135,92 +1135,6 @@ impl Acquisition {
             results.push(candidates);
         }
         AcquisitionRun { results, explains }
-    }
-
-    fn code_fft(
-        &self,
-        signal_model: &AcquisitionSignalModel,
-        component: &AcquisitionComponentPlan,
-        sat: SatId,
-        signal_code: SignalCode,
-        samples_per_code: usize,
-        _coherent_ms: u32,
-        _noncoherent: u32,
-        fft: &dyn rustfft::Fft<f32>,
-    ) -> Vec<Complex<f32>> {
-        let key = CodeFftCacheKey::from_runtime(
-            &self.config,
-            &signal_model,
-            component.role,
-            sat,
-            signal_code,
-            samples_per_code,
-            self.doppler_search_hz,
-            self.doppler_step_hz,
-        );
-        if let Some(cached) = self.cache.lock().ok().and_then(|m| m.get(&key).cloned()) {
-            self.with_stats(|stats| {
-                stats.cache_hits = stats.cache_hits.saturating_add(1);
-            });
-            self.runtime.trace.record(TraceRecord {
-                name: "acquisition_code_fft_cache_hit",
-                fields: vec![
-                    ("constellation", format!("{:?}", sat.constellation)),
-                    ("prn", sat.prn.to_string()),
-                    ("signal_band", format!("{:?}", signal_model.signal_band)),
-                    ("signal_code", format!("{:?}", signal_code)),
-                    ("component_role", format!("{:?}", component.role)),
-                    ("samples_per_code", samples_per_code.to_string()),
-                ],
-            });
-            return cached;
-        }
-
-        let miss_reason = self.cache.lock().ok().map_or(CacheMissReason::ColdStart, |cache| {
-            let has_same_satellite =
-                cache.keys().any(|cached| cached.matches_signal_period(sat, samples_per_code));
-            if has_same_satellite {
-                CacheMissReason::IncompatibleAssumptions
-            } else {
-                CacheMissReason::ColdStart
-            }
-        });
-
-        self.with_stats(|stats| {
-            stats.cache_misses = stats.cache_misses.saturating_add(1);
-            match miss_reason {
-                CacheMissReason::ColdStart => {
-                    stats.cache_miss_cold_start = stats.cache_miss_cold_start.saturating_add(1)
-                }
-                CacheMissReason::IncompatibleAssumptions => {
-                    stats.cache_miss_incompatible = stats.cache_miss_incompatible.saturating_add(1)
-                }
-            }
-        });
-        self.runtime.trace.record(TraceRecord {
-            name: "acquisition_code_fft_cache_miss",
-            fields: vec![
-                ("constellation", format!("{:?}", sat.constellation)),
-                ("prn", sat.prn.to_string()),
-                ("signal_band", format!("{:?}", signal_model.signal_band)),
-                ("signal_code", format!("{:?}", signal_code)),
-                ("component_role", format!("{:?}", component.role)),
-                ("samples_per_code", samples_per_code.to_string()),
-                ("reason", miss_reason.as_str().to_string()),
-                ("model_version", ACQUISITION_CACHE_MODEL_VERSION.to_string()),
-                ("policy_version", ACQUISITION_CACHE_POLICY_VERSION.to_string()),
-            ],
-        });
-        let local_code = component
-            .sample_local_code_period(self.config.sampling_freq_hz, samples_per_code)
-            .unwrap_or_else(|_| vec![1.0; samples_per_code]);
-        let mut code_fft: Vec<Complex<f32>> =
-            local_code.iter().map(|&x| Complex::new(x, 0.0)).collect();
-        fft.process(&mut code_fft);
-        if let Ok(mut cache) = self.cache.lock() {
-            cache.insert(key, code_fft.clone());
-        }
-        code_fft
     }
 
     fn estimate_joint_acquisition_refinement(
