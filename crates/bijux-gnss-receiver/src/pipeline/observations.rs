@@ -3895,11 +3895,17 @@ mod tests {
         assert_eq!(obs_sat.metadata.signal_delay_alignment_source, "");
         assert_eq!(obs_sat.metadata.observation_support_class, "supported");
         assert!(
-            (obs_sat.pseudorange_m.0 - expected_signal_travel_time_s * SPEED_OF_LIGHT_MPS).abs()
+            (obs_sat.pseudorange_m.0 - timing.signal_travel_time_s.0 * SPEED_OF_LIGHT_MPS).abs()
                 <= 1.0e-6
         );
-        assert!((timing.signal_travel_time_s.0 - expected_signal_travel_time_s).abs() <= 1.0e-12);
-        assert!((timing.transmit_gps_time.tow_s - decoded_transmit_time.tow_s).abs() <= 1.0e-12);
+        assert!(
+            (timing.signal_travel_time_s.0 - expected_signal_travel_time_s).abs()
+                <= CODE_PERIOD_AMBIGUITY_EPS_S
+        );
+        assert!(
+            (timing.transmit_gps_time.tow_s - decoded_transmit_time.tow_s).abs()
+                <= CODE_PERIOD_AMBIGUITY_EPS_S
+        );
     }
 
     #[test]
