@@ -221,6 +221,7 @@ pub struct PppSolutionEpoch {
     pub constellation_clock_state_count: usize,
     pub slant_ionosphere_state_count: usize,
     pub carrier_ambiguity_state_count: usize,
+    pub lifecycle_events: Vec<PppLifecycleEvent>,
     pub stochastic_evidence: PppStochasticEvidence,
     pub rms_m: f64,
     pub sigma_h_m: Option<f64>,
@@ -408,6 +409,7 @@ mod tests {
             constellation_clock_state_count: 1,
             slant_ionosphere_state_count: 1,
             carrier_ambiguity_state_count: 2,
+            lifecycle_events: Vec::new(),
             stochastic_evidence: PppStochasticEvidence {
                 code_observation_variance_supported: true,
                 phase_observation_variance_supported: true,

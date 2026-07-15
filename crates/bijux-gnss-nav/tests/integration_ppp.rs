@@ -6,7 +6,8 @@ use bijux_gnss_core::api::{
 };
 use bijux_gnss_nav::api::{
     geodetic_to_ecef, BroadcastProductsProvider, GpsEphemeris, PppConfig, PppFilter,
-    PppMeasurementNoise, PppStochasticEvidence, SaastamoinenModel,
+    PppLifecycleEvent, PppLifecycleEventKind, PppMeasurementNoise, PppProductSupport,
+    PppStochasticEvidence, SaastamoinenModel,
 };
 use bijux_gnss_signal::api::signal_spec_gps_l1_ca;
 
@@ -246,6 +247,17 @@ fn ppp_public_api_exposes_stochastic_configuration_and_evidence() {
     assert_eq!(config.measurement_noise.phase_floor_cycles, 0.02);
     assert!(evidence.code_observation_variance_supported);
     assert!(!evidence.satellite_clock_uncertainty_supported);
+    let support = PppProductSupport { precise_orbit: true, precise_clock: false };
+    let event = PppLifecycleEvent {
+        kind: PppLifecycleEventKind::ProductSupportChanged,
+        epoch_idx: Some(8),
+        sat: None,
+        signal: None,
+        removed_states: Vec::new(),
+        reason: "product_support_changed".to_string(),
+    };
+    assert!(support.precise_orbit);
+    assert_eq!(event.kind, PppLifecycleEventKind::ProductSupportChanged);
 }
 
 #[test]

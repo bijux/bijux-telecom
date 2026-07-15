@@ -547,6 +547,7 @@ impl PppFilter {
             constellation_clock_state_count: self.indices.isb.len(),
             slant_ionosphere_state_count: self.indices.iono.len(),
             carrier_ambiguity_state_count: self.indices.ambiguity.len(),
+            lifecycle_events: self.health.lifecycle_events.clone(),
             stochastic_evidence,
             rms_m: self.ekf.health.innovation_rms,
             sigma_h_m: sigma_h,
