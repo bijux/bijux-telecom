@@ -1,4 +1,6 @@
-fn ensure_run_dir_exists(run_dir: &Path) -> Result<()> {
+use super::*;
+
+pub(crate) fn ensure_run_dir_exists(run_dir: &Path) -> Result<()> {
     if run_dir.exists() && run_dir.is_dir() {
         return Ok(());
     }
@@ -8,10 +10,9 @@ fn ensure_run_dir_exists(run_dir: &Path) -> Result<()> {
     ))
 }
 
-fn sha256_hex(bytes: &[u8]) -> String {
+pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
     use sha2::Digest;
     let mut hasher = sha2::Sha256::new();
     hasher.update(bytes);
     hex::encode(hasher.finalize())
 }
-
