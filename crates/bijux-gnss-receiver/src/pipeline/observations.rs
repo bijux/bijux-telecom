@@ -11,13 +11,16 @@ use bijux_gnss_core::api::{
     GpsTime, LockFlags, Meters, ObsDecisionArtifact, ObsEpoch, ObsEpochManifest, ObsMetadata,
     ObsSatellite, ObsSignalTiming, ObservationEpochDecision, ObservationMeasurementCovariance,
     ObservationStatus, ObservationSupportClass, ObservationUncertaintyClass, ReceiverRole,
-    ReceiverSampleTrace, SatId, SatObservationDecision, Seconds, SigId, SignalBand, SignalSpec,
-    TrackEpoch,
+    ReceiverSampleTrace, SatId, SatObservationDecision, Seconds, SigId, SignalBand, TrackEpoch,
 };
 
 use crate::engine::receiver_config::ReceiverPipelineConfig;
 use crate::pipeline::doppler::doppler_hz_from_carrier_hz;
 use crate::pipeline::hatch::HatchFilterState;
+use crate::pipeline::observations::receiver_clock::{
+    observation_receiver_clock, receiver_clock_carrier_phase_cycles, receiver_clock_error_m,
+    ObservationReceiverClock,
+};
 use crate::pipeline::observations::signal_model::{
     observation_signal_model, ObservationSignalModel,
 };
@@ -29,7 +32,7 @@ use bijux_gnss_signal::api::{
 use serde::{Deserialize, Serialize};
 
 #[cfg(test)]
-use bijux_gnss_core::api::{Constellation, GlonassFrequencyChannel, Hertz, SignalCode};
+use bijux_gnss_core::api::{Constellation, GlonassFrequencyChannel, Hertz, SignalCode, SignalSpec};
 #[cfg(test)]
 use bijux_gnss_signal::api::glonass_l1_carrier_hz;
 #[cfg(test)]
@@ -38,6 +41,7 @@ use bijux_gnss_signal::api::{
     signal_spec_gps_l5, signal_spec_gps_l5_q,
 };
 
+mod receiver_clock;
 mod signal_model;
 
 pub(crate) use signal_model::supports_observation_signal;
@@ -172,14 +176,6 @@ struct ObservationVarianceEvidence {
 enum ObservationVarianceFailure {
     Missing(Vec<&'static str>),
     Invalid(Vec<&'static str>),
-}
-
-#[derive(Debug, Clone)]
-struct ObservationReceiverClock {
-    bias_s: f64,
-    frequency_bias_hz: f64,
-    bias_sigma_s: f64,
-    source: String,
 }
 
 const BASE_CARRIER_PHASE_DISCONTINUITY_THRESHOLD_CYCLES: f64 = 0.25;
@@ -1226,46 +1222,6 @@ fn observation_signal_key(signal_id: SigId) -> String {
         "{:?}:{:02}:{:?}:{:?}",
         signal_id.sat.constellation, signal_id.sat.prn, signal_id.band, signal_id.code
     )
-}
-
-fn observation_receiver_clock(config: &ReceiverPipelineConfig) -> ObservationReceiverClock {
-    ObservationReceiverClock {
-        bias_s: finite_receiver_clock_value(config.receiver_clock_bias_s),
-        frequency_bias_hz: finite_receiver_clock_value(config.receiver_clock_frequency_bias_hz),
-        bias_sigma_s: finite_receiver_clock_sigma(config.receiver_clock_bias_sigma_s),
-        source: if config.receiver_clock_source.trim().is_empty() {
-            "config".to_string()
-        } else {
-            config.receiver_clock_source.clone()
-        },
-    }
-}
-
-fn finite_receiver_clock_value(value: f64) -> f64 {
-    if value.is_finite() {
-        value
-    } else {
-        0.0
-    }
-}
-
-fn finite_receiver_clock_sigma(value: f64) -> f64 {
-    if value.is_finite() && value >= 0.0 {
-        value
-    } else {
-        0.0
-    }
-}
-
-fn receiver_clock_error_m(receiver_clock: &ObservationReceiverClock) -> Meters {
-    Meters(receiver_clock.bias_sigma_s * SPEED_OF_LIGHT_MPS)
-}
-
-fn receiver_clock_carrier_phase_cycles(
-    receiver_clock: &ObservationReceiverClock,
-    signal: SignalSpec,
-) -> f64 {
-    receiver_clock.bias_s * signal.carrier_hz.value()
 }
 
 fn finite_value(value: Option<f64>) -> Option<f64> {
