@@ -1,9 +1,9 @@
 #![allow(missing_docs)]
 
 use bijux_gnss_core::api::{
-    Constellation, GpsTime, SigId, SignalBand, SignalCode, GPS_L1_CA_CARRIER_HZ,
+    Constellation, FreqHz, GpsTime, SigId, SignalBand, SignalCode, GPS_L1_CA_CARRIER_HZ,
+    GPS_L2_PY_CARRIER_HZ, GPS_L5_CARRIER_HZ,
 };
-use bijux_gnss_signal::api::signal_registry;
 
 use crate::corrections::biases::CodeBiasProvider;
 use crate::orbits::beidou::{
@@ -119,11 +119,19 @@ pub fn gps_broadcast_group_delay_code_bias_m(sig: SigId, ephemeris: &GpsEphemeri
     if sig.sat != ephemeris.sat {
         return None;
     }
-    let carrier_hz =
-        signal_registry(sig.sat.constellation, sig.band, sig.code)?.spec.carrier_hz.value();
+    let carrier_hz = gps_group_delay_carrier_hz(sig.band)?.value();
     let l1_hz = GPS_L1_CA_CARRIER_HZ.value();
     let scale = (l1_hz * l1_hz) / (carrier_hz * carrier_hz) - 1.0;
     Some(SPEED_OF_LIGHT_MPS * ephemeris.tgd * scale)
+}
+
+fn gps_group_delay_carrier_hz(band: SignalBand) -> Option<FreqHz> {
+    match band {
+        SignalBand::L1 => Some(GPS_L1_CA_CARRIER_HZ),
+        SignalBand::L2 => Some(GPS_L2_PY_CARRIER_HZ),
+        SignalBand::L5 => Some(GPS_L5_CARRIER_HZ),
+        _ => None,
+    }
 }
 
 pub fn galileo_broadcast_group_delay_code_bias_m(
@@ -381,6 +389,18 @@ mod tests {
         assert!(l1_bias_m.abs() < 1.0e-12);
         assert!((l2_bias_m - expected_l2).abs() < 1.0e-9);
         assert!((l5_bias_m - expected_l5).abs() < 1.0e-9);
+    }
+
+    #[test]
+    fn gps_bias_uses_band_frequency_when_code_is_unknown() {
+        let ephemeris = sample_gps_ephemeris(12_000.0, 8.0e-9);
+        let explicit_l5 = gps_signal(7, SignalBand::L5, SignalCode::L5Q);
+        let normalized_l5 = gps_signal(7, SignalBand::L5, SignalCode::Unknown);
+
+        assert_eq!(
+            gps_broadcast_group_delay_code_bias_m(normalized_l5, &ephemeris),
+            gps_broadcast_group_delay_code_bias_m(explicit_l5, &ephemeris)
+        );
     }
 
     #[test]
