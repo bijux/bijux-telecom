@@ -4,17 +4,13 @@ use crate::corrections::broadcast_group_delay::{
     beidou_broadcast_group_delay_code_bias_m, galileo_broadcast_group_delay_code_bias_m,
     gps_broadcast_group_delay_code_bias_m,
 };
-use crate::orbits::beidou::{
-    beidou_navigation_age, is_beidou_navigation_valid, sat_state_beidou_b1i,
-};
-use crate::orbits::galileo::{
-    galileo_navigation_age, is_galileo_navigation_valid, sat_state_galileo_e1,
-};
+use crate::orbits::beidou::{beidou_navigation_age, sat_state_beidou_b1i};
+use crate::orbits::galileo::{galileo_navigation_age, sat_state_galileo_e1};
 use crate::orbits::glonass::{
     glonass_gps_minus_glonass_s, glonass_navigation_age, glonass_slot_channel_association,
-    is_glonass_navigation_valid, sat_state_glonass_l1,
+    sat_state_glonass_l1,
 };
-use crate::orbits::gps::{gps_ephemeris_age, is_ephemeris_valid, sat_state_gps_l1ca};
+use crate::orbits::gps::{gps_ephemeris_age, sat_state_gps_l1ca};
 use bijux_gnss_core::api::{Constellation, MeasurementRejectReason, ObsSignalTiming, SatId, SigId};
 use bijux_gnss_signal::api::{default_acquisition_signal, signal_id_wavelength_m};
 
@@ -177,21 +173,6 @@ fn select_navigation_with_rejection(
         Err(MeasurementRejectReason::EphemerisMismatch)
     } else {
         Err(MeasurementRejectReason::IncompleteEphemeris)
-    }
-}
-
-fn navigation_is_valid(navigation: &PositionBroadcastNavigation, receive_tow_s: f64) -> bool {
-    match navigation {
-        PositionBroadcastNavigation::Gps(ephemeris) => is_ephemeris_valid(ephemeris, receive_tow_s),
-        PositionBroadcastNavigation::Galileo(navigation) => {
-            is_galileo_navigation_valid(navigation, receive_tow_s)
-        }
-        PositionBroadcastNavigation::Beidou(navigation) => {
-            is_beidou_navigation_valid(navigation, receive_tow_s)
-        }
-        PositionBroadcastNavigation::Glonass(navigation) => {
-            is_glonass_navigation_valid(navigation, receive_tow_s)
-        }
     }
 }
 
