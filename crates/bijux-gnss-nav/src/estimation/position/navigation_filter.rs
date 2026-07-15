@@ -13,8 +13,8 @@ use crate::api::{
 use bijux_gnss_core::api::{
     elevation_azimuth_deg, obs_epoch_stability_key, Constellation, Epoch, Llh, Meters,
     NavHealthEvent, NavLifecycleState, NavRefusalClass, NavSolutionEpoch, NavUncertaintyClass,
-    ObsEpoch, ObsSatellite, Seconds, SolutionStatus, SolutionValidity,
-    NAV_OUTPUT_STABILITY_SIGNATURE_VERSION, NAV_SOLUTION_MODEL_VERSION,
+    ObsEpoch, ObsSatellite, ObservationMeasurementCovariance, Seconds, SolutionStatus,
+    SolutionValidity, NAV_OUTPUT_STABILITY_SIGNATURE_VERSION, NAV_SOLUTION_MODEL_VERSION,
 };
 use bijux_gnss_signal::api::signal_wavelength_m;
 
@@ -161,6 +161,7 @@ impl NavigationFilter {
         self.ekf.predict(&self.model, dt_s);
 
         let mut used = 0usize;
+        let mut covariance_backed_updates = 0usize;
         let mut used_satellite_positions = Vec::new();
         let mut stale_ephemeris_rejections = 0usize;
         let mut sats: Vec<&ObsSatellite> = obs.sats.iter().collect();
@@ -195,7 +196,10 @@ impl NavigationFilter {
                 estimate_klobuchar_delay_m(klobuchar, [rx_x, rx_y, rx_z], receive_tow_s, &state);
             let tropo_m =
                 estimate_saastamoinen_delay_m(self.tropo_enabled, [rx_x, rx_y, rx_z], &state);
-            let weight = position_measurement_weight(
+            let measurement_covariance = sat.measurement_covariance();
+            let pseudorange_sigma_m =
+                measurement_covariance.and_then(|covariance| covariance.pseudorange_sigma_m());
+            let fallback_weight = position_measurement_weight(
                 Some(sat.cn0_dbhz),
                 Some(elevation_deg),
                 None,
@@ -204,7 +208,9 @@ impl NavigationFilter {
                     ..WeightingConfig::default()
                 },
             );
-            let sigma_m = (5.0 / weight.max(0.1)).max(1.0);
+            let sigma_m = pseudorange_sigma_m
+                .filter(|sigma| sigma.is_finite() && *sigma > 0.0)
+                .unwrap_or_else(|| (5.0 / fallback_weight.max(0.1)).max(1.0));
             let isb_index = if sat.signal_id.sat.constellation != Constellation::Gps {
                 let key = format!("isb_{:?}", sat.signal_id.sat.constellation);
                 Some(self.isb.get_or_add(&mut self.ekf, &key, 0.0, 1e-6))
@@ -226,16 +232,20 @@ impl NavigationFilter {
             };
             if self.ekf.update(&pseudorange_meas) {
                 used += 1;
+                if measurement_covariance.is_some() {
+                    covariance_backed_updates += 1;
+                }
                 used_satellite_positions.push([state.x_m, state.y_m, state.z_m]);
             }
 
+            let wavelength_m = signal_wavelength_m(sat.metadata.signal).0;
             let doppler_meas = DopplerMeasurement {
                 sig: sat.signal_id,
                 z_hz: sat.doppler_hz.0,
                 sat_pos_m: [state.x_m, state.y_m, state.z_m],
                 sat_vel_mps: sat_vel,
-                wavelength_m: signal_wavelength_m(sat.metadata.signal).0,
-                sigma_hz: 2.0,
+                wavelength_m,
+                sigma_hz: doppler_sigma_hz_from_covariance(measurement_covariance).unwrap_or(2.0),
             };
             self.ekf.update(&doppler_meas);
 
@@ -253,9 +263,13 @@ impl NavigationFilter {
                 sat_clock_s: state.clock_correction.bias_s,
                 tropo_m,
                 iono_m,
-                wavelength_m: signal_wavelength_m(sat.metadata.signal).0,
+                wavelength_m,
                 ambiguity_index: Some(ambiguity_index),
-                sigma_cycles: 0.05,
+                sigma_cycles: carrier_phase_sigma_cycles_from_covariance(
+                    measurement_covariance,
+                    wavelength_m,
+                )
+                .unwrap_or(0.05),
                 elevation_deg: Some(elevation_deg),
                 ztd_index: self.ztd_index,
                 isb_index,
@@ -329,6 +343,7 @@ impl NavigationFilter {
         let evidence = navigation_filter_solution_evidence(
             self,
             used,
+            covariance_backed_updates == used && used > 0,
             self.ekf.health.innovation_rms,
             klobuchar.is_some(),
         );
@@ -410,10 +425,10 @@ impl NavigationFilter {
 fn navigation_filter_solution_evidence(
     filter: &NavigationFilter,
     used_satellite_count: usize,
+    covariance_supported: bool,
     innovation_rms_m: f64,
     ionosphere_supported: bool,
 ) -> NavigationSolutionEvidence {
-    let covariance_supported = false;
     let residual_supported =
         used_satellite_count > 0 && innovation_rms_m.is_finite() && innovation_rms_m >= 0.0;
     let ambiguity_supported = !filter.ambiguity.indices.is_empty();
@@ -444,6 +459,24 @@ fn navigation_filter_status_floor(
             .map(|reason| format!("status_floor={reason}"))
             .collect(),
     )
+}
+
+fn doppler_sigma_hz_from_covariance(
+    covariance: Option<ObservationMeasurementCovariance>,
+) -> Option<f64> {
+    let variance = covariance?.doppler_hz2;
+    (variance.is_finite() && variance > 0.0).then(|| variance.sqrt())
+}
+
+fn carrier_phase_sigma_cycles_from_covariance(
+    covariance: Option<ObservationMeasurementCovariance>,
+    wavelength_m: f64,
+) -> Option<f64> {
+    if !wavelength_m.is_finite() || wavelength_m <= 0.0 {
+        return None;
+    }
+    let variance_m2 = covariance?.carrier_phase_m2;
+    (variance_m2.is_finite() && variance_m2 > 0.0).then(|| variance_m2.sqrt() / wavelength_m)
 }
 
 fn navigation_geometry_threshold_violations(
@@ -806,10 +839,13 @@ fn trace_short_id(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
+        carrier_phase_sigma_cycles_from_covariance, doppler_sigma_hz_from_covariance,
         navigation_filter_solution_evidence, navigation_filter_status_floor, NavigationFilter,
         NavigationSolutionEvidence,
     };
-    use bijux_gnss_core::api::SolutionStatus;
+    use bijux_gnss_core::api::{
+        ObservationCovarianceStatus, ObservationMeasurementCovariance, SolutionStatus,
+    };
 
     #[test]
     fn navigation_filter_status_floor_blocks_float_without_full_evidence() {
@@ -846,16 +882,55 @@ mod tests {
         let mut filter = NavigationFilter::new();
         filter.ambiguity.indices.insert("gps:L1".to_string(), 8);
 
-        let evidence = navigation_filter_solution_evidence(&filter, 4, 0.5, true);
+        let evidence = navigation_filter_solution_evidence(&filter, 4, true, 0.5, true);
         assert_eq!(
             evidence,
             NavigationSolutionEvidence {
-                covariance_supported: false,
+                covariance_supported: true,
                 residual_supported: true,
                 ambiguity_supported: true,
                 correction_supported: true,
                 integrity_supported: false,
             }
         );
+    }
+
+    #[test]
+    fn navigation_filter_uses_observation_covariance_sigmas() {
+        let covariance = ObservationMeasurementCovariance {
+            code_phase_m2: 9.0,
+            code_carrier_m2: 0.0,
+            code_doppler_m_hz: 0.0,
+            carrier_code_m2: 0.0,
+            carrier_phase_m2: 0.04,
+            carrier_doppler_m_hz: 0.0,
+            doppler_code_hz_m: 0.0,
+            doppler_carrier_hz_m: 0.0,
+            doppler_hz2: 16.0,
+            status: ObservationCovarianceStatus::PositiveSemidefinite,
+        };
+
+        assert_eq!(doppler_sigma_hz_from_covariance(Some(covariance)), Some(4.0));
+        assert_eq!(carrier_phase_sigma_cycles_from_covariance(Some(covariance), 0.5), Some(0.4));
+    }
+
+    #[test]
+    fn navigation_filter_refuses_invalid_covariance_sigmas() {
+        let covariance = ObservationMeasurementCovariance {
+            code_phase_m2: 9.0,
+            code_carrier_m2: 0.0,
+            code_doppler_m_hz: 0.0,
+            carrier_code_m2: 0.0,
+            carrier_phase_m2: 0.0,
+            carrier_doppler_m_hz: 0.0,
+            doppler_code_hz_m: 0.0,
+            doppler_carrier_hz_m: 0.0,
+            doppler_hz2: f64::NAN,
+            status: ObservationCovarianceStatus::InvalidEvidence,
+        };
+
+        assert_eq!(doppler_sigma_hz_from_covariance(Some(covariance)), None);
+        assert_eq!(carrier_phase_sigma_cycles_from_covariance(Some(covariance), 0.5), None);
+        assert_eq!(carrier_phase_sigma_cycles_from_covariance(None, 0.5), None);
     }
 }
