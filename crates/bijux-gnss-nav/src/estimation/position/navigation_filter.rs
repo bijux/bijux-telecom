@@ -3,11 +3,11 @@
 use crate::api::{
     clamp_ztd, compute_corrections, ecef_to_geodetic, is_ephemeris_valid,
     position_dops_from_satellite_positions, position_measurement_weight,
-    sat_state_gps_l1ca_at_receive_time, AmbiguityManager, AtmosphereConfig,
-    CarrierPhaseMeasurement, CodeBiasProvider, CorrectionContext, DopplerMeasurement, Ekf,
-    EkfConfig, GpsEphemeris, GpsSatState, InnovationConsistencyConfig, InterSystemBiasManager,
-    KlobucharCoefficients, Matrix, NavClockModel, PhaseBiasProvider, PositionDops,
-    PositionObservation, PositionSolver, PositionWeightingModel, ProcessNoiseConfig,
+    sat_state_gps_l1ca_at_receive_time, weight_from_pseudorange_sigma, AmbiguityManager,
+    AtmosphereConfig, CarrierPhaseMeasurement, CodeBiasProvider, CorrectionContext,
+    DopplerMeasurement, Ekf, EkfConfig, GpsEphemeris, GpsSatState, InnovationConsistencyConfig,
+    InterSystemBiasManager, KlobucharCoefficients, Matrix, NavClockModel, PhaseBiasProvider,
+    PositionDops, PositionObservation, PositionSolver, PositionWeightingModel, ProcessNoiseConfig,
     PseudorangeMeasurement, WeightingConfig, ZeroBiases,
 };
 use bijux_gnss_core::api::{
@@ -636,7 +636,7 @@ fn prime_state_from_wls(
             doppler_var_hz2: Some(sat.doppler_var_hz2),
             cn0_dbhz: sat.cn0_dbhz,
             elevation_deg: sat.elevation_deg,
-            weight: 1.0,
+            weight: weight_from_pseudorange_sigma(sat.covariance_pseudorange_sigma_m()),
             gps_receive_time: obs.gps_time(),
             signal_timing: sat.timing,
             signal_id: Some(sat.signal_id),

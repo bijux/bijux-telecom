@@ -231,17 +231,21 @@ pub fn position_observations_from_epoch(epoch: &ObsEpoch) -> Vec<PositionObserva
     }
     preferred_by_sat
         .into_values()
-        .map(|observation| PositionObservation {
-            sat: observation.signal_id.sat,
-            pseudorange_m: observation.pseudorange_m.0,
-            doppler_hz: Some(observation.doppler_hz.0),
-            doppler_var_hz2: Some(observation.doppler_var_hz2),
-            cn0_dbhz: observation.cn0_dbhz,
-            elevation_deg: observation.elevation_deg,
-            weight: observation.weight.unwrap_or(1.0),
-            gps_receive_time,
-            signal_timing: observation.timing,
-            signal_id: Some(observation.signal_id),
+        .map(|observation| {
+            let covariance_weight =
+                weight_from_pseudorange_sigma(observation.covariance_pseudorange_sigma_m());
+            PositionObservation {
+                sat: observation.signal_id.sat,
+                pseudorange_m: observation.pseudorange_m.0,
+                doppler_hz: Some(observation.doppler_hz.0),
+                doppler_var_hz2: Some(observation.doppler_var_hz2),
+                cn0_dbhz: observation.cn0_dbhz,
+                elevation_deg: observation.elevation_deg,
+                weight: observation.weight.unwrap_or(1.0) * covariance_weight,
+                gps_receive_time,
+                signal_timing: observation.timing,
+                signal_id: Some(observation.signal_id),
+            }
         })
         .collect()
 }
@@ -1106,10 +1110,11 @@ mod tests {
     };
     use crate::orbits::gps::GpsEphemeris;
     use bijux_gnss_core::api::{
-        Constellation, Cycles, Hertz, LockFlags, Meters, ObsEpoch, ObsMetadata, ObsSatellite,
-        ObservationEpochDecision, ObservationStatus, ReceiverRole, ReceiverSampleTrace, SatId,
-        Seconds, SigId, SignalBand, SignalCode,
+        Constellation, Cycles, Hertz, LockFlags, MeasurementErrorModel, Meters, ObsEpoch,
+        ObsMetadata, ObsSatellite, ObservationEpochDecision, ObservationStatus, ReceiverRole,
+        ReceiverSampleTrace, SatId, Seconds, SigId, SignalBand, SignalCode, TrackingUncertainty,
     };
+    use bijux_gnss_signal::api::signal_spec_gps_l1_ca;
 
     fn sample_ephemeris(sat: SatId, toe_s: f64, toc_s: f64) -> GpsEphemeris {
         GpsEphemeris {
@@ -1944,6 +1949,69 @@ mod tests {
             observations[0].signal_id,
             Some(SigId { sat, band: SignalBand::L1, code: SignalCode::Ca })
         );
+    }
+
+    #[test]
+    fn position_observations_from_epoch_weight_with_observation_covariance() {
+        let sat = SatId { constellation: Constellation::Gps, prn: 7 };
+        let epoch = ObsEpoch {
+            t_rx_s: Seconds(1000.0),
+            source_time: ReceiverSampleTrace::from_sample_index(0, 1000.0),
+            gps_week: Some(2000),
+            tow_s: Some(Seconds(1000.0)),
+            epoch_idx: 0,
+            discontinuity: false,
+            valid: true,
+            processing_ms: None,
+            role: ReceiverRole::Rover,
+            sats: vec![ObsSatellite {
+                signal_id: SigId { sat, band: SignalBand::L1, code: SignalCode::Ca },
+                pseudorange_m: Meters(22_000_000.0),
+                pseudorange_var_m2: 16.0,
+                carrier_phase_cycles: Cycles(20.0),
+                carrier_phase_var_cycles2: 0.01,
+                doppler_hz: Hertz(0.0),
+                doppler_var_hz2: 4.0,
+                cn0_dbhz: 45.0,
+                lock_flags: LockFlags {
+                    code_lock: true,
+                    carrier_lock: true,
+                    bit_lock: false,
+                    cycle_slip: false,
+                },
+                multipath_suspect: false,
+                observation_status: ObservationStatus::Accepted,
+                observation_reject_reasons: Vec::new(),
+                elevation_deg: None,
+                azimuth_deg: None,
+                weight: Some(2.0),
+                timing: None,
+                error_model: Some(MeasurementErrorModel {
+                    thermal_noise_m: Meters(0.0),
+                    tracking_jitter_m: Meters(4.0),
+                    multipath_proxy_m: Meters(0.0),
+                    clock_error_m: Meters(0.0),
+                }),
+                metadata: ObsMetadata {
+                    signal: signal_spec_gps_l1_ca(),
+                    tracking_uncertainty: Some(TrackingUncertainty {
+                        code_phase_samples: 0.01,
+                        carrier_phase_cycles: 0.1,
+                        doppler_hz: 2.0,
+                        cn0_dbhz: 0.5,
+                    }),
+                    ..ObsMetadata::default()
+                },
+            }],
+            decision: ObservationEpochDecision::Accepted,
+            decision_reason: None,
+            manifest: None,
+        };
+
+        let observations = position_observations_from_epoch(&epoch);
+
+        assert_eq!(observations.len(), 1);
+        assert!((observations[0].weight - 0.125).abs() < 1.0e-12);
     }
 }
 

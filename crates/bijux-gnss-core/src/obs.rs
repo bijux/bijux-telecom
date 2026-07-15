@@ -60,6 +60,8 @@ pub const NAV_SOLUTION_MODEL_VERSION: u32 = 4;
 pub const NAV_OUTPUT_STABILITY_SIGNATURE_VERSION: u32 = 2;
 pub const OBSERVATION_DOPPLER_MODEL_TRACKED_CARRIER_IF_OFFSET: &str =
     "tracked_carrier_hz_minus_intermediate_freq";
+const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
+const CARRIER_DOPPLER_CORRELATION_COEFFICIENT: f64 = 0.5;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum TrackingLifecycleState {
@@ -89,6 +91,45 @@ pub struct TrackingUncertainty {
     pub carrier_phase_cycles: f64,
     pub doppler_hz: f64,
     pub cn0_dbhz: f64,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ObservationCovarianceStatus {
+    PositiveSemidefinite,
+    MissingEvidence,
+    InvalidEvidence,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+pub struct ObservationMeasurementCovariance {
+    pub code_phase_m2: f64,
+    pub code_carrier_m2: f64,
+    pub code_doppler_m_hz: f64,
+    pub carrier_code_m2: f64,
+    pub carrier_phase_m2: f64,
+    pub carrier_doppler_m_hz: f64,
+    pub doppler_code_hz_m: f64,
+    pub doppler_carrier_hz_m: f64,
+    pub doppler_hz2: f64,
+    pub status: ObservationCovarianceStatus,
+}
+
+impl ObservationMeasurementCovariance {
+    pub fn matrix(self) -> [[f64; 3]; 3] {
+        [
+            [self.code_phase_m2, self.code_carrier_m2, self.code_doppler_m_hz],
+            [self.carrier_code_m2, self.carrier_phase_m2, self.carrier_doppler_m_hz],
+            [self.doppler_code_hz_m, self.doppler_carrier_hz_m, self.doppler_hz2],
+        ]
+    }
+
+    pub fn pseudorange_sigma_m(self) -> Option<f64> {
+        (self.status == ObservationCovarianceStatus::PositiveSemidefinite
+            && self.code_phase_m2.is_finite()
+            && self.code_phase_m2 > 0.0)
+            .then(|| self.code_phase_m2.sqrt())
+    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -1106,6 +1147,98 @@ pub struct ObsSatellite {
     pub metadata: ObsMetadata,
 }
 
+impl ObsSatellite {
+    pub fn measurement_covariance(&self) -> Option<ObservationMeasurementCovariance> {
+        let code_phase_m2 = positive_finite_variance(self.pseudorange_var_m2)?;
+        let carrier_wavelength_m = self.carrier_wavelength_m()?;
+        let carrier_phase_m2 = positive_finite_variance(self.carrier_phase_var_cycles2)?
+            * carrier_wavelength_m.powi(2);
+        let doppler_hz2 = positive_finite_variance(self.doppler_var_hz2)?;
+
+        let common_clock_m2 = self
+            .error_model
+            .as_ref()
+            .map(|model| model.clock_error_m.0.powi(2))
+            .filter(|variance| variance.is_finite() && *variance >= 0.0)
+            .unwrap_or(0.0);
+        let code_carrier_m2 = bounded_covariance(
+            common_clock_m2.min(code_phase_m2.min(carrier_phase_m2)),
+            code_phase_m2,
+            carrier_phase_m2,
+        );
+        let carrier_doppler_m_hz = self
+            .metadata
+            .tracking_uncertainty
+            .as_ref()
+            .and_then(|uncertainty| {
+                let carrier_sigma_m = uncertainty.carrier_phase_cycles * carrier_wavelength_m;
+                let doppler_sigma_hz = uncertainty.doppler_hz;
+                (carrier_sigma_m.is_finite()
+                    && carrier_sigma_m > 0.0
+                    && doppler_sigma_hz.is_finite()
+                    && doppler_sigma_hz > 0.0)
+                    .then_some(
+                        CARRIER_DOPPLER_CORRELATION_COEFFICIENT
+                            * carrier_sigma_m
+                            * doppler_sigma_hz,
+                    )
+            })
+            .map(|covariance| bounded_covariance(covariance, carrier_phase_m2, doppler_hz2))
+            .unwrap_or(0.0);
+
+        let covariance = ObservationMeasurementCovariance {
+            code_phase_m2,
+            code_carrier_m2,
+            code_doppler_m_hz: 0.0,
+            carrier_code_m2: code_carrier_m2,
+            carrier_phase_m2,
+            carrier_doppler_m_hz,
+            doppler_code_hz_m: 0.0,
+            doppler_carrier_hz_m: carrier_doppler_m_hz,
+            doppler_hz2,
+            status: ObservationCovarianceStatus::PositiveSemidefinite,
+        };
+        covariance_is_positive_semidefinite(covariance.matrix()).then_some(covariance)
+    }
+
+    pub fn covariance_pseudorange_sigma_m(&self) -> Option<f64> {
+        self.measurement_covariance()?.pseudorange_sigma_m()
+    }
+
+    fn carrier_wavelength_m(&self) -> Option<f64> {
+        let carrier_hz = self.metadata.signal.carrier_hz.0;
+        (carrier_hz.is_finite() && carrier_hz > 0.0).then_some(SPEED_OF_LIGHT_MPS / carrier_hz)
+    }
+}
+
+fn positive_finite_variance(value: f64) -> Option<f64> {
+    (value.is_finite() && value > 0.0).then_some(value)
+}
+
+fn bounded_covariance(covariance: f64, left_variance: f64, right_variance: f64) -> f64 {
+    if !covariance.is_finite() || left_variance <= 0.0 || right_variance <= 0.0 {
+        return 0.0;
+    }
+    let bound = (left_variance * right_variance).sqrt();
+    covariance.clamp(-bound, bound)
+}
+
+fn covariance_is_positive_semidefinite(covariance: [[f64; 3]; 3]) -> bool {
+    if covariance.iter().flatten().any(|value| !value.is_finite()) {
+        return false;
+    }
+    let leading_minor_1 = covariance[0][0];
+    let leading_minor_2 = covariance[0][0] * covariance[1][1] - covariance[0][1].powi(2);
+    let determinant = covariance[0][0]
+        * (covariance[1][1] * covariance[2][2] - covariance[1][2].powi(2))
+        - covariance[0][1]
+            * (covariance[1][0] * covariance[2][2] - covariance[1][2] * covariance[2][0])
+        + covariance[0][2]
+            * (covariance[1][0] * covariance[2][1] - covariance[1][1] * covariance[2][0]);
+    let tolerance = 1.0e-9;
+    leading_minor_1 >= -tolerance && leading_minor_2 >= -tolerance && determinant >= -tolerance
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ObsEpoch {
     pub t_rx_s: Seconds,
@@ -1471,8 +1604,9 @@ pub(crate) fn melbourne_wubbena_m(
 #[cfg(test)]
 mod tests {
     use super::{
-        acq_result_stability_key, obs_epoch_stability_key, ObsEpoch, ObsMetadata, ObsSatellite,
-        SignalDelayAlignment, OBSERVATION_DOPPLER_MODEL_TRACKED_CARRIER_IF_OFFSET,
+        acq_result_stability_key, obs_epoch_stability_key, MeasurementErrorModel, ObsEpoch,
+        ObsMetadata, ObsSatellite, ObservationCovarianceStatus, SignalDelayAlignment,
+        TrackingUncertainty, OBSERVATION_DOPPLER_MODEL_TRACKED_CARRIER_IF_OFFSET,
     };
     use crate::api::{
         trackable_acq_tracking_seeds, AcqCodePhaseRefinement, AcqComponentCombinationMode,
@@ -1480,7 +1614,8 @@ mod tests {
         AcqSearchSummary, AcqUncertainty, AcqUncertaintyCovariance, Constellation, Cycles,
         GlonassFrequencyChannel, Hertz, LeapSeconds, LockFlags, NavLifecycleState, NavQualityFlag,
         ObservationEpochDecision, ObservationStatus, ReceiverRole, ReceiverSampleTrace, SatId,
-        SignalBand, SignalCode, SignalComponentRole, SolutionStatus, UtcTime,
+        SignalBand, SignalCode, SignalComponentRole, SignalSpec, SolutionStatus, UtcTime,
+        GPS_L1_CA_CARRIER_HZ,
     };
     use crate::time::utc_to_gps;
 
@@ -1988,6 +2123,111 @@ mod tests {
         changed.sats[0].metadata.doppler_model = "legacy_absolute_doppler_hz".to_string();
 
         assert_ne!(obs_epoch_stability_key(&base), obs_epoch_stability_key(&changed));
+    }
+
+    fn covariance_satellite(
+        pseudorange_var_m2: f64,
+        carrier_phase_var_cycles2: f64,
+        doppler_var_hz2: f64,
+    ) -> ObsSatellite {
+        ObsSatellite {
+            signal_id: crate::api::SigId {
+                sat: SatId { constellation: Constellation::Gps, prn: 4 },
+                band: SignalBand::L1,
+                code: crate::api::SignalCode::Ca,
+            },
+            pseudorange_m: crate::api::Meters(21_000_000.0),
+            pseudorange_var_m2,
+            carrier_phase_cycles: Cycles(12.25),
+            carrier_phase_var_cycles2,
+            doppler_hz: Hertz(125.0),
+            doppler_var_hz2,
+            cn0_dbhz: 45.0,
+            lock_flags: LockFlags {
+                code_lock: true,
+                carrier_lock: true,
+                bit_lock: false,
+                cycle_slip: false,
+            },
+            multipath_suspect: false,
+            observation_status: ObservationStatus::Accepted,
+            observation_reject_reasons: Vec::new(),
+            elevation_deg: None,
+            azimuth_deg: None,
+            weight: None,
+            timing: None,
+            error_model: Some(MeasurementErrorModel {
+                thermal_noise_m: crate::api::Meters(0.0),
+                tracking_jitter_m: crate::api::Meters(pseudorange_var_m2.sqrt()),
+                multipath_proxy_m: crate::api::Meters(0.0),
+                clock_error_m: crate::api::Meters(0.5),
+            }),
+            metadata: ObsMetadata {
+                signal: SignalSpec {
+                    constellation: Constellation::Gps,
+                    band: SignalBand::L1,
+                    code: SignalCode::Ca,
+                    code_rate_hz: 1_023_000.0,
+                    carrier_hz: GPS_L1_CA_CARRIER_HZ,
+                },
+                tracking_uncertainty: Some(TrackingUncertainty {
+                    code_phase_samples: 0.01,
+                    carrier_phase_cycles: carrier_phase_var_cycles2.sqrt(),
+                    doppler_hz: doppler_var_hz2.sqrt(),
+                    cn0_dbhz: 0.5,
+                }),
+                ..ObsMetadata::default()
+            },
+        }
+    }
+
+    #[test]
+    fn observation_measurement_covariance_is_symmetric_positive_semidefinite() {
+        let sat = covariance_satellite(4.0, 0.01, 9.0);
+
+        let covariance = sat.measurement_covariance().expect("measurement covariance");
+        let matrix = covariance.matrix();
+
+        assert_eq!(covariance.status, ObservationCovarianceStatus::PositiveSemidefinite);
+        assert_eq!(matrix[0][1], matrix[1][0]);
+        assert_eq!(matrix[1][2], matrix[2][1]);
+        assert!(matrix[0][0] > 0.0);
+        assert!(matrix[1][1] > 0.0);
+        assert!(matrix[2][2] > 0.0);
+        let leading_minor = matrix[0][0] * matrix[1][1] - matrix[0][1].powi(2);
+        let determinant = matrix[0][0] * (matrix[1][1] * matrix[2][2] - matrix[1][2].powi(2))
+            - matrix[0][1] * (matrix[1][0] * matrix[2][2] - matrix[1][2] * matrix[2][0])
+            + matrix[0][2] * (matrix[1][0] * matrix[2][1] - matrix[1][1] * matrix[2][0]);
+        assert!(leading_minor >= 0.0);
+        assert!(determinant >= -1.0e-12);
+    }
+
+    #[test]
+    fn observation_measurement_covariance_uses_common_clock_error() {
+        let sat = covariance_satellite(4.0, 10.0, 9.0);
+
+        let covariance = sat.measurement_covariance().expect("measurement covariance");
+
+        assert!((covariance.code_carrier_m2 - 0.25).abs() < 1.0e-12);
+        assert_eq!(covariance.code_doppler_m_hz, 0.0);
+    }
+
+    #[test]
+    fn observation_measurement_covariance_uses_carrier_loop_evidence() {
+        let sat = covariance_satellite(4.0, 0.01, 9.0);
+
+        let covariance = sat.measurement_covariance().expect("measurement covariance");
+
+        assert!(covariance.carrier_doppler_m_hz > 0.0);
+        assert_eq!(covariance.carrier_doppler_m_hz, covariance.doppler_carrier_hz_m);
+    }
+
+    #[test]
+    fn observation_measurement_covariance_requires_positive_variances() {
+        let sat = covariance_satellite(0.0, 0.01, 9.0);
+
+        assert!(sat.measurement_covariance().is_none());
+        assert!(sat.covariance_pseudorange_sigma_m().is_none());
     }
 
     #[test]

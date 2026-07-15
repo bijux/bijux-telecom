@@ -2303,8 +2303,7 @@ fn prepare_position_observation(
     } else {
         config.weighting.tracking_mode_scalar_weight
     };
-    let pseudorange_sigma_m = (sat.pseudorange_var_m2.is_finite() && sat.pseudorange_var_m2 > 0.0)
-        .then_some(sat.pseudorange_var_m2.sqrt());
+    let pseudorange_sigma_m = sat.covariance_pseudorange_sigma_m();
     let weight = position_measurement_weight(
         Some(sat.cn0_dbhz),
         elevation,
