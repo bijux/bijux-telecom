@@ -23,6 +23,7 @@ pub enum TimeOffsetSource {
     LeapSecondTable,
     FixedSystemDefinition,
     BroadcastNavigationMessage,
+    CompositeOffsetModel,
     ReferenceUtcDay,
 }
 
@@ -58,6 +59,19 @@ pub struct GalileoGpsTimeOffset {
 pub struct BeidouTime {
     pub week: u32,
     pub tow_s: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct GlonassTime {
+    pub day_index: i64,
+    pub seconds_of_day: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GlonassUtcOffset {
+    pub utc_su_minus_utc_s: f64,
+    pub source: TimeOffsetSource,
+    pub source_detail: String,
 }
 
 impl GalileoTime {
@@ -101,6 +115,16 @@ impl BeidouTime {
 
     pub fn to_seconds(&self) -> f64 {
         self.week as f64 * WEEK_SECONDS + self.tow_s
+    }
+}
+
+impl GlonassUtcOffset {
+    pub fn broadcast(utc_su_minus_utc_s: f64, source_detail: impl Into<String>) -> Self {
+        Self {
+            utc_su_minus_utc_s,
+            source: TimeOffsetSource::BroadcastNavigationMessage,
+            source_detail: source_detail.into(),
+        }
     }
 }
 
@@ -258,13 +282,98 @@ pub fn beidou_to_gps_with_offset(bdt: BeidouTime) -> TimeConversion<GpsTime> {
     }
 }
 
+pub fn utc_to_glonass_with_offset(
+    utc: UtcTime,
+    offset: &GlonassUtcOffset,
+) -> TimeConversion<GlonassTime> {
+    let glonass_seconds = utc.unix_s + 10_800.0 + offset.utc_su_minus_utc_s;
+    let day_index = (glonass_seconds / 86_400.0).floor() as i64;
+    let seconds_of_day = glonass_seconds - day_index as f64 * 86_400.0;
+    TimeConversion {
+        time: GlonassTime { day_index, seconds_of_day },
+        offset: TimeOffsetEvidence {
+            from: GnssTimeSystem::Utc,
+            to: GnssTimeSystem::Glonass,
+            offset_s: 10_800.0 + offset.utc_su_minus_utc_s,
+            source: offset.source,
+            source_detail: offset.source_detail.clone(),
+        },
+    }
+}
+
+pub fn glonass_to_utc_with_offset(
+    glonass: GlonassTime,
+    offset: &GlonassUtcOffset,
+) -> TimeConversion<UtcTime> {
+    TimeConversion {
+        time: UtcTime {
+            unix_s: glonass.day_index as f64 * 86_400.0 + glonass.seconds_of_day
+                - 10_800.0
+                - offset.utc_su_minus_utc_s,
+        },
+        offset: TimeOffsetEvidence {
+            from: GnssTimeSystem::Glonass,
+            to: GnssTimeSystem::Utc,
+            offset_s: -10_800.0 - offset.utc_su_minus_utc_s,
+            source: offset.source,
+            source_detail: offset.source_detail.clone(),
+        },
+    }
+}
+
+pub fn gps_to_glonass_with_offset(
+    gps: GpsTime,
+    leap: &LeapSeconds,
+    offset: &GlonassUtcOffset,
+) -> TimeConversion<GlonassTime> {
+    let utc = gps_to_utc(gps, leap);
+    let glonass = utc_to_glonass_with_offset(utc, offset);
+    TimeConversion {
+        time: glonass.time,
+        offset: TimeOffsetEvidence {
+            from: GnssTimeSystem::Gpst,
+            to: GnssTimeSystem::Glonass,
+            offset_s: glonass.offset.offset_s - leap.offset_at_utc(utc.unix_s) as f64,
+            source: TimeOffsetSource::CompositeOffsetModel,
+            source_detail: format!(
+                "GPS-UTC from leap second table and GLONASS UTC relation: {}",
+                offset.source_detail
+            ),
+        },
+    }
+}
+
+pub fn glonass_to_gps_with_offset(
+    glonass: GlonassTime,
+    leap: &LeapSeconds,
+    offset: &GlonassUtcOffset,
+) -> TimeConversion<GpsTime> {
+    let utc = glonass_to_utc_with_offset(glonass, offset);
+    let gps = utc_to_gps(utc.time, leap);
+    TimeConversion {
+        time: gps,
+        offset: TimeOffsetEvidence {
+            from: GnssTimeSystem::Glonass,
+            to: GnssTimeSystem::Gpst,
+            offset_s: utc.offset.offset_s + leap.offset_at_utc(utc.time.unix_s) as f64,
+            source: TimeOffsetSource::CompositeOffsetModel,
+            source_detail: format!(
+                "GLONASS UTC relation and GPS-UTC from leap second table: {}",
+                offset.source_detail
+            ),
+        },
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        beidou_to_gps_with_offset, galileo_to_gps_with_offset, gps_to_beidou_with_offset,
-        gps_to_galileo_with_offset, gps_to_utc_with_offset, gps_week_rollover,
-        tai_to_utc_with_offset, utc_to_gps_with_offset, utc_to_tai_with_offset, BeidouTime,
-        GalileoGpsTimeOffset, GalileoTime, GnssTimeSystem, TimeOffsetSource,
+        beidou_to_gps_with_offset, galileo_to_gps_with_offset, glonass_to_gps_with_offset,
+        glonass_to_utc_with_offset, gps_to_beidou_with_offset, gps_to_galileo_with_offset,
+        gps_to_glonass_with_offset, gps_to_utc_with_offset, gps_week_rollover,
+        tai_to_utc_with_offset, utc_to_glonass_with_offset, utc_to_gps_with_offset,
+        utc_to_tai_with_offset, BeidouTime, GalileoGpsTimeOffset, GalileoTime, GlonassTime,
+        GlonassUtcOffset, GnssTimeSystem, TimeOffsetSource,
     };
     use bijux_gnss_core::api::{GpsTime, LeapSeconds, TaiTime, UtcTime};
 
@@ -394,6 +503,47 @@ mod tests {
         assert_eq!(bdt.time, BeidouTime { week: 0, tow_s: 604_796.0 });
         assert_eq!(bdt.offset.source, TimeOffsetSource::FixedSystemDefinition);
         assert_eq!(bdt.offset.offset_s, -14.0);
+        assert!((round_trip.time.to_seconds() - gps.to_seconds()).abs() < 1.0e-9);
+    }
+
+    #[test]
+    fn glonass_utc_conversion_reports_broadcast_utc_relation() {
+        let offset = GlonassUtcOffset::broadcast(0.0, "glonass tau_c broadcast value");
+        let utc = UtcTime { unix_s: 1_483_228_800.0 };
+        let glonass = utc_to_glonass_with_offset(utc, &offset);
+        let round_trip = glonass_to_utc_with_offset(glonass.time, &offset);
+
+        assert_eq!(glonass.offset.from, GnssTimeSystem::Utc);
+        assert_eq!(glonass.offset.to, GnssTimeSystem::Glonass);
+        assert_eq!(glonass.offset.source, TimeOffsetSource::BroadcastNavigationMessage);
+        assert_eq!(glonass.offset.offset_s, 10_800.0);
+        assert_eq!(glonass.time.seconds_of_day, 10_800.0);
+        assert_eq!(round_trip.offset.offset_s, -10_800.0);
+        assert_eq!(round_trip.time, utc);
+    }
+
+    #[test]
+    fn glonass_conversion_crosses_moscow_day_boundary() {
+        let offset = GlonassUtcOffset::broadcast(0.0, "glonass tau_c broadcast value");
+        let utc = UtcTime { unix_s: 1_483_308_000.0 };
+        let glonass = utc_to_glonass_with_offset(utc, &offset);
+        let round_trip = glonass_to_utc_with_offset(glonass.time, &offset);
+
+        assert_eq!(glonass.time.seconds_of_day, 3_600.0);
+        assert_eq!(round_trip.time, utc);
+    }
+
+    #[test]
+    fn gps_glonass_conversion_combines_leap_and_utc_relation_evidence() {
+        let leap = LeapSeconds::default_table();
+        let offset = GlonassUtcOffset::broadcast(0.25, "glonass utc su relation");
+        let gps = GpsTime { week: 1_930, tow_s: 18.0 };
+        let glonass = gps_to_glonass_with_offset(gps, &leap, &offset);
+        let round_trip = glonass_to_gps_with_offset(glonass.time, &leap, &offset);
+
+        assert_eq!(glonass.offset.source, TimeOffsetSource::CompositeOffsetModel);
+        assert_eq!(glonass.offset.offset_s, 10_782.25);
+        assert_eq!(glonass.time, GlonassTime { day_index: 17_167, seconds_of_day: 10_800.25 });
         assert!((round_trip.time.to_seconds() - gps.to_seconds()).abs() < 1.0e-9);
     }
 }
