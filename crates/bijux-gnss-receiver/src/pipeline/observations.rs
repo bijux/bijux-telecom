@@ -10,13 +10,18 @@ use bijux_gnss_core::api::{
     CycleSlipDetector, CycleSlipDetectorEvidence, Cycles, DiagnosticEvent, DiagnosticSeverity,
     GpsTime, LockFlags, Meters, ObsDecisionArtifact, ObsEpoch, ObsEpochManifest, ObsMetadata,
     ObsSatellite, ObsSignalTiming, ObservationEpochDecision, ObservationMeasurementCovariance,
-    ObservationStatus, ObservationSupportClass, ObservationUncertaintyClass, ReceiverRole,
-    ReceiverSampleTrace, SatId, SatObservationDecision, Seconds, SigId, SignalBand, TrackEpoch,
+    ObservationStatus, ReceiverRole, ReceiverSampleTrace, SatId, SatObservationDecision, Seconds,
+    SigId, SignalBand, TrackEpoch,
 };
 
 use crate::engine::receiver_config::ReceiverPipelineConfig;
 use crate::pipeline::doppler::doppler_hz_from_carrier_hz;
 use crate::pipeline::hatch::HatchFilterState;
+use crate::pipeline::observations::labels::{
+    carrier_phase_continuity_label, doppler_model_label, observation_status_label,
+    observation_support_label, observation_uncertainty_label,
+    pseudorange_model_has_resolved_alignment,
+};
 use crate::pipeline::observations::receiver_clock::{
     observation_receiver_clock, receiver_clock_carrier_phase_cycles, receiver_clock_error_m,
     ObservationReceiverClock,
@@ -41,6 +46,7 @@ use bijux_gnss_signal::api::{
     signal_spec_gps_l5, signal_spec_gps_l5_q,
 };
 
+mod labels;
 mod receiver_clock;
 mod signal_model;
 
@@ -1266,39 +1272,6 @@ fn observation_epoch_id(epoch_idx: u64, sample_index: u64) -> String {
     format!("epoch-{epoch_idx:010}-sample-{sample_index:012}")
 }
 
-fn observation_status_label(status: ObservationStatus) -> &'static str {
-    match status {
-        ObservationStatus::Accepted => "accepted",
-        ObservationStatus::Missing => "missing",
-        ObservationStatus::Weak => "weak",
-        ObservationStatus::Inconsistent => "inconsistent",
-        ObservationStatus::Rejected => "rejected",
-    }
-}
-
-fn observation_support_label(status: ObservationStatus, alignment_resolved: bool) -> &'static str {
-    match status {
-        ObservationStatus::Accepted if alignment_resolved => {
-            support_class_label(ObservationSupportClass::Supported)
-        }
-        ObservationStatus::Accepted => support_class_label(ObservationSupportClass::Degraded),
-        ObservationStatus::Weak | ObservationStatus::Missing => {
-            support_class_label(ObservationSupportClass::Degraded)
-        }
-        ObservationStatus::Inconsistent | ObservationStatus::Rejected => {
-            support_class_label(ObservationSupportClass::Unsupported)
-        }
-    }
-}
-
-fn doppler_model_label() -> &'static str {
-    bijux_gnss_core::api::OBSERVATION_DOPPLER_MODEL_TRACKED_CARRIER_IF_OFFSET
-}
-
-fn pseudorange_model_has_resolved_alignment(model: &str) -> bool {
-    matches!(model, "tracked_code_phase_alignment" | "decoded_transmit_time_code_phase")
-}
-
 fn pseudorange_from_tracking_epoch(
     epoch: &TrackEpoch,
     samples_per_chip: f64,
@@ -2200,45 +2173,6 @@ fn carrier_phase_reset_priority(value: CarrierPhaseContinuity) -> u8 {
         | CarrierPhaseContinuity::ArcStart
         | CarrierPhaseContinuity::Continuous
         | CarrierPhaseContinuity::Coasted => 0,
-    }
-}
-
-fn carrier_phase_continuity_label(value: CarrierPhaseContinuity) -> &'static str {
-    match value {
-        CarrierPhaseContinuity::Unusable => "unusable",
-        CarrierPhaseContinuity::ArcStart => "arc_start",
-        CarrierPhaseContinuity::Continuous => "continuous",
-        CarrierPhaseContinuity::Coasted => "coasted",
-        CarrierPhaseContinuity::ResetAfterCycleSlip => "reset_after_cycle_slip",
-        CarrierPhaseContinuity::ResetAfterUnlock => "reset_after_unlock",
-        CarrierPhaseContinuity::ResetAfterReacquisition => "reset_after_reacquisition",
-        CarrierPhaseContinuity::ResetAfterDiscontinuity => "reset_after_discontinuity",
-    }
-}
-
-fn support_class_label(value: ObservationSupportClass) -> &'static str {
-    match value {
-        ObservationSupportClass::Supported => "supported",
-        ObservationSupportClass::Degraded => "degraded",
-        ObservationSupportClass::Unsupported => "unsupported",
-    }
-}
-
-fn observation_uncertainty_label(cn0_dbhz: f64, has_variance_evidence: bool) -> &'static str {
-    let class = if !has_variance_evidence || !cn0_dbhz.is_finite() {
-        ObservationUncertaintyClass::Unknown
-    } else if cn0_dbhz >= 45.0 {
-        ObservationUncertaintyClass::Low
-    } else if cn0_dbhz >= 35.0 {
-        ObservationUncertaintyClass::Medium
-    } else {
-        ObservationUncertaintyClass::High
-    };
-    match class {
-        ObservationUncertaintyClass::Low => "low",
-        ObservationUncertaintyClass::Medium => "medium",
-        ObservationUncertaintyClass::High => "high",
-        ObservationUncertaintyClass::Unknown => "unknown",
     }
 }
 
