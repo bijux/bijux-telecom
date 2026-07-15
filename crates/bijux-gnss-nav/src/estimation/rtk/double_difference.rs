@@ -1003,6 +1003,7 @@ mod tests {
         geometric_range_m, rtk_double_difference_residual_metrics,
         rtk_double_difference_residual_metrics_with_antenna_corrections,
         RtkDoubleDifferenceCovarianceEvidence, RtkDoubleDifferenceObservation,
+        RtkGlonassInterFrequencyBiasEvidence,
     };
     use crate::estimation::position::solver::{ecef_to_enu, ecef_to_geodetic};
     use crate::estimation::rtk::antenna::{
