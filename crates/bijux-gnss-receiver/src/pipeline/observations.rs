@@ -3616,6 +3616,51 @@ mod tests {
     }
 
     #[test]
+    fn integer_code_period_solver_estimates_common_receiver_clock_bias() {
+        let receive_gps_time = GpsTime { week: 2200, tow_s: 345_600.250 };
+        let code_period_s = 0.001;
+        let common_clock_bias_s = 0.000_120;
+        let first_signal_id = SigId {
+            sat: SatId { constellation: Constellation::Gps, prn: 5 },
+            band: SignalBand::L1,
+            code: SignalCode::Ca,
+        };
+        let second_signal_id = SigId {
+            sat: SatId { constellation: Constellation::Gps, prn: 11 },
+            band: SignalBand::L1,
+            code: SignalCode::Ca,
+        };
+        let inputs = vec![
+            CodePeriodAmbiguityInput {
+                signal_id: first_signal_id,
+                receive_gps_time,
+                decoded_transmit_gps_time: receive_gps_time
+                    .offset_seconds(-(68.0 * code_period_s + 0.000_200 + common_clock_bias_s)),
+                code_period_s,
+                code_delay_s: 0.000_200,
+            },
+            CodePeriodAmbiguityInput {
+                signal_id: second_signal_id,
+                receive_gps_time,
+                decoded_transmit_gps_time: receive_gps_time
+                    .offset_seconds(-(84.0 * code_period_s + 0.000_730 + common_clock_bias_s)),
+                code_period_s,
+                code_delay_s: 0.000_730,
+            },
+        ];
+
+        let solution =
+            resolve_integer_code_period_ambiguities(&inputs).expect("clock-biased solution");
+
+        assert!(
+            (solution.common_receiver_clock_bias_s.0 - common_clock_bias_s).abs()
+                <= CODE_PERIOD_AMBIGUITY_EPS_S
+        );
+        assert_eq!(solution.satellites[0].integer_code_periods, 68);
+        assert_eq!(solution.satellites[1].integer_code_periods, 84);
+    }
+
+    #[test]
     fn integer_code_period_solver_refuses_non_unique_boundary() {
         let receive_gps_time = GpsTime { week: 2200, tow_s: 345_600.250 };
         let code_period_s = 0.001;
