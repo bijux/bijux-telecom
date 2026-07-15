@@ -7,7 +7,10 @@ use std::sync::OnceLock;
 use bijux_gnss_core::api::{Constellation, ReceiverSampleTrace, SatId};
 use bijux_gnss_receiver::api::{
     signal::samples_per_code,
-    sim::{SyntheticScenario, SyntheticSignalParams, SyntheticSignalSource},
+    sim::{
+        summarize_tracking_numerical_stability, SyntheticScenario, SyntheticSignalParams,
+        SyntheticSignalSource,
+    },
     ReceiverPipelineConfig, ReceiverRuntime, SignalSource, TrackingArtifacts, TrackingEngine,
 };
 
@@ -199,4 +202,28 @@ fn tracking_session_maintains_stable_long_run_lock_metrics() {
         mean(cn0_head),
         mean(cn0_tail)
     );
+}
+
+#[test]
+fn tracking_session_reports_bounded_long_run_numerical_state() {
+    let run = long_run_tracking_session();
+    let scenario = long_run_tracking_scenario(&run.config);
+    let expected_samples = (LONG_RUN_DURATION_S * run.config.sampling_freq_hz).round() as u64;
+    let report = summarize_tracking_numerical_stability(
+        &scenario.id,
+        &run.config,
+        expected_samples,
+        REQUIRED_STABLE_TRACKING_EPOCHS,
+        &run.artifacts,
+    );
+
+    assert!(report.pass, "numerical stability report failed: {report:#?}");
+    assert_eq!(report.tracked_signal_count, 1);
+    assert_eq!(report.processed_input_samples, expected_samples);
+    let satellite = report.satellites.first().expect("tracked satellite stability");
+    assert!(satellite.timestamps.pass, "{satellite:#?}");
+    assert!(satellite.code_phase.pass, "{satellite:#?}");
+    assert!(satellite.carrier_phase.pass, "{satellite:#?}");
+    assert!(satellite.nco_state.pass, "{satellite:#?}");
+    assert!(satellite.secondary_code_phase.is_none(), "{satellite:#?}");
 }
