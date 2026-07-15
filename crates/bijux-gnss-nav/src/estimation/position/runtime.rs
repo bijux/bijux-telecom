@@ -12,10 +12,10 @@ use crate::api::{
     residual_temporal_correlation_is_persistent, ConstellationClockInconsistency,
     GalileoBroadcastNavigationData, GpsBroadcastNavigationData, GpsEphemeris,
     ImpossibleGeometryEvidence, KlobucharCoefficients, PositionBroadcastNavigation,
-    PositionFilterDivergenceReason, PositionFilterMotionClass, PositionObservation,
-    PositionRobustWeighting, PositionSolutionSmoother, PositionSolutionSmootherConfig,
-    PositionSolveRefusalKind, PositionSolver, PositionWeightingModel, RaimFaultDetectionStatus,
-    RaimFaultExclusion, ResidualTemporalCorrelation, WeightingConfig,
+    PositionFilterMotionClass, PositionObservation, PositionRobustWeighting,
+    PositionSolutionSmoother, PositionSolutionSmootherConfig, PositionSolveRefusalKind,
+    PositionSolver, PositionWeightingModel, RaimFaultDetectionStatus, RaimFaultExclusion,
+    ResidualTemporalCorrelation, WeightingConfig,
 };
 use bijux_gnss_core::api::{
     check_nav_solution_sanity, is_solution_valid, Constellation, MeasurementRejectReason, Meters,
@@ -26,11 +26,17 @@ use bijux_gnss_core::api::{
 
 mod output_identity;
 mod precision_reporting;
+mod solution_status;
 
 use output_identity::{
     nav_artifact_id, nav_assumptions, nav_output_stability_signature, source_observation_epoch_id,
 };
 use precision_reporting::{apply_precision_reporting_policy, push_unique_reason};
+use solution_status::{
+    default_decision_reason, deterministic_solution_transition, filter_divergence_explain_reason,
+    mark_integrity_failure, normalized_status_decision_label, override_solution_status,
+    refusal_status, solver_refusal_status, status_needs_default_decision_reason,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum PositionConstellationPolicy {
@@ -1717,117 +1723,6 @@ fn policy_refusal_epoch(
         normalized_status_decision_label(solution.status, "refused".to_string());
     solution.explain_reasons = explain_reasons;
     solution
-}
-
-fn deterministic_solution_transition(
-    previous: Option<SolutionStatus>,
-    proposed: SolutionStatus,
-    refusal_class: Option<NavRefusalClass>,
-    reused_previous: bool,
-) -> SolutionStatus {
-    if refusal_class.is_some() && !reused_previous {
-        return refusal_status(refusal_class.expect("guarded refusal class"));
-    }
-    if refusal_class.is_some() && reused_previous {
-        return SolutionStatus::Degraded;
-    }
-    match (previous, proposed) {
-        (_, SolutionStatus::Unavailable)
-        | (_, SolutionStatus::Refused)
-        | (_, SolutionStatus::IntegrityFailed)
-        | (_, SolutionStatus::Diverged) => proposed,
-        (_, other) => other,
-    }
-}
-
-fn refusal_status(refusal_class: NavRefusalClass) -> SolutionStatus {
-    match refusal_class {
-        NavRefusalClass::UnsupportedConstellation
-        | NavRefusalClass::MixedConstellationInput
-        | NavRefusalClass::InvalidEphemeris
-        | NavRefusalClass::PartialDecodedNavigationState => SolutionStatus::Unavailable,
-        NavRefusalClass::InsufficientGeometry
-        | NavRefusalClass::InvalidSatelliteTime
-        | NavRefusalClass::InconsistentObservations
-        | NavRefusalClass::ScientificPrerequisitesTooWeak
-        | NavRefusalClass::SolverFailure => SolutionStatus::Refused,
-    }
-}
-
-fn solver_refusal_status(
-    refusal_kind: PositionSolveRefusalKind,
-    refusal_class: NavRefusalClass,
-) -> SolutionStatus {
-    match refusal_kind {
-        PositionSolveRefusalKind::UnderdeterminedRaimExclusion => SolutionStatus::IntegrityFailed,
-        PositionSolveRefusalKind::FilterDivergence(_) => SolutionStatus::Diverged,
-        PositionSolveRefusalKind::SolverFailure
-            if refusal_class == NavRefusalClass::SolverFailure =>
-        {
-            SolutionStatus::Diverged
-        }
-        _ => refusal_status(refusal_class),
-    }
-}
-
-fn filter_divergence_explain_reason(reason: PositionFilterDivergenceReason) -> String {
-    let label = match reason {
-        PositionFilterDivergenceReason::InnovationInconsistency => "innovation_inconsistency",
-        PositionFilterDivergenceReason::InnovationGrowth => "innovation_growth",
-        PositionFilterDivergenceReason::CovarianceCollapse => "covariance_collapse",
-        PositionFilterDivergenceReason::CovarianceDivergence => "covariance_divergence",
-        PositionFilterDivergenceReason::ResidualExplosion => "residual_explosion",
-    };
-    format!("filter_divergence={label}")
-}
-
-fn override_solution_status(
-    mut solution: NavSolutionEpoch,
-    status: SolutionStatus,
-) -> NavSolutionEpoch {
-    solution.status = status;
-    solution.lifecycle_state = status.lifecycle_state();
-    solution.quality = status.quality_flag();
-    solution.valid = is_solution_valid(status);
-    solution.validity = if solution.valid { solution.validity } else { SolutionValidity::Invalid };
-    solution
-}
-
-fn mark_integrity_failure(mut solution: NavSolutionEpoch) -> NavSolutionEpoch {
-    solution = override_solution_status(solution, SolutionStatus::IntegrityFailed);
-    solution.explain_decision = "integrity_failed".to_string();
-    solution
-}
-
-fn default_decision_reason(status: SolutionStatus) -> &'static str {
-    match status {
-        SolutionStatus::Unavailable => "navigation_solution_unavailable",
-        SolutionStatus::Refused => "navigation_solution_refused",
-        SolutionStatus::Degraded => "quality_or_geometry_degraded",
-        SolutionStatus::IntegrityFailed => "navigation_solution_integrity_failed",
-        SolutionStatus::Diverged => "navigation_solution_diverged",
-        SolutionStatus::CodeOnly | SolutionStatus::Float | SolutionStatus::Fixed => {
-            "navigation_solution_usable"
-        }
-    }
-}
-
-fn status_needs_default_decision_reason(
-    status: SolutionStatus,
-    explain_reasons: &[String],
-) -> bool {
-    explain_reasons.is_empty()
-        || (status.decision_label() != "accepted"
-            && explain_reasons.len() == 1
-            && explain_reasons[0] == "navigation_solution_usable")
-}
-
-fn normalized_status_decision_label(status: SolutionStatus, explain_decision: String) -> String {
-    if matches!(explain_decision.as_str(), "accepted" | "refused") {
-        status.decision_label().to_string()
-    } else {
-        explain_decision
-    }
 }
 
 fn apply_refusal_cause_explainability_in_place(
