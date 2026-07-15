@@ -69,9 +69,9 @@ pub use crate::obs::{
     OBSERVATION_MODEL_VERSION, TRACKING_STATE_MODEL_VERSION,
 };
 pub use crate::observation_quality::{
-    CodeCarrierDivergence, CycleSlipDecisionEvidence, CycleSlipDetector, CycleSlipDetectorEvidence,
-    LockFlags, MeasurementErrorModel, ObsMetadata, ObsSatellite, ObsSignalTiming,
-    ObservationCovarianceStatus, ObservationMeasurementCovariance,
+    CarrierPhaseArc, CodeCarrierDivergence, CycleSlipDecisionEvidence, CycleSlipDetector,
+    CycleSlipDetectorEvidence, LockFlags, MeasurementErrorModel, ObsMetadata, ObsSatellite,
+    ObsSignalTiming, ObservationCovarianceStatus, ObservationMeasurementCovariance,
 };
 pub use crate::support_matrix::{
     SignalStageSupport, SignalSupportRow, SupportMatrix, SupportStatus,

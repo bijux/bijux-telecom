@@ -928,7 +928,7 @@ pub fn obs_epoch_stability_key(epoch: &ObsEpoch) -> String {
                 })
                 .unwrap_or_default();
             format!(
-                "{:?}-{:02}:{:?}:{:?}:{:.3}:{:.6}:{:.3}:{}:{:.6}:{}:{}:{}{}",
+                "{:?}-{:02}:{:?}:{:?}:{:.3}:{:.6}:{:.3}:{}:{:.6}:{}:{}:{}:{}{}",
                 sat.signal_id.sat.constellation,
                 sat.signal_id.sat.prn,
                 sat.signal_id.band,
@@ -941,6 +941,11 @@ pub fn obs_epoch_stability_key(epoch: &ObsEpoch) -> String {
                 sat.metadata.carrier_phase_continuity,
                 sat.metadata.carrier_phase_arc_start_epoch_idx,
                 sat.metadata.carrier_phase_arc_start_sample_index,
+                sat.metadata
+                    .carrier_phase_arc
+                    .as_ref()
+                    .map(|arc| arc.id.as_str())
+                    .unwrap_or("no-carrier-phase-arc"),
                 timing_key
             )
         })
@@ -1260,13 +1265,13 @@ mod tests {
     use crate::api::{
         trackable_acq_tracking_seeds, AcqCodePhaseRefinement, AcqComponentCombinationMode,
         AcqComponentProvenance, AcqComponentStatistic, AcqEvidence, AcqHypothesis, AcqResult,
-        AcqSearchSummary, AcqUncertainty, AcqUncertaintyCovariance, CodeCarrierDivergence,
-        Constellation, CycleSlipDecisionEvidence, CycleSlipDetector, CycleSlipDetectorEvidence,
-        Cycles, GlonassFrequencyChannel, Hertz, LeapSeconds, LockFlags, MeasurementErrorModel,
-        NavLifecycleState, NavQualityFlag, ObsMetadata, ObservationCovarianceStatus,
-        ObservationEpochDecision, ObservationStatus, ReceiverRole, ReceiverSampleTrace, SatId,
-        SignalBand, SignalCode, SignalComponentRole, SignalSpec, SolutionStatus, UtcTime,
-        GPS_L1_CA_CARRIER_HZ,
+        AcqSearchSummary, AcqUncertainty, AcqUncertaintyCovariance, CarrierPhaseArc,
+        CodeCarrierDivergence, Constellation, CycleSlipDecisionEvidence, CycleSlipDetector,
+        CycleSlipDetectorEvidence, Cycles, GlonassFrequencyChannel, Hertz, LeapSeconds, LockFlags,
+        MeasurementErrorModel, NavLifecycleState, NavQualityFlag, ObsMetadata,
+        ObservationCovarianceStatus, ObservationEpochDecision, ObservationStatus, ReceiverRole,
+        ReceiverSampleTrace, SatId, SignalBand, SignalCode, SignalComponentRole, SignalSpec,
+        SolutionStatus, UtcTime, GPS_L1_CA_CARRIER_HZ,
     };
     use crate::time::utc_to_gps;
 
@@ -1638,6 +1643,7 @@ mod tests {
         assert_eq!(metadata.carrier_phase_continuity, "unusable");
         assert_eq!(metadata.carrier_phase_arc_start_epoch_idx, 0);
         assert_eq!(metadata.carrier_phase_arc_start_sample_index, 0);
+        assert_eq!(metadata.carrier_phase_arc, None);
     }
 
     #[test]
@@ -1734,6 +1740,28 @@ mod tests {
     }
 
     #[test]
+    fn carrier_phase_arc_id_includes_signal_and_start_boundary() {
+        let signal_id = crate::api::SigId {
+            sat: SatId { constellation: Constellation::Gps, prn: 4 },
+            band: SignalBand::L1,
+            code: crate::api::SignalCode::Ca,
+        };
+        let arc = CarrierPhaseArc::new(signal_id, 70, 286_440, "arc_start");
+        let invalid = CarrierPhaseArc::invalid_boundary(signal_id, "loss_of_lock");
+
+        assert_eq!(arc.signal_id, signal_id);
+        assert_eq!(arc.start_epoch_idx, 70);
+        assert_eq!(arc.start_sample_index, 286_440);
+        assert_eq!(arc.start_reason, "arc_start");
+        assert!(arc.valid_for_smoothing);
+        assert!(arc.valid_for_ambiguity);
+        assert!(arc.id.contains("gps-04-l1-ca-e0000000070-s000000286440"));
+        assert_eq!(invalid.start_reason, "loss_of_lock");
+        assert!(!invalid.valid_for_smoothing);
+        assert!(!invalid.valid_for_ambiguity);
+    }
+
+    #[test]
     fn obs_metadata_defaults_observation_lock_contract() {
         let metadata = ObsMetadata::default();
 
@@ -1785,6 +1813,16 @@ mod tests {
                     carrier_phase_continuity: "continuous".to_string(),
                     carrier_phase_arc_start_epoch_idx: 70,
                     carrier_phase_arc_start_sample_index: 286_440,
+                    carrier_phase_arc: Some(CarrierPhaseArc::new(
+                        crate::api::SigId {
+                            sat: sat_id,
+                            band: SignalBand::L1,
+                            code: crate::api::SignalCode::Ca,
+                        },
+                        70,
+                        286_440,
+                        "arc_start",
+                    )),
                     ..ObsMetadata::default()
                 },
             }],
@@ -1796,8 +1834,31 @@ mod tests {
         changed.sats[0].metadata.carrier_phase_continuity = "reset_after_cycle_slip".to_string();
         changed.sats[0].metadata.carrier_phase_arc_start_epoch_idx = 73;
         changed.sats[0].metadata.carrier_phase_arc_start_sample_index = 298_716;
+        changed.sats[0].metadata.carrier_phase_arc = Some(CarrierPhaseArc::new(
+            crate::api::SigId {
+                sat: sat_id,
+                band: SignalBand::L1,
+                code: crate::api::SignalCode::Ca,
+            },
+            73,
+            298_716,
+            "cycle_slip",
+        ));
 
         assert_ne!(obs_epoch_stability_key(&base), obs_epoch_stability_key(&changed));
+
+        let mut changed_arc_only = base.clone();
+        changed_arc_only.sats[0].metadata.carrier_phase_arc = Some(CarrierPhaseArc::new(
+            crate::api::SigId {
+                sat: sat_id,
+                band: SignalBand::L1,
+                code: crate::api::SignalCode::Ca,
+            },
+            70,
+            286_441,
+            "arc_start",
+        ));
+        assert_ne!(obs_epoch_stability_key(&base), obs_epoch_stability_key(&changed_arc_only));
     }
 
     #[test]

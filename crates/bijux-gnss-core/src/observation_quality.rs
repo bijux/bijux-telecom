@@ -208,6 +208,56 @@ impl CycleSlipDecisionEvidence {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct CarrierPhaseArc {
+    pub id: String,
+    pub signal_id: SigId,
+    pub start_epoch_idx: u64,
+    pub start_sample_index: u64,
+    pub start_reason: String,
+    pub valid_for_smoothing: bool,
+    pub valid_for_ambiguity: bool,
+}
+
+impl CarrierPhaseArc {
+    pub fn new(
+        signal_id: SigId,
+        start_epoch_idx: u64,
+        start_sample_index: u64,
+        start_reason: impl Into<String>,
+    ) -> Self {
+        Self {
+            id: carrier_phase_arc_id(signal_id, start_epoch_idx, start_sample_index),
+            signal_id,
+            start_epoch_idx,
+            start_sample_index,
+            start_reason: start_reason.into(),
+            valid_for_smoothing: true,
+            valid_for_ambiguity: true,
+        }
+    }
+
+    pub fn invalid_boundary(signal_id: SigId, boundary_reason: impl Into<String>) -> Self {
+        Self {
+            id: carrier_phase_arc_id(signal_id, 0, 0),
+            signal_id,
+            start_epoch_idx: 0,
+            start_sample_index: 0,
+            start_reason: boundary_reason.into(),
+            valid_for_smoothing: false,
+            valid_for_ambiguity: false,
+        }
+    }
+}
+
+fn carrier_phase_arc_id(signal_id: SigId, start_epoch_idx: u64, start_sample_index: u64) -> String {
+    format!(
+        "{:?}-{:02}-{:?}-{:?}-e{start_epoch_idx:010}-s{start_sample_index:012}",
+        signal_id.sat.constellation, signal_id.sat.prn, signal_id.band, signal_id.code
+    )
+    .to_ascii_lowercase()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ObsMetadata {
     pub tracking_mode: String,
@@ -265,6 +315,8 @@ pub struct ObsMetadata {
     pub carrier_phase_arc_start_epoch_idx: u64,
     #[serde(default)]
     pub carrier_phase_arc_start_sample_index: u64,
+    #[serde(default)]
+    pub carrier_phase_arc: Option<CarrierPhaseArc>,
     #[serde(default)]
     pub signal_delay_alignment_source: String,
     #[serde(default)]
@@ -329,6 +381,7 @@ impl Default for ObsMetadata {
             carrier_phase_continuity: "unusable".to_string(),
             carrier_phase_arc_start_epoch_idx: 0,
             carrier_phase_arc_start_sample_index: 0,
+            carrier_phase_arc: None,
             signal_delay_alignment_source: String::new(),
             time_tag_source: String::new(),
             time_tag_sample_index: 0,
