@@ -280,6 +280,33 @@ fn rtk_partial_ambiguity_selection_reports_lowest_variance_criterion() {
 }
 
 #[test]
+fn rtk_ratio_test_fixer_reports_partial_fix_without_constraining_excluded_ambiguities() {
+    let float_state = RtkFloatAmbiguityState {
+        ids: vec![gps_l1_dd_id(7, 3), gps_l1_dd_id(11, 3)],
+        float_cycles: vec![0.01, 0.01],
+        covariance_cycles2: vec![vec![0.01, 0.0], vec![0.0, 100.0]],
+    };
+    let fixer = RtkRatioTestFixer::new(RtkAmbiguityFixPolicy {
+        ratio_threshold: 3.0,
+        consecutive_required: 1,
+    });
+
+    let (result, audit) =
+        fixer.fix_with_state(77, &float_state, &mut RtkAmbiguityFixState::default());
+
+    let selection = result.partial_selection.as_ref().expect("partial selection");
+    assert_eq!(result.status, RtkAmbiguityFixStatus::Fixed);
+    assert_eq!(result.fixed_count, 1);
+    assert_eq!(result.selected_ids, Some(vec![gps_l1_dd_id(7, 3)]));
+    assert_eq!(result.selected_integers, Some(vec![0]));
+    assert_eq!(selection.selected_ids, vec![gps_l1_dd_id(7, 3)]);
+    assert_eq!(selection.excluded_ids, vec![gps_l1_dd_id(11, 3)]);
+    assert_eq!(selection.criterion, RtkPartialAmbiguitySelectionCriterion::LowestVariance);
+    assert_eq!(audit.reason, "partial_fix");
+    assert_eq!(audit.partial_selection, result.partial_selection);
+}
+
+#[test]
 fn rtk_float_ambiguity_reference_transform_refuses_missing_reference() {
     let float_state = RtkFloatAmbiguityState {
         ids: vec![gps_l1_dd_id(7, 3), gps_l1_dd_id(11, 3)],

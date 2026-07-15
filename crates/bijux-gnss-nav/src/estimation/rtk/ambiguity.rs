@@ -176,6 +176,7 @@ pub struct RtkAmbiguityFixResult {
     pub fixed_count: usize,
     pub selected_ids: Option<Vec<RtkDoubleDifferenceAmbiguityId>>,
     pub selected_integers: Option<Vec<i64>>,
+    pub partial_selection: Option<RtkPartialAmbiguitySelection>,
 }
 
 impl RtkAmbiguityFixResult {
@@ -192,6 +193,7 @@ pub struct RtkAmbiguityFixAudit {
     pub status: RtkAmbiguityFixStatus,
     pub reason: String,
     pub fixed_count: usize,
+    pub partial_selection: Option<RtkPartialAmbiguitySelection>,
 }
 
 impl ArtifactPayloadValidate for RtkAmbiguityFixAudit {
@@ -205,6 +207,9 @@ impl ArtifactPayloadValidate for RtkAmbiguityFixAudit {
                     "rtk ambiguity fix audit ratio contains NaN/Inf",
                 ));
             }
+        }
+        if let Some(selection) = &self.partial_selection {
+            events.extend(selection.validate_payload());
         }
         events
     }
@@ -235,6 +240,7 @@ impl RtkRatioTestFixer {
                 fixed_count: 0,
                 selected_ids: None,
                 selected_integers: None,
+                partial_selection: None,
             };
             let audit = RtkAmbiguityFixAudit {
                 epoch_idx,
@@ -242,6 +248,7 @@ impl RtkRatioTestFixer {
                 status: result.status,
                 reason: "no_ambiguities".to_string(),
                 fixed_count: 0,
+                partial_selection: None,
             };
             return (result, audit);
         }
@@ -260,16 +267,21 @@ impl RtkRatioTestFixer {
             if status == RtkAmbiguityFixStatus::Fixed { float.float_cycles.len() } else { 0 };
         let mut reason =
             if status == RtkAmbiguityFixStatus::Fixed { "accepted" } else { "ratio_fail" };
+        let mut partial_selection = None;
 
         if status != RtkAmbiguityFixStatus::Fixed && float.float_cycles.len() > 1 {
-            let partial = rtk_select_partial_ambiguity_fix(float, float.float_cycles.len() / 2);
-            candidates = rtk_lambda_integer_ambiguity_candidates(&partial, 2);
-            ratio = rtk_candidate_ratio(&candidates);
-            if let Some(candidate_ratio) = ratio {
-                if rtk_ratio_test_acceptance(candidate_ratio, &self.policy, state) {
-                    status = RtkAmbiguityFixStatus::Fixed;
-                    fixed_count = partial.float_cycles.len();
-                    reason = "partial_fix";
+            if let Some((partial, selection)) =
+                rtk_select_partial_ambiguity_fix_with_evidence(float, float.float_cycles.len() / 2)
+            {
+                candidates = rtk_lambda_integer_ambiguity_candidates(&partial, 2);
+                ratio = rtk_candidate_ratio(&candidates);
+                partial_selection = Some(selection);
+                if let Some(candidate_ratio) = ratio {
+                    if rtk_ratio_test_acceptance(candidate_ratio, &self.policy, state) {
+                        status = RtkAmbiguityFixStatus::Fixed;
+                        fixed_count = partial.float_cycles.len();
+                        reason = "partial_fix";
+                    }
                 }
             }
         }
@@ -282,7 +294,7 @@ impl RtkRatioTestFixer {
             if fixed_count == float.ids.len() {
                 Some(float.ids.clone())
             } else {
-                Some(rtk_select_partial_ambiguity_fix(float, fixed_count).ids)
+                partial_selection.as_ref().map(|selection| selection.selected_ids.clone())
             }
         } else {
             None
@@ -299,6 +311,7 @@ impl RtkRatioTestFixer {
             fixed_count,
             selected_ids,
             selected_integers,
+            partial_selection: partial_selection.clone(),
         };
         let audit = RtkAmbiguityFixAudit {
             epoch_idx,
@@ -306,6 +319,7 @@ impl RtkRatioTestFixer {
             status: result.status,
             reason: reason.to_string(),
             fixed_count,
+            partial_selection,
         };
         (result, audit)
     }
