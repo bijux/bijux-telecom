@@ -178,6 +178,16 @@ pub struct GlonassAlmanacEntry {
     pub satellite_type: GlonassSatelliteType,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct GlonassSlotChannelAssociation {
+    pub sat: SatId,
+    pub expected_slot: Option<GlonassSlot>,
+    pub reported_slot: Option<GlonassSlot>,
+    pub almanac_frequency_channel: Option<GlonassFrequencyChannel>,
+    pub almanac_health_operational: Option<bool>,
+    pub is_slot_consistent: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct GlonassBroadcastNavigationFrame {
     pub sat: SatId,
@@ -263,6 +273,26 @@ pub fn glonass_utc_relation(
         utc_su_plus_three_hours_minus_glonass_s: system_time.utc_offset_s,
         gps_minus_glonass_fractional_s: system_time.gps_minus_glonass_s,
     })
+}
+
+pub fn glonass_slot_channel_association(
+    navigation: &GlonassBroadcastNavigationFrame,
+) -> GlonassSlotChannelAssociation {
+    let expected_slot = GlonassSlot::new(navigation.sat.prn);
+    let almanac_entry = navigation.almanac_entries.iter().find(|entry| entry.sat == navigation.sat);
+    let reported_slot_matches = match navigation.immediate.reported_slot {
+        Some(reported_slot) => Some(reported_slot) == expected_slot,
+        None => true,
+    };
+
+    GlonassSlotChannelAssociation {
+        sat: navigation.sat,
+        expected_slot,
+        reported_slot: navigation.immediate.reported_slot,
+        almanac_frequency_channel: almanac_entry.map(|entry| entry.frequency_channel),
+        almanac_health_operational: almanac_entry.map(|entry| entry.health_operational),
+        is_slot_consistent: reported_slot_matches,
+    }
 }
 
 pub fn glonass_navigation_age(
@@ -524,13 +554,14 @@ fn glonass_inertial_dynamics(state: [f64; 6], luni_solar_acceleration_mps2: [f64
 #[cfg(test)]
 mod tests {
     use super::{
-        glonass_navigation_age, glonass_satellite_clock_correction, glonass_utc_relation,
-        sat_state_glonass_l1, GlonassAlmanacTimeData, GlonassBroadcastNavigationFrame,
+        glonass_navigation_age, glonass_satellite_clock_correction,
+        glonass_slot_channel_association, glonass_utc_relation, sat_state_glonass_l1,
+        GlonassAlmanacEntry, GlonassAlmanacTimeData, GlonassBroadcastNavigationFrame,
         GlonassFrameTime, GlonassImmediateHealth, GlonassImmediateNavigationData,
         GlonassLeapSecondAnnouncement, GlonassSatelliteType, GlonassStateVector, GlonassSystemTime,
         PZ90_02_TO_ITRF2000_X_M, PZ90_02_TO_ITRF2000_Y_M, PZ90_02_TO_ITRF2000_Z_M,
     };
-    use bijux_gnss_core::api::{Constellation, SatId};
+    use bijux_gnss_core::api::{Constellation, GlonassFrequencyChannel, GlonassSlot, SatId};
 
     fn sample_navigation() -> GlonassBroadcastNavigationFrame {
         let sat = SatId { constellation: Constellation::Glonass, prn: 14 };
@@ -648,6 +679,48 @@ mod tests {
             Some(GlonassLeapSecondAnnouncement::NegativeCorrection)
         );
         assert_eq!(GlonassLeapSecondAnnouncement::from_kp_word(4), None);
+    }
+
+    #[test]
+    fn glonass_slot_channel_association_reports_almanac_channel() {
+        let mut navigation = sample_navigation();
+        let slot = GlonassSlot::new(14).expect("slot");
+        let frequency_channel = GlonassFrequencyChannel::new(-4).expect("frequency channel");
+        navigation.immediate.reported_slot = Some(slot);
+        navigation.almanac_entries.push(GlonassAlmanacEntry {
+            sat: navigation.sat,
+            frequency_channel,
+            health_operational: true,
+            longitude_of_ascending_node_rad: 0.0,
+            ascending_node_time_s: 0.0,
+            inclination_delta_rad: 0.0,
+            draconian_period_correction_s: 0.0,
+            draconian_period_rate_s_per_orbit: 0.0,
+            eccentricity: 0.0,
+            argument_of_perigee_rad: 0.0,
+            clock_bias_s: 0.0,
+            satellite_type: GlonassSatelliteType::GlonassM,
+        });
+
+        let association = glonass_slot_channel_association(&navigation);
+
+        assert_eq!(association.expected_slot, Some(slot));
+        assert_eq!(association.reported_slot, Some(slot));
+        assert_eq!(association.almanac_frequency_channel, Some(frequency_channel));
+        assert_eq!(association.almanac_health_operational, Some(true));
+        assert!(association.is_slot_consistent);
+    }
+
+    #[test]
+    fn glonass_slot_channel_association_exposes_inconsistent_reported_slot() {
+        let mut navigation = sample_navigation();
+        navigation.immediate.reported_slot = GlonassSlot::new(13);
+
+        let association = glonass_slot_channel_association(&navigation);
+
+        assert_eq!(association.expected_slot, GlonassSlot::new(14));
+        assert_eq!(association.reported_slot, GlonassSlot::new(13));
+        assert!(!association.is_slot_consistent);
     }
 
     #[test]
