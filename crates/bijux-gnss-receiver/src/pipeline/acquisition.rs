@@ -10,8 +10,8 @@ use crate::engine::signal_selection::{
 use bijux_gnss_core::api::AcqThresholdProvenance;
 use bijux_gnss_core::api::{
     acq_result_stability_key, stable_acq_result_keys, AcqAssumptions, AcqCodePhaseRefinement,
-    AcqEvidence, AcqExplain, AcqExplainCandidate, AcqHypothesis, AcqRequest, AcqResult,
-    AcqUncertainty, Hertz, ReceiverSampleTrace, SamplesFrame, SatId, SignalCode,
+    AcqEvidence, AcqExplain, AcqExplainCandidate, AcqHypothesis, AcqRequest, AcqResult, Hertz,
+    ReceiverSampleTrace, SamplesFrame, SatId, SignalCode,
 };
 use num_complex::Complex;
 use rustfft::FftPlanner;
@@ -71,15 +71,14 @@ use false_alarm_calibration::{
     FalseAlarmRateMeasurement,
 };
 use front_end_rejection::zero_signal_run;
+#[cfg(test)]
 use likelihood_covariance::{
     estimate_log_likelihood_covariance_2x2, estimate_log_likelihood_covariance_3x3,
-    estimate_log_likelihood_covariance_from_refinement_axes,
 };
 #[cfg(test)]
 use likelihood_covariance::{LocalAcquisitionLikelihoodSurface, LocalAcquisitionLikelihoodVolume};
 use likelihood_measurement::{
     estimate_quadratic_surface_peak_offsets, measure_local_acquisition_likelihood_surface,
-    measure_local_acquisition_likelihood_volume,
 };
 use peak_metrics::{
     correlation_metrics, correlation_metrics_in_window, delayed_secondary_peak_diagnostic,
@@ -111,6 +110,7 @@ use threshold_resolution::{
     threshold_provenance_for_request, AcquisitionThresholdCacheKey, ResolvedAcquisitionThresholds,
     ThresholdResolutionCache,
 };
+use uncertainty::estimate_acquisition_uncertainty;
 use wrong_prn_suppression::{suppress_wrong_prn_correlations, AcquisitionSatEvaluation};
 
 mod cache;
@@ -130,6 +130,7 @@ mod search_window;
 mod signal_model;
 mod strategy_components;
 mod threshold_resolution;
+mod uncertainty;
 mod wrong_prn_suppression;
 
 /// Acquisition engine (coarse search).
@@ -1582,98 +1583,6 @@ fn classify_delayed_secondary_peak(
         samples_per_code,
         signal_model.code_length,
     )
-}
-
-fn estimate_acquisition_uncertainty(
-    config: &ReceiverPipelineConfig,
-    frame: &SamplesFrame,
-    signal_model: &AcquisitionSignalModel,
-    candidate: &AcqResult,
-    coherent_ms: u32,
-    noncoherent: u32,
-    doppler_step_hz: i32,
-    doppler_rate_search_hz_per_s: i32,
-    doppler_rate_step_hz_per_s: i32,
-) -> Option<AcqUncertainty> {
-    if !matches!(candidate.hypothesis, AcqHypothesis::Accepted) {
-        return None;
-    }
-    let code_phase_center_samples = candidate.resolved_code_phase_samples().round() as usize;
-    let covariance = if doppler_rate_search_hz_per_s > 0 {
-        measure_local_acquisition_likelihood_volume(
-            config,
-            signal_model,
-            frame,
-            candidate.sat,
-            candidate.carrier_hz.0,
-            candidate.doppler_rate_hz_per_s,
-            code_phase_center_samples,
-            doppler_step_hz as f64,
-            doppler_rate_step_hz_per_s as f64,
-            coherent_ms,
-            noncoherent,
-        )
-        .and_then(|volume| {
-            estimate_log_likelihood_covariance_3x3(
-                &volume,
-                candidate.mean as f64,
-                doppler_step_hz as f64,
-                1.0,
-                doppler_rate_step_hz_per_s as f64,
-            )
-        })
-    } else {
-        None
-    }
-    .or_else(|| {
-        measure_local_acquisition_likelihood_surface(
-            config,
-            signal_model,
-            frame,
-            candidate.sat,
-            candidate.carrier_hz.0,
-            candidate.doppler_rate_hz_per_s,
-            code_phase_center_samples,
-            doppler_step_hz as f64,
-            coherent_ms,
-            noncoherent,
-        )
-        .and_then(|surface| {
-            estimate_log_likelihood_covariance_2x2(
-                &surface,
-                candidate.mean as f64,
-                doppler_step_hz as f64,
-                1.0,
-            )
-        })
-    })
-    .or_else(|| {
-        estimate_log_likelihood_covariance_from_refinement_axes(
-            candidate,
-            candidate.mean as f64,
-            doppler_step_hz as f64,
-        )
-    })?;
-
-    let doppler_hz = covariance.doppler_variance_hz2.sqrt();
-    let code_phase_samples = covariance.code_phase_variance_samples2.sqrt();
-    let doppler_rate_hz_per_s = covariance.doppler_rate_variance_hz2_per_s2.map(f64::sqrt);
-    if !doppler_hz.is_finite()
-        || !code_phase_samples.is_finite()
-        || doppler_hz <= f64::EPSILON
-        || code_phase_samples <= f64::EPSILON
-        || doppler_rate_hz_per_s
-            .is_some_and(|rate_sigma| !rate_sigma.is_finite() || rate_sigma <= f64::EPSILON)
-    {
-        return None;
-    }
-
-    Some(AcqUncertainty {
-        doppler_hz,
-        code_phase_samples,
-        doppler_rate_hz_per_s,
-        covariance: Some(covariance),
-    })
 }
 
 #[allow(clippy::items_after_test_module)]
