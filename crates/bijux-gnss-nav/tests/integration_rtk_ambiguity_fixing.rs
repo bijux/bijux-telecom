@@ -5,10 +5,11 @@ use bijux_gnss_nav::api::{
     rtk_ambiguity_state_from_fixed_solution, rtk_conditioned_baseline_from_fixed_ambiguities,
     rtk_float_ambiguity_state_from_baseline_solution, rtk_float_baseline_from_double_differences,
     rtk_integer_ambiguity_candidates, rtk_lambda_decorrelate,
-    rtk_transform_fixed_ambiguity_reference, rtk_transform_float_ambiguity_reference,
-    rtk_transform_float_baseline_reference, RtkAmbiguityFixPolicy, RtkAmbiguityFixState,
-    RtkAmbiguityFixStatus, RtkDoubleDifferenceAmbiguityId, RtkFloatAmbiguityEstimate,
-    RtkFloatAmbiguityState, RtkFloatBaselineSolution, RtkRatioTestFixer,
+    rtk_lambda_integer_ambiguity_candidates, rtk_transform_fixed_ambiguity_reference,
+    rtk_transform_float_ambiguity_reference, rtk_transform_float_baseline_reference,
+    RtkAmbiguityFixPolicy, RtkAmbiguityFixState, RtkAmbiguityFixStatus,
+    RtkDoubleDifferenceAmbiguityId, RtkFloatAmbiguityEstimate, RtkFloatAmbiguityState,
+    RtkFloatBaselineSolution, RtkRatioTestFixer,
 };
 use bijux_gnss_testkit::rtk_baseline::clean_gps_l1_short_baseline_case;
 
@@ -213,6 +214,23 @@ fn rtk_lambda_decorrelation_carries_unimodular_transform_evidence() {
         correlation_abs(&decorrelated.q_prime, 0, 1)
             < correlation_abs(&float_state.covariance_cycles2, 0, 1)
     );
+}
+
+#[test]
+fn rtk_lambda_integer_candidates_back_transform_to_original_ambiguities() {
+    let float_state = RtkFloatAmbiguityState {
+        ids: vec![gps_l1_dd_id(7, 3), gps_l1_dd_id(11, 3)],
+        float_cycles: vec![-0.5, -0.45],
+        covariance_cycles2: vec![vec![1.0, 0.8], vec![0.8, 1.0]],
+    };
+
+    let candidates = rtk_lambda_integer_ambiguity_candidates(&float_state, 3);
+
+    assert_eq!(
+        candidates.iter().map(|candidate| candidate.integers.clone()).collect::<Vec<_>>(),
+        vec![vec![0, 0], vec![-1, -1], vec![-1, 0]]
+    );
+    assert!(candidates.windows(2).all(|pair| pair[0].cost <= pair[1].cost));
 }
 
 #[test]

@@ -184,9 +184,7 @@ impl RtkRatioTestFixer {
             return (result, audit);
         }
 
-        let decorrelated = rtk_lambda_decorrelate(float);
-        let mut candidates =
-            rtk_integer_ambiguity_candidates(&decorrelated.n_prime, &decorrelated.q_prime, 2);
+        let mut candidates = rtk_lambda_integer_ambiguity_candidates(float, 2);
         let mut ratio = rtk_candidate_ratio(&candidates);
         let mut status = if ratio
             .map(|candidate_ratio| rtk_ratio_test_acceptance(candidate_ratio, &self.policy, state))
@@ -203,12 +201,7 @@ impl RtkRatioTestFixer {
 
         if status != RtkAmbiguityFixStatus::Fixed && float.float_cycles.len() > 1 {
             let partial = rtk_select_partial_ambiguity_fix(float, float.float_cycles.len() / 2);
-            let decorrelated_partial = rtk_lambda_decorrelate(&partial);
-            candidates = rtk_integer_ambiguity_candidates(
-                &decorrelated_partial.n_prime,
-                &decorrelated_partial.q_prime,
-                2,
-            );
+            candidates = rtk_lambda_integer_ambiguity_candidates(&partial, 2);
             ratio = rtk_candidate_ratio(&candidates);
             if let Some(candidate_ratio) = ratio {
                 if rtk_ratio_test_acceptance(candidate_ratio, &self.policy, state) {
@@ -693,6 +686,38 @@ pub fn rtk_integer_ambiguity_candidates(
     best
 }
 
+pub fn rtk_lambda_integer_ambiguity_candidates(
+    float: &RtkFloatAmbiguityState,
+    top_k: usize,
+) -> Vec<RtkIntegerAmbiguityCandidate> {
+    if !float.validate_payload().is_empty()
+        || !valid_integer_search_input(&float.float_cycles, &float.covariance_cycles2)
+    {
+        return Vec::new();
+    }
+    let decorrelated = rtk_lambda_decorrelate(float);
+    let requested = top_k.max(1);
+    let reduced_candidates =
+        rtk_integer_ambiguity_candidates(&decorrelated.n_prime, &decorrelated.q_prime, requested);
+    let mut candidates = Vec::with_capacity(reduced_candidates.len());
+    for candidate in reduced_candidates {
+        let Some(integers) = integer_matrix_i64_vector_mul(&decorrelated.z, &candidate.integers)
+        else {
+            return Vec::new();
+        };
+        let cost = candidate_cost(&float.float_cycles, &float.covariance_cycles2, &integers);
+        if cost.is_finite() {
+            candidates.push(RtkIntegerAmbiguityCandidate { integers, cost });
+        }
+    }
+    candidates.sort_by(|left, right| {
+        left.cost.total_cmp(&right.cost).then_with(|| left.integers.cmp(&right.integers))
+    });
+    candidates.dedup_by(|left, right| left.integers == right.integers);
+    candidates.truncate(requested);
+    candidates
+}
+
 pub fn rtk_candidate_ratio(candidates: &[RtkIntegerAmbiguityCandidate]) -> Option<f64> {
     if candidates.len() < 2 {
         return None;
@@ -966,6 +991,21 @@ fn integer_matrix_vector_mul(matrix: &[Vec<i64>], vector: &[f64]) -> Vec<f64> {
                 .sum()
         })
         .collect()
+}
+
+fn integer_matrix_i64_vector_mul(matrix: &[Vec<i64>], vector: &[i64]) -> Option<Vec<i64>> {
+    let mut out = Vec::with_capacity(matrix.len());
+    for row in matrix {
+        if row.len() != vector.len() {
+            return None;
+        }
+        let mut sum = 0_i64;
+        for (coefficient, value) in row.iter().zip(vector.iter()) {
+            sum = sum.checked_add(coefficient.checked_mul(*value)?)?;
+        }
+        out.push(sum);
+    }
+    Some(out)
 }
 
 fn covariance_transform(transform: &[Vec<i64>], covariance: &[Vec<f64>]) -> Vec<Vec<f64>> {
