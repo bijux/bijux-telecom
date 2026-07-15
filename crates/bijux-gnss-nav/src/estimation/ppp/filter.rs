@@ -109,6 +109,7 @@ impl PppFilter {
                     missing_reasons: Vec::new(),
                 },
                 warnings: Vec::new(),
+                lifecycle_events: Vec::new(),
                 nis_mean: None,
                 ar_events: Vec::new(),
             },

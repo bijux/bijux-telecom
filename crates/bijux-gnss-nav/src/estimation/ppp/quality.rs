@@ -174,7 +174,10 @@ impl PppFilter {
             last_t_rx_s: self.last_t_rx_s,
             epoch0_t_s: self.epoch0_t_s,
             last_pos: self.last_pos,
+            last_seen_iono: self.last_seen_iono.iter().map(|(k, v)| (*k, *v)).collect(),
+            last_seen_amb: self.last_seen_amb.iter().map(|(k, v)| (*k, *v)).collect(),
             phase_windup: self.phase_windup.iter().map(|(k, v)| (*k, *v)).collect(),
+            wl_state: self.wl_state.iter().map(|(k, v)| (*k, v.clone())).collect(),
         }
     }
 
@@ -214,7 +217,10 @@ impl PppFilter {
         self.last_t_rx_s = ck.last_t_rx_s;
         self.epoch0_t_s = ck.epoch0_t_s;
         self.last_pos = ck.last_pos;
+        self.last_seen_iono = ck.last_seen_iono.into_iter().collect();
+        self.last_seen_amb = ck.last_seen_amb.into_iter().collect();
         self.phase_windup = ck.phase_windup.into_iter().collect();
+        self.wl_state = ck.wl_state.into_iter().collect();
     }
 
     pub fn update_wide_lane(&mut self, obs: &ObsEpoch, sats: &[&ObsSatellite]) {
@@ -371,7 +377,7 @@ mod convergence_tests {
 mod tests {
     use super::*;
     use crate::corrections::phase_windup::PhaseWindupState;
-    use crate::estimation::ppp::config::{PppConfig, PppStateIdentity};
+    use crate::estimation::ppp::config::{PppConfig, PppStateIdentity, WlAmbiguity};
     use crate::estimation::ppp::filter::{
         base_ppp_state_identities, ppp_indices_from_state_identities, ppp_state_label,
     };
@@ -467,6 +473,34 @@ mod tests {
             restored.phase_windup.get(&sat).and_then(|state| state.previous_cycles),
             Some(0.42)
         );
+    }
+
+    #[test]
+    fn checkpoint_preserves_dynamic_state_lifecycle_bookkeeping() {
+        let sig = SigId {
+            sat: SatId { constellation: Constellation::Gps, prn: 11 },
+            band: SignalBand::L1,
+            code: SignalCode::Ca,
+        };
+        let mut filter = PppFilter::new(PppConfig::default());
+        filter.last_seen_iono.insert(sig.sat, 42);
+        filter.last_seen_amb.insert(sig, 43);
+        filter.wl_state.insert(
+            sig.sat,
+            WlAmbiguity { float_cycles: 7.25, variance: 0.125, fixed: true, last_update_epoch: 44 },
+        );
+
+        let checkpoint = filter.checkpoint();
+        let mut restored = PppFilter::new(PppConfig::default());
+        restored.restore_from_checkpoint(checkpoint);
+
+        assert_eq!(restored.last_seen_iono.get(&sig.sat), Some(&42));
+        assert_eq!(restored.last_seen_amb.get(&sig), Some(&43));
+        let restored_wide_lane = restored.wl_state.get(&sig.sat).expect("wide-lane state");
+        assert_eq!(restored_wide_lane.float_cycles, 7.25);
+        assert_eq!(restored_wide_lane.variance, 0.125);
+        assert!(restored_wide_lane.fixed);
+        assert_eq!(restored_wide_lane.last_update_epoch, 44);
     }
 
     #[test]

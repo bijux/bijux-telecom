@@ -713,8 +713,28 @@ pub struct PppHealth {
     pub pruned_states: usize,
     pub convergence: PppConvergenceState,
     pub warnings: Vec<String>,
+    pub lifecycle_events: Vec<PppLifecycleEvent>,
     pub nis_mean: Option<f64>,
     pub ar_events: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PppLifecycleEventKind {
+    ReceiverReset,
+    CarrierDiscontinuity,
+    SatelliteStatePruned,
+    ProductSupportChanged,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PppLifecycleEvent {
+    pub kind: PppLifecycleEventKind,
+    pub epoch_idx: Option<u64>,
+    pub sat: Option<SatId>,
+    pub signal: Option<SigId>,
+    pub removed_states: Vec<PppStateIdentity>,
+    pub reason: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -779,10 +799,16 @@ pub struct PppCheckpoint {
     pub last_t_rx_s: Option<f64>,
     pub epoch0_t_s: Option<f64>,
     pub last_pos: Option<[f64; 3]>,
+    #[serde(default)]
+    pub last_seen_iono: Vec<(SatId, u64)>,
+    #[serde(default)]
+    pub last_seen_amb: Vec<(SigId, u64)>,
     pub phase_windup: Vec<(SatId, PhaseWindupState)>,
+    #[serde(default)]
+    pub wl_state: Vec<(SatId, WlAmbiguity)>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct WlAmbiguity {
     pub float_cycles: f64,
     pub variance: f64,
