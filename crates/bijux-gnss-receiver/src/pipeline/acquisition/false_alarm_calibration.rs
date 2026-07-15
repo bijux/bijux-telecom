@@ -4,7 +4,7 @@ use bijux_gnss_core::api::{AcqRequest, SampleTime, SamplesFrame, Seconds};
 use bijux_gnss_signal::api::AcquisitionSignalModel;
 use num_complex::Complex;
 
-use super::resolved_request_signal_code;
+use super::signal_model::resolved_request_signal_code;
 
 #[derive(Debug, Clone, Copy)]
 pub(super) struct FalseAlarmRateMeasurement {
