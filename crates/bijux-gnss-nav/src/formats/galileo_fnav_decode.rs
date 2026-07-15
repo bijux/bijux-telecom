@@ -59,6 +59,28 @@ pub struct GalileoFnavKeplerianPage {
     pub gst: GalileoSystemTime,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct GalileoFnavHarmonicPage {
+    pub iodnav: u16,
+    pub i0: f64,
+    pub w: f64,
+    pub delta_n: f64,
+    pub cuc: f64,
+    pub cus: f64,
+    pub crc: f64,
+    pub crs: f64,
+    pub toe_s: f64,
+    pub gst: GalileoSystemTime,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct GalileoFnavSupplementaryEphemerisPage {
+    pub iodnav: u16,
+    pub cic: f64,
+    pub cis: f64,
+    pub tow_s: u32,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum GalileoFnavPageRejectionReason {
@@ -172,6 +194,37 @@ pub fn decode_galileo_fnav_keplerian_page(
             week: page.unsigned_bits(183, 12) as u16,
             tow_s: page.unsigned_bits(195, 20) as u32,
         },
+    })
+}
+
+pub fn decode_galileo_fnav_harmonic_page(
+    page: &GalileoFnavPage,
+) -> Option<GalileoFnavHarmonicPage> {
+    (page.page_type == 3).then(|| GalileoFnavHarmonicPage {
+        iodnav: page.unsigned_bits(7, 10) as u16,
+        i0: page.signed_bits(17, 32) as f64 * 2f64.powi(-31) * std::f64::consts::PI,
+        w: page.signed_bits(49, 32) as f64 * 2f64.powi(-31) * std::f64::consts::PI,
+        delta_n: page.signed_bits(81, 16) as f64 * 2f64.powi(-43) * std::f64::consts::PI,
+        cuc: page.signed_bits(97, 16) as f64 * 2f64.powi(-29),
+        cus: page.signed_bits(113, 16) as f64 * 2f64.powi(-29),
+        crc: page.signed_bits(129, 16) as f64 * 2f64.powi(-5),
+        crs: page.signed_bits(145, 16) as f64 * 2f64.powi(-5),
+        toe_s: page.unsigned_bits(161, 14) as f64 * 60.0,
+        gst: GalileoSystemTime {
+            week: page.unsigned_bits(175, 12) as u16,
+            tow_s: page.unsigned_bits(187, 20) as u32,
+        },
+    })
+}
+
+pub fn decode_galileo_fnav_supplementary_ephemeris_page(
+    page: &GalileoFnavPage,
+) -> Option<GalileoFnavSupplementaryEphemerisPage> {
+    (page.page_type == 4).then(|| GalileoFnavSupplementaryEphemerisPage {
+        iodnav: page.unsigned_bits(7, 10) as u16,
+        cic: page.signed_bits(17, 16) as f64 * 2f64.powi(-29),
+        cis: page.signed_bits(33, 16) as f64 * 2f64.powi(-29),
+        tow_s: page.unsigned_bits(190, 20) as u32,
     })
 }
 
@@ -398,5 +451,58 @@ mod tests {
         assert_eq!(keplerian.idot, -0x03A5_i64 as f64 * 2f64.powi(-43) * std::f64::consts::PI);
         assert_eq!(keplerian.gst.week, 2_223);
         assert_eq!(keplerian.gst.tow_s, 456_799);
+    }
+
+    #[test]
+    fn harmonic_page_decodes_ephemeris_corrections_and_toe() {
+        let mut bits = vec![0_u8; GALILEO_FNAV_PAGE_BITS];
+        set_bits(&mut bits, 1, 6, 3);
+        set_bits(&mut bits, 7, 10, 0x155);
+        set_bits(&mut bits, 17, 32, encode_signed(-0x1234_567_i64, 32));
+        set_bits(&mut bits, 49, 32, encode_signed(0x2345_6789_i64, 32));
+        set_bits(&mut bits, 81, 16, encode_signed(0x0F0F_i64, 16));
+        set_bits(&mut bits, 97, 16, encode_signed(-321_i64, 16));
+        set_bits(&mut bits, 113, 16, encode_signed(654_i64, 16));
+        set_bits(&mut bits, 129, 16, encode_signed(1_111_i64, 16));
+        set_bits(&mut bits, 145, 16, encode_signed(-2_222_i64, 16));
+        set_bits(&mut bits, 161, 14, 2_345);
+        set_bits(&mut bits, 175, 12, 2_224);
+        set_bits(&mut bits, 187, 20, 456_809);
+        apply_crc(&mut bits);
+        let page = decode_galileo_fnav_page(&bits).expect("valid type 3 page");
+
+        let harmonic = super::decode_galileo_fnav_harmonic_page(&page).expect("type 3 payload");
+
+        assert_eq!(harmonic.iodnav, 0x155);
+        assert_eq!(harmonic.i0, -0x1234_567_i64 as f64 * 2f64.powi(-31) * std::f64::consts::PI);
+        assert_eq!(harmonic.w, 0x2345_6789_i64 as f64 * 2f64.powi(-31) * std::f64::consts::PI);
+        assert_eq!(harmonic.delta_n, 0x0F0F_i64 as f64 * 2f64.powi(-43) * std::f64::consts::PI);
+        assert_eq!(harmonic.cuc, -321.0 * 2f64.powi(-29));
+        assert_eq!(harmonic.cus, 654.0 * 2f64.powi(-29));
+        assert_eq!(harmonic.crc, 1_111.0 * 2f64.powi(-5));
+        assert_eq!(harmonic.crs, -2_222.0 * 2f64.powi(-5));
+        assert_eq!(harmonic.toe_s, 2_345.0 * 60.0);
+        assert_eq!(harmonic.gst.week, 2_224);
+        assert_eq!(harmonic.gst.tow_s, 456_809);
+    }
+
+    #[test]
+    fn supplementary_ephemeris_page_decodes_inclination_corrections() {
+        let mut bits = vec![0_u8; GALILEO_FNAV_PAGE_BITS];
+        set_bits(&mut bits, 1, 6, 4);
+        set_bits(&mut bits, 7, 10, 0x155);
+        set_bits(&mut bits, 17, 16, encode_signed(-123_i64, 16));
+        set_bits(&mut bits, 33, 16, encode_signed(456_i64, 16));
+        set_bits(&mut bits, 190, 20, 456_819);
+        apply_crc(&mut bits);
+        let page = decode_galileo_fnav_page(&bits).expect("valid type 4 page");
+
+        let supplementary =
+            super::decode_galileo_fnav_supplementary_ephemeris_page(&page).expect("type 4 payload");
+
+        assert_eq!(supplementary.iodnav, 0x155);
+        assert_eq!(supplementary.cic, -123.0 * 2f64.powi(-29));
+        assert_eq!(supplementary.cis, 456.0 * 2f64.powi(-29));
+        assert_eq!(supplementary.tow_s, 456_819);
     }
 }

@@ -200,10 +200,12 @@ pub use crate::formats::cnav_decode::{
 };
 /// Galileo F/NAV page decoding.
 pub use crate::formats::galileo_fnav_decode::{
-    decode_galileo_fnav_clock_status_page, decode_galileo_fnav_keplerian_page,
-    decode_galileo_fnav_page, GalileoFnavClockCorrection, GalileoFnavClockStatusPage,
-    GalileoFnavKeplerianPage, GalileoFnavPage, GalileoFnavPageRejection,
-    GalileoFnavPageRejectionReason, GalileoFnavSignalStatus,
+    decode_galileo_fnav_clock_status_page, decode_galileo_fnav_harmonic_page,
+    decode_galileo_fnav_keplerian_page, decode_galileo_fnav_page,
+    decode_galileo_fnav_supplementary_ephemeris_page, GalileoFnavClockCorrection,
+    GalileoFnavClockStatusPage, GalileoFnavHarmonicPage, GalileoFnavKeplerianPage, GalileoFnavPage,
+    GalileoFnavPageRejection, GalileoFnavPageRejectionReason, GalileoFnavSignalStatus,
+    GalileoFnavSupplementaryEphemerisPage,
 };
 /// Format parsing and output.
 pub use crate::formats::galileo_inav_decode::{
