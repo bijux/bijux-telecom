@@ -234,8 +234,7 @@ fn navigation_rejection_reason(
             galileo_navigation_rejection_reason(navigation, receive_tow_s)
         }
         PositionBroadcastNavigation::Beidou(navigation) => {
-            (!is_beidou_navigation_valid(navigation, receive_tow_s))
-                .then_some(MeasurementRejectReason::InvalidEphemeris)
+            beidou_navigation_rejection_reason(navigation, receive_tow_s)
         }
         PositionBroadcastNavigation::Glonass(navigation) => {
             (!is_glonass_navigation_valid(navigation, receive_tow_s))
@@ -303,6 +302,67 @@ fn galileo_navigation_is_complete(
         && navigation.clock.af2.is_finite()
         && navigation.clock.bgd_e1_e5a_s.is_finite()
         && navigation.clock.bgd_e1_e5b_s.is_finite()
+}
+
+fn beidou_navigation_rejection_reason(
+    navigation: &crate::orbits::beidou::BeidouBroadcastNavigationData,
+    receive_tow_s: f64,
+) -> Option<MeasurementRejectReason> {
+    if navigation.sat.constellation != Constellation::Beidou
+        || navigation.ephemeris.sat != navigation.sat
+    {
+        return Some(MeasurementRejectReason::EphemerisMismatch);
+    }
+    if !beidou_navigation_is_complete(navigation) {
+        return Some(MeasurementRejectReason::IncompleteEphemeris);
+    }
+    if navigation.ephemeris.aode != navigation.clock.aodc {
+        return Some(MeasurementRejectReason::EphemerisMismatch);
+    }
+    if !navigation.signal_health.autonomous_satellite_good {
+        return Some(MeasurementRejectReason::UnhealthySatellite);
+    }
+    if navigation_time_delta_s(receive_tow_s, navigation.ephemeris.toe_s)
+        < -NAVIGATION_FUTURE_TOLERANCE_S
+        || navigation_time_delta_s(receive_tow_s, navigation.clock.toc_s)
+            < -NAVIGATION_FUTURE_TOLERANCE_S
+    {
+        return Some(MeasurementRejectReason::EphemerisFuture);
+    }
+    if beidou_navigation_age(navigation, receive_tow_s).is_stale() {
+        return Some(MeasurementRejectReason::EphemerisStale);
+    }
+    None
+}
+
+fn beidou_navigation_is_complete(
+    navigation: &crate::orbits::beidou::BeidouBroadcastNavigationData,
+) -> bool {
+    let ephemeris = &navigation.ephemeris;
+    ephemeris.sqrt_a.is_finite()
+        && ephemeris.sqrt_a > 0.0
+        && ephemeris.e.is_finite()
+        && (0.0..1.0).contains(&ephemeris.e)
+        && ephemeris.toe_s.is_finite()
+        && ephemeris.i0.is_finite()
+        && ephemeris.idot.is_finite()
+        && ephemeris.omega0.is_finite()
+        && ephemeris.omegadot.is_finite()
+        && ephemeris.w.is_finite()
+        && ephemeris.m0.is_finite()
+        && ephemeris.delta_n.is_finite()
+        && ephemeris.cuc.is_finite()
+        && ephemeris.cus.is_finite()
+        && ephemeris.crc.is_finite()
+        && ephemeris.crs.is_finite()
+        && ephemeris.cic.is_finite()
+        && ephemeris.cis.is_finite()
+        && navigation.clock.toc_s.is_finite()
+        && navigation.clock.af0.is_finite()
+        && navigation.clock.af1.is_finite()
+        && navigation.clock.af2.is_finite()
+        && navigation.clock.tgd1_s.is_finite()
+        && navigation.clock.tgd2_s.is_finite()
 }
 
 fn gps_ephemeris_rejection_reason(
@@ -559,6 +619,10 @@ mod tests {
         PositionBroadcastNavigation, PositionObservation, SPEED_OF_LIGHT_MPS,
     };
     use crate::estimation::position::solver::geodetic_to_ecef;
+    use crate::orbits::beidou::{
+        BeidouBroadcastNavigationData, BeidouClockCorrection, BeidouEphemeris,
+        BeidouIonosphericCorrection, BeidouSignalHealth, BeidouSystemTime,
+    };
     use crate::orbits::galileo::{
         GalileoBroadcastNavigationData, GalileoClockCorrection, GalileoEphemeris,
         GalileoIonosphericCorrection, GalileoIonosphericDisturbanceFlags, GalileoSignalHealth,
@@ -653,6 +717,54 @@ mod tests {
                     region_4: false,
                     region_5: false,
                 },
+            },
+        }
+    }
+
+    fn sample_beidou_navigation() -> BeidouBroadcastNavigationData {
+        BeidouBroadcastNavigationData {
+            sat: SatId { constellation: Constellation::Beidou, prn: 11 },
+            bdt: BeidouSystemTime { week: 987, sow_s: 64_800 },
+            urai: 2,
+            signal_health: BeidouSignalHealth { autonomous_satellite_good: true },
+            clock: BeidouClockCorrection {
+                toc_s: 64_800.0,
+                aodc: 3,
+                af0: -1.8e-4,
+                af1: 2.2e-12,
+                af2: -2.6e-19,
+                tgd1_s: -1.1e-9,
+                tgd2_s: 2.2e-9,
+            },
+            ephemeris: BeidouEphemeris {
+                sat: SatId { constellation: Constellation::Beidou, prn: 11 },
+                aode: 3,
+                toe_s: 64_800.0,
+                sqrt_a: 5_282.625_128,
+                e: 0.002_34,
+                i0: 0.958,
+                idot: -1.9e-10,
+                omega0: 0.87,
+                omegadot: -6.2e-9,
+                w: -0.42,
+                m0: 1.12,
+                delta_n: 4.3e-9,
+                cuc: -2.3e-6,
+                cus: 3.1e-6,
+                crc: 145.0,
+                crs: -82.0,
+                cic: 2.6e-7,
+                cis: -2.2e-7,
+            },
+            ionosphere: BeidouIonosphericCorrection {
+                alpha0: 1.0e-8,
+                alpha1: -2.0e-8,
+                alpha2: 3.0e-8,
+                alpha3: -4.0e-8,
+                beta0: 1.2e5,
+                beta1: -2.4e5,
+                beta2: 3.6e5,
+                beta3: -4.8e5,
             },
         }
     }
@@ -847,6 +959,77 @@ mod tests {
         let rejected = rejected_navigation_entry_reason(
             PositionBroadcastNavigation::Galileo(navigation),
             sample_galileo_navigation().sat,
+            65_000.0,
+        );
+
+        assert_eq!(rejected, MeasurementRejectReason::IncompleteEphemeris);
+    }
+
+    #[test]
+    fn beidou_selection_reports_stale_navigation() {
+        let mut navigation = sample_beidou_navigation();
+        navigation.ephemeris.toe_s -= 18_000.0;
+        navigation.clock.toc_s -= 18_000.0;
+
+        let rejected = rejected_navigation_entry_reason(
+            PositionBroadcastNavigation::Beidou(navigation),
+            sample_beidou_navigation().sat,
+            65_000.0,
+        );
+
+        assert_eq!(rejected, MeasurementRejectReason::EphemerisStale);
+    }
+
+    #[test]
+    fn beidou_selection_reports_future_navigation() {
+        let mut navigation = sample_beidou_navigation();
+        navigation.clock.toc_s = 65_030.0;
+
+        let rejected = rejected_navigation_entry_reason(
+            PositionBroadcastNavigation::Beidou(navigation),
+            sample_beidou_navigation().sat,
+            65_000.0,
+        );
+
+        assert_eq!(rejected, MeasurementRejectReason::EphemerisFuture);
+    }
+
+    #[test]
+    fn beidou_selection_reports_unhealthy_signal() {
+        let mut navigation = sample_beidou_navigation();
+        navigation.signal_health.autonomous_satellite_good = false;
+
+        let rejected = rejected_navigation_entry_reason(
+            PositionBroadcastNavigation::Beidou(navigation),
+            sample_beidou_navigation().sat,
+            65_000.0,
+        );
+
+        assert_eq!(rejected, MeasurementRejectReason::UnhealthySatellite);
+    }
+
+    #[test]
+    fn beidou_selection_reports_age_of_data_mismatch() {
+        let mut navigation = sample_beidou_navigation();
+        navigation.ephemeris.aode ^= 0x1;
+
+        let rejected = rejected_navigation_entry_reason(
+            PositionBroadcastNavigation::Beidou(navigation),
+            sample_beidou_navigation().sat,
+            65_000.0,
+        );
+
+        assert_eq!(rejected, MeasurementRejectReason::EphemerisMismatch);
+    }
+
+    #[test]
+    fn beidou_selection_reports_incomplete_navigation() {
+        let mut navigation = sample_beidou_navigation();
+        navigation.clock.tgd1_s = f64::NAN;
+
+        let rejected = rejected_navigation_entry_reason(
+            PositionBroadcastNavigation::Beidou(navigation),
+            sample_beidou_navigation().sat,
             65_000.0,
         );
 
