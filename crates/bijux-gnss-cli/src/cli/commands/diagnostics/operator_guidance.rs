@@ -1,4 +1,6 @@
-fn machine_catalog_report() -> serde_json::Value {
+use super::*;
+
+pub(crate) fn machine_catalog_report() -> serde_json::Value {
     let reports = vec![
         serde_json::json!({"name": "diagnostics_operator_map", "schema": "schemas/diagnostics_operator_map_report.schema.json", "schema_version": 1}),
         serde_json::json!({"name": "diagnostics_workflow", "schema": "schemas/diagnostics_workflow_report.schema.json", "schema_version": 1}),
@@ -32,7 +34,7 @@ fn machine_catalog_report() -> serde_json::Value {
     })
 }
 
-fn api_parity_report() -> serde_json::Value {
+pub(crate) fn api_parity_report() -> serde_json::Value {
     let workflows = vec![
         serde_json::json!({
             "workflow": "run",
@@ -88,7 +90,7 @@ fn api_parity_report() -> serde_json::Value {
     })
 }
 
-fn expert_guide_report() -> serde_json::Value {
+pub(crate) fn expert_guide_report() -> serde_json::Value {
     let flows = vec![
         serde_json::json!({
             "name": "integrity_triage",
@@ -124,7 +126,7 @@ fn expert_guide_report() -> serde_json::Value {
     })
 }
 
-fn history_browse_report(root_dir: &Path, limit: usize) -> Result<serde_json::Value> {
+pub(crate) fn history_browse_report(root_dir: &Path, limit: usize) -> Result<serde_json::Value> {
     if !root_dir.exists() || !root_dir.is_dir() {
         return Err(classified_error(
             CliErrorClass::OperatorMisconfiguration,
@@ -187,7 +189,7 @@ fn history_browse_report(root_dir: &Path, limit: usize) -> Result<serde_json::Va
     }))
 }
 
-fn route_explain_report(topic: RouteTopic) -> serde_json::Value {
+pub(crate) fn route_explain_report(topic: RouteTopic) -> serde_json::Value {
     let topic_name = format!("{topic:?}").to_lowercase();
     let steps = match topic {
         RouteTopic::Integrity => vec![
@@ -218,7 +220,7 @@ fn route_explain_report(topic: RouteTopic) -> serde_json::Value {
     })
 }
 
-fn operator_workflow_report(profile: WorkflowProfile) -> serde_json::Value {
+pub(crate) fn operator_workflow_report(profile: WorkflowProfile) -> serde_json::Value {
     let profile_name = format!("{profile:?}").to_lowercase();
     let steps = match profile {
         WorkflowProfile::Run => vec![
@@ -244,7 +246,7 @@ fn operator_workflow_report(profile: WorkflowProfile) -> serde_json::Value {
     })
 }
 
-fn operator_ergonomics_report(run_dir: &Path) -> Result<serde_json::Value> {
+pub(crate) fn operator_ergonomics_report(run_dir: &Path) -> Result<serde_json::Value> {
     ensure_run_dir_exists(run_dir)?;
     let status = operator_status_report(run_dir)?;
     let gate = medium_gate_report(run_dir)?;
@@ -297,7 +299,7 @@ fn operator_ergonomics_report(run_dir: &Path) -> Result<serde_json::Value> {
     }))
 }
 
-fn audit_trail_report(run_dir: &Path) -> Result<serde_json::Value> {
+pub(crate) fn audit_trail_report(run_dir: &Path) -> Result<serde_json::Value> {
     ensure_run_dir_exists(run_dir)?;
     let manifest_path = run_dir.join("manifest.json");
     let manifest: serde_json::Value = serde_json::from_str(&fs::read_to_string(&manifest_path)?)
@@ -367,7 +369,7 @@ fn audit_trail_report(run_dir: &Path) -> Result<serde_json::Value> {
     }))
 }
 
-fn dependency_trace_report(run_dir: &Path) -> Result<serde_json::Value> {
+pub(crate) fn dependency_trace_report(run_dir: &Path) -> Result<serde_json::Value> {
     ensure_run_dir_exists(run_dir)?;
     let manifest_path = run_dir.join("manifest.json");
     let manifest: serde_json::Value = serde_json::from_str(&fs::read_to_string(&manifest_path)?)
@@ -450,7 +452,7 @@ fn dependency_trace_report(run_dir: &Path) -> Result<serde_json::Value> {
     }))
 }
 
-fn trust_class_report(run_dir: &Path) -> Result<serde_json::Value> {
+pub(crate) fn trust_class_report(run_dir: &Path) -> Result<serde_json::Value> {
     ensure_run_dir_exists(run_dir)?;
     let medium_gate = medium_gate_report(run_dir)?;
     let repro = verify_repro_bundle(run_dir)?;
@@ -510,7 +512,7 @@ fn trust_class_report(run_dir: &Path) -> Result<serde_json::Value> {
     }))
 }
 
-fn integrity_focus_report(run_dir: &Path) -> Result<serde_json::Value> {
+pub(crate) fn integrity_focus_report(run_dir: &Path) -> Result<serde_json::Value> {
     ensure_run_dir_exists(run_dir)?;
     let trust = trust_class_report(run_dir)?;
     let audit = audit_trail_report(run_dir)?;
@@ -572,4 +574,3 @@ fn integrity_focus_report(run_dir: &Path) -> Result<serde_json::Value> {
         }
     }))
 }
-
