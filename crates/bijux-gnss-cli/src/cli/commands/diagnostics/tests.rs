@@ -3,7 +3,8 @@ mod diagnostics_tests {
     use super::{
         advanced_gate_report, artifact_inventory_report, compare_run_evidence, explain_run_scope,
         evidence_backed_rtk_fix_accepted, export_bundle_report, machine_catalog_report,
-        medium_gate_report, nav_reference_week, operator_status_report, refused_execution_status,
+        medium_gate_report, navigation_decode::nav_reference_week, operator_status_report,
+        refused_execution_status,
         replay_audit_report, rtk_advanced_solution_measurements, verify_repro_bundle,
         AdvancedGateMode,
     };

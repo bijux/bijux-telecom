@@ -1,4 +1,6 @@
-pub(super) fn handle_nav(command: GnssCommand) -> Result<()> {
+use super::*;
+
+pub(crate) fn handle_nav(command: GnssCommand) -> Result<()> {
     let GnssCommand::Nav { command } = command else {
         bail!("invalid command for handler");
     };
@@ -64,7 +66,7 @@ pub(super) fn handle_nav(command: GnssCommand) -> Result<()> {
     Ok(())
 }
 
-fn nav_reference_week(
+pub(crate) fn nav_reference_week(
     explicit_reference_week: Option<u32>,
     dataset: Option<&bijux_gnss_infra::api::DatasetEntry>,
 ) -> Result<Option<u32>> {
