@@ -4,9 +4,10 @@ use bijux_gnss_core::api::{Constellation, SatId, SigId, SignalBand};
 use bijux_gnss_nav::api::{
     rtk_ambiguity_state_from_fixed_solution, rtk_conditioned_baseline_from_fixed_ambiguities,
     rtk_float_ambiguity_state_from_baseline_solution, rtk_float_baseline_from_double_differences,
-    rtk_transform_float_ambiguity_reference, RtkAmbiguityFixPolicy, RtkAmbiguityFixState,
-    RtkAmbiguityFixStatus, RtkDoubleDifferenceAmbiguityId, RtkFloatAmbiguityEstimate,
-    RtkFloatAmbiguityState, RtkFloatBaselineSolution, RtkRatioTestFixer,
+    rtk_transform_float_ambiguity_reference, rtk_transform_float_baseline_reference,
+    RtkAmbiguityFixPolicy, RtkAmbiguityFixState, RtkAmbiguityFixStatus,
+    RtkDoubleDifferenceAmbiguityId, RtkFloatAmbiguityEstimate, RtkFloatAmbiguityState,
+    RtkFloatBaselineSolution, RtkRatioTestFixer,
 };
 use bijux_gnss_testkit::rtk_baseline::clean_gps_l1_short_baseline_case;
 
@@ -35,6 +36,19 @@ fn gps_l1_dd_id(sig_prn: u8, ref_prn: u8) -> RtkDoubleDifferenceAmbiguityId {
         code: bijux_gnss_core::api::SignalCode::Ca,
     };
     RtkDoubleDifferenceAmbiguityId { sig, ref_sig }
+}
+
+fn assert_matrix_near(actual: &[Vec<f64>], expected: &[Vec<f64>], tolerance: f64) {
+    assert_eq!(actual.len(), expected.len());
+    for (actual_row, expected_row) in actual.iter().zip(expected.iter()) {
+        assert_eq!(actual_row.len(), expected_row.len());
+        for (actual_value, expected_value) in actual_row.iter().zip(expected_row.iter()) {
+            assert!(
+                (actual_value - expected_value).abs() <= tolerance,
+                "actual={actual_value} expected={expected_value}"
+            );
+        }
+    }
 }
 
 #[test]
@@ -118,6 +132,78 @@ fn rtk_float_ambiguity_reference_transform_refuses_missing_reference() {
     };
 
     assert!(rtk_transform_float_ambiguity_reference(&float_state, gps_l1_sig(14)).is_none());
+}
+
+#[test]
+fn rtk_float_baseline_reference_transform_preserves_cross_covariance() {
+    let float_solution = RtkFloatBaselineSolution {
+        enu_m: [4.0, -2.0, 1.0],
+        covariance_enu_m2: [[1.0, 0.1, 0.2], [0.1, 1.5, 0.3], [0.2, 0.3, 2.0]],
+        enu_ambiguity_covariance_m_cycles: vec![
+            vec![0.1, 0.2, 0.3],
+            vec![0.4, 0.5, 0.6],
+            vec![0.7, 0.8, 0.9],
+        ],
+        float_ambiguities: vec![
+            RtkFloatAmbiguityEstimate {
+                sig: gps_l1_sig(7),
+                ref_sig: gps_l1_sig(3),
+                float_cycles: 20.0,
+                variance_cycles2: 4.0,
+            },
+            RtkFloatAmbiguityEstimate {
+                sig: gps_l1_sig(11),
+                ref_sig: gps_l1_sig(3),
+                float_cycles: 35.0,
+                variance_cycles2: 9.0,
+            },
+            RtkFloatAmbiguityEstimate {
+                sig: gps_l1_sig(14),
+                ref_sig: gps_l1_sig(3),
+                float_cycles: 50.0,
+                variance_cycles2: 16.0,
+            },
+        ],
+        ambiguity_covariance_cycles2: vec![
+            vec![4.0, 1.0, 0.5],
+            vec![1.0, 9.0, 2.0],
+            vec![0.5, 2.0, 16.0],
+        ],
+    };
+
+    let transformed =
+        rtk_transform_float_baseline_reference(&float_solution, gps_l1_sig(11)).expect("transform");
+
+    assert_eq!(transformed.enu_m, float_solution.enu_m);
+    assert_eq!(transformed.covariance_enu_m2, float_solution.covariance_enu_m2);
+    assert_eq!(
+        transformed
+            .float_ambiguities
+            .iter()
+            .map(|ambiguity| RtkDoubleDifferenceAmbiguityId {
+                sig: ambiguity.sig,
+                ref_sig: ambiguity.ref_sig,
+            })
+            .collect::<Vec<_>>(),
+        vec![gps_l1_dd_id(3, 11), gps_l1_dd_id(7, 11), gps_l1_dd_id(14, 11)]
+    );
+    assert_eq!(
+        transformed
+            .float_ambiguities
+            .iter()
+            .map(|ambiguity| ambiguity.float_cycles)
+            .collect::<Vec<_>>(),
+        vec![-35.0, -15.0, 15.0]
+    );
+    assert_matrix_near(
+        &transformed.enu_ambiguity_covariance_m_cycles,
+        &[vec![-0.2, -0.1, 0.1], vec![-0.5, -0.1, 0.1], vec![-0.8, -0.1, 0.1]],
+        1.0e-12,
+    );
+    assert_eq!(
+        transformed.ambiguity_covariance_cycles2,
+        vec![vec![9.0, 8.0, 7.0], vec![8.0, 11.0, 6.5], vec![7.0, 6.5, 21.0]]
+    );
 }
 
 #[test]

@@ -408,6 +408,38 @@ pub fn rtk_transform_float_ambiguity_reference(
     })
 }
 
+/// Transform a float baseline solution to a different double-difference reference signal.
+pub fn rtk_transform_float_baseline_reference(
+    solution: &RtkFloatBaselineSolution,
+    new_ref_sig: SigId,
+) -> Option<RtkFloatBaselineSolution> {
+    let float = rtk_float_ambiguity_state_from_baseline_solution(solution)?;
+    let transform = reference_switch_transform(&float, new_ref_sig)?;
+    let transformed_float = rtk_transform_float_ambiguity_reference(&float, new_ref_sig)?;
+    let old_cross_covariance = matrix_from_rows(&solution.enu_ambiguity_covariance_m_cycles);
+    let transformed_cross_covariance =
+        old_cross_covariance.mul(&transform.coefficients.transpose());
+
+    Some(RtkFloatBaselineSolution {
+        enu_m: solution.enu_m,
+        covariance_enu_m2: solution.covariance_enu_m2,
+        enu_ambiguity_covariance_m_cycles: matrix_rows(&transformed_cross_covariance),
+        float_ambiguities: transformed_float
+            .ids
+            .iter()
+            .zip(transformed_float.float_cycles.iter().copied())
+            .enumerate()
+            .map(|(index, (id, float_cycles))| super::baseline::RtkFloatAmbiguityEstimate {
+                sig: id.sig,
+                ref_sig: id.ref_sig,
+                float_cycles,
+                variance_cycles2: transformed_float.covariance_cycles2[index][index].max(0.0),
+            })
+            .collect(),
+        ambiguity_covariance_cycles2: transformed_float.covariance_cycles2,
+    })
+}
+
 pub fn rtk_lambda_decorrelate(float: &RtkFloatAmbiguityState) -> RtkDecorrelatedAmbiguityState {
     let n = float.float_cycles.len();
     let mut z = vec![vec![0_i64; n]; n];
