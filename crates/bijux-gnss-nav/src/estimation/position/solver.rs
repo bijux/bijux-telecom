@@ -1131,7 +1131,7 @@ fn select_valid_ephemeris(
 }
 
 #[cfg(test)]
-#[path = "solver/tests.rs"]
+#[path = "solver_tests.rs"]
 mod tests;
 
 fn resolve_satellite_geometry(
@@ -1445,7 +1445,7 @@ fn linearized_geometry_row(
 }
 
 #[cfg(test)]
-#[path = "solver/tests/broadcast_group_delay.rs"]
+#[path = "solver_tests/broadcast_group_delay.rs"]
 mod broadcast_group_delay;
 
 /// Returns whether a position observation carries a finite and internally consistent
@@ -2014,7 +2014,7 @@ fn median(values: &mut [f64]) -> f64 {
 }
 
 #[cfg(test)]
-#[path = "solver/tests/replay_timing.rs"]
+#[path = "solver_tests/replay_timing.rs"]
 mod replay_timing;
 
 fn constellation_residual_rms(

@@ -1648,5 +1648,5 @@ fn validate_broadcast_ephemeris(
 }
 
 #[cfg(test)]
-#[path = "filter/tests.rs"]
+#[path = "filter_tests.rs"]
 mod tests;

@@ -41,21 +41,21 @@ use bijux_gnss_core::api::{
 };
 use bijux_gnss_signal::api::{signal_spec_gps_l1_ca, signal_spec_gps_l2_py, signal_wavelength_m};
 
-#[path = "tests/ambiguity_resolution.rs"]
+#[path = "filter_tests/ambiguity_resolution.rs"]
 mod ambiguity_resolution;
-#[path = "tests/antenna_calibration.rs"]
+#[path = "filter_tests/antenna_calibration.rs"]
 mod antenna_calibration;
-#[path = "tests/correction_models.rs"]
+#[path = "filter_tests/correction_models.rs"]
 mod correction_models;
-#[path = "tests/precise_clock_selection.rs"]
+#[path = "filter_tests/precise_clock_selection.rs"]
 mod precise_clock_selection;
-#[path = "tests/precise_product_policy.rs"]
+#[path = "filter_tests/precise_product_policy.rs"]
 mod precise_product_policy;
-#[path = "tests/solution_reporting.rs"]
+#[path = "filter_tests/solution_reporting.rs"]
 mod solution_reporting;
-#[path = "tests/state_lifecycle.rs"]
+#[path = "filter_tests/state_lifecycle.rs"]
 mod state_lifecycle;
-#[path = "tests/static_tide_models.rs"]
+#[path = "filter_tests/static_tide_models.rs"]
 mod static_tide_models;
 
 fn make_eph(prn: u8) -> GpsEphemeris {

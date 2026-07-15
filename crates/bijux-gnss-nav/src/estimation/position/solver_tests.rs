@@ -37,15 +37,15 @@ use bijux_gnss_core::api::{
 };
 use bijux_gnss_signal::api::signal_spec_gps_l1_ca;
 
-#[path = "tests/correction_records.rs"]
+#[path = "solver_tests/correction_records.rs"]
 mod correction_records;
-#[path = "tests/least_squares.rs"]
+#[path = "solver_tests/least_squares.rs"]
 mod least_squares;
-#[path = "tests/navigation_inputs.rs"]
+#[path = "solver_tests/navigation_inputs.rs"]
 mod navigation_inputs;
-#[path = "tests/observation_extraction.rs"]
+#[path = "solver_tests/observation_extraction.rs"]
 mod observation_extraction;
-#[path = "tests/residual_summary.rs"]
+#[path = "solver_tests/residual_summary.rs"]
 mod residual_summary;
-#[path = "tests/robust_weighting.rs"]
+#[path = "solver_tests/robust_weighting.rs"]
 mod robust_weighting;
