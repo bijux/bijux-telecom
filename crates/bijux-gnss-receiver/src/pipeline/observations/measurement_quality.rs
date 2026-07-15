@@ -5,8 +5,9 @@ use bijux_gnss_core::api::{
 };
 use serde::{Deserialize, Serialize};
 
+use super::cycle_slip_reason;
+use super::timing::observation_epoch_id;
 use super::variance::{evidence_sigma_from_variance, finite_sigma};
-use super::{cycle_slip_reason, observation_epoch_id};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ObservationMeasurementQualitySatellite {
