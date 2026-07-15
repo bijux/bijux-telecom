@@ -336,3 +336,49 @@ fn observations_start_new_carrier_phase_arc_after_reacquisition() {
         arc_reset.metadata.carrier_phase_arc_start_sample_index
     );
 }
+
+#[test]
+fn observations_keep_carrier_phase_arc_across_data_bit_transitions() {
+    let config = tracking_config();
+    let sat = SatId { constellation: Constellation::Gps, prn: 21 };
+    let frame = generate_l1_ca(
+        &config,
+        SyntheticSignalParams {
+            sat,
+            glonass_frequency_channel: None,
+            signal_band: bijux_gnss_core::api::SignalBand::L1,
+            signal_code: bijux_gnss_core::api::SignalCode::Unknown,
+            doppler_hz: 0.0,
+            code_phase_chips: 0.0,
+            carrier_phase_rad: 0.0,
+            cn0_db_hz: PRELOCK_CN0_DBHZ,
+            navigation_data: true.into(),
+        },
+        0xDA7A_B171,
+        0.055,
+    );
+    let tracking = TrackingEngine::new(config.clone(), ReceiverRuntime::default());
+    let tracks = tracking.track_from_acquisition(&frame, &[accepted_acquisition(sat, 0.0, 0)]);
+    let report = observations_from_tracking_results(&config, &tracks, 10);
+    let sats = report.output.iter().flat_map(|epoch| epoch.sats.iter()).collect::<Vec<_>>();
+
+    for transition_epoch in [20_u64, 40] {
+        let transition_sample = transition_epoch * config.code_length as u64;
+        let sat = sats
+            .iter()
+            .find(|sat| sat.metadata.time_tag_sample_index == transition_sample)
+            .unwrap_or_else(|| {
+                panic!(
+                    "missing observation at data-bit transition sample {transition_sample}: {:?}",
+                    report.output
+                )
+            });
+
+        assert_eq!(sat.metadata.carrier_phase_continuity, "continuous");
+        assert!(!sat.lock_flags.cycle_slip);
+        assert!(
+            sat.metadata.observation_reject_reasons.iter().all(|reason| reason != "cycle_slip"),
+            "{sat:?}"
+        );
+    }
+}
