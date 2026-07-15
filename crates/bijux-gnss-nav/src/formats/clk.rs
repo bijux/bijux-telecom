@@ -72,6 +72,16 @@ pub struct ClkInterpolationSummary {
     pub rms_sigma_error_s: Option<f64>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClkInterpolationStatus {
+    Usable,
+    MissingSatellite,
+    OutOfCoverage,
+    InsufficientSupport,
+    ClockGap,
+    ClockJump,
+}
+
 impl ClkProvider {
     fn parse_internal(input: &str) -> Result<Self, String> {
         let mut records: BTreeMap<SatId, Vec<ClkRecord>> = BTreeMap::new();
@@ -135,14 +145,14 @@ impl ClkProvider {
     }
 
     pub fn bias_s(&self, sat: SatId, t_s: f64) -> Option<f64> {
+        if self.interpolation_status(sat, t_s) != ClkInterpolationStatus::Usable {
+            return None;
+        }
         let list = self.records.get(&sat)?;
         if let Some(record) =
             list.iter().find(|record| (record.epoch_s - t_s).abs() <= f64::EPSILON)
         {
             return Some(record.bias_s);
-        }
-        if list.len() == 1 {
-            return Some(list[0].bias_s);
         }
         interpolate_bias_s(list, t_s)
     }
@@ -159,66 +169,66 @@ impl ClkProvider {
     }
 
     pub fn sigma_s(&self, sat: SatId, t_s: f64) -> Option<f64> {
+        if self.interpolation_status(sat, t_s) != ClkInterpolationStatus::Usable {
+            return None;
+        }
         let list = self.records.get(&sat)?;
         if let Some(record) =
             list.iter().find(|record| (record.epoch_s - t_s).abs() <= f64::EPSILON)
         {
             return record.sigma_s;
         }
-        if list.len() == 1 {
-            return list[0].sigma_s;
-        }
         interpolate_sigma_s(list, t_s)
     }
 
     pub fn rate_s_per_s(&self, sat: SatId, t_s: f64) -> Option<f64> {
+        if self.interpolation_status(sat, t_s) != ClkInterpolationStatus::Usable {
+            return None;
+        }
         let list = self.records.get(&sat)?;
         if let Some(record) =
             list.iter().find(|record| (record.epoch_s - t_s).abs() <= f64::EPSILON)
         {
             return record.rate_s_per_s;
         }
-        if list.len() == 1 {
-            return list[0].rate_s_per_s;
-        }
         interpolate_optional_s(list, t_s, |record| record.rate_s_per_s)
     }
 
     pub fn rate_sigma_s_per_s(&self, sat: SatId, t_s: f64) -> Option<f64> {
+        if self.interpolation_status(sat, t_s) != ClkInterpolationStatus::Usable {
+            return None;
+        }
         let list = self.records.get(&sat)?;
         if let Some(record) =
             list.iter().find(|record| (record.epoch_s - t_s).abs() <= f64::EPSILON)
         {
             return record.rate_sigma_s_per_s;
         }
-        if list.len() == 1 {
-            return list[0].rate_sigma_s_per_s;
-        }
         interpolate_optional_s(list, t_s, |record| record.rate_sigma_s_per_s)
     }
 
     pub fn acceleration_s_per_s2(&self, sat: SatId, t_s: f64) -> Option<f64> {
+        if self.interpolation_status(sat, t_s) != ClkInterpolationStatus::Usable {
+            return None;
+        }
         let list = self.records.get(&sat)?;
         if let Some(record) =
             list.iter().find(|record| (record.epoch_s - t_s).abs() <= f64::EPSILON)
         {
             return record.acceleration_s_per_s2;
         }
-        if list.len() == 1 {
-            return list[0].acceleration_s_per_s2;
-        }
         interpolate_optional_s(list, t_s, |record| record.acceleration_s_per_s2)
     }
 
     pub fn acceleration_sigma_s_per_s2(&self, sat: SatId, t_s: f64) -> Option<f64> {
+        if self.interpolation_status(sat, t_s) != ClkInterpolationStatus::Usable {
+            return None;
+        }
         let list = self.records.get(&sat)?;
         if let Some(record) =
             list.iter().find(|record| (record.epoch_s - t_s).abs() <= f64::EPSILON)
         {
             return record.acceleration_sigma_s_per_s2;
-        }
-        if list.len() == 1 {
-            return list[0].acceleration_sigma_s_per_s2;
         }
         interpolate_optional_s(list, t_s, |record| record.acceleration_sigma_s_per_s2)
     }
@@ -227,6 +237,79 @@ impl ClkProvider {
         let records = self.records.get(&sat)?;
         summarize_interpolation_errors(records)
     }
+
+    pub fn interpolation_status(&self, sat: SatId, t_s: f64) -> ClkInterpolationStatus {
+        let Some(list) = self.records.get(&sat) else {
+            return ClkInterpolationStatus::MissingSatellite;
+        };
+        let Some(first_epoch_s) = list.first().map(|record| record.epoch_s) else {
+            return ClkInterpolationStatus::MissingSatellite;
+        };
+        let Some(last_epoch_s) = list.last().map(|record| record.epoch_s) else {
+            return ClkInterpolationStatus::MissingSatellite;
+        };
+        if t_s < first_epoch_s || t_s > last_epoch_s {
+            return ClkInterpolationStatus::OutOfCoverage;
+        }
+        if let Some(index) =
+            list.iter().position(|record| (record.epoch_s - t_s).abs() <= f64::EPSILON)
+        {
+            return exact_clock_record_status(list, index);
+        }
+        if list.len() < CLK_INTERPOLATION_SUPPORT_POINTS {
+            return ClkInterpolationStatus::InsufficientSupport;
+        }
+        let bracket_index = list.partition_point(|record| record.epoch_s < t_s);
+        let Some(previous) = bracket_index.checked_sub(1).and_then(|index| list.get(index)) else {
+            return ClkInterpolationStatus::InsufficientSupport;
+        };
+        let Some(next) = list.get(bracket_index) else {
+            return ClkInterpolationStatus::InsufficientSupport;
+        };
+        let nominal_step_s = nominal_epoch_step_s(list).unwrap_or(next.epoch_s - previous.epoch_s);
+        if !is_valid_clock_gap(nominal_step_s, previous.epoch_s, next.epoch_s) {
+            return ClkInterpolationStatus::ClockGap;
+        }
+        if !is_valid_clock_step(previous.bias_s, next.bias_s) {
+            return ClkInterpolationStatus::ClockJump;
+        }
+        match interpolation_support_records(list, t_s, None) {
+            Some(_) => ClkInterpolationStatus::Usable,
+            None if nearest_support_records_have_clock_jump(list, t_s) => {
+                ClkInterpolationStatus::ClockJump
+            }
+            None => ClkInterpolationStatus::InsufficientSupport,
+        }
+    }
+}
+
+fn exact_clock_record_status(records: &[ClkRecord], index: usize) -> ClkInterpolationStatus {
+    let Some(record) = records.get(index) else {
+        return ClkInterpolationStatus::MissingSatellite;
+    };
+    if let Some(previous) = index.checked_sub(1).and_then(|previous| records.get(previous)) {
+        let nominal_step_s =
+            nominal_epoch_step_s(records).unwrap_or(record.epoch_s - previous.epoch_s);
+        if !is_valid_clock_gap(nominal_step_s, previous.epoch_s, record.epoch_s) {
+            return ClkInterpolationStatus::ClockGap;
+        }
+        if !is_valid_clock_step(previous.bias_s, record.bias_s) {
+            return ClkInterpolationStatus::ClockJump;
+        }
+    }
+    ClkInterpolationStatus::Usable
+}
+
+fn nearest_support_records_have_clock_jump(records: &[ClkRecord], t_s: f64) -> bool {
+    let mut support = records.iter().enumerate().collect::<Vec<_>>();
+    support.sort_by(|(left_index, left), (right_index, right)| {
+        let left_dt = (left.epoch_s - t_s).abs();
+        let right_dt = (right.epoch_s - t_s).abs();
+        left_dt.total_cmp(&right_dt).then_with(|| left_index.cmp(right_index))
+    });
+    support.truncate(CLK_INTERPOLATION_SUPPORT_POINTS);
+    support.sort_by(|(_, left), (_, right)| left.epoch_s.total_cmp(&right.epoch_s));
+    support.windows(2).any(|window| !is_valid_clock_step(window[0].1.bias_s, window[1].1.bias_s))
 }
 
 #[derive(Debug, Clone, Copy)]

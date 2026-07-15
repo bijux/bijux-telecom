@@ -99,6 +99,16 @@ pub struct Sp3InterpolationSummary {
     pub rms_position_error_m: f64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Sp3InterpolationStatus {
+    Usable,
+    MissingSatellite,
+    OutOfCoverage,
+    InsufficientSupport,
+    OrbitGap,
+    FlaggedRecord,
+}
+
 impl Sp3Provider {
     fn parse_internal(input: &str) -> Result<Self, String> {
         let mut records: BTreeMap<SatId, Vec<Sp3Record>> = BTreeMap::new();
@@ -163,16 +173,63 @@ impl Sp3Provider {
     }
 
     pub fn precise_state(&self, sat: SatId, t_s: f64) -> Option<Sp3State> {
+        if self.interpolation_status(sat, t_s) != Sp3InterpolationStatus::Usable {
+            return None;
+        }
         let list = self.records.get(&sat)?;
         if let Some(record) =
             list.iter().find(|record| (record.epoch_s - t_s).abs() <= f64::EPSILON)
         {
             return Some(record_state(record));
         }
-        if list.len() == 1 {
-            return Some(record_state(&list[0]));
-        }
         interpolate_record_state(list, t_s)
+    }
+
+    pub fn interpolation_status(&self, sat: SatId, t_s: f64) -> Sp3InterpolationStatus {
+        let Some(list) = self.records.get(&sat) else {
+            return Sp3InterpolationStatus::MissingSatellite;
+        };
+        let Some(first_epoch_s) = list.first().map(|record| record.epoch_s) else {
+            return Sp3InterpolationStatus::MissingSatellite;
+        };
+        let Some(last_epoch_s) = list.last().map(|record| record.epoch_s) else {
+            return Sp3InterpolationStatus::MissingSatellite;
+        };
+        if t_s < first_epoch_s || t_s > last_epoch_s {
+            return Sp3InterpolationStatus::OutOfCoverage;
+        }
+        if let Some(record) =
+            list.iter().find(|record| (record.epoch_s - t_s).abs() <= f64::EPSILON)
+        {
+            return if record.flags.invalid_for_interpolation() {
+                Sp3InterpolationStatus::FlaggedRecord
+            } else {
+                Sp3InterpolationStatus::Usable
+            };
+        }
+        let bracket_index = list.partition_point(|record| record.epoch_s < t_s);
+        let Some(previous) = bracket_index.checked_sub(1).and_then(|index| list.get(index)) else {
+            return Sp3InterpolationStatus::InsufficientSupport;
+        };
+        let Some(next) = list.get(bracket_index) else {
+            return Sp3InterpolationStatus::InsufficientSupport;
+        };
+        if previous.flags.invalid_for_interpolation() || next.flags.invalid_for_interpolation() {
+            return Sp3InterpolationStatus::FlaggedRecord;
+        }
+        if list.len() < SP3_INTERPOLATION_SUPPORT_POINTS {
+            return Sp3InterpolationStatus::InsufficientSupport;
+        }
+        if !is_valid_interpolation_interval(list, previous.epoch_s, next.epoch_s) {
+            return Sp3InterpolationStatus::OrbitGap;
+        }
+        match interpolation_support_records(list, t_s, None) {
+            Some(_) => Sp3InterpolationStatus::Usable,
+            None if nearest_support_records_are_flagged(list, t_s) => {
+                Sp3InterpolationStatus::FlaggedRecord
+            }
+            None => Sp3InterpolationStatus::InsufficientSupport,
+        }
     }
 
     pub fn interpolation_summary(&self, sat: SatId) -> Option<Sp3InterpolationSummary> {
@@ -191,6 +248,19 @@ impl Sp3Provider {
     fn record_at_epoch(&self, sat: SatId, t_s: f64) -> Option<&Sp3Record> {
         self.records.get(&sat)?.iter().find(|record| (record.epoch_s - t_s).abs() <= f64::EPSILON)
     }
+}
+
+fn nearest_support_records_are_flagged(records: &[Sp3Record], t_s: f64) -> bool {
+    let mut support = records.iter().enumerate().collect::<Vec<_>>();
+    support.sort_by(|(left_index, left), (right_index, right)| {
+        let left_dt = (left.epoch_s - t_s).abs();
+        let right_dt = (right.epoch_s - t_s).abs();
+        left_dt.total_cmp(&right_dt).then_with(|| left_index.cmp(right_index))
+    });
+    support
+        .into_iter()
+        .take(SP3_INTERPOLATION_SUPPORT_POINTS)
+        .any(|(_, record)| record.flags.invalid_for_interpolation())
 }
 
 impl FromStr for Sp3Provider {
@@ -658,8 +728,8 @@ fn days_from_civil(year: i32, month: u32, day: u32) -> i64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        interpolation_support_records, Sp3InterpolationEdgePolicy, Sp3InterpolationWindowPolicy,
-        Sp3Provider,
+        interpolation_support_records, Sp3InterpolationEdgePolicy, Sp3InterpolationStatus,
+        Sp3InterpolationWindowPolicy, Sp3Provider,
     };
     use bijux_gnss_core::api::{Constellation, SatId};
 
@@ -721,8 +791,8 @@ PG01  10000.000000  20000.000000  30000.000000    12.500000  4  5  6  7         
         assert_eq!(provider.record_accuracy(sat, 0.0), Some(record.accuracy));
         assert_eq!(provider.record_flags(sat, 0.0), Some(record.flags));
 
-        let state = provider.sat_state(sat, 0.0).expect("state with precise clock");
-        assert!((state.clock_correction.bias_s - 12.5e-6).abs() < 1.0e-18);
+        assert_eq!(provider.interpolation_status(sat, 0.0), Sp3InterpolationStatus::FlaggedRecord);
+        assert!(provider.sat_state(sat, 0.0).is_none());
     }
 
     #[test]
@@ -781,8 +851,16 @@ PG01  36.000000  4.000000  4.000000  0.000000
         let provider: Sp3Provider = data.parse().expect("parse flagged SP3");
         let sat = SatId { constellation: Constellation::Gps, prn: 1 };
 
+        assert_eq!(
+            provider.interpolation_status(sat, 1_350.0),
+            Sp3InterpolationStatus::FlaggedRecord
+        );
+        assert_eq!(
+            provider.interpolation_status(sat, 900.0),
+            Sp3InterpolationStatus::FlaggedRecord
+        );
         assert!(provider.sat_state(sat, 1_350.0).is_none());
-        assert!(provider.sat_state(sat, 900.0).is_some());
+        assert!(provider.sat_state(sat, 900.0).is_none());
     }
 
     #[test]
