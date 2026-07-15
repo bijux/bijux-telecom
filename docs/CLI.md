@@ -139,8 +139,10 @@ bijux gnss validate-synthetic-navigation --scenario configs/scenarios/synthetic_
 ```
 
 This workflow emits `artifacts/gnss_accuracy_artifact.json`, one machine-readable file per run
-that carries acquisition, tracking, observation, and PVT summaries alongside detailed stage
-reports, thresholds, pass/fail, data source, and reference truth.
+that carries acquisition, tracking, observation, PVT, and closure summaries alongside detailed
+stage reports, thresholds, pass/fail, data source, and reference truth. The closure summary records
+ordered evidence for the configured path from IQ input through integrity decision, with ambiguity
+processing marked non-applicable for code-only SPP runs.
 
 ### Measure Synthetic Quantization Loss
 ```bash

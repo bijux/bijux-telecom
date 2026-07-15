@@ -505,6 +505,8 @@ fn handle_validate_synthetic_navigation(command: GnssCommand) -> Result<()> {
         tracking: validation_run.artifact.tracking.summary.clone(),
         observation: validation_run.artifact.observation.summary.clone(),
         pvt: validation_run.artifact.pvt.summary.clone(),
+        closure_ready: validation_run.artifact.closure_ready,
+        closure: validation_run.artifact.closure.clone(),
     };
     emit_synthetic_navigation_validation_report(&common, &report)?;
     let _ = bijux_gnss_infra::api::write_manifest(

@@ -415,8 +415,8 @@ The synthetic navigation validation workflow emits one final run-level GNSS accu
   - `artifacts/gnss_accuracy_artifact.json`
   - `manifest.json`
 - purpose: preserve one machine-readable artifact per validation run with acquisition, tracking,
-  observation, and PVT stage summaries plus detailed reports, thresholds, pass/fail, data source,
-  and reference truth
+  observation, PVT, and closure-stage summaries plus detailed reports, thresholds, pass/fail, data
+  source, and reference truth
 
 The bundled `synthetic_navigation_accuracy.toml` scenario is a truth-complete GPS L1 C/A
 navigation validation case. It declares receiver ECEF truth, reference receive time, per-satellite
@@ -428,6 +428,9 @@ position-stage evidence in one file.
 - `reference_truth`: receiver ECEF truth, reference receive time, and truth epoch coverage
 - `acquisition.summary`, `tracking.summary`, `observation.summary`, `pvt.summary`: measured maxima,
   hard thresholds, pass/fail, and truth-coverage readiness for each GNSS stage
+- `closure_ready` and `closure`: ordered evidence for the configured receiver chain from IQ input
+  through acquisition, tracking, navigation timing, observations, satellite states, corrections,
+  estimator, ambiguity applicability, and integrity decision
 - per-stage `report` payloads with detailed per-satellite or per-epoch evidence
 
 The artifact is emitted even when one or more stages fail. Reviewers should use the top-level

@@ -76,6 +76,40 @@ fn validate_synthetic_navigation_emits_truth_guided_accuracy_artifact() {
     assert_eq!(artifact["scenario_id"], "synthetic_navigation_accuracy");
     assert!(artifact["pass"].is_boolean());
     assert!(artifact["truth_coverage_ready"].is_boolean());
+    assert_eq!(report["closure_ready"], true);
+    assert_eq!(artifact["closure_ready"], true);
+    assert_eq!(report["closure"]["pass"], true);
+    assert_eq!(artifact["closure"]["pass"], true);
+    assert_eq!(artifact["closure"]["applicable_stage_count"], 9);
+    assert_eq!(artifact["closure"]["passed_stage_count"], 9);
+    assert_eq!(artifact["closure"]["not_applicable_stage_count"], 1);
+    assert_eq!(
+        artifact["closure"]["stages"]
+            .as_array()
+            .expect("artifact closure stages")
+            .iter()
+            .map(|stage| stage["stage"].as_str().expect("closure stage name"))
+            .collect::<Vec<_>>(),
+        vec![
+            "iq_input",
+            "acquisition",
+            "tracking",
+            "navigation_data_timing",
+            "observations",
+            "satellite_states",
+            "corrections",
+            "estimator",
+            "ambiguity_processing",
+            "integrity_decision",
+        ]
+    );
+    let ambiguity = artifact["closure"]["stages"]
+        .as_array()
+        .expect("artifact closure stages")
+        .iter()
+        .find(|stage| stage["stage"] == "ambiguity_processing")
+        .expect("ambiguity closure stage");
+    assert_eq!(ambiguity["status"], "not_applicable");
     assert_eq!(artifact["data_source"]["source_kind"], "synthetic_gps_l1_ca_navigation_validation");
     assert_eq!(artifact["reference_truth"]["truth_kind"], "synthetic_signal_and_position_truth");
     assert!(artifact["acquisition"]["summary"]["pass"].is_boolean());

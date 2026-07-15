@@ -292,6 +292,8 @@ struct SyntheticNavigationValidationReport {
     tracking: bijux_gnss_infra::api::receiver::sim::SyntheticGnssTrackingStageSummary,
     observation: bijux_gnss_infra::api::receiver::sim::SyntheticGnssObservationStageSummary,
     pvt: bijux_gnss_infra::api::receiver::sim::SyntheticGnssPvtStageSummary,
+    closure_ready: bool,
+    closure: bijux_gnss_infra::api::receiver::sim::SyntheticClosureSummary,
 }
 
 #[derive(Debug, Serialize)]

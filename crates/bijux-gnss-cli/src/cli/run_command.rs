@@ -390,6 +390,7 @@ fn print_synthetic_navigation_validation_table(report: &SyntheticNavigationValid
     println!("Artifact: {}", report.output_artifact);
     println!("Pass: {}", report.pass);
     println!("Truth coverage ready: {}", report.truth_coverage_ready);
+    println!("Closure ready: {}", report.closure_ready);
     println!(
         "Data source: kind={} sample_rate_hz={:.1} intermediate_freq_hz={:.1} duration_s={:.3} satellites={}",
         report.data_source.source_kind,
@@ -448,6 +449,15 @@ fn print_synthetic_navigation_validation_table(report: &SyntheticNavigationValid
         report.pvt.threshold_max_clock_bias_error_m,
         report.pvt.threshold_max_residual_rms_m,
         report.pvt.threshold_max_pdop
+    );
+    println!(
+        "closure\t{}\t{}\t{}\t{}\tapplicable={}, not_applicable={}",
+        report.closure.pass,
+        report.closure_ready,
+        report.closure.stages.len(),
+        report.closure.passed_stage_count,
+        report.closure.applicable_stage_count,
+        report.closure.not_applicable_stage_count
     );
 }
 
