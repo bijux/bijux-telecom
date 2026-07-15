@@ -302,11 +302,13 @@ pub use crate::formats::{
 /// Linear algebra helper.
 pub use crate::linalg::Matrix;
 pub use crate::models::antenna::{
-    canonical_receiver_antenna_type, receiver_antenna_range_correction_m,
+    canonical_receiver_antenna_type, receiver_antenna_frame_ecef,
+    receiver_antenna_range_correction_m, satellite_antenna_frame_ecef,
     satellite_antenna_range_correction_m, satellite_band_from_antex_frequency,
     AntennaAzimuthPhaseCenterVariation, AntennaPhaseCenterVariation, ReceiverAntennaCalibration,
-    ReceiverAntennaCalibrations, ReceiverPhaseCenterOffset, SatelliteAntennaCalibration,
-    SatelliteAntennaCalibrations, SatellitePhaseCenterOffset,
+    ReceiverAntennaCalibrations, ReceiverAntennaFrame, ReceiverPhaseCenterOffset,
+    SatelliteAntennaCalibration, SatelliteAntennaCalibrations, SatelliteAntennaFrame,
+    SatellitePhaseCenterOffset,
 };
 /// Atmospheric delay models and coefficients.
 pub use crate::models::atmosphere::{
