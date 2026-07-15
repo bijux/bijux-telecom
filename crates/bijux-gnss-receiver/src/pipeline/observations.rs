@@ -7,8 +7,8 @@
 
 use bijux_gnss_core::api::{
     CodeCarrierDivergence, DiagnosticEvent, DiagnosticSeverity, GpsTime, LockFlags, Meters,
-    ObsEpoch, ObsEpochManifest, ObsMetadata, ObsSatellite, ObservationEpochDecision, ReceiverRole,
-    Seconds, SigId, TrackEpoch,
+    ObsEpoch, ObsMetadata, ObsSatellite, ObservationEpochDecision, ReceiverRole, Seconds, SigId,
+    TrackEpoch,
 };
 
 use crate::engine::receiver_config::ReceiverPipelineConfig;
@@ -65,8 +65,7 @@ use crate::pipeline::observations::timing::{
     reject_epoch_for_invalid_timing, tracking_time_tag,
 };
 use crate::pipeline::observations::variance::{
-    apply_variance_evidence_status, has_variance_evidence, observation_error_model,
-    observation_variance_evidence,
+    apply_variance_evidence_status, observation_error_model, observation_variance_evidence,
 };
 use crate::pipeline::tracking::TrackingResult;
 use crate::pipeline::{StepReport, StepStats};
@@ -95,6 +94,7 @@ mod code_carrier_divergence;
 mod code_period_ambiguity;
 mod cycle_slip_fusion;
 mod decision_artifacts;
+mod epoch_manifest;
 mod labels;
 mod lock_state;
 mod measurement_quality;
@@ -115,6 +115,7 @@ use code_period_ambiguity::{
     CODE_PERIOD_AMBIGUITY_NON_UNIQUE,
 };
 pub use decision_artifacts::observation_decisions_from_epochs;
+use epoch_manifest::stamp_observation_epoch_manifest;
 pub use measurement_quality::{
     ObservationMeasurementQualityEpochReport, ObservationMeasurementQualitySatellite,
 };
@@ -572,34 +573,7 @@ pub fn observation_artifacts_from_tracking_results_with_gps_anchor(
                 reject_epoch_for_invalid_timing(&mut epoch);
             }
         }
-        let source_time = epoch.source_time;
-        let artifact_id = format!("obs-epoch-{:010}", epoch.epoch_idx);
-        epoch.t_rx_s = Seconds(source_time.receiver_time_s.0 + receiver_clock.bias_s);
-        epoch.source_time = source_time;
-        let epoch_key = bijux_gnss_core::api::obs_epoch_stability_key(&epoch);
-        epoch.manifest = Some(ObsEpochManifest {
-            version: bijux_gnss_core::api::OBSERVATION_MODEL_VERSION,
-            artifact_id: artifact_id.clone(),
-            epoch_id: epoch_key,
-            source_epoch_idx: epoch.epoch_idx,
-            source_sample_index: source_time.sample_index,
-            source_time,
-            decision: epoch.decision,
-            downstream_profile_version:
-                bijux_gnss_core::api::OBSERVATION_DOWNSTREAM_PROFILE_VERSION,
-        });
-        for sat in &mut epoch.sats {
-            sat.metadata.observation_epoch_id = artifact_id.clone();
-            sat.metadata.observation_status =
-                observation_status_label(sat.observation_status).to_string();
-            sat.metadata.observation_reject_reasons = sat.observation_reject_reasons.clone();
-            let alignment_resolved =
-                pseudorange_model_has_resolved_alignment(&sat.metadata.pseudorange_model);
-            sat.metadata.observation_support_class =
-                observation_support_label(sat.observation_status, alignment_resolved).to_string();
-            sat.metadata.observation_uncertainty_class =
-                observation_uncertainty_label(sat.cn0_dbhz, has_variance_evidence(sat)).to_string();
-        }
+        stamp_observation_epoch_manifest(&mut epoch, &receiver_clock);
         let events = bijux_gnss_core::api::check_obs_epoch_sanity(&epoch);
         if events
             .iter()
