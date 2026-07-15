@@ -2,7 +2,7 @@ use bijux_gnss_core::api::{AcqHypothesis, AcqRequest, AcqResult};
 
 use crate::pipeline::acquisition_assistance::ResolvedAcquisitionSearchBounds;
 
-use super::selected_reason_for_candidate;
+use crate::pipeline::acquisition::candidate_decision::selected_reason_for_candidate;
 
 pub(super) const SEARCH_EDGE_HINT_PEAK_MEAN_RATIO_FRACTION: f32 = 0.9;
 pub(super) const SEARCH_EDGE_RISE_RATIO_EPSILON: f32 = 0.05;
