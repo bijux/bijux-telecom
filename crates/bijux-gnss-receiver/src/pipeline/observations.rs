@@ -6,12 +6,13 @@
 //! - clock_error_m comes from configured receiver-clock bias uncertainty.
 
 use bijux_gnss_core::api::{
-    CodeCarrierDivergence, Constellation, ConventionsConfig, Cycles, DiagnosticEvent,
-    DiagnosticSeverity, GpsTime, LockFlags, Meters, ObsDecisionArtifact, ObsEpoch,
-    ObsEpochManifest, ObsMetadata, ObsSatellite, ObsSignalTiming, ObservationEpochDecision,
-    ObservationMeasurementCovariance, ObservationStatus, ObservationSupportClass,
-    ObservationUncertaintyClass, ReceiverRole, ReceiverSampleTrace, SatId, SatObservationDecision,
-    Seconds, SigId, SignalBand, SignalCode, SignalSpec, TrackEpoch, GPS_L1_CA_CARRIER_HZ,
+    CodeCarrierDivergence, Constellation, ConventionsConfig, CycleSlipDecisionEvidence,
+    CycleSlipDetector, CycleSlipDetectorEvidence, Cycles, DiagnosticEvent, DiagnosticSeverity,
+    GpsTime, LockFlags, Meters, ObsDecisionArtifact, ObsEpoch, ObsEpochManifest, ObsMetadata,
+    ObsSatellite, ObsSignalTiming, ObservationEpochDecision, ObservationMeasurementCovariance,
+    ObservationStatus, ObservationSupportClass, ObservationUncertaintyClass, ReceiverRole,
+    ReceiverSampleTrace, SatId, SatObservationDecision, Seconds, SigId, SignalBand, SignalCode,
+    SignalSpec, TrackEpoch, GPS_L1_CA_CARRIER_HZ,
 };
 
 use crate::engine::receiver_config::ReceiverPipelineConfig;
@@ -136,6 +137,7 @@ struct CarrierPhaseObservation {
     phase_cycles: Cycles,
     cycle_slip: bool,
     cycle_slip_reason: Option<String>,
+    cycle_slip_evidence: CycleSlipDecisionEvidence,
     continuity: CarrierPhaseContinuity,
     arc_start_epoch_idx: u64,
     arc_start_sample_index: u64,
@@ -172,6 +174,8 @@ struct ObservationReceiverClock {
 const BASE_CARRIER_PHASE_DISCONTINUITY_THRESHOLD_CYCLES: f64 = 0.25;
 const BASE_CARRIER_PHASE_RESIDUAL_THRESHOLD_CYCLES: f64 = 0.15;
 const BASE_DOPPLER_JUMP_THRESHOLD_HZ: f64 = 150.0;
+const CYCLE_SLIP_DETECTION_PROBABILITY_BUDGET: f64 = 0.99;
+const CYCLE_SLIP_FALSE_ALARM_PROBABILITY_BUDGET: f64 = 1.0e-3;
 const PSEUDORANGE_RESIDUAL_REFERENCE_MODEL: &str = "signal_travel_time_from_gps_anchor";
 const CARRIER_PHASE_RESIDUAL_REFERENCE_MODEL: &str = "previous_continuous_phase_prediction";
 const CN0_RESIDUAL_REFERENCE_MODEL: &str = "tracking_epoch_cn0";
@@ -582,6 +586,7 @@ fn observations_from_tracking_with_provenance(
                 receiver_clock_source: receiver_clock.source.clone(),
                 tracking_uncertainty,
                 code_carrier_divergence: None,
+                cycle_slip_evidence: Some(carrier_phase.cycle_slip_evidence.clone()),
             },
         };
         apply_cycle_slip_surface(&mut sat, carrier_phase.cycle_slip_reason.as_deref());
@@ -1900,6 +1905,10 @@ fn carrier_phase_observation(
                 phase_cycles: Cycles(tracked_carrier_phase_cycles),
                 cycle_slip: false,
                 cycle_slip_reason: None,
+                cycle_slip_evidence: cycle_slip_decision_evidence(vec![
+                    tracking_lock_evidence(epoch, false, "tracking_lock_coasted"),
+                    data_gap_evidence(false, None, None),
+                ]),
                 continuity: CarrierPhaseContinuity::Coasted,
                 arc_start_epoch_idx: state.arc_start_epoch_idx,
                 arc_start_sample_index: state.arc_start_sample_index,
@@ -1914,29 +1923,49 @@ fn carrier_phase_observation(
             );
         }
         state.initialized = false;
+        let tracking_reason =
+            cycle_slip_reason.as_deref().unwrap_or("tracking_lock_unusable").to_string();
+        let discontinuity_delta_s = discontinuity.then(|| {
+            carrier_phase_delta_seconds(state.last_sample_index, epoch.sample_index, sample_rate_hz)
+        });
         return CarrierPhaseObservation {
             phase_cycles: Cycles(tracked_carrier_phase_cycles),
             cycle_slip: cycle_slip_reason.is_some(),
             cycle_slip_reason,
+            cycle_slip_evidence: cycle_slip_decision_evidence(vec![
+                tracking_lock_evidence(
+                    epoch,
+                    tracking_reason != "tracking_lock_unusable",
+                    tracking_reason,
+                ),
+                data_gap_evidence(discontinuity, discontinuity_delta_s, None),
+            ]),
             continuity: CarrierPhaseContinuity::Unusable,
             arc_start_epoch_idx: 0,
             arc_start_sample_index: 0,
         };
     }
 
+    let had_prior_phase_state = state.initialized;
+    let previous_doppler_hz = state.doppler_hz;
     let delta_seconds =
         carrier_phase_delta_seconds(state.last_sample_index, epoch.sample_index, sample_rate_hz);
     let observed_phase_delta_cycles = tracked_carrier_phase_cycles - state.phase_cycles;
-    let predicted_from_previous_doppler_cycles = state.doppler_hz * delta_seconds;
-    let predicted_from_trapezoid_cycles = 0.5 * (state.doppler_hz + doppler_hz) * delta_seconds;
-    let phase_discontinuity = state.initialized
-        && (observed_phase_delta_cycles - predicted_from_previous_doppler_cycles).abs()
-            > carrier_phase_discontinuity_threshold_cycles(epoch);
-    let doppler_jump = state.initialized
-        && (doppler_hz - state.doppler_hz).abs() > doppler_jump_threshold_hz(epoch);
-    let phase_residual = state.initialized
-        && (observed_phase_delta_cycles - predicted_from_trapezoid_cycles).abs()
-            > carrier_phase_residual_threshold_cycles(epoch);
+    let predicted_from_previous_doppler_cycles = previous_doppler_hz * delta_seconds;
+    let predicted_from_trapezoid_cycles = 0.5 * (previous_doppler_hz + doppler_hz) * delta_seconds;
+    let doppler_predicted_phase_residual_cycles =
+        observed_phase_delta_cycles - predicted_from_previous_doppler_cycles;
+    let phase_innovation_residual_cycles =
+        observed_phase_delta_cycles - predicted_from_trapezoid_cycles;
+    let phase_discontinuity_threshold_cycles = carrier_phase_discontinuity_threshold_cycles(epoch);
+    let phase_residual_threshold_cycles = carrier_phase_residual_threshold_cycles(epoch);
+    let doppler_jump_threshold_hz = doppler_jump_threshold_hz(epoch);
+    let doppler_delta_hz = (doppler_hz - previous_doppler_hz).abs();
+    let phase_discontinuity = had_prior_phase_state
+        && doppler_predicted_phase_residual_cycles.abs() > phase_discontinuity_threshold_cycles;
+    let doppler_jump = had_prior_phase_state && doppler_delta_hz > doppler_jump_threshold_hz;
+    let phase_residual = had_prior_phase_state
+        && phase_innovation_residual_cycles.abs() > phase_residual_threshold_cycles;
     let explicit_reset = if epoch.cycle_slip {
         Some((
             CarrierPhaseContinuity::ResetAfterCycleSlip,
@@ -1996,7 +2025,50 @@ fn carrier_phase_observation(
     CarrierPhaseObservation {
         phase_cycles: Cycles(tracked_carrier_phase_cycles),
         cycle_slip,
-        cycle_slip_reason,
+        cycle_slip_reason: cycle_slip_reason.clone(),
+        cycle_slip_evidence: cycle_slip_decision_evidence(vec![
+            tracking_lock_evidence(
+                epoch,
+                epoch.cycle_slip
+                    || matches!(
+                        continuity,
+                        CarrierPhaseContinuity::ResetAfterUnlock
+                            | CarrierPhaseContinuity::ResetAfterReacquisition
+                    ),
+                if epoch.cycle_slip
+                    || matches!(continuity, CarrierPhaseContinuity::ResetAfterUnlock)
+                {
+                    cycle_slip_reason
+                        .clone()
+                        .unwrap_or_else(|| explicit_cycle_slip_reason(epoch, "cycle_slip"))
+                } else if matches!(continuity, CarrierPhaseContinuity::ResetAfterReacquisition) {
+                    cycle_slip_reason.clone().unwrap_or_else(|| "reacquired".to_string())
+                } else {
+                    "tracking_lock_continuous".to_string()
+                },
+            ),
+            data_gap_evidence(discontinuity && had_prior_phase_state, Some(delta_seconds), None),
+            doppler_predicted_phase_evidence(
+                phase_discontinuity || doppler_jump,
+                if doppler_jump {
+                    doppler_delta_hz
+                } else {
+                    doppler_predicted_phase_residual_cycles.abs()
+                },
+                if doppler_jump {
+                    doppler_jump_threshold_hz
+                } else {
+                    phase_discontinuity_threshold_cycles
+                },
+                if doppler_jump { "hz" } else { "cycles" },
+                if doppler_jump { "doppler_jump" } else { "carrier_phase_discontinuity" },
+            ),
+            phase_innovation_evidence(
+                phase_residual,
+                phase_innovation_residual_cycles.abs(),
+                phase_residual_threshold_cycles,
+            ),
+        ]),
         continuity,
         arc_start_epoch_idx: state.arc_start_epoch_idx,
         arc_start_sample_index: state.arc_start_sample_index,
@@ -2035,6 +2107,79 @@ fn explicit_cycle_slip_reason(epoch: &TrackEpoch, fallback: &str) -> String {
         .clone()
         .or_else(|| epoch.lock_state_reason.clone())
         .unwrap_or_else(|| fallback.to_string())
+}
+
+fn cycle_slip_decision_evidence(
+    contributors: Vec<CycleSlipDetectorEvidence>,
+) -> CycleSlipDecisionEvidence {
+    CycleSlipDecisionEvidence::from_contributors(
+        contributors,
+        CYCLE_SLIP_DETECTION_PROBABILITY_BUDGET,
+        CYCLE_SLIP_FALSE_ALARM_PROBABILITY_BUDGET,
+    )
+}
+
+fn tracking_lock_evidence(
+    epoch: &TrackEpoch,
+    triggered: bool,
+    reason: impl Into<String>,
+) -> CycleSlipDetectorEvidence {
+    let value = Some(if epoch.lock && epoch.pll_lock { 1.0 } else { 0.0 });
+    CycleSlipDetectorEvidence::new(
+        CycleSlipDetector::TrackingLock,
+        triggered,
+        value,
+        Some(1.0),
+        "lock_state",
+        reason,
+    )
+}
+
+fn data_gap_evidence(
+    triggered: bool,
+    delta_s: Option<f64>,
+    threshold_s: Option<f64>,
+) -> CycleSlipDetectorEvidence {
+    CycleSlipDetectorEvidence::new(
+        CycleSlipDetector::DataGap,
+        triggered,
+        delta_s,
+        threshold_s,
+        "s",
+        if triggered { "sample_discontinuity" } else { "continuous_samples" },
+    )
+}
+
+fn doppler_predicted_phase_evidence(
+    triggered: bool,
+    value: f64,
+    threshold: f64,
+    units: &'static str,
+    reason: &'static str,
+) -> CycleSlipDetectorEvidence {
+    CycleSlipDetectorEvidence::new(
+        CycleSlipDetector::DopplerPredictedPhase,
+        triggered,
+        Some(value),
+        Some(threshold),
+        units,
+        reason,
+    )
+}
+
+fn phase_innovation_evidence(
+    triggered: bool,
+    value_cycles: f64,
+    threshold_cycles: f64,
+) -> CycleSlipDetectorEvidence {
+    CycleSlipDetectorEvidence::new(
+        CycleSlipDetector::PhaseInnovation,
+        triggered,
+        Some(value_cycles),
+        Some(threshold_cycles),
+        "cycles",
+        if triggered { "phase_residual" } else { "phase_innovation_nominal" },
+    )
 }
 
 fn carrier_phase_delta_seconds(
@@ -3266,6 +3411,15 @@ mod tests {
             observations[0].sats[0].metadata.carrier_phase_arc_start_sample_index,
             observations[0].sats[0].metadata.time_tag_sample_index
         );
+        assert_eq!(
+            observations[1].sats[0]
+                .metadata
+                .cycle_slip_evidence
+                .as_ref()
+                .expect("cycle-slip evidence")
+                .triggered_detectors(),
+            Vec::<CycleSlipDetector>::new()
+        );
         assert_eq!(observations[1].sats[0].metadata.carrier_phase_continuity, "continuous");
         assert_eq!(observations[2].sats[0].metadata.carrier_phase_continuity, "continuous");
         assert!((observations[1].sats[0].carrier_phase_cycles.0 - 10.125).abs() <= f64::EPSILON);
@@ -3331,7 +3485,50 @@ mod tests {
             epoch_sample_index(&config, 72)
         );
         assert!(relocked.lock_flags.cycle_slip);
+        let evidence = relocked.metadata.cycle_slip_evidence.as_ref().expect("cycle-slip evidence");
+        assert!(evidence.detected);
+        assert_eq!(evidence.primary_reason.as_deref(), Some("loss_of_lock"));
+        assert!(evidence.triggered_detectors().contains(&CycleSlipDetector::TrackingLock));
         assert!((relocked.carrier_phase_cycles.0 - 0.5).abs() <= f64::EPSILON);
+    }
+
+    #[test]
+    fn observations_record_phase_innovation_cycle_slip_evidence() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 4_092_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 1023,
+            ..ReceiverPipelineConfig::default()
+        };
+        let carrier_hz = crate::pipeline::doppler::carrier_hz_from_doppler_hz(0.0, 125.0);
+        let epochs = vec![
+            make_tracking_epoch_with_phase(11, &config, 70, carrier_hz, 10.0),
+            make_tracking_epoch_with_phase(11, &config, 71, carrier_hz, 10.125),
+            make_tracking_epoch_with_phase(11, &config, 72, carrier_hz, 10.750),
+        ];
+
+        let (observations, diagnostics) = observations_from_tracking(&config, &epochs);
+
+        assert!(diagnostics.is_empty(), "unexpected diagnostics: {diagnostics:?}");
+        let slipped = &observations[2].sats[0];
+        let evidence = slipped.metadata.cycle_slip_evidence.as_ref().expect("cycle-slip evidence");
+        assert!(slipped.lock_flags.cycle_slip);
+        assert!(evidence.detected);
+        assert_eq!(evidence.primary_reason.as_deref(), Some("carrier_phase_discontinuity"));
+        assert!(
+            evidence.triggered_detectors().contains(&CycleSlipDetector::DopplerPredictedPhase),
+            "{evidence:?}"
+        );
+        assert!(
+            evidence.triggered_detectors().contains(&CycleSlipDetector::PhaseInnovation),
+            "{evidence:?}"
+        );
+        assert_eq!(evidence.detection_probability_budget, CYCLE_SLIP_DETECTION_PROBABILITY_BUDGET);
+        assert_eq!(
+            evidence.false_alarm_probability_budget,
+            CYCLE_SLIP_FALSE_ALARM_PROBABILITY_BUDGET
+        );
     }
 
     #[test]
