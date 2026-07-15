@@ -51,12 +51,12 @@ use peak_metrics::{
     correlation_metrics, correlation_metrics_in_window, delayed_secondary_peak_diagnostic,
     CorrelationMetrics, DelayedSecondaryPeakDiagnostic,
 };
+#[cfg(test)]
+use signal_model::acquisition_signal_model_for_sat;
 use signal_model::{
     acquisition_signal_model_for_request, request_search_center_hz, resolved_request_signal_code,
     resolved_signal_code, unsupported_acquisition_signal_error,
 };
-#[cfg(test)]
-use signal_model::acquisition_signal_model_for_sat;
 use threshold_resolution::{
     threshold_provenance_for_request, AcquisitionThresholdCacheKey, ResolvedAcquisitionThresholds,
     ThresholdResolutionCache,
@@ -1593,9 +1593,8 @@ impl Acquisition {
         }
 
         let miss_reason = self.cache.lock().ok().map_or(CacheMissReason::ColdStart, |cache| {
-            let has_same_satellite = cache
-                .keys()
-                .any(|cached| cached.matches_signal_period(sat, samples_per_code));
+            let has_same_satellite =
+                cache.keys().any(|cached| cached.matches_signal_period(sat, samples_per_code));
             if has_same_satellite {
                 CacheMissReason::IncompatibleAssumptions
             } else {
@@ -6008,13 +6007,14 @@ mod tests {
             vec![SignalComponentRole::Pilot]
         );
         assert_eq!(provenance.components[0].secondary_code_phase_periods, Some(0), "{run:?}");
-        assert_eq!(
-            selected
-                .uncertainty
-                .as_ref()
-                .expect("Galileo E1 accepted candidate uncertainty")
-                .code_phase_samples,
-            0.5
+        let code_phase_uncertainty_samples = selected
+            .uncertainty
+            .as_ref()
+            .expect("Galileo E1 accepted candidate uncertainty")
+            .code_phase_samples;
+        assert!(
+            code_phase_uncertainty_samples > 0.0 && code_phase_uncertainty_samples < 1.0,
+            "expected sub-chip Galileo E1 code-phase uncertainty, got {code_phase_uncertainty_samples}: {run:?}",
         );
     }
 

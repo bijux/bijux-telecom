@@ -157,8 +157,7 @@ fn inverse_standard_normal_cdf(p: f64) -> f64 {
     }
     if p > HIGH {
         let q = (-2.0 * (1.0 - p).ln()).sqrt();
-        return -(((((C[0] * q + C[1]) * q + C[2]) * q + C[3]) * q + C[4]) * q
-            + C[5])
+        return -(((((C[0] * q + C[1]) * q + C[2]) * q + C[3]) * q + C[4]) * q + C[5])
             / ((((D[0] * q + D[1]) * q + D[2]) * q + D[3]) * q + 1.0);
     }
     let q = p - 0.5;

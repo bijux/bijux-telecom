@@ -1479,8 +1479,7 @@ pub fn apply_code_loop(input: CodeLoopInput) -> CodeLoopUpdate {
     let dll_error_chips = input.dll_err as f64;
     let reference_rate_delta_hz =
         input.reference_code_rate_hz - input.previous_reference_code_rate_hz;
-    let code_rate_hz = input.current_code_rate_hz
-        + reference_rate_delta_hz
+    let code_rate_hz = input.current_code_rate_hz + reference_rate_delta_hz
         - coefficients.rate_gain_hz_per_chip * dll_error_chips;
     let predicted_code_phase_samples = predict_code_phase_samples(
         input.current_code_phase_samples,
