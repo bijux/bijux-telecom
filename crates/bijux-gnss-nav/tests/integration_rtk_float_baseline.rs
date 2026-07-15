@@ -5,8 +5,10 @@ use bijux_gnss_core::api::{
 };
 use bijux_gnss_nav::api::{
     rtk_float_baseline_from_double_differences,
-    rtk_float_baseline_from_double_differences_with_rover_prior, RtkDoubleDifferenceObservation,
-    RtkFloatAmbiguityEstimate, RtkFloatBaselineSolution, RtkSingleDifferenceCovarianceEvidence,
+    rtk_float_baseline_from_double_differences_with_rover_prior,
+    rtk_switch_double_difference_reference, rtk_transform_float_baseline_reference,
+    RtkDoubleDifferenceObservation, RtkFloatAmbiguityEstimate, RtkFloatBaselineSolution,
+    RtkSingleDifferenceCovarianceEvidence,
 };
 use bijux_gnss_signal::api::signal_id_wavelength_m;
 use bijux_gnss_testkit::rtk_baseline::clean_gps_l1_short_baseline_case;
@@ -66,6 +68,29 @@ fn assert_solution_matches_truth(solution: &RtkFloatBaselineSolution, truth_enu_
     assert!((solution.enu_m[2] - truth_enu_m[2]).abs() < 0.10, "up mismatch");
 }
 
+fn assert_float_solutions_close(
+    actual: &RtkFloatBaselineSolution,
+    expected: &RtkFloatBaselineSolution,
+    tolerance: f64,
+) {
+    for axis in 0..3 {
+        assert!((actual.enu_m[axis] - expected.enu_m[axis]).abs() < tolerance);
+    }
+    assert_eq!(actual.float_ambiguities.len(), expected.float_ambiguities.len());
+    for (actual_ambiguity, expected_ambiguity) in
+        actual.float_ambiguities.iter().zip(expected.float_ambiguities.iter())
+    {
+        assert_eq!(actual_ambiguity.sig, expected_ambiguity.sig);
+        assert_eq!(actual_ambiguity.ref_sig, expected_ambiguity.ref_sig);
+        assert!(
+            (actual_ambiguity.float_cycles - expected_ambiguity.float_cycles).abs() < tolerance,
+            "actual={} expected={}",
+            actual_ambiguity.float_cycles,
+            expected_ambiguity.float_cycles
+        );
+    }
+}
+
 #[test]
 fn rtk_float_baseline_solver_recovers_truth_and_ambiguities() {
     let scenario = clean_gps_l1_short_baseline_case();
@@ -105,6 +130,35 @@ fn rtk_float_baseline_solver_recovers_truth_and_ambiguities() {
         assert!((ambiguity.float_cycles - expected_cycles).abs() < 0.05);
         assert!(ambiguity.variance_cycles2 >= 0.0);
     }
+}
+
+#[test]
+fn rtk_float_baseline_reference_switch_avoids_phase_jump() {
+    let scenario = clean_gps_l1_short_baseline_case();
+    let original_solution = rtk_float_baseline_from_double_differences(
+        &scenario.double_differences,
+        scenario.base_ecef_m,
+        &scenario.ephemerides,
+        scenario.receive_gps_time.tow_s,
+    )
+    .expect("original float baseline");
+    let new_reference = scenario.double_differences[0].sig;
+    let transformed_solution =
+        rtk_transform_float_baseline_reference(&original_solution, new_reference)
+            .expect("transformed solution");
+    let switched_double_differences =
+        rtk_switch_double_difference_reference(&scenario.double_differences, new_reference)
+            .expect("switched double differences");
+    let switched_solution = rtk_float_baseline_from_double_differences(
+        &switched_double_differences,
+        scenario.base_ecef_m,
+        &scenario.ephemerides,
+        scenario.receive_gps_time.tow_s,
+    )
+    .expect("switched float baseline");
+
+    assert_float_solutions_close(&switched_solution, &transformed_solution, 1.0e-6);
+    assert_solution_matches_truth(&switched_solution, scenario.truth_enu_m);
 }
 
 #[test]
