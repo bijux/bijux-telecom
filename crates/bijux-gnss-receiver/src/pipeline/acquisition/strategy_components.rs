@@ -5,7 +5,8 @@ use bijux_gnss_core::api::{
 use crate::pipeline::acquisition_components::{AcquisitionComponentPlan, AcquisitionStrategyPlan};
 use crate::pipeline::acquisition_symbol_hypotheses::coherent_data_sign_hypotheses;
 
-use super::{correlation_metrics, ComponentCorrelationAccumulation};
+use super::correlation_accumulation::ComponentCorrelationAccumulation;
+use super::correlation_metrics;
 
 pub(super) fn unique_strategy_components(
     strategies: &[AcquisitionStrategyPlan],
