@@ -6,13 +6,13 @@
 //! - clock_error_m comes from configured receiver-clock bias uncertainty.
 
 use bijux_gnss_core::api::{
-    CodeCarrierDivergence, Constellation, ConventionsConfig, CycleSlipDecisionEvidence,
-    CycleSlipDetector, CycleSlipDetectorEvidence, Cycles, DiagnosticEvent, DiagnosticSeverity,
-    GpsTime, LockFlags, Meters, ObsDecisionArtifact, ObsEpoch, ObsEpochManifest, ObsMetadata,
-    ObsSatellite, ObsSignalTiming, ObservationEpochDecision, ObservationMeasurementCovariance,
-    ObservationStatus, ObservationSupportClass, ObservationUncertaintyClass, ReceiverRole,
-    ReceiverSampleTrace, SatId, SatObservationDecision, Seconds, SigId, SignalBand, SignalCode,
-    SignalSpec, TrackEpoch, GPS_L1_CA_CARRIER_HZ,
+    CarrierPhaseArc, CodeCarrierDivergence, Constellation, ConventionsConfig,
+    CycleSlipDecisionEvidence, CycleSlipDetector, CycleSlipDetectorEvidence, Cycles,
+    DiagnosticEvent, DiagnosticSeverity, GpsTime, LockFlags, Meters, ObsDecisionArtifact, ObsEpoch,
+    ObsEpochManifest, ObsMetadata, ObsSatellite, ObsSignalTiming, ObservationEpochDecision,
+    ObservationMeasurementCovariance, ObservationStatus, ObservationSupportClass,
+    ObservationUncertaintyClass, ReceiverRole, ReceiverSampleTrace, SatId, SatObservationDecision,
+    Seconds, SigId, SignalBand, SignalCode, SignalSpec, TrackEpoch, GPS_L1_CA_CARRIER_HZ,
 };
 
 use crate::engine::receiver_config::ReceiverPipelineConfig;
@@ -115,6 +115,7 @@ struct CarrierPhaseArcState {
     last_sample_index: u64,
     arc_start_epoch_idx: u64,
     arc_start_sample_index: u64,
+    arc_start_reason: String,
     pending_reset: Option<CarrierPhaseContinuity>,
     pending_reset_reason: Option<String>,
     initialized: bool,
@@ -141,6 +142,7 @@ struct CarrierPhaseObservation {
     continuity: CarrierPhaseContinuity,
     arc_start_epoch_idx: u64,
     arc_start_sample_index: u64,
+    arc: CarrierPhaseArc,
 }
 
 #[derive(Debug, Clone)]
@@ -406,6 +408,7 @@ fn observations_from_tracking_with_provenance(
         last_sample_index: 0,
         arc_start_epoch_idx: 0,
         arc_start_sample_index: 0,
+        arc_start_reason: String::new(),
         pending_reset: None,
         pending_reset_reason: None,
         initialized: false,
@@ -479,6 +482,7 @@ fn observations_from_tracking_with_provenance(
             doppler_hz.0,
             config.sampling_freq_hz,
             discontinuity,
+            signal_model.signal_id,
             &mut carrier_phase_state,
         );
 
@@ -581,6 +585,7 @@ fn observations_from_tracking_with_provenance(
                     .to_string(),
                 carrier_phase_arc_start_epoch_idx: carrier_phase.arc_start_epoch_idx,
                 carrier_phase_arc_start_sample_index: carrier_phase.arc_start_sample_index,
+                carrier_phase_arc: Some(carrier_phase.arc.clone()),
                 signal_delay_alignment_source: pseudorange.alignment_source.unwrap_or_default(),
                 time_tag_source,
                 time_tag_sample_index,
@@ -1902,6 +1907,7 @@ fn carrier_phase_observation(
     doppler_hz: f64,
     sample_rate_hz: f64,
     discontinuity: bool,
+    signal_id: SigId,
     state: &mut CarrierPhaseArcState,
 ) -> CarrierPhaseObservation {
     if !carrier_phase_tracking_usable(epoch) {
@@ -1933,6 +1939,12 @@ fn carrier_phase_observation(
                 continuity: CarrierPhaseContinuity::Coasted,
                 arc_start_epoch_idx: state.arc_start_epoch_idx,
                 arc_start_sample_index: state.arc_start_sample_index,
+                arc: CarrierPhaseArc::new(
+                    signal_id,
+                    state.arc_start_epoch_idx,
+                    state.arc_start_sample_index,
+                    state.arc_start_reason.clone(),
+                ),
             };
         } else if state.initialized {
             cycle_slip_reason = Some("loss_of_lock".to_string());
@@ -1957,13 +1969,14 @@ fn carrier_phase_observation(
                 tracking_lock_evidence(
                     epoch,
                     tracking_reason != "tracking_lock_unusable",
-                    tracking_reason,
+                    tracking_reason.clone(),
                 ),
                 data_gap_evidence(discontinuity, discontinuity_delta_s, None),
             ]),
             continuity: CarrierPhaseContinuity::Unusable,
             arc_start_epoch_idx: 0,
             arc_start_sample_index: 0,
+            arc: CarrierPhaseArc::invalid_boundary(signal_id, tracking_reason),
         };
     }
 
@@ -2037,6 +2050,8 @@ fn carrier_phase_observation(
     if continuity != CarrierPhaseContinuity::Continuous {
         state.arc_start_epoch_idx = epoch.epoch.index;
         state.arc_start_sample_index = epoch.sample_index;
+        state.arc_start_reason =
+            carrier_phase_arc_start_reason(continuity, cycle_slip_reason.as_deref()).to_string();
     }
     state.phase_cycles = tracked_carrier_phase_cycles;
     state.doppler_hz = doppler_hz;
@@ -2093,6 +2108,12 @@ fn carrier_phase_observation(
         continuity,
         arc_start_epoch_idx: state.arc_start_epoch_idx,
         arc_start_sample_index: state.arc_start_sample_index,
+        arc: CarrierPhaseArc::new(
+            signal_id,
+            state.arc_start_epoch_idx,
+            state.arc_start_sample_index,
+            state.arc_start_reason.clone(),
+        ),
     }
 }
 
@@ -2120,6 +2141,24 @@ fn carrier_phase_arc_can_coast(epoch: &TrackEpoch, state: &CarrierPhaseArcState)
             epoch.lock_state_reason.as_deref(),
             Some("signal_fade") | Some("fade_recovered")
         )
+}
+
+fn carrier_phase_arc_start_reason(
+    continuity: CarrierPhaseContinuity,
+    cycle_slip_reason: Option<&str>,
+) -> String {
+    match continuity {
+        CarrierPhaseContinuity::ArcStart => "arc_start".to_string(),
+        CarrierPhaseContinuity::ResetAfterCycleSlip => {
+            cycle_slip_reason.unwrap_or("cycle_slip").to_string()
+        }
+        CarrierPhaseContinuity::ResetAfterUnlock => "loss_of_lock".to_string(),
+        CarrierPhaseContinuity::ResetAfterReacquisition => "reacquired".to_string(),
+        CarrierPhaseContinuity::ResetAfterDiscontinuity => "sample_discontinuity".to_string(),
+        CarrierPhaseContinuity::Unusable
+        | CarrierPhaseContinuity::Continuous
+        | CarrierPhaseContinuity::Coasted => "continuity_preserved".to_string(),
+    }
 }
 
 fn explicit_cycle_slip_reason(epoch: &TrackEpoch, fallback: &str) -> String {
@@ -3719,6 +3758,33 @@ mod tests {
             observations[2].sats[0].metadata.carrier_phase_arc_start_sample_index,
             observations[0].sats[0].metadata.carrier_phase_arc_start_sample_index
         );
+        let first_arc = observations[0].sats[0]
+            .metadata
+            .carrier_phase_arc
+            .as_ref()
+            .expect("first carrier-phase arc");
+        assert_eq!(first_arc.signal_id, observations[0].sats[0].signal_id);
+        assert_eq!(first_arc.start_reason, "arc_start");
+        assert!(first_arc.valid_for_smoothing);
+        assert!(first_arc.valid_for_ambiguity);
+        assert_eq!(
+            observations[1].sats[0]
+                .metadata
+                .carrier_phase_arc
+                .as_ref()
+                .expect("continuous carrier-phase arc")
+                .id,
+            first_arc.id
+        );
+        assert_eq!(
+            observations[2].sats[0]
+                .metadata
+                .carrier_phase_arc
+                .as_ref()
+                .expect("second continuous carrier-phase arc")
+                .id,
+            first_arc.id
+        );
     }
 
     #[test]
@@ -3770,12 +3836,22 @@ mod tests {
 
         assert_eq!(unlocked.metadata.carrier_phase_continuity, "unusable");
         assert_eq!(unlocked.metadata.carrier_phase_arc_start_epoch_idx, 0);
+        let unusable_arc =
+            unlocked.metadata.carrier_phase_arc.as_ref().expect("unusable carrier-phase boundary");
+        assert_eq!(unusable_arc.start_reason, "loss_of_lock");
+        assert!(!unusable_arc.valid_for_smoothing);
+        assert!(!unusable_arc.valid_for_ambiguity);
         assert_eq!(relocked.metadata.carrier_phase_continuity, "reset_after_unlock");
         assert_eq!(relocked.metadata.carrier_phase_arc_start_epoch_idx, 72);
         assert_eq!(
             relocked.metadata.carrier_phase_arc_start_sample_index,
             epoch_sample_index(&config, 72)
         );
+        let relocked_arc =
+            relocked.metadata.carrier_phase_arc.as_ref().expect("relocked carrier-phase arc");
+        assert_eq!(relocked_arc.start_reason, "loss_of_lock");
+        assert!(relocked_arc.valid_for_smoothing);
+        assert_ne!(unusable_arc.id, relocked_arc.id);
         assert!(relocked.lock_flags.cycle_slip);
         let evidence = relocked.metadata.cycle_slip_evidence.as_ref().expect("cycle-slip evidence");
         assert!(evidence.detected);
@@ -3871,15 +3947,24 @@ mod tests {
         assert_eq!(first.metadata.carrier_phase_continuity, "arc_start");
         assert_eq!(faded.metadata.carrier_phase_continuity, "coasted");
         assert!(!faded.lock_flags.cycle_slip);
+        let first_arc = first.metadata.carrier_phase_arc.as_ref().expect("first arc");
         assert_eq!(
             faded.metadata.carrier_phase_arc_start_sample_index,
             first.metadata.carrier_phase_arc_start_sample_index
+        );
+        assert_eq!(
+            faded.metadata.carrier_phase_arc.as_ref().expect("coasted carrier-phase arc").id,
+            first_arc.id
         );
         assert_eq!(recovered.metadata.carrier_phase_continuity, "continuous");
         assert!(!recovered.lock_flags.cycle_slip);
         assert_eq!(
             recovered.metadata.carrier_phase_arc_start_sample_index,
             first.metadata.carrier_phase_arc_start_sample_index
+        );
+        assert_eq!(
+            recovered.metadata.carrier_phase_arc.as_ref().expect("recovered carrier-phase arc").id,
+            first_arc.id
         );
     }
 
@@ -3941,9 +4026,22 @@ mod tests {
         assert_eq!(lost.metadata.carrier_phase_continuity, "unusable");
         assert_eq!(reacquired.metadata.carrier_phase_continuity, "reset_after_reacquisition");
         assert_eq!(reacquired.metadata.carrier_phase_arc_start_epoch_idx, 72);
+        let lost_arc =
+            lost.metadata.carrier_phase_arc.as_ref().expect("lost carrier-phase boundary");
+        let reacquired_arc =
+            reacquired.metadata.carrier_phase_arc.as_ref().expect("reacquired carrier-phase arc");
+        assert_eq!(lost_arc.start_reason, "loss_of_lock");
+        assert!(!lost_arc.valid_for_smoothing);
+        assert_eq!(reacquired_arc.start_reason, "reacquired");
+        assert!(reacquired_arc.valid_for_smoothing);
+        assert_ne!(lost_arc.id, reacquired_arc.id);
         assert!(reacquired.lock_flags.cycle_slip);
         assert_eq!(settled.metadata.carrier_phase_continuity, "continuous");
         assert_eq!(settled.metadata.carrier_phase_arc_start_epoch_idx, 72);
+        assert_eq!(
+            settled.metadata.carrier_phase_arc.as_ref().expect("settled carrier-phase arc").id,
+            reacquired_arc.id
+        );
     }
 
     #[test]
@@ -3984,12 +4082,20 @@ mod tests {
 
         assert_eq!(slipped.metadata.carrier_phase_continuity, "reset_after_cycle_slip");
         assert_eq!(slipped.metadata.carrier_phase_arc_start_epoch_idx, 71);
+        let slipped_arc =
+            slipped.metadata.carrier_phase_arc.as_ref().expect("slipped carrier-phase arc");
+        assert_eq!(slipped_arc.start_reason, "phase_jump");
+        assert!(slipped_arc.valid_for_smoothing);
         assert!(slipped.lock_flags.cycle_slip);
         assert_eq!(post_slip.metadata.carrier_phase_continuity, "continuous");
         assert_eq!(post_slip.metadata.carrier_phase_arc_start_epoch_idx, 71);
         assert_eq!(
             post_slip.metadata.carrier_phase_arc_start_sample_index,
             epoch_sample_index(&config, 71)
+        );
+        assert_eq!(
+            post_slip.metadata.carrier_phase_arc.as_ref().expect("post-slip carrier-phase arc").id,
+            slipped_arc.id
         );
     }
 
