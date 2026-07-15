@@ -1,8 +1,16 @@
-use bijux_gnss_core::api::{AcqHypothesis, AcqRequest, AcqResult};
+use bijux_gnss_core::api::{AcqHypothesis, AcqRequest, AcqResult, SamplesFrame, SatId};
+use bijux_gnss_signal::api::AcquisitionSignalModel;
 
+use crate::engine::receiver_config::ReceiverPipelineConfig;
 use crate::pipeline::acquisition_assistance::ResolvedAcquisitionSearchBounds;
+use crate::pipeline::doppler::carrier_hz_from_doppler_hz;
 
 use crate::pipeline::acquisition::candidate_decision::selected_reason_for_candidate;
+
+use super::code_phase_profile::measure_code_phase_profile;
+use super::doppler_refinement::{
+    find_best_candidate_by_carrier_hz_and_rate, find_candidate_by_carrier_hz,
+};
 
 pub(super) const SEARCH_EDGE_HINT_PEAK_MEAN_RATIO_FRACTION: f32 = 0.9;
 pub(super) const SEARCH_EDGE_RISE_RATIO_EPSILON: f32 = 0.05;
@@ -158,6 +166,173 @@ pub(super) fn code_phase_outside_search_range(
             interior_axis_value: interior_index as f64,
             best_peak_mean_ratio: edge_peak_mean_ratio,
             interior_peak_mean_ratio,
+        })
+    })
+    .max_by(|left, right| {
+        left.best_peak_mean_ratio
+            .partial_cmp(&right.best_peak_mean_ratio)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    })
+}
+
+pub(super) fn signal_outside_search_range(
+    candidates: &[AcqResult],
+    intermediate_freq_hz: f64,
+    doppler_search_hz: i32,
+    doppler_step_hz: i32,
+    peak_mean_threshold: f32,
+) -> Option<SearchWindowDiagnostic> {
+    if candidates.len() < 2 || doppler_search_hz <= 0 || doppler_step_hz <= 0 {
+        return None;
+    }
+
+    let best_peak_mean_ratio =
+        candidates.iter().map(|candidate| candidate.peak_mean_ratio).fold(0.0_f32, f32::max);
+    let hint_threshold =
+        peak_mean_threshold.max(best_peak_mean_ratio * SEARCH_EDGE_HINT_PEAK_MEAN_RATIO_FRACTION);
+    [
+        (
+            SearchWindowEdge::Lower,
+            carrier_hz_from_doppler_hz(intermediate_freq_hz, -(doppler_search_hz as f64)),
+            carrier_hz_from_doppler_hz(
+                intermediate_freq_hz,
+                -((doppler_search_hz - doppler_step_hz) as f64),
+            ),
+        ),
+        (
+            SearchWindowEdge::Upper,
+            carrier_hz_from_doppler_hz(intermediate_freq_hz, doppler_search_hz as f64),
+            carrier_hz_from_doppler_hz(
+                intermediate_freq_hz,
+                (doppler_search_hz - doppler_step_hz) as f64,
+            ),
+        ),
+    ]
+    .into_iter()
+    .filter_map(|(edge, edge_carrier_hz, interior_carrier_hz)| {
+        let edge_candidate = find_candidate_by_carrier_hz(candidates, edge_carrier_hz)?;
+        let interior_candidate = find_candidate_by_carrier_hz(candidates, interior_carrier_hz)?;
+        if edge_candidate.peak_mean_ratio < hint_threshold {
+            return None;
+        }
+        if edge_candidate.peak_mean_ratio
+            <= interior_candidate.peak_mean_ratio * (1.0 + SEARCH_EDGE_RISE_RATIO_EPSILON)
+        {
+            return None;
+        }
+        Some(SearchWindowDiagnostic {
+            dimension: SearchWindowDimension::Doppler,
+            edge,
+            best_axis_value: edge_candidate.carrier_hz.0,
+            interior_axis_value: interior_candidate.carrier_hz.0,
+            best_peak_mean_ratio: edge_candidate.peak_mean_ratio,
+            interior_peak_mean_ratio: interior_candidate.peak_mean_ratio,
+        })
+    })
+    .max_by(|left, right| {
+        left.best_peak_mean_ratio
+            .partial_cmp(&right.best_peak_mean_ratio)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    })
+}
+
+pub(super) fn assisted_code_phase_search_window_diagnostic(
+    config: &ReceiverPipelineConfig,
+    signal_model: &AcquisitionSignalModel,
+    frame: &SamplesFrame,
+    sat: SatId,
+    carrier_hz: f64,
+    doppler_rate_hz_per_s: f64,
+    coherent_ms: u32,
+    noncoherent: u32,
+    resolved_bounds: &ResolvedAcquisitionSearchBounds,
+    peak_mean_threshold: f32,
+) -> Option<SearchWindowDiagnostic> {
+    if resolved_bounds.code_phase_search_bins == 0
+        || resolved_bounds.code_phase_search_mode == "full_code"
+    {
+        return None;
+    }
+    let correlation_profile = measure_code_phase_profile(
+        config,
+        signal_model,
+        frame,
+        sat,
+        carrier_hz,
+        doppler_rate_hz_per_s,
+        coherent_ms,
+        noncoherent,
+    )?;
+    code_phase_outside_search_range(
+        &correlation_profile,
+        resolved_bounds.code_phase_search_start_sample,
+        resolved_bounds.code_phase_search_step_samples,
+        resolved_bounds.code_phase_search_bins,
+        peak_mean_threshold,
+    )
+}
+
+pub(super) fn signal_outside_doppler_rate_search_range(
+    candidates: &[AcqResult],
+    carrier_hz: f64,
+    doppler_rate_center_hz_per_s: f64,
+    doppler_rate_search_hz_per_s: i32,
+    doppler_rate_step_hz_per_s: i32,
+    peak_mean_threshold: f32,
+) -> Option<SearchWindowDiagnostic> {
+    if candidates.len() < 2 || doppler_rate_search_hz_per_s <= 0 || doppler_rate_step_hz_per_s <= 0
+    {
+        return None;
+    }
+
+    let best_peak_mean_ratio = candidates
+        .iter()
+        .filter(|candidate| (candidate.carrier_hz.0 - carrier_hz).abs() <= f64::EPSILON)
+        .map(|candidate| candidate.peak_mean_ratio)
+        .fold(0.0_f32, f32::max);
+    if best_peak_mean_ratio <= f32::EPSILON {
+        return None;
+    }
+    let hint_threshold =
+        peak_mean_threshold.max(best_peak_mean_ratio * SEARCH_EDGE_HINT_PEAK_MEAN_RATIO_FRACTION);
+    [
+        (
+            SearchWindowEdge::Lower,
+            doppler_rate_center_hz_per_s - doppler_rate_search_hz_per_s as f64,
+            doppler_rate_center_hz_per_s
+                - (doppler_rate_search_hz_per_s - doppler_rate_step_hz_per_s) as f64,
+        ),
+        (
+            SearchWindowEdge::Upper,
+            doppler_rate_center_hz_per_s + doppler_rate_search_hz_per_s as f64,
+            doppler_rate_center_hz_per_s
+                + (doppler_rate_search_hz_per_s - doppler_rate_step_hz_per_s) as f64,
+        ),
+    ]
+    .into_iter()
+    .filter_map(|(edge, edge_rate_hz_per_s, interior_rate_hz_per_s)| {
+        let edge_candidate =
+            find_best_candidate_by_carrier_hz_and_rate(candidates, carrier_hz, edge_rate_hz_per_s)?;
+        let interior_candidate = find_best_candidate_by_carrier_hz_and_rate(
+            candidates,
+            carrier_hz,
+            interior_rate_hz_per_s,
+        )?;
+        if edge_candidate.peak_mean_ratio < hint_threshold {
+            return None;
+        }
+        if edge_candidate.peak_mean_ratio
+            <= interior_candidate.peak_mean_ratio * (1.0 + SEARCH_EDGE_RISE_RATIO_EPSILON)
+        {
+            return None;
+        }
+        Some(SearchWindowDiagnostic {
+            dimension: SearchWindowDimension::DopplerRate,
+            edge,
+            best_axis_value: edge_candidate.doppler_rate_hz_per_s,
+            interior_axis_value: interior_candidate.doppler_rate_hz_per_s,
+            best_peak_mean_ratio: edge_candidate.peak_mean_ratio,
+            interior_peak_mean_ratio: interior_candidate.peak_mean_ratio,
         })
     })
     .max_by(|left, right| {
