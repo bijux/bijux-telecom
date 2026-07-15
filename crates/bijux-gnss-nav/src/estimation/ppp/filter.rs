@@ -574,6 +574,7 @@ impl PppFilter {
             self.state_identities.push(identity);
             self.indices.ambiguity.insert(sig, idx);
         }
+        self.validate_state_layout("state_creation");
     }
 
     fn predict(&mut self, dt_s: f64) {
@@ -667,6 +668,7 @@ impl PppFilter {
             self.indices = indices;
             self.state_identities = retained_identities;
             self.ekf.labels = self.state_identities.iter().map(ppp_state_label).collect();
+            self.validate_state_layout("state_removal");
             removed_count
         } else {
             self.health
@@ -674,6 +676,51 @@ impl PppFilter {
                 .push("PPP state compaction produced invalid state identity layout".to_string());
             0
         }
+    }
+
+    pub(crate) fn validate_state_layout(&mut self, context: &str) -> bool {
+        let mut valid = true;
+        if self.state_identities.len() != self.ekf.x.len() {
+            valid = false;
+            self.health.warnings.push(format!(
+                "PPP state layout mismatch during {context}: {} identities for {} states",
+                self.state_identities.len(),
+                self.ekf.x.len()
+            ));
+        }
+        if self.ekf.p.rows() != self.ekf.x.len() || self.ekf.p.cols() != self.ekf.x.len() {
+            valid = false;
+            self.health.warnings.push(format!(
+                "PPP covariance dimension mismatch during {context}: covariance is {}x{} for {} states",
+                self.ekf.p.rows(),
+                self.ekf.p.cols(),
+                self.ekf.x.len()
+            ));
+        }
+        if self.ekf.labels.len() != self.ekf.x.len() {
+            valid = false;
+            self.health.warnings.push(format!(
+                "PPP state label mismatch during {context}: {} labels for {} states",
+                self.ekf.labels.len(),
+                self.ekf.x.len()
+            ));
+        }
+        match ppp_indices_from_state_identities(&self.state_identities) {
+            Some(indices) if indices == self.indices => {}
+            Some(_) => {
+                valid = false;
+                self.health.warnings.push(format!(
+                    "PPP state index map mismatch during {context}: identities do not match active indices"
+                ));
+            }
+            None => {
+                valid = false;
+                self.health.warnings.push(format!(
+                    "PPP state identity layout invalid during {context}: required receiver states missing or duplicate dynamic identities"
+                ));
+            }
+        }
+        valid
     }
 }
 

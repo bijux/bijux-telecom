@@ -651,7 +651,7 @@ pub struct PppHealth {
     pub ar_events: Vec<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PppIndices {
     pub pos: [usize; 3],
     pub vel: [usize; 3],

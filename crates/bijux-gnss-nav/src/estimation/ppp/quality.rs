@@ -94,6 +94,7 @@ impl PppFilter {
     }
 
     pub fn check_consistency(&mut self) {
+        self.validate_state_layout("consistency_check");
         let nis = self.ekf.health.normalized_innovation_squared.or_else(|| {
             self.ekf.health.predicted_variance.and_then(|predicted_variance| {
                 if predicted_variance > 0.0 {
@@ -151,6 +152,7 @@ impl PppFilter {
         self.wl_state.clear();
         self.phase_windup.clear();
         self.ar_stable_epochs = 0;
+        self.validate_state_layout("reset");
     }
 
     pub fn checkpoint(&self) -> PppCheckpoint {
@@ -201,9 +203,14 @@ impl PppFilter {
             super::filter::ppp_indices_from_state_identities(&self.state_identities)
         {
             self.indices = indices;
+        } else {
+            self.health
+                .warnings
+                .push("PPP checkpoint restore produced invalid state identity layout".to_string());
         }
         self.ekf.labels =
             self.state_identities.iter().map(super::filter::ppp_state_label).collect();
+        self.validate_state_layout("checkpoint_restore");
         self.last_t_rx_s = ck.last_t_rx_s;
         self.epoch0_t_s = ck.epoch0_t_s;
         self.last_pos = ck.last_pos;
@@ -405,6 +412,45 @@ mod tests {
         assert!(filter.health.warnings.iter().any(|warning| {
             warning.contains("NIS low") && warning.contains("0.050") && warning.contains("0.100")
         }));
+    }
+
+    #[test]
+    fn ppp_state_layout_validation_reports_label_mismatch() {
+        let mut filter = PppFilter::new(PppConfig::default());
+        filter.ekf.labels.pop();
+
+        assert!(!filter.validate_state_layout("test"));
+        assert!(filter
+            .health
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("PPP state label mismatch")));
+    }
+
+    #[test]
+    fn ppp_state_layout_validation_reports_index_map_mismatch() {
+        let sig = SigId {
+            sat: SatId { constellation: Constellation::Gps, prn: 15 },
+            band: SignalBand::L1,
+            code: SignalCode::Ca,
+        };
+        let mut filter = PppFilter::new(PppConfig::default());
+        append_ppp_state(&mut filter, PppStateIdentity::CarrierAmbiguity(sig), 1.0);
+        filter.indices.ambiguity.insert(
+            SigId {
+                sat: SatId { constellation: Constellation::Gps, prn: 16 },
+                band: SignalBand::L1,
+                code: SignalCode::Ca,
+            },
+            filter.indices.ambiguity[&sig],
+        );
+
+        assert!(!filter.validate_state_layout("test"));
+        assert!(filter
+            .health
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("PPP state index map mismatch")));
     }
 
     #[test]
