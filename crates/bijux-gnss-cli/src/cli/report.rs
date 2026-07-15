@@ -448,6 +448,8 @@ mod report_tests {
             normalized_innovation_max: None,
             ekf_innovation_rms: None,
             ekf_condition_number: None,
+            wls_solver_rank: None,
+            wls_condition_number: None,
             ekf_whiteness_ratio: None,
             ekf_predicted_variance: None,
             ekf_observed_variance: None,

@@ -102,6 +102,10 @@ pub struct NavSolutionEpoch {
     pub normalized_innovation_max: Option<f64>,
     pub ekf_innovation_rms: Option<f64>,
     pub ekf_condition_number: Option<f64>,
+    #[serde(default)]
+    pub wls_solver_rank: Option<usize>,
+    #[serde(default)]
+    pub wls_condition_number: Option<f64>,
     pub ekf_whiteness_ratio: Option<f64>,
     pub ekf_predicted_variance: Option<f64>,
     pub ekf_observed_variance: Option<f64>,
