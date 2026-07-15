@@ -56,6 +56,26 @@ pub enum BiasSinexUnit {
     Meters,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BiasSinexBiasSource {
+    ObservableSpecific,
+    ObservableDifference,
+    DifferentialSignal,
+    IonosphereFreeSignal,
+    IonosphereFreeObservableCombination,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct BiasSinexSignalBias {
+    pub signal: SigId,
+    pub reference_signal: Option<SigId>,
+    pub window_start: GpsTime,
+    pub window_end: GpsTime,
+    pub bias_m: f64,
+    pub uncertainty_m: Option<f64>,
+    pub source: BiasSinexBiasSource,
+}
+
 #[derive(Debug, Clone)]
 pub struct BiasSinexWindow {
     pub start: GpsTime,
@@ -239,13 +259,25 @@ impl BiasSinexProvider {
     }
 
     pub fn code_bias_m_at(&self, sig: SigId, time: Option<GpsTime>) -> Option<f64> {
+        self.code_bias_at(sig, time).map(|bias| bias.bias_m)
+    }
+
+    pub fn code_bias_at(&self, sig: SigId, time: Option<GpsTime>) -> Option<BiasSinexSignalBias> {
         let window = self.window_for_signal(sig, time)?;
-        window.observable_biases_m.get(&sig).copied()
+        let bias_m = window.observable_biases_m.get(&sig).copied()?;
+        Some(BiasSinexSignalBias {
+            signal: sig,
+            reference_signal: None,
+            window_start: window.start,
+            window_end: window.end,
+            bias_m,
+            uncertainty_m: window.observable_bias_uncertainties_m.get(&sig).copied(),
+            source: BiasSinexBiasSource::ObservableSpecific,
+        })
     }
 
     pub fn code_bias_uncertainty_m_at(&self, sig: SigId, time: Option<GpsTime>) -> Option<f64> {
-        let window = self.window_for_signal(sig, time)?;
-        window.observable_bias_uncertainties_m.get(&sig).copied()
+        self.code_bias_at(sig, time).and_then(|bias| bias.uncertainty_m)
     }
 
     pub fn differential_code_bias_m_at(
@@ -254,16 +286,63 @@ impl BiasSinexProvider {
         second: SigId,
         time: Option<GpsTime>,
     ) -> Option<f64> {
+        self.differential_code_bias_at(first, second, time).map(|bias| bias.bias_m)
+    }
+
+    pub fn differential_code_bias_at(
+        &self,
+        first: SigId,
+        second: SigId,
+        time: Option<GpsTime>,
+    ) -> Option<BiasSinexSignalBias> {
         let window = self.window_for_signal(first, time)?;
         if let Some(value) = window.differential_biases_m.get(&(first, second)) {
-            return Some(*value);
+            return Some(BiasSinexSignalBias {
+                signal: first,
+                reference_signal: Some(second),
+                window_start: window.start,
+                window_end: window.end,
+                bias_m: *value,
+                uncertainty_m: window
+                    .differential_bias_uncertainties_m
+                    .get(&(first, second))
+                    .copied(),
+                source: BiasSinexBiasSource::DifferentialSignal,
+            });
         }
         if let Some(value) = window.differential_biases_m.get(&(second, first)) {
-            return Some(-value);
+            return Some(BiasSinexSignalBias {
+                signal: first,
+                reference_signal: Some(second),
+                window_start: window.start,
+                window_end: window.end,
+                bias_m: -*value,
+                uncertainty_m: window
+                    .differential_bias_uncertainties_m
+                    .get(&(second, first))
+                    .copied(),
+                source: BiasSinexBiasSource::DifferentialSignal,
+            });
         }
         let first_bias = window.observable_biases_m.get(&first)?;
         let second_bias = window.observable_biases_m.get(&second)?;
-        Some(first_bias - second_bias)
+        let uncertainty_m = window
+            .observable_bias_uncertainties_m
+            .get(&first)
+            .zip(window.observable_bias_uncertainties_m.get(&second))
+            .map(|(first_uncertainty, second_uncertainty)| {
+                (first_uncertainty * first_uncertainty + second_uncertainty * second_uncertainty)
+                    .sqrt()
+            });
+        Some(BiasSinexSignalBias {
+            signal: first,
+            reference_signal: Some(second),
+            window_start: window.start,
+            window_end: window.end,
+            bias_m: first_bias - second_bias,
+            uncertainty_m,
+            source: BiasSinexBiasSource::ObservableDifference,
+        })
     }
 
     pub fn differential_code_bias_uncertainty_m_at(
@@ -272,19 +351,7 @@ impl BiasSinexProvider {
         second: SigId,
         time: Option<GpsTime>,
     ) -> Option<f64> {
-        let window = self.window_for_signal(first, time)?;
-        if let Some(value) = window.differential_bias_uncertainties_m.get(&(first, second)) {
-            return Some(*value);
-        }
-        if let Some(value) = window.differential_bias_uncertainties_m.get(&(second, first)) {
-            return Some(*value);
-        }
-        let first_uncertainty = window.observable_bias_uncertainties_m.get(&first)?;
-        let second_uncertainty = window.observable_bias_uncertainties_m.get(&second)?;
-        Some(
-            (first_uncertainty * first_uncertainty + second_uncertainty * second_uncertainty)
-                .sqrt(),
-        )
+        self.differential_code_bias_at(first, second, time).and_then(|bias| bias.uncertainty_m)
     }
 
     pub fn iono_free_code_bias_m_at(
@@ -295,14 +362,49 @@ impl BiasSinexProvider {
         f2_hz: f64,
         time: Option<GpsTime>,
     ) -> Option<f64> {
+        self.iono_free_code_bias_at(first, second, f1_hz, f2_hz, time).map(|bias| bias.bias_m)
+    }
+
+    pub fn iono_free_code_bias_at(
+        &self,
+        first: SigId,
+        second: SigId,
+        f1_hz: f64,
+        f2_hz: f64,
+        time: Option<GpsTime>,
+    ) -> Option<BiasSinexSignalBias> {
         let window = self.window_for_signal(first, time)?;
         if let Some(value) = window.iono_free_biases_m.get(&(first, second)) {
-            return Some(*value);
+            return Some(BiasSinexSignalBias {
+                signal: first,
+                reference_signal: Some(second),
+                window_start: window.start,
+                window_end: window.end,
+                bias_m: *value,
+                uncertainty_m: window.iono_free_bias_uncertainties_m.get(&(first, second)).copied(),
+                source: BiasSinexBiasSource::IonosphereFreeSignal,
+            });
         }
         let (weight_1, weight_2) = iono_free_weights(f1_hz, f2_hz)?;
         let first_bias = window.observable_biases_m.get(&first)?;
         let second_bias = window.observable_biases_m.get(&second)?;
-        Some(weight_1 * first_bias + weight_2 * second_bias)
+        let uncertainty_m = window
+            .observable_bias_uncertainties_m
+            .get(&first)
+            .zip(window.observable_bias_uncertainties_m.get(&second))
+            .map(|(first_uncertainty, second_uncertainty)| {
+                ((weight_1 * first_uncertainty).powi(2) + (weight_2 * second_uncertainty).powi(2))
+                    .sqrt()
+            });
+        Some(BiasSinexSignalBias {
+            signal: first,
+            reference_signal: Some(second),
+            window_start: window.start,
+            window_end: window.end,
+            bias_m: weight_1 * first_bias + weight_2 * second_bias,
+            uncertainty_m,
+            source: BiasSinexBiasSource::IonosphereFreeObservableCombination,
+        })
     }
 
     pub fn iono_free_code_bias_uncertainty_m_at(
@@ -313,17 +415,8 @@ impl BiasSinexProvider {
         f2_hz: f64,
         time: Option<GpsTime>,
     ) -> Option<f64> {
-        let window = self.window_for_signal(first, time)?;
-        if let Some(value) = window.iono_free_bias_uncertainties_m.get(&(first, second)) {
-            return Some(*value);
-        }
-        let (weight_1, weight_2) = iono_free_weights(f1_hz, f2_hz)?;
-        let first_uncertainty = window.observable_bias_uncertainties_m.get(&first)?;
-        let second_uncertainty = window.observable_bias_uncertainties_m.get(&second)?;
-        Some(
-            ((weight_1 * first_uncertainty).powi(2) + (weight_2 * second_uncertainty).powi(2))
-                .sqrt(),
-        )
+        self.iono_free_code_bias_at(first, second, f1_hz, f2_hz, time)
+            .and_then(|bias| bias.uncertainty_m)
     }
 
     fn window_for_signal(&self, sig: SigId, time: Option<GpsTime>) -> Option<&BiasSinexWindow> {
@@ -604,7 +697,9 @@ mod tests {
         GPS_L2_PY_CARRIER_HZ,
     };
 
-    use super::{parse_bias_time, BiasSinexProvider, BiasTimeSystem, SPEED_OF_LIGHT_MPS};
+    use super::{
+        parse_bias_time, BiasSinexBiasSource, BiasSinexProvider, BiasTimeSystem, SPEED_OF_LIGHT_MPS,
+    };
 
     fn gps_signal(prn: u8, band: SignalBand, code: SignalCode) -> SigId {
         SigId { sat: SatId { constellation: Constellation::Gps, prn }, band, code }
@@ -631,6 +726,13 @@ OSB G063 G01 C2W 2016:323:00000 2016:324:00000 ns 19.2886 0.0281
         assert!(provider.code_bias_m_at(l1, None).is_some());
         assert!(provider.code_bias_m_at(l2, None).is_some());
         assert!(provider.differential_code_bias_m_at(l1, l2, None).is_some());
+
+        let query = provider.code_bias_at(l1, None).expect("typed L1 bias");
+        assert_eq!(query.signal, l1);
+        assert_eq!(query.reference_signal, None);
+        assert_eq!(query.source, BiasSinexBiasSource::ObservableSpecific);
+        assert!(query.window_start.to_seconds() < query.window_end.to_seconds());
+        assert!(query.uncertainty_m.expect("OSB uncertainty") > 0.0);
     }
 
     #[test]
@@ -668,6 +770,25 @@ DSB G063 G01 C2W C2C 2016:271:00000 2016:272:00000 ns 8.2266 0.0272
 
         assert!((l1_bias_m - l2_bias_m - dsb_m).abs() < 1.0e-9);
         assert!(iono_free_bias_m.abs() < 1.0e-9);
+
+        let differential_query =
+            provider.differential_code_bias_at(c2w, c1w, None).expect("typed reversed DSB");
+        assert_eq!(differential_query.signal, c2w);
+        assert_eq!(differential_query.reference_signal, Some(c1w));
+        assert_eq!(differential_query.source, BiasSinexBiasSource::DifferentialSignal);
+        assert!(differential_query.uncertainty_m.expect("DSB uncertainty") > 0.0);
+
+        let iono_free_query = provider
+            .iono_free_code_bias_at(
+                c1w,
+                c2w,
+                GPS_L1_CA_CARRIER_HZ.value(),
+                GPS_L2_PY_CARRIER_HZ.value(),
+                None,
+            )
+            .expect("typed ISB");
+        assert_eq!(iono_free_query.source, BiasSinexBiasSource::IonosphereFreeSignal);
+        assert_eq!(iono_free_query.reference_signal, Some(c2w));
     }
 
     #[test]
@@ -719,6 +840,13 @@ OSB G063 G01 C2W 2016:271:00000 2016:272:00000 m 2.0000 0.1200
 
         assert!((l1_bias_m - 1.25).abs() < 1.0e-12);
         assert!((l1_uncertainty_m - 0.05).abs() < 1.0e-12);
+        assert_eq!(
+            provider
+                .differential_code_bias_at(l1, l2, None)
+                .expect("typed derived differential")
+                .source,
+            BiasSinexBiasSource::ObservableDifference
+        );
         assert!(
             (differential_uncertainty_m - (0.05_f64.powi(2) + 0.12_f64.powi(2)).sqrt()).abs()
                 < 1.0e-12
