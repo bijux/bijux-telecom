@@ -1,12 +1,94 @@
 #![allow(missing_docs)]
 
+use bijux_gnss_core::api::{ReceiverRole, SigId};
 use bijux_gnss_receiver::api::{
     build_dd, build_sd, choose_ref_sat, rtk_switch_double_difference_reference,
-    rtk_transform_float_baseline_reference, solve_baseline_dd, solve_float_baseline_dd,
+    rtk_transform_float_baseline_reference, solve_baseline_dd,
+    solve_baseline_dd_with_satellite_states, solve_float_baseline_dd,
+    solve_float_baseline_dd_with_satellite_states, DdObservation, RtkConstellationTimeScale,
+    RtkDoubleDifferenceSatelliteStates, RtkSatelliteStateEvidence,
 };
 use bijux_gnss_testkit::rtk_baseline::{
     centimeter_level_rtk_baseline_budget, clean_gps_l1_short_baseline_case, rtk_baseline_accuracy,
+    GpsL1RtkBaselineCase,
 };
+
+fn gps_satellite_state(
+    sig: SigId,
+    receiver_role: ReceiverRole,
+    receive_time_s: f64,
+    ecef_m: [f64; 3],
+) -> RtkSatelliteStateEvidence {
+    RtkSatelliteStateEvidence {
+        sig,
+        receiver_role,
+        time_scale: RtkConstellationTimeScale::Gps,
+        receive_time_s,
+        transmit_time_s: None,
+        ecef_m,
+    }
+}
+
+fn satellite_states_from_gps_fixture(
+    observations: &[DdObservation],
+    scenario: &GpsL1RtkBaselineCase,
+) -> Vec<RtkDoubleDifferenceSatelliteStates> {
+    observations
+        .iter()
+        .map(|observation| {
+            let signal_ephemeris = scenario
+                .ephemerides
+                .iter()
+                .find(|candidate| candidate.sat == observation.sig.sat)
+                .expect("signal ephemeris");
+            let reference_ephemeris = scenario
+                .ephemerides
+                .iter()
+                .find(|candidate| candidate.sat == observation.ref_sig.sat)
+                .expect("reference ephemeris");
+            let signal_state = bijux_gnss_nav::api::sat_state_gps_l1ca_at_receive_time(
+                signal_ephemeris,
+                scenario.receive_gps_time.tow_s,
+                0.07,
+            );
+            let reference_state = bijux_gnss_nav::api::sat_state_gps_l1ca_at_receive_time(
+                reference_ephemeris,
+                scenario.receive_gps_time.tow_s,
+                0.07,
+            );
+            let signal_ecef_m = [signal_state.x_m, signal_state.y_m, signal_state.z_m];
+            let reference_ecef_m = [reference_state.x_m, reference_state.y_m, reference_state.z_m];
+            RtkDoubleDifferenceSatelliteStates {
+                sig: observation.sig,
+                ref_sig: observation.ref_sig,
+                rover_signal: gps_satellite_state(
+                    observation.sig,
+                    ReceiverRole::Rover,
+                    scenario.receive_gps_time.tow_s,
+                    signal_ecef_m,
+                ),
+                base_signal: gps_satellite_state(
+                    observation.sig,
+                    ReceiverRole::Base,
+                    scenario.receive_gps_time.tow_s,
+                    signal_ecef_m,
+                ),
+                rover_reference: gps_satellite_state(
+                    observation.ref_sig,
+                    ReceiverRole::Rover,
+                    scenario.receive_gps_time.tow_s,
+                    reference_ecef_m,
+                ),
+                base_reference: gps_satellite_state(
+                    observation.ref_sig,
+                    ReceiverRole::Base,
+                    scenario.receive_gps_time.tow_s,
+                    reference_ecef_m,
+                ),
+            }
+        })
+        .collect()
+}
 
 #[test]
 fn receiver_float_baseline_solver_projects_nav_solution() {
@@ -42,6 +124,37 @@ fn receiver_float_baseline_solver_projects_nav_solution() {
         float_solution.covariance_enu_m2
     );
     assert!(!projected_solution.fixed);
+}
+
+#[test]
+fn receiver_float_baseline_solver_accepts_satellite_state_evidence() {
+    let scenario = clean_gps_l1_short_baseline_case();
+
+    let single_differences = build_sd(&scenario.base_epoch, &scenario.rover_epoch);
+    let reference = choose_ref_sat(&single_differences).expect("reference");
+    let double_differences = build_dd(&single_differences, reference);
+    let satellite_states = satellite_states_from_gps_fixture(&double_differences, &scenario);
+    let float_solution = solve_float_baseline_dd_with_satellite_states(
+        &double_differences,
+        scenario.base_ecef_m,
+        &satellite_states,
+    )
+    .expect("float solution");
+    let projected_solution = solve_baseline_dd_with_satellite_states(
+        &double_differences,
+        scenario.base_ecef_m,
+        &satellite_states,
+    )
+    .expect("projected solution");
+
+    assert!((float_solution.enu_m[0] - scenario.truth_enu_m[0]).abs() < 0.05);
+    assert!((float_solution.enu_m[1] - scenario.truth_enu_m[1]).abs() < 0.05);
+    assert!((float_solution.enu_m[2] - scenario.truth_enu_m[2]).abs() < 0.10);
+    assert_eq!(projected_solution.enu_m, float_solution.enu_m);
+    assert_eq!(
+        projected_solution.covariance_m2.expect("projected covariance"),
+        float_solution.covariance_enu_m2
+    );
 }
 
 #[test]
