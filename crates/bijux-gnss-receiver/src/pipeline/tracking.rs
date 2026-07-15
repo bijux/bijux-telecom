@@ -93,6 +93,7 @@ const TRACKING_CN0_MIN_WINDOW_EPOCHS: usize = 4;
 const TRACKING_UNCERTAINTY_WINDOW_EPOCHS: usize = 8;
 const VECTOR_TRACKING_MIN_CONTRIBUTORS: usize = 2;
 const COMMON_TRACKING_FREQUENCY_MIN_CONTRIBUTORS: usize = 2;
+const COMMON_TRACKING_FREQUENCY_MAX_MEDIAN_RESIDUAL_HZ: f64 = 12.0;
 const VECTOR_TRACKING_MIN_CN0_DBHZ: f64 = 35.0;
 const VECTOR_TRACKING_HISTORY_SECONDS: f64 = 0.050;
 const VECTOR_TRACKING_MAX_CARRIER_AID_HZ: f64 = 25.0;
@@ -508,6 +509,15 @@ fn common_tracking_frequency_estimate(
     if support.len() < COMMON_TRACKING_FREQUENCY_MIN_CONTRIBUTORS {
         return None;
     }
+    let median_frequency_error_hz =
+        median_common_tracking_frequency_error_hz(&support).filter(|median| median.is_finite())?;
+    support.retain(|signal| {
+        (signal.frequency_error_hz - median_frequency_error_hz).abs()
+            <= COMMON_TRACKING_FREQUENCY_MAX_MEDIAN_RESIDUAL_HZ
+    });
+    if support.len() < COMMON_TRACKING_FREQUENCY_MIN_CONTRIBUTORS {
+        return None;
+    }
 
     let mut weighted_frequency_error_hz = 0.0;
     let mut weighted_cn0_dbhz = 0.0;
@@ -550,6 +560,26 @@ fn common_tracking_frequency_estimate(
     })
 }
 
+fn median_common_tracking_frequency_error_hz(
+    support: &[CommonTrackingFrequencySignalEstimate],
+) -> Option<f64> {
+    let mut values = support
+        .iter()
+        .map(|signal| signal.frequency_error_hz)
+        .filter(|value| value.is_finite())
+        .collect::<Vec<_>>();
+    if values.is_empty() {
+        return None;
+    }
+    values.sort_by(f64::total_cmp);
+    let middle = values.len() / 2;
+    if values.len() % 2 == 0 {
+        Some((values[middle - 1] + values[middle]) / 2.0)
+    } else {
+        Some(values[middle])
+    }
+}
+
 fn vector_tracking_cn0_weight(cn0_dbhz: f64) -> f64 {
     let relative_db = (cn0_dbhz - VECTOR_TRACKING_MIN_CN0_DBHZ).clamp(0.0, 15.0);
     10.0_f64.powf(relative_db / 10.0)
@@ -563,12 +593,13 @@ fn vector_tracking_application(
     if gain <= f64::EPSILON {
         return None;
     }
+    let carrier_frequency_gain = vector_tracking_carrier_frequency_gain(state);
     Some(VectorTrackingApplication {
         prediction,
         carrier_frequency_correction_hz: prediction
             .receiver_clock_frequency_error_hz
             .clamp(-VECTOR_TRACKING_MAX_CARRIER_AID_HZ, VECTOR_TRACKING_MAX_CARRIER_AID_HZ)
-            * gain,
+            * -carrier_frequency_gain,
         code_rate_correction_hz: prediction
             .receiver_code_rate_error_hz
             .clamp(-VECTOR_TRACKING_MAX_CODE_RATE_AID_HZ, VECTOR_TRACKING_MAX_CODE_RATE_AID_HZ)
@@ -582,6 +613,15 @@ fn vector_tracking_application(
             VECTOR_TRACKING_MAX_CARRIER_RATE_AID_HZ_PER_S,
         ) * gain,
     })
+}
+
+fn vector_tracking_carrier_frequency_gain(state: &LoopState) -> f64 {
+    let gain = vector_tracking_channel_gain(state.state);
+    if state.lock_reference_cn0_dbhz >= VECTOR_TRACKING_MIN_CN0_DBHZ {
+        0.0
+    } else {
+        gain
+    }
 }
 
 fn vector_tracking_channel_gain(state: ChannelState) -> f64 {
@@ -6381,6 +6421,24 @@ mod tests {
     }
 
     #[test]
+    fn common_tracking_frequency_estimate_rejects_channel_frequency_outliers() {
+        let common_left = vector_measurement(0, 100, 45.0, -2.0, 0.10, 0.0);
+        let common_right = vector_measurement(1, 100, 45.0, 1.0, 0.10, 0.0);
+        let outlier = vector_measurement(2, 100, 45.0, -148.0, 0.10, 0.0);
+
+        let estimate =
+            super::common_tracking_frequency_estimate(&[common_left, common_right, outlier])
+                .expect("common tracking frequency estimate");
+
+        assert_eq!(estimate.support_count, 2);
+        assert!(
+            estimate.supporting_channels.iter().all(|channel| channel.frequency_error_hz > -10.0),
+            "{estimate:?}"
+        );
+        assert!(estimate.max_supporting_residual_hz <= 1.5, "{estimate:?}");
+    }
+
+    #[test]
     fn common_tracking_frequency_estimate_does_not_absorb_satellite_specific_motion() {
         let fast_approaching = vector_measurement(0, 100, 45.0, 6.0, 0.10, 4_000.0);
         let fast_receding = vector_measurement(1, 110, 45.0, 6.0, 0.20, -4_000.0);
@@ -6421,7 +6479,7 @@ mod tests {
             &signal_model,
             1500.0,
             0.0,
-            42.0,
+            31.0,
             None,
             false,
             config.tracking_params(SignalBand::L1),
@@ -6445,7 +6503,7 @@ mod tests {
 
         assert!(
             (application.carrier_frequency_correction_hz
-                - super::VECTOR_TRACKING_MAX_CARRIER_AID_HZ * 0.35)
+                + super::VECTOR_TRACKING_MAX_CARRIER_AID_HZ * 0.35)
                 .abs()
                 < 1.0e-9
         );
@@ -6469,6 +6527,86 @@ mod tests {
         );
         loop_state.state = ChannelState::Lost;
         assert!(super::vector_tracking_application(prediction, &loop_state).is_none());
+    }
+
+    #[test]
+    fn vector_tracking_application_preserves_stable_frequency_support_channels() {
+        let config = ReceiverPipelineConfig::default();
+        let tracking = Tracking::new(config.clone(), ReceiverRuntime::default());
+        let sat = SatId { constellation: Constellation::Gps, prn: 1 };
+        let signal_model = super::TrackingSignalModel::for_sat(&config, sat);
+        let mut loop_state = tracking.initial_loop_state(
+            &signal_model,
+            1500.0,
+            0.0,
+            45.0,
+            None,
+            false,
+            config.tracking_params(SignalBand::L1),
+            false,
+        );
+        loop_state.state = ChannelState::Tracking;
+        let prediction = super::VectorTrackingPrediction {
+            sample_index: 10_000,
+            contributor_count: 3,
+            mean_cn0_dbhz: 45.0,
+            receiver_position_code_phase_error_samples: 0.20,
+            receiver_clock_frequency_error_hz: 6.0,
+            receiver_clock_frequency_residual_spread_hz: 0.50,
+            receiver_clock_frequency_max_residual_hz: 0.25,
+            receiver_code_rate_error_hz: 1.0,
+            receiver_motion_frequency_rate_hz_per_s: 4.0,
+        };
+
+        let application =
+            super::vector_tracking_application(prediction, &loop_state).expect("vector aid");
+
+        assert_eq!(application.carrier_frequency_correction_hz, 0.0);
+        assert!(
+            application.code_rate_correction_hz > 0.0,
+            "stable support channels should still consume non-carrier vector aids: {application:?}"
+        );
+    }
+
+    #[test]
+    fn vector_tracking_application_reduces_common_frequency_prediction_error() {
+        let config = ReceiverPipelineConfig::default();
+        let tracking = Tracking::new(config.clone(), ReceiverRuntime::default());
+        let sat = SatId { constellation: Constellation::Gps, prn: 1 };
+        let signal_model = super::TrackingSignalModel::for_sat(&config, sat);
+        let mut loop_state = tracking.initial_loop_state(
+            &signal_model,
+            43.0,
+            0.0,
+            31.0,
+            None,
+            false,
+            config.tracking_params(SignalBand::L1),
+            false,
+        );
+        loop_state.state = ChannelState::PullIn;
+        let prediction = super::VectorTrackingPrediction {
+            sample_index: 10_000,
+            contributor_count: 3,
+            mean_cn0_dbhz: 45.0,
+            receiver_position_code_phase_error_samples: 0.0,
+            receiver_clock_frequency_error_hz: -4.0,
+            receiver_clock_frequency_residual_spread_hz: 0.50,
+            receiver_clock_frequency_max_residual_hz: 0.25,
+            receiver_code_rate_error_hz: 0.0,
+            receiver_motion_frequency_rate_hz_per_s: 0.0,
+        };
+
+        let application =
+            super::vector_tracking_application(prediction, &loop_state).expect("vector aid");
+        let unaided_error_hz = (loop_state.carrier_hz - 45.0).abs();
+        let aided_error_hz =
+            (loop_state.carrier_hz + application.carrier_frequency_correction_hz - 45.0).abs();
+
+        assert!(
+            aided_error_hz < unaided_error_hz,
+            "common frequency correction should improve the carrier prediction: application={application:?} unaided_error_hz={unaided_error_hz} aided_error_hz={aided_error_hz}"
+        );
     }
 
     #[test]
