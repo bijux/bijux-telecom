@@ -4,16 +4,16 @@ use bijux_gnss_core::api::ArtifactPayloadValidate;
 use bijux_gnss_core::api::{Constellation, SatId, SigId, SignalBand};
 use bijux_gnss_nav::api::{
     rtk_ambiguity_state_from_fixed_solution, rtk_conditioned_baseline_from_fix_result,
-    rtk_conditioned_baseline_from_fixed_ambiguities,
+    rtk_conditioned_baseline_from_fixed_ambiguities, rtk_fixed_ambiguity_hold_from_fix_result,
     rtk_float_ambiguity_state_from_baseline_solution, rtk_float_baseline_from_double_differences,
     rtk_integer_ambiguity_candidates, rtk_lambda_decorrelate,
-    rtk_lambda_integer_ambiguity_candidates, rtk_select_partial_ambiguity_fix_with_evidence,
-    rtk_transform_fixed_ambiguity_reference, rtk_transform_float_ambiguity_reference,
-    rtk_transform_float_baseline_reference, RtkAmbiguityFixPolicy, RtkAmbiguityFixResult,
-    RtkAmbiguityFixState, RtkAmbiguityFixStatus, RtkDoubleDifferenceAmbiguityId,
-    RtkFixedAmbiguityHold, RtkFloatAmbiguityEstimate, RtkFloatAmbiguityState,
-    RtkFloatBaselineSolution, RtkIntegerAmbiguityCandidate, RtkPartialAmbiguitySelectionCriterion,
-    RtkRatioTestFixer,
+    rtk_lambda_integer_ambiguity_candidates, rtk_monitor_fixed_ambiguity_hold,
+    rtk_select_partial_ambiguity_fix_with_evidence, rtk_transform_fixed_ambiguity_reference,
+    rtk_transform_float_ambiguity_reference, rtk_transform_float_baseline_reference,
+    RtkAmbiguityFixPolicy, RtkAmbiguityFixResult, RtkAmbiguityFixState, RtkAmbiguityFixStatus,
+    RtkAmbiguityHoldPolicy, RtkDoubleDifferenceAmbiguityId, RtkFixedAmbiguityHold,
+    RtkFloatAmbiguityEstimate, RtkFloatAmbiguityState, RtkFloatBaselineSolution,
+    RtkIntegerAmbiguityCandidate, RtkPartialAmbiguitySelectionCriterion, RtkRatioTestFixer,
 };
 use bijux_gnss_testkit::rtk_baseline::clean_gps_l1_short_baseline_case;
 
@@ -581,4 +581,93 @@ fn rtk_fixed_ambiguity_hold_validation_requires_consistent_fixed_state() {
     assert!(events.iter().any(|event| event.code == "RTK_FIXED_AMBIGUITY_HOLD_RATIO_INVALID"));
     assert!(events.iter().any(|event| event.code == "RTK_FIXED_AMBIGUITY_HOLD_BASELINE_INVALID"));
     assert!(events.iter().any(|event| event.code == "RTK_FIXED_AMBIGUITY_HOLD_SELECTION_MISMATCH"));
+}
+
+#[test]
+fn rtk_fixed_ambiguity_hold_captures_accepted_fix_evidence() {
+    let float_solution = RtkFloatBaselineSolution {
+        enu_m: [1.0, 2.0, 3.0],
+        covariance_enu_m2: [[1.0, 0.0, 0.0], [0.0, 1.2, 0.0], [0.0, 0.0, 1.5]],
+        enu_ambiguity_covariance_m_cycles: vec![
+            vec![0.004, 0.0],
+            vec![0.0, 0.008],
+            vec![0.001, -0.002],
+        ],
+        float_ambiguities: vec![
+            RtkFloatAmbiguityEstimate {
+                sig: gps_l1_id(7).sig,
+                ref_sig: gps_l1_id(7).ref_sig,
+                float_cycles: 10.05,
+                variance_cycles2: 0.01,
+            },
+            RtkFloatAmbiguityEstimate {
+                sig: gps_l1_id(11).sig,
+                ref_sig: gps_l1_id(11).ref_sig,
+                float_cycles: -3.02,
+                variance_cycles2: 0.04,
+            },
+        ],
+        ambiguity_covariance_cycles2: vec![vec![0.01, 0.0], vec![0.0, 0.04]],
+    };
+    let float_state =
+        rtk_float_ambiguity_state_from_baseline_solution(&float_solution).expect("float state");
+    let fixer = RtkRatioTestFixer::new(RtkAmbiguityFixPolicy {
+        ratio_threshold: 3.0,
+        consecutive_required: 1,
+    });
+
+    let (result, _audit) =
+        fixer.fix_with_state(10, &float_state, &mut RtkAmbiguityFixState::default());
+    let hold =
+        rtk_fixed_ambiguity_hold_from_fix_result(10, &float_solution, &result).expect("held fix");
+
+    assert_eq!(hold.accepted_epoch_idx, 10);
+    assert_eq!(hold.updated_epoch_idx, 10);
+    assert_eq!(hold.fixed_integers, vec![10, -3]);
+    assert_eq!(hold.ratio, result.ratio);
+    assert!((hold.conditioned_baseline.enu_m[0] - 0.98).abs() < 1.0e-9);
+    assert!(hold.validate_payload().is_empty());
+}
+
+#[test]
+fn rtk_fixed_ambiguity_hold_monitor_rejects_false_fix_residuals() {
+    let fixed_id = gps_l1_dd_id(7, 3);
+    let hold = RtkFixedAmbiguityHold {
+        accepted_epoch_idx: 3,
+        updated_epoch_idx: 3,
+        fixed_ids: vec![fixed_id],
+        fixed_integers: vec![10],
+        ratio: Some(9.0),
+        conditioned_baseline: bijux_gnss_nav::api::RtkConditionedBaselineSolution {
+            enu_m: [1.0, 2.0, 3.0],
+            covariance_enu_m2: [[0.5, 0.0, 0.0], [0.0, 0.6, 0.0], [0.0, 0.0, 0.7]],
+        },
+        partial_selection: None,
+    };
+    let float_solution = RtkFloatBaselineSolution {
+        enu_m: [1.0, 2.0, 3.0],
+        covariance_enu_m2: [[1.0, 0.0, 0.0], [0.0, 1.2, 0.0], [0.0, 0.0, 1.5]],
+        enu_ambiguity_covariance_m_cycles: vec![vec![0.004], vec![0.0], vec![0.0]],
+        float_ambiguities: vec![RtkFloatAmbiguityEstimate {
+            sig: fixed_id.sig,
+            ref_sig: fixed_id.ref_sig,
+            float_cycles: 10.8,
+            variance_cycles2: 0.01,
+        }],
+        ambiguity_covariance_cycles2: vec![vec![0.01]],
+    };
+
+    let monitor = rtk_monitor_fixed_ambiguity_hold(
+        4,
+        &float_solution,
+        &hold,
+        RtkAmbiguityHoldPolicy::default(),
+    );
+
+    assert!(!monitor.accepted);
+    assert_eq!(monitor.checked_count, 1);
+    assert_eq!(monitor.max_abs_float_integer_residual_cycles, Some(0.8000000000000007));
+    assert!(monitor.reasons.contains(&"ambiguity_residual".to_string()));
+    assert!(monitor.reasons.contains(&"normalized_ambiguity_residual".to_string()));
+    assert!(monitor.validate_payload().is_empty());
 }

@@ -677,6 +677,122 @@ pub fn rtk_conditioned_baseline_from_fix_result(
     rtk_conditioned_baseline_from_fixed_ambiguities(solution, &fixed_ids, &fixed_integers)
 }
 
+pub fn rtk_fixed_ambiguity_hold_from_fix_result(
+    epoch_idx: u64,
+    solution: &RtkFloatBaselineSolution,
+    result: &RtkAmbiguityFixResult,
+) -> Option<RtkFixedAmbiguityHold> {
+    let (fixed_ids, fixed_integers) = rtk_ambiguity_state_from_fixed_solution(result)?;
+    let conditioned_baseline =
+        rtk_conditioned_baseline_from_fixed_ambiguities(solution, &fixed_ids, &fixed_integers)?;
+    let hold = RtkFixedAmbiguityHold {
+        accepted_epoch_idx: epoch_idx,
+        updated_epoch_idx: epoch_idx,
+        fixed_ids,
+        fixed_integers,
+        ratio: result.ratio,
+        conditioned_baseline,
+        partial_selection: result.partial_selection.clone(),
+    };
+    if hold.validate_payload().is_empty() {
+        Some(hold)
+    } else {
+        None
+    }
+}
+
+pub fn rtk_monitor_fixed_ambiguity_hold(
+    epoch_idx: u64,
+    solution: &RtkFloatBaselineSolution,
+    hold: &RtkFixedAmbiguityHold,
+    policy: RtkAmbiguityHoldPolicy,
+) -> RtkAmbiguityHoldMonitor {
+    let age_epochs = epoch_idx.saturating_sub(hold.accepted_epoch_idx);
+    let solution_ids = solution
+        .float_ambiguities
+        .iter()
+        .map(|ambiguity| RtkDoubleDifferenceAmbiguityId {
+            sig: ambiguity.sig,
+            ref_sig: ambiguity.ref_sig,
+        })
+        .collect::<Vec<_>>();
+    let mut reasons = Vec::new();
+    let mut missing_ids = Vec::new();
+    let mut checked_count = 0;
+    let mut max_abs_residual: Option<f64> = None;
+    let mut max_normalized_residual: Option<f64> = None;
+
+    if age_epochs > policy.max_hold_age_epochs {
+        reasons.push("hold_age".to_string());
+    }
+
+    for (fixed_id, fixed_integer) in hold.fixed_ids.iter().zip(hold.fixed_integers.iter()) {
+        let Some(index) = solution_ids.iter().position(|candidate| candidate == fixed_id) else {
+            missing_ids.push(*fixed_id);
+            continue;
+        };
+        checked_count += 1;
+        let float_cycles = solution.float_ambiguities[index].float_cycles;
+        let residual = (float_cycles - *fixed_integer as f64).abs();
+        max_abs_residual = Some(max_abs_residual.map_or(residual, |current| current.max(residual)));
+        if residual > policy.max_float_integer_residual_cycles {
+            reasons.push("ambiguity_residual".to_string());
+        }
+
+        let variance = solution.float_ambiguities[index].variance_cycles2;
+        if !variance.is_finite() || variance < 0.0 {
+            reasons.push("ambiguity_variance".to_string());
+        } else {
+            let normalized = if variance > 0.0 {
+                residual / variance.sqrt()
+            } else if residual == 0.0 {
+                0.0
+            } else {
+                policy.max_normalized_residual + 1.0
+            };
+            max_normalized_residual =
+                Some(max_normalized_residual.map_or(normalized, |current| current.max(normalized)));
+            if normalized > policy.max_normalized_residual {
+                reasons.push("normalized_ambiguity_residual".to_string());
+            }
+        }
+    }
+
+    if !missing_ids.is_empty() {
+        reasons.push("missing_ambiguity".to_string());
+    }
+    if checked_count != hold.fixed_ids.len() {
+        reasons.push("incomplete_ambiguity_support".to_string());
+    }
+
+    let baseline_shift_m = rtk_conditioned_baseline_from_fixed_ambiguities(
+        solution,
+        &hold.fixed_ids,
+        &hold.fixed_integers,
+    )
+    .map(|conditioned| baseline_distance_m(conditioned.enu_m, hold.conditioned_baseline.enu_m));
+    if baseline_shift_m.is_none() {
+        reasons.push("conditioned_baseline_unavailable".to_string());
+    }
+    if baseline_shift_m.is_some_and(|shift_m| shift_m > policy.max_baseline_shift_m) {
+        reasons.push("baseline_shift".to_string());
+    }
+
+    reasons.sort();
+    reasons.dedup();
+
+    RtkAmbiguityHoldMonitor {
+        accepted: reasons.is_empty(),
+        age_epochs,
+        checked_count,
+        missing_ids,
+        max_abs_float_integer_residual_cycles: max_abs_residual,
+        max_normalized_residual,
+        baseline_shift_m,
+        reasons,
+    }
+}
+
 /// Transform fixed double-difference integer ambiguities to a different reference signal.
 pub fn rtk_transform_fixed_ambiguity_reference(
     fixed_ids: &[RtkDoubleDifferenceAmbiguityId],
@@ -1200,6 +1316,13 @@ pub fn rtk_conditioned_baseline_from_fixed_ambiguities(
         ],
         covariance_enu_m2: covariance_3x3_from_matrix(&conditioned_covariance),
     })
+}
+
+fn baseline_distance_m(left: [f64; 3], right: [f64; 3]) -> f64 {
+    let de = left[0] - right[0];
+    let dn = left[1] - right[1];
+    let du = left[2] - right[2];
+    (de * de + dn * dn + du * du).sqrt()
 }
 
 fn candidate_cost(n_prime: &[f64], q_prime: &[Vec<f64>], integers: &[i64]) -> f64 {
