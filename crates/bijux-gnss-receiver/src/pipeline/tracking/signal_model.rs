@@ -642,15 +642,15 @@ fn signal_default_early_late_spacing_chips(signal_model: &TrackingSignalModel) -
             NARROW_SUBCARRIER_EARLY_LATE_SPACING_CHIPS
         }
         TrackingDiscriminatorFamily::EarlyPromptLate
+            if signal_model.code_rate_hz >= 10_000_000.0 - f64::EPSILON =>
+        {
+            NARROW_HIGH_RATE_EARLY_LATE_SPACING_CHIPS
+        }
+        TrackingDiscriminatorFamily::EarlyPromptLate
             if signal_model.phase_transition_source
                 == TrackingPhaseTransitionSource::SecondaryCode =>
         {
             SECONDARY_CODE_EARLY_LATE_SPACING_CHIPS
-        }
-        TrackingDiscriminatorFamily::EarlyPromptLate
-            if signal_model.code_rate_hz >= 10_000_000.0 - f64::EPSILON =>
-        {
-            NARROW_HIGH_RATE_EARLY_LATE_SPACING_CHIPS
         }
         TrackingDiscriminatorFamily::EarlyPromptLate => NARROW_BPSK_EARLY_LATE_SPACING_CHIPS,
     }
@@ -1000,4 +1000,3 @@ pub(crate) fn supports_tracking_signal_with_channel(
 ) -> bool {
     TrackingSignalModel::supports_tracking(sat, signal_band, signal_code, glonass_frequency_channel)
 }
-
