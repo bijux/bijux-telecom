@@ -147,8 +147,11 @@ pub use crate::estimation::rtk::ambiguity::{
 };
 pub use crate::estimation::rtk::baseline::{
     rtk_float_baseline_from_double_differences,
-    rtk_float_baseline_from_double_differences_with_rover_prior, RtkFloatAmbiguityEstimate,
-    RtkFloatBaselineSolution,
+    rtk_float_baseline_from_double_differences_with_rover_prior,
+    rtk_float_baseline_from_double_differences_with_satellite_states,
+    rtk_float_baseline_from_double_differences_with_satellite_states_and_rover_prior,
+    RtkConstellationTimeScale, RtkDoubleDifferenceSatelliteStates, RtkFloatAmbiguityEstimate,
+    RtkFloatBaselineSolution, RtkSatelliteStateEvidence,
 };
 /// RTK execution, epoch alignment, and contract-adapter helpers.
 pub use crate::estimation::rtk::execution::{

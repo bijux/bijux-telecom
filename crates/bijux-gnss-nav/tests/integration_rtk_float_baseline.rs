@@ -1,16 +1,21 @@
 #![allow(missing_docs)]
 
 use bijux_gnss_core::api::{
-    ArtifactPayloadValidate, Constellation, SatId, SigId, SignalBand, SignalCode,
+    AmbiguityId, ArtifactPayloadValidate, Constellation, GlonassFrequencyChannel, ReceiverRole,
+    SatId, SigId, SignalBand, SignalCode,
 };
 use bijux_gnss_nav::api::{
     rtk_float_baseline_from_double_differences,
     rtk_float_baseline_from_double_differences_with_rover_prior,
+    rtk_float_baseline_from_double_differences_with_satellite_states,
     rtk_switch_double_difference_reference, rtk_transform_float_baseline_reference,
-    RtkDoubleDifferenceObservation, RtkFloatAmbiguityEstimate, RtkFloatBaselineSolution,
+    RtkConstellationTimeScale, RtkDoubleDifferenceCovarianceEvidence,
+    RtkDoubleDifferenceObservation, RtkDoubleDifferenceSatelliteStates, RtkEpochAlignmentEvidence,
+    RtkFloatAmbiguityEstimate, RtkFloatBaselineSolution, RtkGlonassInterFrequencyBiasEvidence,
+    RtkGlonassInterFrequencyBiasStatus, RtkSatelliteStateEvidence,
     RtkSingleDifferenceCovarianceEvidence,
 };
-use bijux_gnss_signal::api::signal_id_wavelength_m;
+use bijux_gnss_signal::api::{glonass_l1_carrier_hz, signal_id_wavelength_m};
 use bijux_gnss_testkit::rtk_baseline::clean_gps_l1_short_baseline_case;
 
 fn enu_to_ecef(base_ecef_m: [f64; 3], enu_m: [f64; 3]) -> [f64; 3] {
@@ -25,6 +30,13 @@ fn enu_to_ecef(base_ecef_m: [f64; 3], enu_m: [f64; 3]) -> [f64; 3] {
     let dy = cos_lon * east_m - sin_lat * sin_lon * north_m + cos_lat * sin_lon * up_m;
     let dz = cos_lat * north_m + sin_lat * up_m;
     [base_ecef_m[0] + dx, base_ecef_m[1] + dy, base_ecef_m[2] + dz]
+}
+
+fn geometric_range_m(receiver_ecef_m: [f64; 3], satellite_ecef_m: [f64; 3]) -> f64 {
+    let dx = receiver_ecef_m[0] - satellite_ecef_m[0];
+    let dy = receiver_ecef_m[1] - satellite_ecef_m[1];
+    let dz = receiver_ecef_m[2] - satellite_ecef_m[2];
+    (dx * dx + dy * dy + dz * dz).sqrt()
 }
 
 fn retarget_double_differences_signal(
@@ -60,6 +72,106 @@ fn scale_phase_covariance(evidence: &mut RtkSingleDifferenceCovarianceEvidence, 
     evidence.base.phase_cycles2 *= variance_scale;
     evidence.rover_base_phase_covariance_cycles2 *= variance_scale;
     evidence.shared_phase_covariance_cycles2 *= variance_scale;
+}
+
+fn sig(constellation: Constellation, prn: u8, band: SignalBand, code: SignalCode) -> SigId {
+    SigId { sat: SatId { constellation, prn }, band, code }
+}
+
+fn satellite_state(
+    sig: SigId,
+    receiver_role: ReceiverRole,
+    ecef_m: [f64; 3],
+) -> RtkSatelliteStateEvidence {
+    RtkSatelliteStateEvidence {
+        sig,
+        receiver_role,
+        time_scale: RtkConstellationTimeScale::for_constellation(sig.sat.constellation),
+        receive_time_s: 345_600.0,
+        transmit_time_s: Some(345_599.93),
+        ecef_m,
+    }
+}
+
+fn wavelength_for_observation(observation: &RtkDoubleDifferenceObservation) -> f64 {
+    if observation.sig.sat.constellation == Constellation::Glonass {
+        let channel =
+            observation.glonass_inter_frequency_bias.signal_channel.expect("GLONASS channel");
+        299_792_458.0 / glonass_l1_carrier_hz(channel).value()
+    } else {
+        signal_id_wavelength_m(observation.sig).expect("signal wavelength").0
+    }
+}
+
+fn synthetic_double_difference(
+    sig: SigId,
+    ref_sig: SigId,
+    signal_position_m: [f64; 3],
+    reference_position_m: [f64; 3],
+    base_ecef_m: [f64; 3],
+    rover_ecef_m: [f64; 3],
+    ambiguity_cycles: f64,
+    glonass_channel: Option<GlonassFrequencyChannel>,
+) -> (RtkDoubleDifferenceObservation, RtkDoubleDifferenceSatelliteStates) {
+    let signal_rover_range_m = geometric_range_m(rover_ecef_m, signal_position_m);
+    let signal_base_range_m = geometric_range_m(base_ecef_m, signal_position_m);
+    let reference_rover_range_m = geometric_range_m(rover_ecef_m, reference_position_m);
+    let reference_base_range_m = geometric_range_m(base_ecef_m, reference_position_m);
+    let code_m = (signal_rover_range_m - signal_base_range_m)
+        - (reference_rover_range_m - reference_base_range_m);
+    let glonass_inter_frequency_bias = glonass_channel
+        .map(|channel| RtkGlonassInterFrequencyBiasEvidence {
+            status: RtkGlonassInterFrequencyBiasStatus::BiasHandled,
+            signal_channel: Some(channel),
+            reference_channel: Some(channel),
+            code_bias_m: 0.0,
+            phase_bias_cycles: 0.0,
+        })
+        .unwrap_or_default();
+    let mut observation = RtkDoubleDifferenceObservation {
+        sig,
+        ref_sig,
+        min_cn0_dbhz: 45.0,
+        multipath_suspect: false,
+        rover_signal_pseudorange_m: signal_rover_range_m,
+        rover_signal_timing: None,
+        base_signal_pseudorange_m: signal_base_range_m,
+        base_signal_timing: None,
+        rover_ref_pseudorange_m: reference_rover_range_m,
+        rover_ref_signal_timing: None,
+        base_ref_pseudorange_m: reference_base_range_m,
+        base_ref_signal_timing: None,
+        epoch_alignment: RtkEpochAlignmentEvidence {
+            base_receive_time_s: 345_600.0,
+            rover_receive_time_s: 345_600.0,
+            delta_s: 0.0,
+            tolerance_s: 0.0005,
+        },
+        covariance_evidence: RtkDoubleDifferenceCovarianceEvidence::default(),
+        glonass_inter_frequency_bias,
+        code_m,
+        phase_cycles: 0.0,
+        doppler_hz: 0.0,
+        code_variance_m2: 4.0,
+        phase_variance_cycles2: 0.01,
+        canceled: vec![
+            AmbiguityId { sig, signal: "carrier".to_string() },
+            AmbiguityId { sig, signal: "carrier".to_string() },
+            AmbiguityId { sig: ref_sig, signal: "carrier".to_string() },
+            AmbiguityId { sig: ref_sig, signal: "carrier".to_string() },
+        ],
+    };
+    let wavelength_m = wavelength_for_observation(&observation);
+    observation.phase_cycles = code_m / wavelength_m + ambiguity_cycles;
+    let states = RtkDoubleDifferenceSatelliteStates {
+        sig,
+        ref_sig,
+        rover_signal: satellite_state(sig, ReceiverRole::Rover, signal_position_m),
+        base_signal: satellite_state(sig, ReceiverRole::Base, signal_position_m),
+        rover_reference: satellite_state(ref_sig, ReceiverRole::Rover, reference_position_m),
+        base_reference: satellite_state(ref_sig, ReceiverRole::Base, reference_position_m),
+    };
+    (observation, states)
 }
 
 fn assert_solution_matches_truth(solution: &RtkFloatBaselineSolution, truth_enu_m: [f64; 3]) {
@@ -130,6 +242,216 @@ fn rtk_float_baseline_solver_recovers_truth_and_ambiguities() {
         assert!((ambiguity.float_cycles - expected_cycles).abs() < 0.05);
         assert!(ambiguity.variance_cycles2 >= 0.0);
     }
+}
+
+#[test]
+fn rtk_float_baseline_solver_accepts_explicit_satellite_state_evidence_for_gps() {
+    let scenario = clean_gps_l1_short_baseline_case();
+    let satellite_states = scenario
+        .double_differences
+        .iter()
+        .map(|observation| {
+            let signal_ephemeris = scenario
+                .ephemerides
+                .iter()
+                .find(|candidate| candidate.sat == observation.sig.sat)
+                .expect("signal ephemeris");
+            let reference_ephemeris = scenario
+                .ephemerides
+                .iter()
+                .find(|candidate| candidate.sat == observation.ref_sig.sat)
+                .expect("reference ephemeris");
+            let signal_state = bijux_gnss_nav::api::sat_state_gps_l1ca_at_receive_time(
+                signal_ephemeris,
+                scenario.receive_gps_time.tow_s,
+                0.07,
+            );
+            let reference_state = bijux_gnss_nav::api::sat_state_gps_l1ca_at_receive_time(
+                reference_ephemeris,
+                scenario.receive_gps_time.tow_s,
+                0.07,
+            );
+            let signal_ecef_m = [signal_state.x_m, signal_state.y_m, signal_state.z_m];
+            let reference_ecef_m = [reference_state.x_m, reference_state.y_m, reference_state.z_m];
+            RtkDoubleDifferenceSatelliteStates {
+                sig: observation.sig,
+                ref_sig: observation.ref_sig,
+                rover_signal: satellite_state(observation.sig, ReceiverRole::Rover, signal_ecef_m),
+                base_signal: satellite_state(observation.sig, ReceiverRole::Base, signal_ecef_m),
+                rover_reference: satellite_state(
+                    observation.ref_sig,
+                    ReceiverRole::Rover,
+                    reference_ecef_m,
+                ),
+                base_reference: satellite_state(
+                    observation.ref_sig,
+                    ReceiverRole::Base,
+                    reference_ecef_m,
+                ),
+            }
+        })
+        .collect::<Vec<_>>();
+
+    let solution = rtk_float_baseline_from_double_differences_with_satellite_states(
+        &scenario.double_differences,
+        scenario.base_ecef_m,
+        &satellite_states,
+    )
+    .expect("float baseline from explicit states");
+
+    assert_solution_matches_truth(&solution, scenario.truth_enu_m);
+}
+
+#[test]
+fn rtk_float_baseline_solver_combines_constellation_aware_double_differences() {
+    let base_ecef_m = bijux_gnss_nav::api::geodetic_to_ecef(37.0, -122.0, 10.0);
+    let base_ecef_m = [base_ecef_m.0, base_ecef_m.1, base_ecef_m.2];
+    let truth_enu_m = [4.0, -2.0, 1.0];
+    let rover_ecef_m = enu_to_ecef(base_ecef_m, truth_enu_m);
+    let glonass_channel = GlonassFrequencyChannel::new(-4).expect("valid GLONASS channel");
+    let cases = [
+        (
+            sig(Constellation::Gps, 7, SignalBand::L1, SignalCode::Ca),
+            sig(Constellation::Gps, 3, SignalBand::L1, SignalCode::Ca),
+            [15_600_000.0, -12_300_000.0, 21_700_000.0],
+            [21_200_000.0, 4_100_000.0, 13_400_000.0],
+            12.0,
+            None,
+        ),
+        (
+            sig(Constellation::Galileo, 19, SignalBand::E1, SignalCode::E1B),
+            sig(Constellation::Galileo, 11, SignalBand::E1, SignalCode::E1B),
+            [-14_500_000.0, 19_600_000.0, 18_100_000.0],
+            [9_800_000.0, 21_400_000.0, 15_900_000.0],
+            -7.0,
+            None,
+        ),
+        (
+            sig(Constellation::Beidou, 12, SignalBand::B1, SignalCode::B1I),
+            sig(Constellation::Beidou, 11, SignalBand::B1, SignalCode::B1I),
+            [23_100_000.0, -7_200_000.0, 14_900_000.0],
+            [-8_700_000.0, -22_500_000.0, 13_700_000.0],
+            5.0,
+            None,
+        ),
+        (
+            sig(Constellation::Glonass, 8, SignalBand::L1, SignalCode::Unknown),
+            sig(Constellation::Glonass, 4, SignalBand::L1, SignalCode::Unknown),
+            [-19_500_000.0, -10_400_000.0, 18_800_000.0],
+            [4_400_000.0, -21_100_000.0, 16_600_000.0],
+            -3.0,
+            Some(glonass_channel),
+        ),
+    ];
+    let mut observations = Vec::new();
+    let mut satellite_states = Vec::new();
+    for (sig, ref_sig, signal_position_m, reference_position_m, ambiguity_cycles, channel) in cases
+    {
+        let (observation, states) = synthetic_double_difference(
+            sig,
+            ref_sig,
+            signal_position_m,
+            reference_position_m,
+            base_ecef_m,
+            rover_ecef_m,
+            ambiguity_cycles,
+            channel,
+        );
+        observations.push(observation);
+        satellite_states.push(states);
+    }
+
+    let solution = rtk_float_baseline_from_double_differences_with_satellite_states(
+        &observations,
+        base_ecef_m,
+        &satellite_states,
+    )
+    .expect("multi-constellation float baseline");
+
+    assert_solution_matches_truth(&solution, truth_enu_m);
+    assert_eq!(solution.float_ambiguities.len(), observations.len());
+    assert!(solution
+        .float_ambiguities
+        .iter()
+        .any(|ambiguity| { ambiguity.sig.sat.constellation == Constellation::Gps }));
+    assert!(solution
+        .float_ambiguities
+        .iter()
+        .any(|ambiguity| { ambiguity.sig.sat.constellation == Constellation::Galileo }));
+    assert!(solution
+        .float_ambiguities
+        .iter()
+        .any(|ambiguity| { ambiguity.sig.sat.constellation == Constellation::Beidou }));
+    assert!(solution
+        .float_ambiguities
+        .iter()
+        .any(|ambiguity| { ambiguity.sig.sat.constellation == Constellation::Glonass }));
+}
+
+#[test]
+fn rtk_float_baseline_solver_refuses_mismatched_constellation_time_scale() {
+    let base_ecef_m = [6_378_137.0, 0.0, 0.0];
+    let rover_ecef_m = [6_378_141.0, -2.0, 1.0];
+    let (observation, mut states) = synthetic_double_difference(
+        sig(Constellation::Galileo, 19, SignalBand::E1, SignalCode::E1B),
+        sig(Constellation::Galileo, 11, SignalBand::E1, SignalCode::E1B),
+        [-14_500_000.0, 19_600_000.0, 18_100_000.0],
+        [9_800_000.0, 21_400_000.0, 15_900_000.0],
+        base_ecef_m,
+        rover_ecef_m,
+        -7.0,
+        None,
+    );
+    states.rover_signal.time_scale = RtkConstellationTimeScale::Gps;
+    let mut observations = vec![observation.clone(), observation.clone(), observation];
+    observations[1].sig.sat.prn = 20;
+    observations[2].sig.sat.prn = 21;
+    let satellite_states = vec![states; 3];
+
+    let solution = rtk_float_baseline_from_double_differences_with_satellite_states(
+        &observations,
+        base_ecef_m,
+        &satellite_states,
+    );
+
+    assert!(solution.is_none());
+}
+
+#[test]
+fn rtk_float_baseline_solver_refuses_uncalibrated_glonass_fdma_phase() {
+    let base_ecef_m = bijux_gnss_nav::api::geodetic_to_ecef(37.0, -122.0, 10.0);
+    let base_ecef_m = [base_ecef_m.0, base_ecef_m.1, base_ecef_m.2];
+    let truth_enu_m = [4.0, -2.0, 1.0];
+    let rover_ecef_m = enu_to_ecef(base_ecef_m, truth_enu_m);
+    let shared_channel = GlonassFrequencyChannel::new(-4).expect("valid GLONASS channel");
+    let other_channel = GlonassFrequencyChannel::new(3).expect("valid GLONASS channel");
+    let (mut observation, states) = synthetic_double_difference(
+        sig(Constellation::Glonass, 8, SignalBand::L1, SignalCode::Unknown),
+        sig(Constellation::Glonass, 4, SignalBand::L1, SignalCode::Unknown),
+        [-19_500_000.0, -10_400_000.0, 18_800_000.0],
+        [4_400_000.0, -21_100_000.0, 16_600_000.0],
+        base_ecef_m,
+        rover_ecef_m,
+        -3.0,
+        Some(shared_channel),
+    );
+    observation.glonass_inter_frequency_bias = RtkGlonassInterFrequencyBiasEvidence {
+        status: RtkGlonassInterFrequencyBiasStatus::CalibrationRequired,
+        signal_channel: Some(shared_channel),
+        reference_channel: Some(other_channel),
+        code_bias_m: 0.0,
+        phase_bias_cycles: 0.0,
+    };
+    let observations = vec![observation.clone(), observation.clone(), observation];
+    let satellite_states = vec![states; 3];
+
+    let solution = rtk_float_baseline_from_double_differences_with_satellite_states(
+        &observations,
+        base_ecef_m,
+        &satellite_states,
+    );
+
+    assert!(solution.is_none());
 }
 
 #[test]

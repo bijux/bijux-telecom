@@ -1,10 +1,13 @@
-use bijux_gnss_core::api::{ArtifactPayloadValidate, DiagnosticEvent, DiagnosticSeverity, SigId};
-use bijux_gnss_signal::api::signal_id_wavelength_m;
+use bijux_gnss_core::api::{
+    ArtifactPayloadValidate, Constellation, DiagnosticEvent, DiagnosticSeverity, ReceiverRole,
+    SigId,
+};
+use bijux_gnss_signal::api::{glonass_l1_carrier_hz, signal_id_wavelength_m};
 use serde::{Deserialize, Serialize};
 
 use super::double_difference::{
     rtk_double_difference_code_covariance_matrix, rtk_double_difference_phase_covariance_matrix,
-    RtkDoubleDifferenceObservation,
+    RtkDoubleDifferenceObservation, RtkGlonassInterFrequencyBiasStatus,
 };
 use crate::{
     linalg::Matrix,
@@ -14,6 +17,51 @@ use crate::{
 const MIN_OBSERVATION_VARIANCE_M2: f64 = 1.0e-6;
 const POSITION_CONVERGENCE_M: f64 = 1.0e-4;
 const SOLVER_ITERATIONS: usize = 8;
+const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
+
+/// GNSS time scale used to produce an RTK satellite state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RtkConstellationTimeScale {
+    Gps,
+    Galileo,
+    Beidou,
+    Glonass,
+    Unknown,
+}
+
+impl RtkConstellationTimeScale {
+    pub fn for_constellation(constellation: Constellation) -> Self {
+        match constellation {
+            Constellation::Gps => Self::Gps,
+            Constellation::Galileo => Self::Galileo,
+            Constellation::Beidou => Self::Beidou,
+            Constellation::Glonass => Self::Glonass,
+            Constellation::Unknown => Self::Unknown,
+        }
+    }
+}
+
+/// Satellite position evidence for one receiver-side RTK observable.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct RtkSatelliteStateEvidence {
+    pub sig: SigId,
+    pub receiver_role: ReceiverRole,
+    pub time_scale: RtkConstellationTimeScale,
+    pub receive_time_s: f64,
+    pub transmit_time_s: Option<f64>,
+    pub ecef_m: [f64; 3],
+}
+
+/// Satellite state evidence needed to model one RTK double-difference observation.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct RtkDoubleDifferenceSatelliteStates {
+    pub sig: SigId,
+    pub ref_sig: SigId,
+    pub rover_signal: RtkSatelliteStateEvidence,
+    pub base_signal: RtkSatelliteStateEvidence,
+    pub rover_reference: RtkSatelliteStateEvidence,
+    pub base_reference: RtkSatelliteStateEvidence,
+}
 
 /// Float ambiguity estimate associated with one RTK double-difference observation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -159,7 +207,41 @@ pub fn rtk_float_baseline_from_double_differences_with_rover_prior(
     ephemerides: &[GpsEphemeris],
     receive_time_s: f64,
 ) -> Option<RtkFloatBaselineSolution> {
+    let satellite_states =
+        gps_satellite_states_for_double_differences(observations, ephemerides, receive_time_s)?;
+    rtk_float_baseline_from_double_differences_with_satellite_states_and_rover_prior(
+        observations,
+        base_ecef_m,
+        rover_prior_ecef_m,
+        &satellite_states,
+    )
+}
+
+/// Estimate a float RTK baseline from constellation-aware satellite state evidence.
+pub fn rtk_float_baseline_from_double_differences_with_satellite_states(
+    observations: &[RtkDoubleDifferenceObservation],
+    base_ecef_m: [f64; 3],
+    satellite_states: &[RtkDoubleDifferenceSatelliteStates],
+) -> Option<RtkFloatBaselineSolution> {
+    rtk_float_baseline_from_double_differences_with_satellite_states_and_rover_prior(
+        observations,
+        base_ecef_m,
+        base_ecef_m,
+        satellite_states,
+    )
+}
+
+/// Estimate a float RTK baseline from constellation-aware satellite state evidence and a rover prior.
+pub fn rtk_float_baseline_from_double_differences_with_satellite_states_and_rover_prior(
+    observations: &[RtkDoubleDifferenceObservation],
+    base_ecef_m: [f64; 3],
+    rover_prior_ecef_m: [f64; 3],
+    satellite_states: &[RtkDoubleDifferenceSatelliteStates],
+) -> Option<RtkFloatBaselineSolution> {
     if observations.len() < 3 {
+        return None;
+    }
+    if satellite_states.len() < observations.len() {
         return None;
     }
 
@@ -175,52 +257,17 @@ pub fn rtk_float_baseline_from_double_differences_with_rover_prior(
         let mut residuals_m = vec![0.0; ambiguity_count * 2];
 
         for (index, observation) in observations.iter().enumerate() {
-            let signal_ephemeris =
-                ephemerides.iter().find(|candidate| candidate.sat == observation.sig.sat)?;
-            let reference_ephemeris =
-                ephemerides.iter().find(|candidate| candidate.sat == observation.ref_sig.sat)?;
-            let rover_signal_satellite = sat_state_gps_l1ca_from_observation(
-                signal_ephemeris,
-                receive_time_s,
-                observation.rover_signal_pseudorange_m,
-                observation.rover_signal_timing,
-            );
-            let base_signal_satellite = sat_state_gps_l1ca_from_observation(
-                signal_ephemeris,
-                receive_time_s,
-                observation.base_signal_pseudorange_m,
-                observation.base_signal_timing,
-            );
-            let rover_reference_satellite = sat_state_gps_l1ca_from_observation(
-                reference_ephemeris,
-                receive_time_s,
-                observation.rover_ref_pseudorange_m,
-                observation.rover_ref_signal_timing,
-            );
-            let base_reference_satellite = sat_state_gps_l1ca_from_observation(
-                reference_ephemeris,
-                receive_time_s,
-                observation.base_ref_pseudorange_m,
-                observation.base_ref_signal_timing,
-            );
+            let satellite_state = satellite_states.iter().find(|state| {
+                state.sig == observation.sig && state.ref_sig == observation.ref_sig
+            })?;
+            if !double_difference_satellite_states_are_valid(observation, satellite_state) {
+                return None;
+            }
 
-            let rover_signal_position = [
-                rover_signal_satellite.x_m,
-                rover_signal_satellite.y_m,
-                rover_signal_satellite.z_m,
-            ];
-            let base_signal_position =
-                [base_signal_satellite.x_m, base_signal_satellite.y_m, base_signal_satellite.z_m];
-            let rover_reference_position = [
-                rover_reference_satellite.x_m,
-                rover_reference_satellite.y_m,
-                rover_reference_satellite.z_m,
-            ];
-            let base_reference_position = [
-                base_reference_satellite.x_m,
-                base_reference_satellite.y_m,
-                base_reference_satellite.z_m,
-            ];
+            let rover_signal_position = satellite_state.rover_signal.ecef_m;
+            let base_signal_position = satellite_state.base_signal.ecef_m;
+            let rover_reference_position = satellite_state.rover_reference.ecef_m;
+            let base_reference_position = satellite_state.base_reference.ecef_m;
 
             let rover_signal_range_m = geometric_range_m(rover_ecef_m, rover_signal_position);
             let base_signal_range_m = geometric_range_m(base_ecef_m, base_signal_position);
@@ -230,7 +277,7 @@ pub fn rtk_float_baseline_from_double_differences_with_rover_prior(
                 - (rover_reference_range_m - base_reference_range_m);
             let geometry_row =
                 geometry_row(rover_ecef_m, rover_signal_position, rover_reference_position);
-            let wavelength_m = wavelength_m(observation.sig)?;
+            let wavelength_m = observation_wavelength_m(observation)?;
 
             let code_row = index * 2;
             residuals_m[code_row] = observation.code_m - modeled_code_m;
@@ -309,10 +356,8 @@ fn measurement_covariance_m2(observations: &[RtkDoubleDifferenceObservation]) ->
     let phase_covariance_cycles2 = rtk_double_difference_phase_covariance_matrix(observations)?;
     let row_count = observations.len() * 2;
     let mut covariance = Matrix::new(row_count, row_count, 0.0);
-    let wavelengths_m = observations
-        .iter()
-        .map(|observation| wavelength_m(observation.sig))
-        .collect::<Option<Vec<_>>>()?;
+    let wavelengths_m =
+        observations.iter().map(observation_wavelength_m).collect::<Option<Vec<_>>>()?;
 
     for row in 0..observations.len() {
         if code_covariance_m2[row].len() != observations.len()
@@ -336,6 +381,156 @@ fn measurement_covariance_m2(observations: &[RtkDoubleDifferenceObservation]) ->
             covariance[(row * 2 + 1, row * 2 + 1)].max(MIN_OBSERVATION_VARIANCE_M2);
     }
     Some(covariance)
+}
+
+fn gps_satellite_states_for_double_differences(
+    observations: &[RtkDoubleDifferenceObservation],
+    ephemerides: &[GpsEphemeris],
+    receive_time_s: f64,
+) -> Option<Vec<RtkDoubleDifferenceSatelliteStates>> {
+    observations
+        .iter()
+        .map(|observation| {
+            let signal_ephemeris =
+                ephemerides.iter().find(|candidate| candidate.sat == observation.sig.sat)?;
+            let reference_ephemeris =
+                ephemerides.iter().find(|candidate| candidate.sat == observation.ref_sig.sat)?;
+            let rover_signal_satellite = sat_state_gps_l1ca_from_observation(
+                signal_ephemeris,
+                receive_time_s,
+                observation.rover_signal_pseudorange_m,
+                observation.rover_signal_timing,
+            );
+            let base_signal_satellite = sat_state_gps_l1ca_from_observation(
+                signal_ephemeris,
+                receive_time_s,
+                observation.base_signal_pseudorange_m,
+                observation.base_signal_timing,
+            );
+            let rover_reference_satellite = sat_state_gps_l1ca_from_observation(
+                reference_ephemeris,
+                receive_time_s,
+                observation.rover_ref_pseudorange_m,
+                observation.rover_ref_signal_timing,
+            );
+            let base_reference_satellite = sat_state_gps_l1ca_from_observation(
+                reference_ephemeris,
+                receive_time_s,
+                observation.base_ref_pseudorange_m,
+                observation.base_ref_signal_timing,
+            );
+            Some(RtkDoubleDifferenceSatelliteStates {
+                sig: observation.sig,
+                ref_sig: observation.ref_sig,
+                rover_signal: gps_satellite_state_evidence(
+                    observation.sig,
+                    ReceiverRole::Rover,
+                    receive_time_s,
+                    [
+                        rover_signal_satellite.x_m,
+                        rover_signal_satellite.y_m,
+                        rover_signal_satellite.z_m,
+                    ],
+                ),
+                base_signal: gps_satellite_state_evidence(
+                    observation.sig,
+                    ReceiverRole::Base,
+                    receive_time_s,
+                    [
+                        base_signal_satellite.x_m,
+                        base_signal_satellite.y_m,
+                        base_signal_satellite.z_m,
+                    ],
+                ),
+                rover_reference: gps_satellite_state_evidence(
+                    observation.ref_sig,
+                    ReceiverRole::Rover,
+                    receive_time_s,
+                    [
+                        rover_reference_satellite.x_m,
+                        rover_reference_satellite.y_m,
+                        rover_reference_satellite.z_m,
+                    ],
+                ),
+                base_reference: gps_satellite_state_evidence(
+                    observation.ref_sig,
+                    ReceiverRole::Base,
+                    receive_time_s,
+                    [
+                        base_reference_satellite.x_m,
+                        base_reference_satellite.y_m,
+                        base_reference_satellite.z_m,
+                    ],
+                ),
+            })
+        })
+        .collect()
+}
+
+fn gps_satellite_state_evidence(
+    sig: SigId,
+    receiver_role: ReceiverRole,
+    receive_time_s: f64,
+    ecef_m: [f64; 3],
+) -> RtkSatelliteStateEvidence {
+    RtkSatelliteStateEvidence {
+        sig,
+        receiver_role,
+        time_scale: RtkConstellationTimeScale::Gps,
+        receive_time_s,
+        transmit_time_s: None,
+        ecef_m,
+    }
+}
+
+fn double_difference_satellite_states_are_valid(
+    observation: &RtkDoubleDifferenceObservation,
+    states: &RtkDoubleDifferenceSatelliteStates,
+) -> bool {
+    observation.sig == states.sig
+        && observation.ref_sig == states.ref_sig
+        && observation.sig.sat.constellation == observation.ref_sig.sat.constellation
+        && satellite_state_evidence_is_valid(
+            &states.rover_signal,
+            observation.sig,
+            ReceiverRole::Rover,
+        )
+        && satellite_state_evidence_is_valid(
+            &states.base_signal,
+            observation.sig,
+            ReceiverRole::Base,
+        )
+        && satellite_state_evidence_is_valid(
+            &states.rover_reference,
+            observation.ref_sig,
+            ReceiverRole::Rover,
+        )
+        && satellite_state_evidence_is_valid(
+            &states.base_reference,
+            observation.ref_sig,
+            ReceiverRole::Base,
+        )
+}
+
+fn satellite_state_evidence_is_valid(
+    state: &RtkSatelliteStateEvidence,
+    expected_sig: SigId,
+    expected_role: ReceiverRole,
+) -> bool {
+    state.sig == expected_sig
+        && receiver_role_matches(state.receiver_role, expected_role)
+        && state.time_scale
+            == RtkConstellationTimeScale::for_constellation(expected_sig.sat.constellation)
+        && state.receive_time_s.is_finite()
+        && state.transmit_time_s.map(|transmit_time_s| transmit_time_s.is_finite()).unwrap_or(true)
+        && state.ecef_m.iter().all(|value| value.is_finite())
+}
+
+fn receiver_role_matches(actual: ReceiverRole, expected: ReceiverRole) -> bool {
+    matches!(
+        (actual, expected),
+        (ReceiverRole::Base, ReceiverRole::Base) | (ReceiverRole::Rover, ReceiverRole::Rover)
+    )
 }
 
 fn solve_generalized_least_squares(
@@ -507,6 +702,17 @@ fn geometric_range_m(receiver_ecef_m: [f64; 3], satellite_ecef_m: [f64; 3]) -> f
     (dx * dx + dy * dy + dz * dz).sqrt()
 }
 
-fn wavelength_m(signal: SigId) -> Option<f64> {
-    Some(signal_id_wavelength_m(signal)?.0)
+fn observation_wavelength_m(observation: &RtkDoubleDifferenceObservation) -> Option<f64> {
+    if observation.sig.sat.constellation != Constellation::Glonass {
+        return Some(signal_id_wavelength_m(observation.sig)?.0);
+    }
+
+    let evidence = observation.glonass_inter_frequency_bias;
+    if evidence.status != RtkGlonassInterFrequencyBiasStatus::BiasHandled
+        || evidence.signal_channel != evidence.reference_channel
+    {
+        return None;
+    }
+    let channel = evidence.signal_channel?;
+    Some(SPEED_OF_LIGHT_MPS / glonass_l1_carrier_hz(channel).value())
 }
