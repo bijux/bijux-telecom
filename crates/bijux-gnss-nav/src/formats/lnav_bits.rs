@@ -561,9 +561,18 @@ pub fn ephemerides_from_decoded_gps_l1ca_lnav(
             ephemeris_rejections.push(rejection);
             builder.reset();
             let _ = builder.merge(part);
-        } else if let Some(eph) = builder.try_build() {
-            ephemerides.push(eph);
-            builder.reset();
+        } else {
+            match builder.try_build_checked() {
+                Ok(Some(eph)) => {
+                    ephemerides.push(eph);
+                    builder.reset();
+                }
+                Ok(None) => {}
+                Err(rejection) => {
+                    ephemeris_rejections.push(rejection);
+                    builder.reset();
+                }
+            }
         }
     }
 

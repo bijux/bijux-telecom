@@ -3,7 +3,7 @@
 
 use crate::formats::lnav_bits::GpsWord;
 use crate::orbits::gps::GpsEphemeris;
-use crate::time::gps_week_rollover;
+use crate::time::{resolve_gps_week_rollover, RolloverResolutionError};
 use bijux_gnss_core::api::{Constellation, SatId};
 use serde::{Deserialize, Serialize};
 
@@ -50,6 +50,8 @@ pub struct GpsL1CaLnavSubframe3Orbit {
 pub enum GpsL1CaLnavEphemerisRejectionReason {
     IodeMismatch,
     IodcIodeMismatch,
+    AmbiguousWeekRollover,
+    InvalidWeekRollover,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -60,6 +62,27 @@ pub struct GpsL1CaLnavEphemerisRejection {
     pub existing_iode: Option<u8>,
     pub incoming_iodc: Option<u16>,
     pub incoming_iode: Option<u8>,
+}
+
+impl GpsL1CaLnavEphemerisRejection {
+    fn week_rollover(error: RolloverResolutionError) -> Self {
+        Self {
+            subframe_id: 1,
+            reason: match error {
+                RolloverResolutionError::AmbiguousReference => {
+                    GpsL1CaLnavEphemerisRejectionReason::AmbiguousWeekRollover
+                }
+                RolloverResolutionError::InvalidCycle
+                | RolloverResolutionError::TruncatedValueOutOfRange => {
+                    GpsL1CaLnavEphemerisRejectionReason::InvalidWeekRollover
+                }
+            },
+            existing_iodc: None,
+            existing_iode: None,
+            incoming_iodc: None,
+            incoming_iode: None,
+        }
+    }
 }
 
 pub fn decode_subframe1_clock(words: &[GpsWord]) -> Option<GpsL1CaLnavSubframe1Clock> {
@@ -410,34 +433,100 @@ impl EphemerisBuilder {
     }
 
     pub fn try_build(&self) -> Option<GpsEphemeris> {
-        Some(GpsEphemeris {
+        self.try_build_checked().ok().flatten()
+    }
+
+    pub fn try_build_checked(&self) -> Result<Option<GpsEphemeris>, GpsL1CaLnavEphemerisRejection> {
+        let (
+            Some(week),
+            Some(reference_week),
+            Some(iodc),
+            Some(iode),
+            Some(sv_health),
+            Some(toe_s),
+            Some(toc_s),
+            Some(sqrt_a),
+            Some(e),
+            Some(i0),
+            Some(idot),
+            Some(omega0),
+            Some(omegadot),
+            Some(w),
+            Some(m0),
+            Some(delta_n),
+            Some(cuc),
+            Some(cus),
+            Some(crc),
+            Some(crs),
+            Some(cic),
+            Some(cis),
+            Some(af0),
+            Some(af1),
+            Some(af2),
+            Some(tgd),
+        ) = (
+            self.week,
+            self.reference_week,
+            self.iodc,
+            self.iode,
+            self.sv_health,
+            self.toe_s,
+            self.toc_s,
+            self.sqrt_a,
+            self.e,
+            self.i0,
+            self.idot,
+            self.omega0,
+            self.omegadot,
+            self.w,
+            self.m0,
+            self.delta_n,
+            self.cuc,
+            self.cus,
+            self.crc,
+            self.crs,
+            self.cic,
+            self.cis,
+            self.af0,
+            self.af1,
+            self.af2,
+            self.tgd,
+        )
+        else {
+            return Ok(None);
+        };
+        let resolved_week = resolve_gps_week_rollover(week, reference_week)
+            .map_err(GpsL1CaLnavEphemerisRejection::week_rollover)?
+            .week;
+
+        Ok(Some(GpsEphemeris {
             sat: SatId { constellation: Constellation::Gps, prn: self.prn },
-            iodc: self.iodc?,
-            iode: self.iode?,
-            week: gps_week_rollover(self.week?, self.reference_week?),
-            sv_health: self.sv_health?,
-            toe_s: self.toe_s?,
-            toc_s: self.toc_s?,
-            sqrt_a: self.sqrt_a?,
-            e: self.e?,
-            i0: self.i0?,
-            idot: self.idot?,
-            omega0: self.omega0?,
-            omegadot: self.omegadot?,
-            w: self.w?,
-            m0: self.m0?,
-            delta_n: self.delta_n?,
-            cuc: self.cuc?,
-            cus: self.cus?,
-            crc: self.crc?,
-            crs: self.crs?,
-            cic: self.cic?,
-            cis: self.cis?,
-            af0: self.af0?,
-            af1: self.af1?,
-            af2: self.af2?,
-            tgd: self.tgd?,
-        })
+            iodc,
+            iode,
+            week: resolved_week,
+            sv_health,
+            toe_s,
+            toc_s,
+            sqrt_a,
+            e,
+            i0,
+            idot,
+            omega0,
+            omegadot,
+            w,
+            m0,
+            delta_n,
+            cuc,
+            cus,
+            crc,
+            crs,
+            cic,
+            cis,
+            af0,
+            af1,
+            af2,
+            tgd,
+        }))
     }
 
     pub fn reset(&mut self) {
@@ -533,9 +622,25 @@ pub fn decode_rawephem_hex(
     sub3: &str,
     reference_week: u32,
 ) -> Option<GpsEphemeris> {
-    let w1 = decode_subframe_hex(sub1)?;
-    let w2 = decode_subframe_hex(sub2)?;
-    let w3 = decode_subframe_hex(sub3)?;
+    decode_rawephem_hex_checked(prn, sub1, sub2, sub3, reference_week).ok().flatten()
+}
+
+pub fn decode_rawephem_hex_checked(
+    prn: u8,
+    sub1: &str,
+    sub2: &str,
+    sub3: &str,
+    reference_week: u32,
+) -> Result<Option<GpsEphemeris>, GpsL1CaLnavEphemerisRejection> {
+    let Some(w1) = decode_subframe_hex(sub1) else {
+        return Ok(None);
+    };
+    let Some(w2) = decode_subframe_hex(sub2) else {
+        return Ok(None);
+    };
+    let Some(w3) = decode_subframe_hex(sub3) else {
+        return Ok(None);
+    };
     let mut builder = EphemerisBuilder::with_reference_week(prn, reference_week);
     let words1: Vec<GpsWord> = w1
         .into_iter()
@@ -549,10 +654,19 @@ pub fn decode_rawephem_hex(
         .into_iter()
         .map(|data| GpsWord { data, parity_ok: true, d29_star: 0, d30_star: 0 })
         .collect();
-    builder.merge(parse_subframe1(&words1)?).ok()?;
-    builder.merge(parse_subframe2(&words2)?).ok()?;
-    builder.merge(parse_subframe3(&words3)?).ok()?;
-    builder.try_build()
+    let Some(part1) = parse_subframe1(&words1) else {
+        return Ok(None);
+    };
+    let Some(part2) = parse_subframe2(&words2) else {
+        return Ok(None);
+    };
+    let Some(part3) = parse_subframe3(&words3) else {
+        return Ok(None);
+    };
+    builder.merge(part1)?;
+    builder.merge(part2)?;
+    builder.merge(part3)?;
+    builder.try_build_checked()
 }
 
 #[cfg(test)]
@@ -806,6 +920,21 @@ mod tests {
         let eph = super::decode_rawephem_hex(1, sub1, sub2, sub3, 2209).expect("decoded ephemeris");
 
         assert_eq!(eph.week, 2209);
+    }
+
+    #[test]
+    fn rawephem_decode_refuses_ambiguous_week_reference() {
+        let sub1 = "8b0284a1b8a52850000724918b913e21a92dc6ee0b217b0c00ffb72fac04";
+        let sub2 = "8b0284a1b92b21fac82899520ec7b7fb31061550921d09a10d62b87b0c7c";
+        let sub3 = "8b0284a1b9adff7d74db71f3ffaa2840ed6e0fe024cddf1effadc82106c4";
+
+        let rejection = super::decode_rawephem_hex_checked(1, sub1, sub2, sub3, 673)
+            .expect_err("ambiguous week should be refused");
+
+        assert_eq!(
+            rejection.reason,
+            super::GpsL1CaLnavEphemerisRejectionReason::AmbiguousWeekRollover
+        );
     }
 
     #[test]
