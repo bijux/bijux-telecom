@@ -1752,6 +1752,9 @@ fn code_period_ambiguity_diagnostic(
     reason: &str,
 ) -> DiagnosticEvent {
     let signal_count = inputs.len();
+    let mut signals =
+        inputs.iter().map(|input| observation_signal_key(input.signal_id)).collect::<Vec<_>>();
+    signals.sort();
     DiagnosticEvent::new(
         DiagnosticSeverity::Warning,
         "OBS_INTEGER_CODE_PERIOD_AMBIGUITY_REFUSED",
@@ -1761,6 +1764,7 @@ fn code_period_ambiguity_diagnostic(
     )
     .with_context("epoch", epoch.epoch_idx.to_string())
     .with_context("reason", reason)
+    .with_context("signals", signals.join(","))
     .with_context("stage", "observations")
 }
 
@@ -3860,6 +3864,10 @@ mod tests {
                 && event.context.iter().any(|(key, value)| {
                     key == "reason" && value == CODE_PERIOD_AMBIGUITY_NON_UNIQUE
                 })
+                && event
+                    .context
+                    .iter()
+                    .any(|(key, value)| key == "signals" && value == "Gps:04:L1:Ca")
         }));
     }
 
