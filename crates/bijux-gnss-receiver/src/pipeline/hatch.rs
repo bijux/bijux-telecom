@@ -32,8 +32,8 @@ impl HatchFilterState {
         self.smoothing_age_epochs = 0;
     }
 
-    pub(crate) fn divergence_jump_m(&self, raw_divergence_m: f64) -> Option<f64> {
-        self.initialized.then(|| (raw_divergence_m - self.last_divergence_m).abs())
+    pub(crate) fn divergence_delta_m(&self, raw_divergence_m: f64) -> Option<f64> {
+        self.initialized.then(|| raw_divergence_m - self.last_divergence_m)
     }
 
     pub(crate) fn observe(

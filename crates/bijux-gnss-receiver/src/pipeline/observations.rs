@@ -804,7 +804,8 @@ pub fn observation_artifacts_from_tracking_results_with_gps_anchor(
                 let raw_divergence_m = raw_pseudorange_m
                     - signal_cycles_to_meters(sat.carrier_phase_cycles, sat.metadata.signal).0;
                 let threshold_m = slip_threshold_m(sat.cn0_dbhz, sat.elevation_deg);
-                let divergence_jump = state.divergence_jump_m(raw_divergence_m).unwrap_or(0.0);
+                let divergence_delta_m = state.divergence_delta_m(raw_divergence_m).unwrap_or(0.0);
+                let divergence_jump = divergence_delta_m.abs();
                 let mut smoothing_cycle_slip_reason = None;
                 if supports_code_carrier_slip_detection && divergence_jump > threshold_m {
                     smoothing_cycle_slip_reason = Some("code_carrier_divergence");
@@ -827,7 +828,7 @@ pub fn observation_artifacts_from_tracking_results_with_gps_anchor(
                 let smoothing_transient_m = smoothing.smoothed_pseudorange_m - raw_pseudorange_m;
                 sat.metadata.code_carrier_divergence = Some(CodeCarrierDivergence::from_terms(
                     raw_divergence_m,
-                    divergence_jump,
+                    divergence_delta_m,
                     0.0,
                     0.0,
                     receiver_clock_divergence_drift_m(&sat),
@@ -5657,6 +5658,50 @@ mod tests {
         assert!(divergence.multipath_m.abs() < 1.0e-9);
         assert!(divergence.unexplained_m.abs() < 1.0e-6);
         assert_eq!(sat.error_model.as_ref().expect("error model").multipath_proxy_m, Meters(0.0));
+    }
+
+    #[test]
+    fn code_carrier_divergence_decomposition_preserves_ionosphere_sign() {
+        let mut state = CodeCarrierDivergenceState::default();
+        let l1_delay_before_m = 9.0;
+        let l1_delay_after_m = 3.0;
+        let l1_jump_m = 2.0 * (l1_delay_after_m - l1_delay_before_m);
+        let l2_delay_before_m = scaled_ionosphere_delay_m(
+            l1_delay_before_m,
+            signal_spec_gps_l1_ca(),
+            signal_spec_gps_l2c(),
+        );
+        let l2_delay_after_m = scaled_ionosphere_delay_m(
+            l1_delay_after_m,
+            signal_spec_gps_l1_ca(),
+            signal_spec_gps_l2c(),
+        );
+        let l2_jump_m = 2.0 * (l2_delay_after_m - l2_delay_before_m);
+
+        let mut before = divergence_epoch(l1_delay_before_m, 118.0, 0.0, l2_delay_before_m, 0.0);
+        apply_code_carrier_divergence_decomposition(&mut before, &mut state);
+        let mut after = divergence_epoch(
+            l1_delay_after_m,
+            118.0 + l1_jump_m,
+            l1_jump_m,
+            l2_delay_after_m,
+            l2_jump_m,
+        );
+        apply_code_carrier_divergence_decomposition(&mut after, &mut state);
+
+        let sat = after
+            .sats
+            .iter()
+            .find(|sat| sat.signal_id.band == SignalBand::L1)
+            .expect("L1 observation");
+        let divergence =
+            sat.metadata.code_carrier_divergence.expect("code-carrier divergence decomposition");
+
+        assert!(!sat.multipath_suspect, "{sat:?}");
+        assert!((divergence.jump_m - l1_jump_m).abs() < 1.0e-6);
+        assert!((divergence.expected_ionosphere_m - l1_jump_m).abs() < 1.0e-6);
+        assert!(divergence.multipath_m.abs() < 1.0e-9);
+        assert!(divergence.unexplained_m.abs() < 1.0e-6);
     }
 
     #[test]
