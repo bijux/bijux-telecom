@@ -24,6 +24,7 @@ const OSCILLATOR_NOISE_DURATION_S: f64 = 0.100;
 const OSCILLATOR_NOISE_MIN_STABLE_EPOCHS: usize = 6;
 const BOUNDED_WHITE_PHASE_STD_RAD: f64 = 0.018;
 const BOUNDED_WHITE_FREQUENCY_STD_HZ: f64 = 0.18;
+const BOUNDED_RANDOM_WALK_FREQUENCY_STEP_STD_HZ: f64 = 0.035;
 const BOUNDED_MAX_CYCLE_SLIP_RATE: f64 = 0.05;
 
 #[derive(Debug)]
@@ -217,5 +218,42 @@ fn tracking_error_increases_but_lock_remains_stable_under_bounded_white_frequenc
         white_frequency.carrier_phase_step_jitter_cycles
             > nominal.carrier_phase_step_jitter_cycles,
         "white frequency noise should increase phase-step jitter: white_frequency={white_frequency:?}, nominal={nominal:?}"
+    );
+}
+
+#[test]
+fn tracking_error_increases_but_lock_remains_stable_under_bounded_random_walk_frequency_noise() {
+    let nominal =
+        tracking_metrics_for_oscillator(SyntheticReceiverOscillatorModel::default(), 0xA551_2903);
+    let random_walk_frequency = tracking_metrics_for_oscillator(
+        SyntheticReceiverOscillatorModel {
+            noise: SyntheticReceiverOscillatorNoiseModel {
+                seed: 0xD107_7A51,
+                update_interval_samples: 1_023,
+                white_phase_std_rad: 0.0,
+                white_frequency_std_hz: 0.0,
+                random_walk_frequency_step_std_hz: BOUNDED_RANDOM_WALK_FREQUENCY_STEP_STD_HZ,
+            },
+            ..SyntheticReceiverOscillatorModel::default()
+        },
+        0xA551_2903,
+    );
+
+    assert!(
+        random_walk_frequency.stable_epoch_count >= OSCILLATOR_NOISE_MIN_STABLE_EPOCHS,
+        "bounded random-walk frequency noise should retain a stable lock window: random_walk_frequency={random_walk_frequency:?}, nominal={nominal:?}"
+    );
+    assert!(
+        random_walk_frequency.cycle_slip_rate <= BOUNDED_MAX_CYCLE_SLIP_RATE,
+        "bounded random-walk frequency noise produced excessive slips: random_walk_frequency={random_walk_frequency:?}, nominal={nominal:?}"
+    );
+    assert!(
+        random_walk_frequency.pll_error_rms > nominal.pll_error_rms,
+        "random-walk frequency noise should increase measured PLL error: random_walk_frequency={random_walk_frequency:?}, nominal={nominal:?}"
+    );
+    assert!(
+        random_walk_frequency.carrier_phase_step_jitter_cycles
+            > nominal.carrier_phase_step_jitter_cycles,
+        "random-walk frequency noise should increase phase-step jitter: random_walk_frequency={random_walk_frequency:?}, nominal={nominal:?}"
     );
 }
