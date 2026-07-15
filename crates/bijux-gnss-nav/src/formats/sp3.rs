@@ -8,6 +8,18 @@ use bijux_gnss_core::api::{Constellation, SatId};
 use crate::orbits::gps::{GpsSatState, GpsSatelliteClockCorrection};
 
 const SP3_MISSING_ABS_THRESHOLD: f64 = 999_999.0;
+const SP3_INTERPOLATION_SUPPORT_POINTS: usize = 4;
+const SP3_INTERPOLATION_GAP_MULTIPLIER: f64 = 1.5;
+const SP3_INTERPOLATION_GAP_MARGIN_S: f64 = 1.0;
+
+pub const SP3_INTERPOLATION_POLICY: Sp3InterpolationPolicy = Sp3InterpolationPolicy {
+    support_point_count: SP3_INTERPOLATION_SUPPORT_POINTS,
+    polynomial_order: SP3_INTERPOLATION_SUPPORT_POINTS - 1,
+    window_policy: Sp3InterpolationWindowPolicy::NearestCentered,
+    edge_policy: Sp3InterpolationEdgePolicy::InsideCoverageOnly,
+    max_gap_multiplier: SP3_INTERPOLATION_GAP_MULTIPLIER,
+    max_gap_margin_s: SP3_INTERPOLATION_GAP_MARGIN_S,
+};
 
 #[derive(Debug, Clone)]
 pub struct Sp3Record {
@@ -56,9 +68,31 @@ pub struct Sp3Provider {
     records: BTreeMap<SatId, Vec<Sp3Record>>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Sp3InterpolationWindowPolicy {
+    NearestCentered,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Sp3InterpolationEdgePolicy {
+    InsideCoverageOnly,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Sp3InterpolationPolicy {
+    pub support_point_count: usize,
+    pub polynomial_order: usize,
+    pub window_policy: Sp3InterpolationWindowPolicy,
+    pub edge_policy: Sp3InterpolationEdgePolicy,
+    pub max_gap_multiplier: f64,
+    pub max_gap_margin_s: f64,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Sp3InterpolationSummary {
+    pub policy: Sp3InterpolationPolicy,
     pub sample_count: usize,
+    pub withheld_edge_sample_count: usize,
     pub max_position_error_m: f64,
     pub rms_position_error_m: f64,
 }
@@ -398,10 +432,12 @@ fn interpolation_support_records<'a>(
         let right_dt = (right.epoch_s - t_s).abs();
         left_dt.total_cmp(&right_dt).then_with(|| left_index.cmp(right_index))
     });
-    support.truncate(4);
+    support.truncate(SP3_INTERPOLATION_SUPPORT_POINTS);
     support.sort_by(|(_, left), (_, right)| left.epoch_s.total_cmp(&right.epoch_s));
     let support = support.into_iter().map(|(_, record)| record).collect::<Vec<_>>();
-    (!support.iter().any(|record| record.flags.invalid_for_interpolation())).then_some(support)
+    (!support.iter().any(|record| record.flags.invalid_for_interpolation())
+        && support_records_have_valid_gaps(records, &support, skip_index))
+    .then_some(support)
 }
 
 fn is_valid_interpolation_interval(
@@ -413,7 +449,46 @@ fn is_valid_interpolation_interval(
         return false;
     }
     let nominal_step_s = nominal_epoch_step_s(records).unwrap_or(right_epoch_s - left_epoch_s);
-    right_epoch_s - left_epoch_s <= nominal_step_s * 1.5 + 1.0
+    is_valid_interpolation_gap(nominal_step_s, left_epoch_s, right_epoch_s)
+}
+
+fn support_records_have_valid_gaps(
+    records: &[Sp3Record],
+    support: &[&Sp3Record],
+    skip_index: Option<usize>,
+) -> bool {
+    let Some(nominal_step_s) = nominal_epoch_step_s(records) else {
+        return true;
+    };
+    let skipped_epoch_s =
+        skip_index.and_then(|index| records.get(index).map(|record| record.epoch_s));
+    support.windows(2).all(|window| {
+        valid_support_gap(nominal_step_s, window[0].epoch_s, window[1].epoch_s, skipped_epoch_s)
+    })
+}
+
+fn valid_support_gap(
+    nominal_step_s: f64,
+    left_epoch_s: f64,
+    right_epoch_s: f64,
+    skipped_epoch_s: Option<f64>,
+) -> bool {
+    if is_valid_interpolation_gap(nominal_step_s, left_epoch_s, right_epoch_s) {
+        return true;
+    }
+
+    skipped_epoch_s.is_some_and(|epoch_s| {
+        epoch_s > left_epoch_s
+            && epoch_s < right_epoch_s
+            && is_valid_interpolation_gap(nominal_step_s, left_epoch_s, epoch_s)
+            && is_valid_interpolation_gap(nominal_step_s, epoch_s, right_epoch_s)
+    })
+}
+
+fn is_valid_interpolation_gap(nominal_step_s: f64, left_epoch_s: f64, right_epoch_s: f64) -> bool {
+    right_epoch_s > left_epoch_s
+        && right_epoch_s - left_epoch_s
+            <= nominal_step_s * SP3_INTERPOLATION_GAP_MULTIPLIER + SP3_INTERPOLATION_GAP_MARGIN_S
 }
 
 fn nominal_epoch_step_s(records: &[Sp3Record]) -> Option<f64> {
@@ -476,10 +551,21 @@ fn summarize_interpolation_errors(records: &[Sp3Record]) -> Option<Sp3Interpolat
     }
 
     let sample_count = errors.len();
+    let withheld_edge_sample_count = records
+        .iter()
+        .enumerate()
+        .filter(|(index, _)| is_withheld_edge_sample(records, *index))
+        .count();
     let max_position_error_m = errors.iter().copied().fold(f64::NEG_INFINITY, f64::max);
     let rms_position_error_m =
         (errors.iter().map(|error| error.powi(2)).sum::<f64>() / sample_count as f64).sqrt();
-    Some(Sp3InterpolationSummary { sample_count, max_position_error_m, rms_position_error_m })
+    Some(Sp3InterpolationSummary {
+        policy: SP3_INTERPOLATION_POLICY,
+        sample_count,
+        withheld_edge_sample_count,
+        max_position_error_m,
+        rms_position_error_m,
+    })
 }
 
 fn interpolate_position_error_m(records: &[Sp3Record], index: usize) -> Option<f64> {
@@ -499,6 +585,23 @@ fn interpolate_position_error_m(records: &[Sp3Record], index: usize) -> Option<f
     let dz_m = z_m - target.z_m;
 
     Some((dx_m * dx_m + dy_m * dy_m + dz_m * dz_m).sqrt())
+}
+
+fn is_withheld_edge_sample(records: &[Sp3Record], index: usize) -> bool {
+    let Some(target) = records.get(index) else {
+        return false;
+    };
+    let Some(support) = interpolation_support_records(records, target.epoch_s, Some(index)) else {
+        return false;
+    };
+    let Some(first_epoch_s) = support.first().map(|record| record.epoch_s) else {
+        return false;
+    };
+    let Some(last_epoch_s) = support.last().map(|record| record.epoch_s) else {
+        return false;
+    };
+
+    target.epoch_s <= first_epoch_s || target.epoch_s >= last_epoch_s
 }
 
 fn record_state(record: &Sp3Record) -> Sp3State {
@@ -550,7 +653,10 @@ fn days_from_civil(year: i32, month: u32, day: u32) -> i64 {
 
 #[cfg(test)]
 mod tests {
-    use super::Sp3Provider;
+    use super::{
+        interpolation_support_records, Sp3InterpolationEdgePolicy, Sp3InterpolationWindowPolicy,
+        Sp3Provider,
+    };
     use bijux_gnss_core::api::{Constellation, SatId};
 
     #[test]
@@ -676,6 +782,50 @@ PG01  36.000000  4.000000  4.000000  0.000000
     }
 
     #[test]
+    fn interpolation_uses_nearest_centered_orbit_support() {
+        let data = "\
+* 2020 01 01 00 00 00.000000
+PG01  1.000000  0.000000  5.000000  0.000000
+* 2020 01 01 00 15 00.000000
+PG01  10.000000  1.000000  6.000000  0.000000
+* 2020 01 01 00 30 00.000000
+PG01  49.000000  8.000000  9.000000  0.000000
+* 2020 01 01 00 45 00.000000
+PG01  142.000000  27.000000  14.000000  0.000000
+* 2020 01 01 01 00 00.000000
+PG01  313.000000  64.000000  21.000000  0.000000
+";
+        let provider: Sp3Provider = data.parse().expect("parse SP3");
+        let sat = SatId { constellation: Constellation::Gps, prn: 1 };
+        let records = provider.records.get(&sat).expect("satellite records");
+        let support =
+            interpolation_support_records(records, 2_250.0, None).expect("centered support");
+
+        assert_eq!(
+            support.iter().map(|record| record.epoch_s as i64).collect::<Vec<_>>(),
+            vec![900, 1_800, 2_700, 3_600]
+        );
+    }
+
+    #[test]
+    fn interpolation_summary_refuses_withheld_orbit_samples_across_gaps() {
+        let data = "\
+* 2020 01 01 00 00 00.000000
+PG01  0.000000  0.000000  0.000000  0.000000
+* 2020 01 01 00 15 00.000000
+PG01  9.000000  1.000000  1.000000  0.000000
+* 2020 01 01 01 00 00.000000
+PG01  36.000000  4.000000  4.000000  0.000000
+* 2020 01 01 01 15 00.000000
+PG01  45.000000  5.000000  5.000000  0.000000
+";
+        let provider: Sp3Provider = data.parse().expect("parse SP3 with gap");
+        let sat = SatId { constellation: Constellation::Gps, prn: 1 };
+
+        assert!(provider.interpolation_summary(sat).is_none());
+    }
+
+    #[test]
     fn interpolation_summary_measures_cubic_self_consistency() {
         let data = "\
 * 2020 01 01 00 00 00.000000
@@ -694,7 +844,14 @@ PG01  313.000000  64.000000  21.000000  0.000000
         let summary =
             provider.interpolation_summary(sat).expect("interpolation summary for cubic orbit");
 
+        assert_eq!(summary.policy.support_point_count, 4);
+        assert_eq!(summary.policy.polynomial_order, 3);
+        assert_eq!(summary.policy.window_policy, Sp3InterpolationWindowPolicy::NearestCentered);
+        assert_eq!(summary.policy.edge_policy, Sp3InterpolationEdgePolicy::InsideCoverageOnly);
+        assert_eq!(summary.policy.max_gap_multiplier, 1.5);
+        assert_eq!(summary.policy.max_gap_margin_s, 1.0);
         assert_eq!(summary.sample_count, 3);
+        assert_eq!(summary.withheld_edge_sample_count, 2);
         assert!(summary.max_position_error_m.abs() < 1e-6);
         assert!(summary.rms_position_error_m.abs() < 1e-6);
     }
