@@ -51,6 +51,15 @@ pub struct RtkGlonassInterFrequencyBiasEvidence {
     pub phase_bias_cycles: f64,
 }
 
+/// Receiver-pair calibration for one GLONASS FDMA double-difference channel pair.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct RtkGlonassInterFrequencyBiasCalibration {
+    pub signal_channel: GlonassFrequencyChannel,
+    pub reference_channel: GlonassFrequencyChannel,
+    pub code_bias_m: f64,
+    pub phase_bias_cycles: f64,
+}
+
 /// RTK double-difference observation formed against a reference satellite.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RtkDoubleDifferenceObservation {
@@ -347,6 +356,34 @@ pub fn rtk_glonass_inter_frequency_bias_is_integer_compatible(
     observation.sig.sat.constellation != Constellation::Glonass
         || observation.glonass_inter_frequency_bias.status
             == RtkGlonassInterFrequencyBiasStatus::BiasHandled
+}
+
+/// Apply receiver-dependent GLONASS FDMA code and phase bias calibrations to double differences.
+pub fn rtk_apply_glonass_inter_frequency_bias_calibrations(
+    observations: &[RtkDoubleDifferenceObservation],
+    calibrations: &[RtkGlonassInterFrequencyBiasCalibration],
+) -> Vec<RtkDoubleDifferenceObservation> {
+    observations
+        .iter()
+        .map(|observation| {
+            let mut corrected = observation.clone();
+            let Some(calibration) =
+                glonass_inter_frequency_bias_calibration_for_observation(observation, calibrations)
+            else {
+                return corrected;
+            };
+            corrected.code_m -= calibration.code_bias_m;
+            corrected.phase_cycles -= calibration.phase_bias_cycles;
+            corrected.glonass_inter_frequency_bias = RtkGlonassInterFrequencyBiasEvidence {
+                status: RtkGlonassInterFrequencyBiasStatus::BiasHandled,
+                signal_channel: Some(calibration.signal_channel),
+                reference_channel: Some(calibration.reference_channel),
+                code_bias_m: calibration.code_bias_m,
+                phase_bias_cycles: calibration.phase_bias_cycles,
+            };
+            corrected
+        })
+        .collect()
 }
 
 /// Build the code covariance matrix for an ordered set of double differences.
@@ -670,6 +707,28 @@ fn glonass_inter_frequency_bias_evidence_from_channels(
         code_bias_m: 0.0,
         phase_bias_cycles: 0.0,
     }
+}
+
+fn glonass_inter_frequency_bias_calibration_for_observation<'a>(
+    observation: &RtkDoubleDifferenceObservation,
+    calibrations: &'a [RtkGlonassInterFrequencyBiasCalibration],
+) -> Option<&'a RtkGlonassInterFrequencyBiasCalibration> {
+    if observation.sig.sat.constellation != Constellation::Glonass {
+        return None;
+    }
+    let signal_channel = observation.glonass_inter_frequency_bias.signal_channel?;
+    let reference_channel = observation.glonass_inter_frequency_bias.reference_channel?;
+    calibrations.iter().find(|calibration| {
+        glonass_inter_frequency_bias_calibration_is_valid(calibration)
+            && calibration.signal_channel == signal_channel
+            && calibration.reference_channel == reference_channel
+    })
+}
+
+fn glonass_inter_frequency_bias_calibration_is_valid(
+    calibration: &RtkGlonassInterFrequencyBiasCalibration,
+) -> bool {
+    calibration.code_bias_m.is_finite() && calibration.phase_bias_cycles.is_finite()
 }
 
 fn double_difference_covariance_matrix(

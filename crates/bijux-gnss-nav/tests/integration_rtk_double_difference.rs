@@ -11,14 +11,15 @@ use bijux_gnss_core::api::{
 use bijux_gnss_nav::api::{
     choose_rtk_single_difference_reference_signal,
     choose_rtk_single_difference_reference_signals_by_constellation, ecef_to_enu, ecef_to_geodetic,
-    geodetic_to_ecef, rtk_double_difference_code_covariance_matrix,
-    rtk_double_difference_residual_metrics, rtk_double_differences_by_constellation,
-    rtk_double_differences_from_single_differences,
+    geodetic_to_ecef, rtk_apply_glonass_inter_frequency_bias_calibrations,
+    rtk_double_difference_code_covariance_matrix, rtk_double_difference_residual_metrics,
+    rtk_double_differences_by_constellation, rtk_double_differences_from_single_differences,
     rtk_glonass_inter_frequency_bias_is_integer_compatible,
     rtk_single_differences_from_aligned_obs_epochs_with_covariance,
     rtk_single_differences_from_obs_epochs, rtk_switch_double_difference_reference,
     sat_state_gps_l1ca_at_receive_time, GpsEphemeris, RtkDifferencedCovarianceConfig,
-    RtkEpochAlignmentEvidence, RtkGlonassInterFrequencyBiasStatus, RTK_EPOCH_ALIGNMENT_TOLERANCE_S,
+    RtkEpochAlignmentEvidence, RtkGlonassInterFrequencyBiasCalibration,
+    RtkGlonassInterFrequencyBiasStatus, RTK_EPOCH_ALIGNMENT_TOLERANCE_S,
 };
 
 const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
@@ -347,6 +348,55 @@ fn rtk_double_difference_builder_requires_calibration_for_mixed_glonass_channels
     assert!(!rtk_glonass_inter_frequency_bias_is_integer_compatible(&double_differences[0]));
     let diagnostics = double_differences[0].validate_payload();
     assert!(diagnostics.iter().any(|event| event.code == "RTK_DD_GLONASS_BIAS_UNHANDLED"));
+}
+
+#[test]
+fn rtk_double_difference_glonass_calibration_corrects_code_and_phase_biases() {
+    let reference_channel = GlonassFrequencyChannel::new(-4).expect("valid GLONASS channel");
+    let signal_channel = GlonassFrequencyChannel::new(5).expect("valid GLONASS channel");
+    let base = make_epoch(
+        ReceiverRole::Base,
+        vec![
+            make_glonass_satellite(3, reference_channel, 20_000_000.0, 46.0),
+            make_glonass_satellite(7, signal_channel, 20_100_000.0, 42.0),
+        ],
+    );
+    let rover = make_epoch(
+        ReceiverRole::Rover,
+        vec![
+            make_glonass_satellite(3, reference_channel, 20_000_120.0, 46.0),
+            make_glonass_satellite(7, signal_channel, 20_100_170.0, 42.0),
+        ],
+    );
+
+    let single_differences = rtk_single_differences_from_obs_epochs(&base, &rover);
+    let reference =
+        choose_rtk_single_difference_reference_signal(&single_differences).expect("reference");
+    let double_differences =
+        rtk_double_differences_from_single_differences(&single_differences, reference);
+    let uncorrected = &double_differences[0];
+
+    let corrected = rtk_apply_glonass_inter_frequency_bias_calibrations(
+        &double_differences,
+        &[RtkGlonassInterFrequencyBiasCalibration {
+            signal_channel,
+            reference_channel,
+            code_bias_m: 2.5,
+            phase_bias_cycles: -0.25,
+        }],
+    );
+
+    assert_eq!(corrected.len(), 1);
+    assert!((corrected[0].code_m - (uncorrected.code_m - 2.5)).abs() < 1.0e-12);
+    assert!((corrected[0].phase_cycles - (uncorrected.phase_cycles + 0.25)).abs() < 1.0e-12);
+    assert_eq!(
+        corrected[0].glonass_inter_frequency_bias.status,
+        RtkGlonassInterFrequencyBiasStatus::BiasHandled
+    );
+    assert_eq!(corrected[0].glonass_inter_frequency_bias.code_bias_m, 2.5);
+    assert_eq!(corrected[0].glonass_inter_frequency_bias.phase_bias_cycles, -0.25);
+    assert!(rtk_glonass_inter_frequency_bias_is_integer_compatible(&corrected[0]));
+    assert!(corrected[0].validate_payload().is_empty());
 }
 
 #[test]
