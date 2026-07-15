@@ -460,11 +460,8 @@ fn observations_from_tracking_with_provenance(
         let cn0_dbhz = normalize_observation_cn0_dbhz(epoch.cn0_dbhz);
         let lock_quality = tracking_lock_quality(epoch, carrier_phase.cycle_slip);
         let tracking_uncertainty = epoch.tracking_uncertainty.clone();
-        let variance_evidence = observation_variance_evidence(
-            epoch,
-            meters_per_sample,
-            &receiver_clock,
-        );
+        let variance_evidence =
+            observation_variance_evidence(epoch, meters_per_sample, &receiver_clock);
         let (pseudorange_var_m2, carrier_phase_var_cycles2, doppler_var_hz2, error_model) =
             match &variance_evidence {
                 Ok(evidence) => (
@@ -859,8 +856,7 @@ pub fn observation_artifacts_from_tracking_results_with_gps_anchor(
             sat.metadata.observation_support_class =
                 observation_support_label(sat.observation_status, alignment_resolved).to_string();
             sat.metadata.observation_uncertainty_class =
-                observation_uncertainty_label(sat.cn0_dbhz, has_variance_evidence(sat))
-                    .to_string();
+                observation_uncertainty_label(sat.cn0_dbhz, has_variance_evidence(sat)).to_string();
         }
         let events = bijux_gnss_core::api::check_obs_epoch_sanity(&epoch);
         if events
@@ -2763,7 +2759,8 @@ mod tests {
     }
 
     fn set_code_phase_uncertainty(epoch: &mut TrackEpoch, code_phase_samples: f64) {
-        let mut uncertainty = epoch.tracking_uncertainty.clone().unwrap_or_else(test_tracking_uncertainty);
+        let mut uncertainty =
+            epoch.tracking_uncertainty.clone().unwrap_or_else(test_tracking_uncertainty);
         uncertainty.code_phase_samples = code_phase_samples;
         epoch.tracking_uncertainty = Some(uncertainty);
     }
@@ -4233,21 +4230,15 @@ mod tests {
         let mut epoch = make_observation_ready_epoch(12, &config, 70);
         epoch.tracking_uncertainty = None;
 
-        let report = observation_artifacts_from_tracking_results(
-            &config,
-            &[track_from_epoch(epoch)],
-            10,
-        );
+        let report =
+            observation_artifacts_from_tracking_results(&config, &[track_from_epoch(epoch)], 10);
         let observation_epoch = report.output.epochs.first().expect("observation epoch");
         let sat = observation_epoch.sats.first().expect("observation satellite");
         let quality = report.output.measurement_quality[0]
             .sats
             .first()
             .expect("measurement quality satellite");
-        let residual = report.output.residuals[0]
-            .sats
-            .first()
-            .expect("residual satellite");
+        let residual = report.output.residuals[0].sats.first().expect("residual satellite");
 
         assert_eq!(observation_epoch.decision, ObservationEpochDecision::Rejected);
         assert_eq!(observation_epoch.decision_reason.as_deref(), Some("no_accepted_observables"));
