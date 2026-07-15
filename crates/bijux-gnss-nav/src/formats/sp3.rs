@@ -7,12 +7,33 @@ use bijux_gnss_core::api::{Constellation, SatId};
 
 use crate::orbits::gps::{GpsSatState, GpsSatelliteClockCorrection};
 
+const SP3_MISSING_ABS_THRESHOLD: f64 = 999_999.0;
+
 #[derive(Debug, Clone)]
 pub struct Sp3Record {
     pub epoch_s: f64,
     pub x_m: f64,
     pub y_m: f64,
     pub z_m: f64,
+    pub clock_bias_s: Option<f64>,
+    pub accuracy: Sp3RecordAccuracy,
+    pub flags: Sp3RecordFlags,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct Sp3RecordAccuracy {
+    pub x_m: Option<f64>,
+    pub y_m: Option<f64>,
+    pub z_m: Option<f64>,
+    pub clock_s: Option<f64>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Sp3RecordFlags {
+    pub clock_event: bool,
+    pub clock_prediction: bool,
+    pub orbit_maneuver: bool,
+    pub orbit_prediction: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -38,20 +59,8 @@ impl Sp3Provider {
             }
             if let Some(stripped) = line.strip_prefix('P') {
                 let epoch_s = current_epoch.ok_or("SP3 record without epoch")?;
-                let sat = parse_sat_id(line)?;
-                let parts: Vec<&str> = stripped.split_whitespace().collect();
-                if parts.len() < 4 {
-                    continue;
-                }
-                let x_km: f64 = parts[1].parse().map_err(|_| "invalid x")?;
-                let y_km: f64 = parts[2].parse().map_err(|_| "invalid y")?;
-                let z_km: f64 = parts[3].parse().map_err(|_| "invalid z")?;
-                records.entry(sat).or_default().push(Sp3Record {
-                    epoch_s,
-                    x_m: x_km * 1000.0,
-                    y_m: y_km * 1000.0,
-                    z_m: z_km * 1000.0,
-                });
+                let record = parse_sp3_position_record(line, stripped, epoch_s)?;
+                records.entry(record.0).or_default().push(record.1);
             }
         }
         normalize_records(&mut records);
@@ -81,6 +90,18 @@ impl Sp3Provider {
     pub fn interpolation_summary(&self, sat: SatId) -> Option<Sp3InterpolationSummary> {
         let records = self.records.get(&sat)?;
         summarize_interpolation_errors(records)
+    }
+
+    pub fn record_accuracy(&self, sat: SatId, t_s: f64) -> Option<Sp3RecordAccuracy> {
+        self.record_at_epoch(sat, t_s).map(|record| record.accuracy)
+    }
+
+    pub fn record_flags(&self, sat: SatId, t_s: f64) -> Option<Sp3RecordFlags> {
+        self.record_at_epoch(sat, t_s).map(|record| record.flags)
+    }
+
+    fn record_at_epoch(&self, sat: SatId, t_s: f64) -> Option<&Sp3Record> {
+        self.records.get(&sat)?.iter().find(|record| (record.epoch_s - t_s).abs() <= f64::EPSILON)
     }
 }
 
@@ -122,6 +143,84 @@ fn parse_sat_id(line: &str) -> Result<SatId, String> {
         _ => Constellation::Unknown,
     };
     Ok(SatId { constellation, prn })
+}
+
+fn parse_sp3_position_record(
+    line: &str,
+    stripped: &str,
+    epoch_s: f64,
+) -> Result<(SatId, Sp3Record), String> {
+    let sat = parse_sat_id(line)?;
+    let parts: Vec<&str> = stripped.split_whitespace().collect();
+    if parts.len() < 4 {
+        return Err("invalid SP3 position record".to_string());
+    }
+    let x_km = parse_sp3_coordinate_km(parts[1])?;
+    let y_km = parse_sp3_coordinate_km(parts[2])?;
+    let z_km = parse_sp3_coordinate_km(parts[3])?;
+    let Some((x_m, y_m, z_m)) = x_km
+        .zip(y_km)
+        .zip(z_km)
+        .map(|((x_km, y_km), z_km)| (x_km * 1000.0, y_km * 1000.0, z_km * 1000.0))
+    else {
+        return Err(format!("SP3 position record for {sat:?} contains missing coordinates"));
+    };
+    let clock_bias_s =
+        parts.get(4).map(|field| parse_sp3_clock_bias_s(field)).transpose()?.flatten();
+    let accuracy = parse_sp3_record_accuracy(&parts);
+    let flags = parse_sp3_record_flags(line, &parts);
+    Ok((sat, Sp3Record { epoch_s, x_m, y_m, z_m, clock_bias_s, accuracy, flags }))
+}
+
+fn parse_sp3_coordinate_km(field: &str) -> Result<Option<f64>, String> {
+    let value = field.parse::<f64>().map_err(|_| format!("invalid SP3 coordinate '{field}'"))?;
+    Ok((value.abs() < SP3_MISSING_ABS_THRESHOLD).then_some(value))
+}
+
+fn parse_sp3_clock_bias_s(field: &str) -> Result<Option<f64>, String> {
+    let value = field.parse::<f64>().map_err(|_| format!("invalid SP3 clock '{field}'"))?;
+    Ok((value.abs() < SP3_MISSING_ABS_THRESHOLD).then_some(value * 1.0e-6))
+}
+
+fn parse_sp3_record_accuracy(parts: &[&str]) -> Sp3RecordAccuracy {
+    Sp3RecordAccuracy {
+        x_m: parts.get(5).and_then(|field| sp3_orbit_accuracy_m(field)),
+        y_m: parts.get(6).and_then(|field| sp3_orbit_accuracy_m(field)),
+        z_m: parts.get(7).and_then(|field| sp3_orbit_accuracy_m(field)),
+        clock_s: parts.get(8).and_then(|field| sp3_clock_accuracy_s(field)),
+    }
+}
+
+fn sp3_orbit_accuracy_m(field: &str) -> Option<f64> {
+    let exponent = field.parse::<i32>().ok()?;
+    (exponent > 0).then(|| 2.0_f64.powi(exponent) * 1.0e-3)
+}
+
+fn sp3_clock_accuracy_s(field: &str) -> Option<f64> {
+    let exponent = field.parse::<i32>().ok()?;
+    (exponent > 0).then(|| 2.0_f64.powi(exponent) * 1.0e-12)
+}
+
+fn parse_sp3_record_flags(line: &str, parts: &[&str]) -> Sp3RecordFlags {
+    let mut flags = Sp3RecordFlags {
+        clock_event: fixed_char_is_flagged(line, 74),
+        clock_prediction: fixed_char_is_flagged(line, 75),
+        orbit_maneuver: fixed_char_is_flagged(line, 78),
+        orbit_prediction: fixed_char_is_flagged(line, 79),
+    };
+    for token in parts.iter().skip(9) {
+        flags.clock_event |= token.contains('E');
+        flags.clock_prediction |= token.contains('P');
+        flags.orbit_maneuver |= token.contains('M');
+        flags.orbit_prediction |= token.contains('O');
+    }
+    flags
+}
+
+fn fixed_char_is_flagged(line: &str, zero_based_column: usize) -> bool {
+    line.as_bytes()
+        .get(zero_based_column)
+        .is_some_and(|byte| !byte.is_ascii_whitespace() && *byte != b'0')
 }
 
 fn normalize_records(records: &mut BTreeMap<SatId, Vec<Sp3Record>>) {
@@ -248,7 +347,9 @@ fn record_state(record: &Sp3Record) -> GpsSatState {
         x_m: record.x_m,
         y_m: record.y_m,
         z_m: record.z_m,
-        clock_correction: GpsSatelliteClockCorrection::from_bias_s(0.0),
+        clock_correction: GpsSatelliteClockCorrection::from_bias_s(
+            record.clock_bias_s.unwrap_or(0.0),
+        ),
     }
 }
 
@@ -301,6 +402,42 @@ PG01  10001.000000  20001.000000  30001.000000  0.000000
         assert_eq!(state.x_m, 10_001_000.0);
         assert_eq!(state.y_m, 20_001_000.0);
         assert_eq!(state.z_m, 30_001_000.0);
+    }
+
+    #[test]
+    fn position_records_preserve_clock_accuracy_and_flags() {
+        let data = "\
+* 2020 01 01 00 00 00.000000
+PG01  10000.000000  20000.000000  30000.000000    12.500000  4  5  6  7            EPM
+";
+        let provider: Sp3Provider = data.parse().expect("parse SP3");
+        let sat = SatId { constellation: Constellation::Gps, prn: 1 };
+        let record = &provider.records.get(&sat).expect("satellite records")[0];
+
+        assert!((record.clock_bias_s.expect("clock bias") - 12.5e-6).abs() < 1.0e-18);
+        assert_eq!(record.accuracy.x_m, Some(0.016));
+        assert_eq!(record.accuracy.y_m, Some(0.032));
+        assert_eq!(record.accuracy.z_m, Some(0.064));
+        assert_eq!(record.accuracy.clock_s, Some(128.0e-12));
+        assert!(record.flags.clock_event);
+        assert!(record.flags.clock_prediction);
+        assert!(record.flags.orbit_maneuver);
+        assert!(!record.flags.orbit_prediction);
+        assert_eq!(provider.record_accuracy(sat, 0.0), Some(record.accuracy));
+        assert_eq!(provider.record_flags(sat, 0.0), Some(record.flags));
+
+        let state = provider.sat_state(sat, 0.0).expect("state with precise clock");
+        assert!((state.clock_correction.bias_s - 12.5e-6).abs() < 1.0e-18);
+    }
+
+    #[test]
+    fn missing_position_records_are_rejected() {
+        let data = "\
+* 2020 01 01 00 00 00.000000
+PG01  999999.999999  20000.000000  30000.000000  0.000000
+";
+
+        assert!(data.parse::<Sp3Provider>().is_err());
     }
 
     #[test]
