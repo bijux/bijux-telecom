@@ -6,8 +6,8 @@
 //! - clock_error_m comes from configured receiver-clock bias uncertainty.
 
 use bijux_gnss_core::api::{
-    CodeCarrierDivergence, DiagnosticEvent, GpsTime, LockFlags, Meters, ObsEpoch, ObsMetadata,
-    ObsSatellite, ObservationEpochDecision, ReceiverRole, Seconds, SigId, TrackEpoch,
+    DiagnosticEvent, GpsTime, LockFlags, ObsEpoch, ObsMetadata, ObsSatellite,
+    ObservationEpochDecision, ReceiverRole, Seconds, SigId, TrackEpoch,
 };
 
 use crate::engine::receiver_config::ReceiverPipelineConfig;
@@ -21,9 +21,7 @@ use crate::pipeline::observations::carrier_phase::{
     CYCLE_SLIP_DETECTION_PROBABILITY_BUDGET, CYCLE_SLIP_FALSE_ALARM_PROBABILITY_BUDGET,
 };
 use crate::pipeline::observations::code_carrier_divergence::{
-    apply_code_carrier_divergence_decomposition, classify_code_carrier_divergence,
-    code_carrier_divergence_evidence, receiver_clock_divergence_drift_m, slip_threshold_m,
-    CodeCarrierDivergenceState,
+    apply_code_carrier_divergence_decomposition, CodeCarrierDivergenceState,
 };
 #[cfg(test)]
 use crate::pipeline::observations::code_carrier_divergence::{
@@ -33,13 +31,11 @@ use crate::pipeline::observations::code_period_ambiguity::{
     apply_grouped_integer_code_period_ambiguities, code_period_ambiguity_input_from_tracking_epoch,
     CodePeriodAmbiguityInput,
 };
-use crate::pipeline::observations::cycle_slip_fusion::{
-    apply_dual_frequency_cycle_slip_fusion, upsert_cycle_slip_contributor,
-};
+use crate::pipeline::observations::cycle_slip_fusion::apply_dual_frequency_cycle_slip_fusion;
+use crate::pipeline::observations::hatch_smoothing::apply_hatch_smoothing;
 use crate::pipeline::observations::labels::{
     carrier_phase_continuity_label, doppler_model_label, observation_status_label,
     observation_support_label, observation_uncertainty_label,
-    pseudorange_model_has_resolved_alignment,
 };
 use crate::pipeline::observations::lock_state::{
     apply_cycle_slip_surface, cycle_slip_reason, observation_lock_reason, observation_lock_state,
@@ -64,17 +60,17 @@ use crate::pipeline::observations::timing::{
     reject_epoch_for_invalid_timing, tracking_epoch_has_sample_discontinuity, tracking_time_tag,
 };
 use crate::pipeline::observations::variance::{
-    apply_variance_evidence_status, observation_error_model, observation_variance_evidence,
+    apply_variance_evidence_status, observation_variance_evidence,
 };
 use crate::pipeline::tracking::TrackingResult;
 use crate::pipeline::{StepReport, StepStats};
-use bijux_gnss_signal::api::{signal_cycles_to_meters, signal_wavelength_m};
 use serde::{Deserialize, Serialize};
 
 #[cfg(test)]
 use bijux_gnss_core::api::{
-    Constellation, CycleSlipDetector, Cycles, GlonassFrequencyChannel, ObservationStatus,
-    ReceiverSampleTrace, SignalBand, SignalCode, SignalSpec, GPS_L1_CA_CARRIER_HZ,
+    CodeCarrierDivergence, Constellation, CycleSlipDetector, Cycles, GlonassFrequencyChannel,
+    ObservationStatus, ReceiverSampleTrace, SignalBand, SignalCode, SignalSpec,
+    GPS_L1_CA_CARRIER_HZ,
 };
 #[cfg(test)]
 use bijux_gnss_signal::api::{glonass_l1_carrier_hz, samples_per_code};
@@ -93,6 +89,7 @@ mod cycle_slip_fusion;
 mod decision_artifacts;
 mod epoch_manifest;
 mod epoch_validation;
+mod hatch_smoothing;
 mod labels;
 mod lock_state;
 mod measurement_quality;
@@ -432,89 +429,13 @@ pub fn observation_artifacts_from_tracking_results_with_gps_anchor(
                     entry.sats.push(sat);
                     continue;
                 }
-                let lambda_m = signal_wavelength_m(sat.metadata.signal).0;
-                let state = hatch.entry(sat.signal_id).or_default();
-                if !sat.lock_flags.code_lock {
-                    raw_snapshots
-                        .insert(snapshot_key, raw_observation_snapshot(&sat, sat.pseudorange_m.0));
-                    state.clear_arc();
-                    sat.metadata.smoothing_window = hatch_window;
-                    sat.metadata.smoothing_age = 0;
-                    sat.metadata.smoothing_resets = state.reset_count();
-                    sat.error_model = observation_error_model(&sat, 0.0);
-                    apply_pseudorange_physics_rejection(&mut sat);
-                    entry.sats.push(sat);
-                    continue;
-                }
-                let supports_code_carrier_slip_detection =
-                    pseudorange_model_has_resolved_alignment(&sat.metadata.pseudorange_model);
-                let raw_pseudorange_m = sat.pseudorange_m.0;
-                raw_snapshots
-                    .insert(snapshot_key, raw_observation_snapshot(&sat, raw_pseudorange_m));
-                let Some(carrier_phase_arc_id) = sat
-                    .metadata
-                    .carrier_phase_arc
-                    .as_ref()
-                    .filter(|arc| arc.valid_for_smoothing)
-                    .map(|arc| arc.id.clone())
-                else {
-                    state.clear_arc();
-                    sat.metadata.smoothing_window = hatch_window;
-                    sat.metadata.smoothing_age = 0;
-                    sat.metadata.smoothing_resets = state.reset_count();
-                    sat.error_model = observation_error_model(&sat, 0.0);
-                    apply_pseudorange_physics_rejection(&mut sat);
-                    entry.sats.push(sat);
-                    continue;
-                };
-                state.align_carrier_phase_arc(&carrier_phase_arc_id);
-                let raw_divergence_m = raw_pseudorange_m
-                    - signal_cycles_to_meters(sat.carrier_phase_cycles, sat.metadata.signal).0;
-                let threshold_m = slip_threshold_m(sat.cn0_dbhz, sat.elevation_deg);
-                let divergence_delta_m = state.divergence_delta_m(raw_divergence_m).unwrap_or(0.0);
-                let divergence_jump = divergence_delta_m.abs();
-                let mut smoothing_cycle_slip_reason = None;
-                if supports_code_carrier_slip_detection && divergence_jump > threshold_m {
-                    smoothing_cycle_slip_reason = Some("code_carrier_divergence");
-                }
-                if supports_code_carrier_slip_detection {
-                    upsert_cycle_slip_contributor(
-                        &mut sat,
-                        code_carrier_divergence_evidence(
-                            smoothing_cycle_slip_reason.is_some(),
-                            divergence_jump,
-                            threshold_m,
-                        ),
-                    );
-                }
-                apply_cycle_slip_surface(&mut sat, smoothing_cycle_slip_reason);
-                if sat.lock_flags.cycle_slip {
-                    state.clear_arc();
-                    state.align_carrier_phase_arc(&carrier_phase_arc_id);
-                }
-                let smoothing = state.observe(
-                    raw_pseudorange_m,
-                    sat.carrier_phase_cycles.0,
-                    raw_divergence_m,
-                    lambda_m,
+                apply_hatch_smoothing(
+                    &mut sat,
+                    snapshot_key,
                     hatch_window,
+                    &mut raw_snapshots,
+                    &mut hatch,
                 );
-                sat.pseudorange_m = Meters(smoothing.smoothed_pseudorange_m);
-                sat.metadata.smoothing_window = hatch_window;
-                sat.metadata.smoothing_age = smoothing.smoothing_age_epochs;
-                sat.metadata.smoothing_resets = smoothing.reset_count;
-                let smoothing_transient_m = smoothing.smoothed_pseudorange_m - raw_pseudorange_m;
-                sat.metadata.code_carrier_divergence = Some(CodeCarrierDivergence::from_terms(
-                    raw_divergence_m,
-                    divergence_delta_m,
-                    0.0,
-                    0.0,
-                    receiver_clock_divergence_drift_m(&sat),
-                    smoothing_transient_m,
-                    0.0,
-                ));
-                classify_code_carrier_divergence(&mut sat, 0.0);
-                apply_pseudorange_physics_rejection(&mut sat);
                 entry.sats.push(sat);
             }
         }
