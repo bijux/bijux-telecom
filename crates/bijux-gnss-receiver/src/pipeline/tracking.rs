@@ -380,11 +380,14 @@ impl VectorTrackingState {
         vector_tracking_prediction(&self.latest_measurements_for(sample_index, sample_rate_hz))
     }
 
-    fn common_frequency_estimate(&self) -> Option<CommonTrackingFrequencyEstimate> {
+    fn common_frequency_estimate(
+        &self,
+        sample_rate_hz: f64,
+    ) -> Option<CommonTrackingFrequencyEstimate> {
         let latest_sample_index =
             self.measurements.iter().map(|measurement| measurement.sample_index).max()?;
         common_tracking_frequency_estimate(
-            &self.latest_measurements_for(latest_sample_index, f64::INFINITY),
+            &self.latest_measurements_for(latest_sample_index, sample_rate_hz),
         )
     }
 
@@ -2233,7 +2236,8 @@ impl Tracking {
     }
 
     pub fn finish_tracking_session(&self, session: TrackingSession) -> TrackingArtifacts {
-        let common_frequency = session.tracking.vector_state.common_frequency_estimate();
+        let common_frequency =
+            session.tracking.vector_state.common_frequency_estimate(self.config.sampling_freq_hz);
         let tracking = self.finish_incremental_tracking(session.tracking);
         let track_transitions =
             tracking.iter().flat_map(|result| result.transitions.iter().cloned()).collect();
@@ -6396,7 +6400,7 @@ mod tests {
         state.record(vector_measurement(0, 120, 45.0, 4.0, 0.10, 0.0), 1_000.0);
         state.record(vector_measurement(1, 118, 45.0, 6.0, 0.10, 0.0), 1_000.0);
 
-        let estimate = state.common_frequency_estimate().expect("common frequency estimate");
+        let estimate = state.common_frequency_estimate(1_000.0).expect("common frequency estimate");
 
         assert_eq!(estimate.support_count, 2);
         assert_eq!(estimate.sample_index, 120);
