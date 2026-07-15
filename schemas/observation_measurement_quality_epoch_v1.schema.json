@@ -99,6 +99,29 @@
         "status": { "type": "string", "const": "positive_semidefinite" }
       }
     },
+    "CodeCarrierDivergence": {
+      "type": "object",
+      "required": [
+        "raw_m",
+        "jump_m",
+        "expected_ionosphere_m",
+        "receiver_clock_m",
+        "oscillator_m",
+        "smoothing_transient_m",
+        "multipath_m",
+        "unexplained_m"
+      ],
+      "properties": {
+        "raw_m": { "type": "number" },
+        "jump_m": { "type": "number" },
+        "expected_ionosphere_m": { "type": "number" },
+        "receiver_clock_m": { "type": "number" },
+        "oscillator_m": { "type": "number" },
+        "smoothing_transient_m": { "type": "number" },
+        "multipath_m": { "type": "number" },
+        "unexplained_m": { "type": "number" }
+      }
+    },
     "ObservationMeasurementQualitySatellite": {
       "type": "object",
       "required": [
@@ -112,6 +135,7 @@
         "doppler_sigma_hz",
         "cn0_sigma_dbhz",
         "measurement_covariance",
+        "code_carrier_divergence",
         "lock_flags",
         "observation_lock_state",
         "observation_lock_reason",
@@ -135,6 +159,12 @@
         "measurement_covariance": {
           "anyOf": [
             { "$ref": "#/definitions/ObservationMeasurementCovariance" },
+            { "type": "null" }
+          ]
+        },
+        "code_carrier_divergence": {
+          "anyOf": [
+            { "$ref": "#/definitions/CodeCarrierDivergence" },
             { "type": "null" }
           ]
         },

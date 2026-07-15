@@ -222,6 +222,7 @@ pub struct ObservationMeasurementQualitySatellite {
     pub doppler_sigma_hz: Option<f64>,
     pub cn0_sigma_dbhz: Option<f64>,
     pub measurement_covariance: Option<ObservationMeasurementCovariance>,
+    pub code_carrier_divergence: Option<CodeCarrierDivergence>,
     pub lock_flags: LockFlags,
     pub observation_lock_state: String,
     pub observation_lock_reason: Option<String>,
@@ -326,6 +327,7 @@ impl ObservationMeasurementQualitySatellite {
                 .as_ref()
                 .and_then(|uncertainty| finite_sigma(Some(uncertainty.cn0_dbhz))),
             measurement_covariance: sat.measurement_covariance(),
+            code_carrier_divergence: sat.metadata.code_carrier_divergence,
             lock_flags: sat.lock_flags,
             observation_lock_state: sat.metadata.observation_lock_state.clone(),
             observation_lock_reason: sat.metadata.observation_lock_reason.clone(),
@@ -4400,6 +4402,11 @@ mod tests {
         assert_eq!(covariance_matrix[1][2], covariance_matrix[2][1]);
         assert!(covariance.carrier_doppler_m_hz > 0.0);
         assert_eq!(quality_sat.measurement_covariance, Some(covariance));
+        assert_eq!(quality_sat.code_carrier_divergence, sat.metadata.code_carrier_divergence);
+        let divergence =
+            quality_sat.code_carrier_divergence.expect("code-carrier divergence quality evidence");
+        assert!(divergence.raw_m.is_finite());
+        assert!(divergence.jump_m.is_finite());
     }
 
     #[test]
@@ -4436,6 +4443,7 @@ mod tests {
         assert!(quality.carrier_phase_sigma_cycles.is_none());
         assert!(quality.doppler_sigma_hz.is_none());
         assert!(quality.measurement_covariance.is_none());
+        assert_eq!(quality.code_carrier_divergence, sat.metadata.code_carrier_divergence);
         assert!(residual.pseudorange_m.sigma.is_none());
         assert!(residual.carrier_phase_cycles.sigma.is_none());
         assert!(residual.doppler_hz.sigma.is_none());

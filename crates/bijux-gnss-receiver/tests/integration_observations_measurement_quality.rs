@@ -220,6 +220,12 @@ fn measurement_quality_reports_supported_signal_bands() {
         assert!(covariance.doppler_hz2 > 0.0, "{covariance:?}");
         assert_eq!(covariance.code_carrier_m2, covariance.carrier_code_m2);
         assert_eq!(covariance.carrier_doppler_m_hz, covariance.doppler_carrier_hz_m);
+        let divergence = sat.code_carrier_divergence.expect("code-carrier divergence");
+        assert!(divergence.raw_m.is_finite(), "{divergence:?}");
+        assert!(divergence.jump_m.is_finite(), "{divergence:?}");
+        assert!(divergence.expected_ionosphere_m.is_finite(), "{divergence:?}");
+        assert!(divergence.multipath_m.is_finite(), "{divergence:?}");
+        assert!(divergence.unexplained_m.is_finite(), "{divergence:?}");
         assert!(!sat.observation_lock_state.is_empty(), "{sat:?}");
     }
 

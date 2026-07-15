@@ -88,7 +88,36 @@
         "smoothing_window": { "type": "integer", "minimum": 0 },
         "smoothing_age": { "type": "integer", "minimum": 0 },
         "smoothing_resets": { "type": "integer", "minimum": 0 },
-        "signal": { "$ref": "#/definitions/SignalSpec" }
+        "signal": { "$ref": "#/definitions/SignalSpec" },
+        "code_carrier_divergence": {
+          "oneOf": [
+            { "type": "null" },
+            { "$ref": "#/definitions/CodeCarrierDivergence" }
+          ]
+        }
+      }
+    },
+    "CodeCarrierDivergence": {
+      "type": "object",
+      "required": [
+        "raw_m",
+        "jump_m",
+        "expected_ionosphere_m",
+        "receiver_clock_m",
+        "oscillator_m",
+        "smoothing_transient_m",
+        "multipath_m",
+        "unexplained_m"
+      ],
+      "properties": {
+        "raw_m": { "type": "number" },
+        "jump_m": { "type": "number" },
+        "expected_ionosphere_m": { "type": "number" },
+        "receiver_clock_m": { "type": "number" },
+        "oscillator_m": { "type": "number" },
+        "smoothing_transient_m": { "type": "number" },
+        "multipath_m": { "type": "number" },
+        "unexplained_m": { "type": "number" }
       }
     },
     "MeasurementErrorModel": {
