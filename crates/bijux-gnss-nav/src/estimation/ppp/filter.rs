@@ -1120,6 +1120,9 @@ mod tests {
                             x_m: sat_pos_m[0],
                             y_m: sat_pos_m[1],
                             z_m: sat_pos_m[2],
+                            vx_mps: 0.0,
+                            vy_mps: 0.0,
+                            vz_mps: 0.0,
                             clock_correction: GpsSatelliteClockCorrection::from_bias_s(0.0),
                         },
                     )
@@ -1263,6 +1266,9 @@ mod tests {
                             x_m: sat_pos_m[0],
                             y_m: sat_pos_m[1],
                             z_m: sat_pos_m[2],
+                            vx_mps: 0.0,
+                            vy_mps: 0.0,
+                            vz_mps: 0.0,
                             clock_correction: GpsSatelliteClockCorrection::from_bias_s(0.0),
                         },
                     )

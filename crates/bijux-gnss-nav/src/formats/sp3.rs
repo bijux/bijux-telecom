@@ -111,6 +111,9 @@ impl Sp3Provider {
             x_m: state.x_m,
             y_m: state.y_m,
             z_m: state.z_m,
+            vx_mps: state.velocity_mps.map(|velocity| velocity[0]).unwrap_or(0.0),
+            vy_mps: state.velocity_mps.map(|velocity| velocity[1]).unwrap_or(0.0),
+            vz_mps: state.velocity_mps.map(|velocity| velocity[2]).unwrap_or(0.0),
             clock_correction: GpsSatelliteClockCorrection {
                 bias_s: state.clock_bias_s.unwrap_or(0.0),
                 drift_s_per_s: state.clock_rate_s_per_s.unwrap_or(0.0),
