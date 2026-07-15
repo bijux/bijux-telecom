@@ -23,7 +23,7 @@ use crate::engine::receiver_config::{
 use crate::engine::runtime::{ReceiverRuntime, TraceRecord};
 use crate::pipeline::acquisition_assistance::{
     build_related_signal_follow_up_requests, resolve_acquisition_search_bounds,
-    RelatedSignalFollowUpRequest, ResolvedAcquisitionSearchBounds,
+    ResolvedAcquisitionSearchBounds,
 };
 use crate::pipeline::acquisition_components::{
     acquisition_strategies_for_signal, AcquisitionComponentPlan,
@@ -49,6 +49,10 @@ use peak_metrics::{
     correlation_metrics, correlation_metrics_in_window, delayed_secondary_peak_diagnostic,
     CorrelationMetrics, DelayedSecondaryPeakDiagnostic,
 };
+use related_signal_follow_up::{
+    annotate_related_signal_follow_up_candidates, annotate_related_signal_follow_up_explain,
+    should_replace_related_signal_row,
+};
 #[cfg(test)]
 use signal_model::acquisition_signal_model_for_sat;
 use signal_model::{
@@ -68,6 +72,7 @@ use threshold_resolution::{
 
 mod cache;
 mod false_alarm_calibration;
+mod related_signal_follow_up;
 mod signal_model;
 mod strategy_components;
 mod threshold_resolution;
@@ -201,79 +206,6 @@ struct ComponentCorrelationAccumulation {
 pub struct AcquisitionRun {
     pub results: Vec<Vec<AcqResult>>,
     pub explains: Vec<AcqExplain>,
-}
-
-fn related_signal_follow_up_label(follow_up_request: &RelatedSignalFollowUpRequest) -> String {
-    format!(
-        "same_satellite_cross_band_assistance(source={:?}:{:?},target={:?}:{:?})",
-        follow_up_request.source_signal_band,
-        follow_up_request.source_signal_code,
-        follow_up_request.request.signal_band,
-        follow_up_request.request.signal_code,
-    )
-}
-
-fn related_signal_hypothesis_rank(hypothesis: AcqHypothesis) -> u8 {
-    match hypothesis {
-        AcqHypothesis::Accepted => 3,
-        AcqHypothesis::Ambiguous => 2,
-        AcqHypothesis::Rejected => 1,
-        AcqHypothesis::Deferred => 0,
-    }
-}
-
-fn should_replace_related_signal_row(
-    existing_candidates: &[AcqResult],
-    replacement_candidates: &[AcqResult],
-) -> bool {
-    let Some(replacement_primary) = replacement_candidates.first() else {
-        return false;
-    };
-    let Some(existing_primary) = existing_candidates.first() else {
-        return true;
-    };
-    let replacement_rank = related_signal_hypothesis_rank(replacement_primary.hypothesis);
-    let existing_rank = related_signal_hypothesis_rank(existing_primary.hypothesis);
-    replacement_rank > existing_rank
-        || (replacement_rank == existing_rank
-            && (replacement_primary.score > existing_primary.score
-                || (existing_primary
-                    .assumptions
-                    .as_ref()
-                    .and_then(|assumptions| assumptions.assistance_bounds)
-                    .is_none()
-                    && replacement_primary
-                        .assumptions
-                        .as_ref()
-                        .and_then(|assumptions| assumptions.assistance_bounds)
-                        .is_some())))
-}
-
-fn annotate_related_signal_follow_up_candidates(
-    candidates: &mut [AcqResult],
-    follow_up_request: &RelatedSignalFollowUpRequest,
-) {
-    let label = related_signal_follow_up_label(follow_up_request);
-    for candidate in candidates {
-        let reason = candidate
-            .explain_selection_reason
-            .take()
-            .map(|existing| format!("{label}; {existing}"))
-            .unwrap_or_else(|| label.clone());
-        candidate.explain_selection_reason = Some(reason);
-    }
-}
-
-fn annotate_related_signal_follow_up_explain(
-    mut explain: AcqExplain,
-    follow_up_request: &RelatedSignalFollowUpRequest,
-) -> AcqExplain {
-    let label = related_signal_follow_up_label(follow_up_request);
-    explain.selected_reason = format!("{label}; {}", explain.selected_reason);
-    for candidate in &mut explain.candidates {
-        candidate.reason = format!("{label}; {}", candidate.reason);
-    }
-    explain
 }
 
 impl Acquisition {
