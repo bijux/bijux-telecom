@@ -481,6 +481,7 @@ struct NavSolutionOutput {
     clock_drift_s_per_s: f64,
     dops: NavSolutionDops,
     covariance: NavSolutionCovariance,
+    solver_diagnostics: NavSolutionSolverDiagnostics,
     fix_quality: bijux_gnss_infra::api::core::NavQualityFlag,
     validity: bijux_gnss_infra::api::core::SolutionValidity,
     rejected_measurements: usize,
@@ -500,6 +501,13 @@ struct NavSolutionCovariance {
     sigma_h_m: Option<f64>,
     sigma_v_m: Option<f64>,
     covariance_xyz_m2: Option<[f64; 3]>,
+}
+
+#[derive(Debug, Serialize)]
+struct NavSolutionSolverDiagnostics {
+    wls_solver_rank: Option<usize>,
+    wls_condition_number: Option<f64>,
+    ekf_condition_number: Option<f64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -542,6 +550,11 @@ fn write_nav_solution_outputs(
                 sigma_h_m: sol.sigma_h_m.map(|m| m.0),
                 sigma_v_m: sol.sigma_v_m.map(|m| m.0),
                 covariance_xyz_m2: None,
+            },
+            solver_diagnostics: NavSolutionSolverDiagnostics {
+                wls_solver_rank: sol.wls_solver_rank,
+                wls_condition_number: sol.wls_condition_number,
+                ekf_condition_number: sol.ekf_condition_number,
             },
             fix_quality: sol.quality,
             validity: sol.validity,
@@ -1200,10 +1213,9 @@ mod tests {
     use crate::RawIqMetadata;
     use crate::{CommonArgs, ReceiverConfig, ReceiverPipelineConfig, ReportFormat};
     use bijux_gnss_infra::api::core::{
-        signal_registry, signal_spec_gps_l1_ca, signal_spec_gps_l2_py, ArtifactHeaderV1,
-        ArtifactReadPolicy, Chips, Constellation, Cycles, Epoch, Hertz, LockFlags, Meters,
-        NavLifecycleState, NavSolutionEpoch, NavUncertaintyClass, ObsEpoch, ObsMetadata,
-        ObsSatellite, ObservationEpochDecision, ObservationStatus, ReceiverRole,
+        ArtifactHeaderV1, ArtifactReadPolicy, Chips, Constellation, Cycles, Epoch, Hertz,
+        LockFlags, Meters, NavLifecycleState, NavSolutionEpoch, NavUncertaintyClass, ObsEpoch,
+        ObsMetadata, ObsSatellite, ObservationEpochDecision, ObservationStatus, ReceiverRole,
         ReceiverSampleTrace, SatId, Seconds, SigId, SignalBand, SignalCode, SignalDelayAlignment,
         SolutionStatus, SolutionValidity, TrackEpoch, TrackEpochV1, TrackingUncertainty,
         GPS_L1_CA_CARRIER_HZ, NAV_OUTPUT_STABILITY_SIGNATURE_VERSION, NAV_SOLUTION_MODEL_VERSION,
@@ -1211,6 +1223,9 @@ mod tests {
     use bijux_gnss_infra::api::nav::{
         write_rinex_broadcast_navigation, write_rinex_nav, BiasSinexProvider,
         GpsBroadcastNavigationData, GpsEphemeris, KlobucharCoefficients,
+    };
+    use bijux_gnss_signal::api::{
+        signal_registry, signal_spec_gps_l1_ca, signal_spec_gps_l2_py,
     };
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -1759,6 +1774,7 @@ mod tests {
                 cycle_slip: false,
                 nav_bit_lock: true,
                 navigation_bit_sign: Some(-1),
+                transmit_time: None,
                 dll_err: 0.0,
                 pll_err: 0.0,
                 fll_err: 0.0,
@@ -1939,8 +1955,8 @@ mod tests {
             normalized_innovation_max: None,
             ekf_innovation_rms: None,
             ekf_condition_number: None,
-            wls_solver_rank: None,
-            wls_condition_number: None,
+            wls_solver_rank: Some(4),
+            wls_condition_number: Some(12.5),
             ekf_whiteness_ratio: None,
             ekf_predicted_variance: None,
             ekf_observed_variance: None,
@@ -1984,6 +2000,9 @@ mod tests {
         assert_eq!(payload["dops"]["vdop"], 0.6);
         assert_eq!(payload["dops"]["gdop"], 1.05);
         assert_eq!(payload["dops"]["tdop"], 0.4);
+        assert_eq!(payload["solver_diagnostics"]["wls_solver_rank"], 4);
+        assert_eq!(payload["solver_diagnostics"]["wls_condition_number"], 12.5);
+        assert!(payload["solver_diagnostics"]["ekf_condition_number"].is_null());
 
         fs::remove_file(&path).expect("remove nav solution output");
         fs::remove_dir(&out_dir).expect("remove output directory");
@@ -2039,6 +2058,7 @@ mod tests {
                     cycle_slip: false,
                     nav_bit_lock: false,
                     navigation_bit_sign: None,
+                    transmit_time: None,
                     dll_err: 0.0,
                     pll_err: 0.0,
                     fll_err: 0.0,
@@ -2052,6 +2072,7 @@ mod tests {
                     tracking_assumptions: None,
                     signal_delay_alignment: Some(SignalDelayAlignment {
                         whole_code_periods: 68,
+                        sample_delay_samples: 0,
                         source: "synthetic_truth".to_string(),
                     }),
                     tracking_uncertainty: None,
@@ -2083,6 +2104,7 @@ mod tests {
                     cycle_slip: false,
                     nav_bit_lock: false,
                     navigation_bit_sign: None,
+                    transmit_time: None,
                     dll_err: 0.0,
                     pll_err: 0.0,
                     fll_err: 0.0,
@@ -2096,6 +2118,7 @@ mod tests {
                     tracking_assumptions: None,
                     signal_delay_alignment: Some(SignalDelayAlignment {
                         whole_code_periods: 68,
+                        sample_delay_samples: 0,
                         source: "synthetic_truth".to_string(),
                     }),
                     tracking_uncertainty: None,
@@ -2192,6 +2215,7 @@ mod tests {
                 cycle_slip: false,
                 nav_bit_lock: false,
                 navigation_bit_sign: None,
+                transmit_time: None,
                 dll_err: 0.0,
                 pll_err: 0.0,
                 fll_err: 0.0,
@@ -2205,6 +2229,7 @@ mod tests {
                 tracking_assumptions: None,
                 signal_delay_alignment: Some(SignalDelayAlignment {
                     whole_code_periods: quality_alignment_periods(signal.band),
+                    sample_delay_samples: 0,
                     source: "quality_fixture".to_string(),
                 }),
                 tracking_uncertainty: Some(TrackingUncertainty {

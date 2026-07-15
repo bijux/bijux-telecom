@@ -382,9 +382,9 @@ fn handle_run(command: GnssCommand) -> Result<()> {
 mod pvt_tests {
     use super::*;
     use bijux_gnss_infra::api::core::{
-        signal_spec_gps_l1_ca, Constellation, GpsTime, LockFlags, ObsEpoch, ObsMetadata,
-        ObsSatellite, ObsSignalTiming, ObservationEpochDecision, ObservationStatus, ReceiverRole,
-        ReceiverSampleTrace, SatId, Seconds, SigId, SignalBand, SignalCode,
+        Constellation, GpsTime, LockFlags, ObsEpoch, ObsMetadata, ObsSatellite, ObsSignalTiming,
+        ObservationEpochDecision, ObservationStatus, ReceiverRole, ReceiverSampleTrace, SatId,
+        Seconds, SigId, SignalBand, SignalCode,
     };
     use bijux_gnss_infra::api::nav::{
         ecef_to_geodetic, elevation_azimuth_deg, parse_rinex_nav, sat_state_gps_l1ca,
@@ -395,6 +395,7 @@ mod pvt_tests {
         KlobucharModel, SaastamoinenModel, TroposphereModel,
     };
     use bijux_gnss_infra::api::receiver::sim::{SyntheticScenario, SyntheticSignalParams};
+    use bijux_gnss_signal::api::signal_spec_gps_l1_ca;
     use std::collections::BTreeMap;
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -1391,6 +1392,7 @@ mod pvt_tests {
                 clock: Some(GpsL1CaLnavSubframe1Clock {
                     week: (eph.week % 1024) as u16,
                     iodc: eph.iodc,
+                    sv_accuracy: 0,
                     sv_health: eph.sv_health,
                     toc_s: eph.toc_s,
                     af0: eph.af0,

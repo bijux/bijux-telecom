@@ -382,6 +382,7 @@ mod report_tests {
                     cycle_slip: false,
                     nav_bit_lock: false,
                     navigation_bit_sign: None,
+                    transmit_time: None,
                     dll_err: 0.0,
                     pll_err: 0.0,
                     fll_err: 0.0,

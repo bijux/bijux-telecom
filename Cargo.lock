@@ -176,6 +176,7 @@ dependencies = [
  "bijux-gnss-infra",
  "bijux-gnss-nav",
  "bijux-gnss-policies",
+ "bijux-gnss-signal",
  "bijux-gnss-testkit",
  "clap",
  "eyre",
