@@ -300,11 +300,13 @@ pub use crate::time::{
     glonass_to_gps_with_offset, glonass_to_utc_with_offset, gps_time_from_utc,
     gps_to_beidou_with_offset, gps_to_galileo_with_offset, gps_to_glonass_with_offset,
     gps_to_utc_civil_with_offset, gps_to_utc_with_offset, gps_week_rollover, normalize_tow,
-    parse_utc_civil_time, tai_to_utc_civil_with_offset, tai_to_utc_with_offset,
-    utc_civil_to_gps_with_offset, utc_civil_to_tai_with_offset, utc_to_glonass_with_offset,
-    utc_to_gps_with_offset, utc_to_tai_with_offset, BeidouTime, GalileoGpsTimeOffset, GalileoTime,
-    GlonassTime, GlonassUtcOffset, GnssTimeSystem, TimeConversion, TimeOffsetEvidence,
-    TimeOffsetSource, UtcCivilTime, UtcCivilTimeError,
+    parse_utc_civil_time, resolve_beidou_week_rollover, resolve_galileo_week_rollover,
+    resolve_glonass_day_number, resolve_gps_week_rollover, resolve_truncated_week,
+    tai_to_utc_civil_with_offset, tai_to_utc_with_offset, utc_civil_to_gps_with_offset,
+    utc_civil_to_tai_with_offset, utc_to_glonass_with_offset, utc_to_gps_with_offset,
+    utc_to_tai_with_offset, BeidouTime, GalileoGpsTimeOffset, GalileoTime, GlonassDayResolution,
+    GlonassTime, GlonassUtcOffset, GnssTimeSystem, RolloverResolutionError, TimeConversion,
+    TimeOffsetEvidence, TimeOffsetSource, UtcCivilTime, UtcCivilTimeError, WeekRolloverResolution,
 };
 
 /// Navigation engine trait boundary.
