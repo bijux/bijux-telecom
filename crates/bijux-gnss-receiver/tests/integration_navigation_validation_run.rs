@@ -5,7 +5,10 @@ use std::path::{Path, PathBuf};
 
 use bijux_gnss_receiver::api::{
     signal::FrontEndFilterSpec,
-    sim::{validate_synthetic_navigation_run, SyntheticNavigationValidationScenario},
+    sim::{
+        validate_synthetic_navigation_run, SyntheticClosureStageKind, SyntheticClosureStageStatus,
+        SyntheticNavigationValidationScenario,
+    },
     ReceiverConfig,
 };
 
@@ -45,6 +48,35 @@ fn synthetic_navigation_validation_run_builds_run_level_accuracy_artifact() {
     assert_eq!(run.tracking_accuracy.satellite_count, scenario.satellites.len());
     assert_eq!(run.observation_accuracy.satellite_count, scenario.satellites.len());
     assert!(run.pvt_accuracy.epoch_count > 0);
+    assert!(run.artifact.closure_ready, "closure stage evidence: {:#?}", run.artifact.closure);
+    assert!(run.artifact.closure.pass);
+    assert_eq!(run.artifact.closure.applicable_stage_count, 9);
+    assert_eq!(run.artifact.closure.passed_stage_count, 9);
+    assert_eq!(run.artifact.closure.not_applicable_stage_count, 1);
+    assert_eq!(
+        run.artifact.closure.stages.iter().map(|stage| stage.stage).collect::<Vec<_>>(),
+        vec![
+            SyntheticClosureStageKind::IqInput,
+            SyntheticClosureStageKind::Acquisition,
+            SyntheticClosureStageKind::Tracking,
+            SyntheticClosureStageKind::NavigationDataTiming,
+            SyntheticClosureStageKind::Observations,
+            SyntheticClosureStageKind::SatelliteStates,
+            SyntheticClosureStageKind::Corrections,
+            SyntheticClosureStageKind::Estimator,
+            SyntheticClosureStageKind::AmbiguityProcessing,
+            SyntheticClosureStageKind::IntegrityDecision,
+        ]
+    );
+    let ambiguity = run
+        .artifact
+        .closure
+        .stages
+        .iter()
+        .find(|stage| stage.stage == SyntheticClosureStageKind::AmbiguityProcessing)
+        .expect("ambiguity closure stage");
+    assert_eq!(ambiguity.status, SyntheticClosureStageStatus::NotApplicable);
+    assert_eq!(ambiguity.reason, "code_only_spp_path_has_no_carrier_ambiguity_processing");
 }
 
 #[test]
@@ -92,4 +124,11 @@ fn synthetic_navigation_validation_run_carries_source_and_receiver_front_end_del
     assert_eq!(run.acquisition_accuracy.satellite_count, scenario.satellites.len());
     assert_eq!(run.tracking_accuracy.satellite_count, scenario.satellites.len());
     assert_eq!(run.observation_accuracy.satellite_count, scenario.satellites.len());
+    assert!(run.artifact.closure_ready, "closure stage evidence: {:#?}", run.artifact.closure);
+    for stage in &run.artifact.closure.stages {
+        assert!(
+            stage.status != SyntheticClosureStageStatus::Failed,
+            "closure stage failed: {stage:?}"
+        );
+    }
 }
