@@ -166,6 +166,20 @@ fn tracking_preserves_lock_inside_declared_acceleration_and_jerk_envelope() {
         "tracking did not sustain a stable tracking window: epochs={epochs:?}"
     );
     assert!(
+        post_lock
+            .iter()
+            .all(|epoch| !epoch
+                .tracking_provenance
+                .contains("doppler_estimator_consistency=divergent")),
+        "bounded carrier dynamics must not emit divergent Doppler evidence: post_lock={post_lock:?}"
+    );
+    assert!(
+        post_lock.iter().any(|epoch| {
+            epoch.tracking_provenance.contains("doppler_estimator_consistency=consistent")
+        }),
+        "bounded carrier dynamics must emit Doppler consistency evidence: post_lock={post_lock:?}"
+    );
+    assert!(
         carrier_errors_hz.iter().all(|error_hz| *error_hz <= BOUNDED_CARRIER_ERROR_MAX_HZ),
         "carrier error exceeded bounded dynamics envelope: carrier_errors_hz={carrier_errors_hz:?}, epochs={epochs:?}"
     );
