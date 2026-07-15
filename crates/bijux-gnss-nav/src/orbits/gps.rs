@@ -7,6 +7,12 @@ use serde::{Deserialize, Serialize};
 use bijux_gnss_core::api::{Llh, ObsSignalTiming, SatId, Seconds};
 
 use crate::models::atmosphere::{IonosphereModel, KlobucharCoefficients, KlobucharModel};
+#[cfg(test)]
+use crate::orbits::broadcast_orbit::solve_kepler as solve_broadcast_kepler;
+use crate::orbits::broadcast_orbit::{
+    earth_rotation_correction, propagate_broadcast_orbit, solve_broadcast_orbit_anomaly,
+    wrap_gnss_week_seconds, BroadcastKeplerianOrbit, BroadcastOrbitConstants,
+};
 
 const OMEGA_E_DOT: f64 = 7.292_115_146_7e-5;
 const MU: f64 = 3.986_005e14;
@@ -129,13 +135,9 @@ pub fn gps_satellite_clock_correction(
     eph: &GpsEphemeris,
     t_tx_s: f64,
 ) -> GpsSatelliteClockCorrection {
-    let a = eph.sqrt_a * eph.sqrt_a;
-    let n0 = (MU / (a * a * a)).sqrt();
-    let n = n0 + eph.delta_n;
-    let tk = wrap_time(t_tx_s - eph.toe_s);
-    let m = eph.m0 + n * tk;
-    let (_e_anom, sin_e, _cos_e) = solve_kepler(m, eph.e);
-    satellite_clock_correction_from_sin_e(eph, t_tx_s, sin_e)
+    let anomaly =
+        solve_broadcast_orbit_anomaly(gps_broadcast_orbit(eph), t_tx_s, gps_orbit_constants());
+    satellite_clock_correction_from_sin_e(eph, t_tx_s, anomaly.kepler.sin_eccentric_anomaly)
 }
 
 pub fn gps_earth_rotation_correction(
@@ -143,19 +145,12 @@ pub fn gps_earth_rotation_correction(
     y_m: f64,
     signal_travel_time_s: f64,
 ) -> GpsEarthRotationCorrection {
-    let rotation_rad = OMEGA_E_DOT * signal_travel_time_s;
-    let (x_rotated_m, y_rotated_m) = if rotation_rad.abs() > 0.0 {
-        let cos_rot = rotation_rad.cos();
-        let sin_rot = rotation_rad.sin();
-        (cos_rot * x_m + sin_rot * y_m, -sin_rot * x_m + cos_rot * y_m)
-    } else {
-        (x_m, y_m)
-    };
+    let correction = earth_rotation_correction(x_m, y_m, signal_travel_time_s, OMEGA_E_DOT);
     GpsEarthRotationCorrection {
         signal_travel_time_s,
-        rotation_rad,
-        delta_x_m: x_rotated_m - x_m,
-        delta_y_m: y_rotated_m - y_m,
+        rotation_rad: correction.rotation_rad,
+        delta_x_m: correction.delta_x_m,
+        delta_y_m: correction.delta_y_m,
     }
 }
 
@@ -183,44 +178,17 @@ pub fn sat_state_gps_l1ca_from_observation(
 }
 
 pub fn sat_state_gps_l1ca(eph: &GpsEphemeris, t_tx_s: f64, tau_s: f64) -> GpsSatState {
-    let a = eph.sqrt_a * eph.sqrt_a;
-    let n0 = (MU / (a * a * a)).sqrt();
-    let n = n0 + eph.delta_n;
-    let mut tk = t_tx_s - eph.toe_s;
-    tk = wrap_time(tk);
+    let orbit_state =
+        propagate_broadcast_orbit(gps_broadcast_orbit(eph), t_tx_s, tau_s, gps_orbit_constants());
+    let clock =
+        satellite_clock_correction_from_sin_e(eph, t_tx_s, orbit_state.sin_eccentric_anomaly);
 
-    let m = eph.m0 + n * tk;
-    let (_e_anom, sin_e, cos_e) = solve_kepler(m, eph.e);
-    let v = (1.0 - eph.e * eph.e).sqrt() * sin_e;
-    let v = v.atan2(cos_e - eph.e);
-    let phi = v + eph.w;
-    let sin2phi = (2.0 * phi).sin();
-    let cos2phi = (2.0 * phi).cos();
-    let u = phi + eph.cuc * cos2phi + eph.cus * sin2phi;
-    let r = a * (1.0 - eph.e * cos_e) + eph.crc * cos2phi + eph.crs * sin2phi;
-    let i = eph.i0 + eph.idot * tk + eph.cic * cos2phi + eph.cis * sin2phi;
-
-    let x_orb = r * u.cos();
-    let y_orb = r * u.sin();
-
-    let omega = eph.omega0 + (eph.omegadot - OMEGA_E_DOT) * tk - OMEGA_E_DOT * eph.toe_s;
-
-    let cos_omega = omega.cos();
-    let sin_omega = omega.sin();
-    let cos_i = i.cos();
-    let sin_i = i.sin();
-
-    let mut x = x_orb * cos_omega - y_orb * cos_i * sin_omega;
-    let mut y = x_orb * sin_omega + y_orb * cos_i * cos_omega;
-    let z = y_orb * sin_i;
-
-    let earth_rotation = gps_earth_rotation_correction(x, y, tau_s);
-    x += earth_rotation.delta_x_m;
-    y += earth_rotation.delta_y_m;
-
-    let clock = satellite_clock_correction_from_sin_e(eph, t_tx_s, sin_e);
-
-    GpsSatState { x_m: x, y_m: y, z_m: z, clock_correction: clock }
+    GpsSatState {
+        x_m: orbit_state.x_m,
+        y_m: orbit_state.y_m,
+        z_m: orbit_state.z_m,
+        clock_correction: clock,
+    }
 }
 
 pub fn gps_ephemeris_age(eph: &GpsEphemeris, reference_time_s: f64) -> GpsEphemerisAge {
@@ -250,32 +218,42 @@ pub fn select_best_ephemeris<'a>(
     })
 }
 
-pub fn solve_kepler(m: f64, e: f64) -> (f64, f64, f64) {
-    let mut e_anom = m;
-    for _ in 0..12 {
-        let f = e_anom - e * e_anom.sin() - m;
-        let f_prime = 1.0 - e * e_anom.cos();
-        let step = f / f_prime;
-        e_anom -= step;
-        if step.abs() < 1e-12 {
-            break;
-        }
-    }
-    if !e_anom.is_finite() {
-        e_anom = m;
-    }
-    (e_anom, e_anom.sin(), e_anom.cos())
+#[cfg(test)]
+fn solve_kepler(m: f64, e: f64) -> (f64, f64, f64) {
+    let solution = solve_broadcast_kepler(m, e);
+    (solution.eccentric_anomaly_rad, solution.sin_eccentric_anomaly, solution.cos_eccentric_anomaly)
 }
 
-fn wrap_time(mut t: f64) -> f64 {
-    let half = 302_400.0;
-    while t > half {
-        t -= 604_800.0;
+fn wrap_time(t: f64) -> f64 {
+    wrap_gnss_week_seconds(t)
+}
+
+fn gps_orbit_constants() -> BroadcastOrbitConstants {
+    BroadcastOrbitConstants {
+        gravitational_parameter_m3_s2: MU,
+        earth_rotation_rate_rad_s: OMEGA_E_DOT,
     }
-    while t < -half {
-        t += 604_800.0;
+}
+
+fn gps_broadcast_orbit(eph: &GpsEphemeris) -> BroadcastKeplerianOrbit {
+    BroadcastKeplerianOrbit {
+        toe_s: eph.toe_s,
+        sqrt_a_m: eph.sqrt_a,
+        eccentricity: eph.e,
+        inclination_rad: eph.i0,
+        inclination_rate_rad_s: eph.idot,
+        right_ascension_rad: eph.omega0,
+        right_ascension_rate_rad_s: eph.omegadot,
+        argument_of_perigee_rad: eph.w,
+        mean_anomaly_rad: eph.m0,
+        mean_motion_delta_rad_s: eph.delta_n,
+        latitude_cosine_correction_rad: eph.cuc,
+        latitude_sine_correction_rad: eph.cus,
+        radius_cosine_correction_m: eph.crc,
+        radius_sine_correction_m: eph.crs,
+        inclination_cosine_correction_rad: eph.cic,
+        inclination_sine_correction_rad: eph.cis,
     }
-    t
 }
 
 fn satellite_clock_correction_from_sin_e(

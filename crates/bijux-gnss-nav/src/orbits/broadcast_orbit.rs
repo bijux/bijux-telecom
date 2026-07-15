@@ -42,6 +42,14 @@ pub struct BroadcastEarthRotationCorrection {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
+pub struct BroadcastOrbitAnomaly {
+    pub time_from_ephemeris_s: f64,
+    pub corrected_mean_motion_rad_s: f64,
+    pub mean_anomaly_rad: f64,
+    pub kepler: KeplerSolution,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct BroadcastOrbitState {
     pub x_m: f64,
     pub y_m: f64,
@@ -58,14 +66,9 @@ pub fn propagate_broadcast_orbit(
     signal_travel_time_s: f64,
     constants: BroadcastOrbitConstants,
 ) -> BroadcastOrbitState {
+    let anomaly = solve_broadcast_orbit_anomaly(orbit, transmit_time_s, constants);
     let semi_major_axis_m = orbit.sqrt_a_m * orbit.sqrt_a_m;
-    let nominal_mean_motion_rad_s =
-        (constants.gravitational_parameter_m3_s2 / semi_major_axis_m.powi(3)).sqrt();
-    let corrected_mean_motion_rad_s = nominal_mean_motion_rad_s + orbit.mean_motion_delta_rad_s;
-    let time_from_ephemeris_s = wrap_gnss_week_seconds(transmit_time_s - orbit.toe_s);
-    let mean_anomaly_rad =
-        orbit.mean_anomaly_rad + corrected_mean_motion_rad_s * time_from_ephemeris_s;
-    let kepler = solve_kepler(mean_anomaly_rad, orbit.eccentricity);
+    let kepler = anomaly.kepler;
     let true_anomaly_rad = ((1.0 - orbit.eccentricity * orbit.eccentricity).sqrt()
         * kepler.sin_eccentric_anomaly)
         .atan2(kepler.cos_eccentric_anomaly - orbit.eccentricity);
@@ -80,14 +83,14 @@ pub fn propagate_broadcast_orbit(
         + orbit.radius_cosine_correction_m * cos_double_latitude
         + orbit.radius_sine_correction_m * sin_double_latitude;
     let corrected_inclination_rad = orbit.inclination_rad
-        + orbit.inclination_rate_rad_s * time_from_ephemeris_s
+        + orbit.inclination_rate_rad_s * anomaly.time_from_ephemeris_s
         + orbit.inclination_cosine_correction_rad * cos_double_latitude
         + orbit.inclination_sine_correction_rad * sin_double_latitude;
     let orbital_x_m = corrected_radius_m * corrected_argument_of_latitude_rad.cos();
     let orbital_y_m = corrected_radius_m * corrected_argument_of_latitude_rad.sin();
     let corrected_right_ascension_rad = orbit.right_ascension_rad
         + (orbit.right_ascension_rate_rad_s - constants.earth_rotation_rate_rad_s)
-            * time_from_ephemeris_s
+            * anomaly.time_from_ephemeris_s
         - constants.earth_rotation_rate_rad_s * orbit.toe_s;
     let x_unrotated_m = orbital_x_m * corrected_right_ascension_rad.cos()
         - orbital_y_m * corrected_inclination_rad.cos() * corrected_right_ascension_rad.sin();
@@ -105,10 +108,30 @@ pub fn propagate_broadcast_orbit(
         x_m: x_unrotated_m + earth_rotation.delta_x_m,
         y_m: y_unrotated_m + earth_rotation.delta_y_m,
         z_m,
-        time_from_ephemeris_s,
+        time_from_ephemeris_s: anomaly.time_from_ephemeris_s,
         eccentric_anomaly_rad: kepler.eccentric_anomaly_rad,
         sin_eccentric_anomaly: kepler.sin_eccentric_anomaly,
         cos_eccentric_anomaly: kepler.cos_eccentric_anomaly,
+    }
+}
+
+pub fn solve_broadcast_orbit_anomaly(
+    orbit: BroadcastKeplerianOrbit,
+    transmit_time_s: f64,
+    constants: BroadcastOrbitConstants,
+) -> BroadcastOrbitAnomaly {
+    let semi_major_axis_m = orbit.sqrt_a_m * orbit.sqrt_a_m;
+    let nominal_mean_motion_rad_s =
+        (constants.gravitational_parameter_m3_s2 / semi_major_axis_m.powi(3)).sqrt();
+    let corrected_mean_motion_rad_s = nominal_mean_motion_rad_s + orbit.mean_motion_delta_rad_s;
+    let time_from_ephemeris_s = wrap_gnss_week_seconds(transmit_time_s - orbit.toe_s);
+    let mean_anomaly_rad =
+        orbit.mean_anomaly_rad + corrected_mean_motion_rad_s * time_from_ephemeris_s;
+    BroadcastOrbitAnomaly {
+        time_from_ephemeris_s,
+        corrected_mean_motion_rad_s,
+        mean_anomaly_rad,
+        kepler: solve_kepler(mean_anomaly_rad, orbit.eccentricity),
     }
 }
 
