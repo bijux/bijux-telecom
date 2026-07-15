@@ -199,6 +199,40 @@ impl NiellMappingFunction {
 #[derive(Debug, Clone)]
 pub struct SaastamoinenModel;
 
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct SaastamoinenDelayComponents {
+    pub zenith_hydrostatic_m: f64,
+    pub zenith_wet_m: f64,
+    pub hydrostatic_mapping: f64,
+    pub wet_mapping: f64,
+}
+
+impl SaastamoinenDelayComponents {
+    pub fn slant_hydrostatic_m(self) -> f64 {
+        self.zenith_hydrostatic_m * self.hydrostatic_mapping
+    }
+
+    pub fn slant_wet_m(self) -> f64 {
+        self.zenith_wet_m * self.wet_mapping
+    }
+
+    pub fn slant_total_m(self) -> f64 {
+        self.slant_hydrostatic_m() + self.slant_wet_m()
+    }
+
+    pub fn zenith_total_m(self) -> f64 {
+        self.zenith_hydrostatic_m + self.zenith_wet_m
+    }
+
+    pub fn equivalent_total_mapping(self) -> f64 {
+        let zenith_total_m = self.zenith_total_m();
+        if !zenith_total_m.is_finite() || zenith_total_m <= 0.0 {
+            return 0.0;
+        }
+        self.slant_total_m() / zenith_total_m
+    }
+}
+
 impl SaastamoinenModel {
     pub fn zenith_hydrostatic_delay_m(receiver: Llh) -> f64 {
         if !receiver.lat_deg.is_finite() || !receiver.alt_m.is_finite() {
@@ -276,18 +310,58 @@ impl SaastamoinenModel {
     }
 
     pub fn mapping_factor(el_deg: f64) -> f64 {
-        if !el_deg.is_finite() || el_deg <= 0.0 {
-            return 0.0;
+        Self::mapping_factor_for_receiver(equatorial_standard_receiver(), el_deg, Seconds(0.0))
+    }
+
+    pub fn mapping_factor_for_receiver(receiver: Llh, el_deg: f64, t: Seconds) -> f64 {
+        Self::delay_components_m(receiver, el_deg, t).equivalent_total_mapping()
+    }
+
+    pub fn delay_components_m(
+        receiver: Llh,
+        el_deg: f64,
+        t: Seconds,
+    ) -> SaastamoinenDelayComponents {
+        let mapping = NiellMappingFunction::mapping_factors(receiver, el_deg, t);
+        SaastamoinenDelayComponents {
+            zenith_hydrostatic_m: Self::zenith_hydrostatic_delay_m(receiver),
+            zenith_wet_m: Self::zenith_wet_delay_m(receiver),
+            hydrostatic_mapping: mapping.hydrostatic,
+            wet_mapping: mapping.wet,
         }
-        let mapped_elevation_deg =
-            (el_deg.max(MIN_TROPOSPHERE_ELEVATION_DEG).powi(2) + 6.25).sqrt();
-        1.0 / mapped_elevation_deg.to_radians().sin()
+    }
+
+    pub fn delay_components_with_meteorology_m(
+        receiver: Llh,
+        el_deg: f64,
+        t: Seconds,
+        meteorology: TroposphereMeteorology,
+    ) -> SaastamoinenDelayComponents {
+        let mapping = NiellMappingFunction::mapping_factors(receiver, el_deg, t);
+        SaastamoinenDelayComponents {
+            zenith_hydrostatic_m: Self::zenith_hydrostatic_delay_with_meteorology_m(
+                receiver,
+                meteorology,
+            ),
+            zenith_wet_m: Self::zenith_wet_delay_with_meteorology_m(meteorology),
+            hydrostatic_mapping: mapping.hydrostatic,
+            wet_mapping: mapping.wet,
+        }
+    }
+
+    pub fn delay_with_meteorology_m(
+        receiver: Llh,
+        el_deg: f64,
+        t: Seconds,
+        meteorology: TroposphereMeteorology,
+    ) -> f64 {
+        Self::delay_components_with_meteorology_m(receiver, el_deg, t, meteorology).slant_total_m()
     }
 }
 
 impl TroposphereModel for SaastamoinenModel {
-    fn delay_m(&self, receiver: Llh, el_deg: f64, _t: Seconds) -> f64 {
-        Self::zenith_delay_m(receiver) * Self::mapping_factor(el_deg)
+    fn delay_m(&self, receiver: Llh, el_deg: f64, t: Seconds) -> f64 {
+        Self::delay_components_m(receiver, el_deg, t).slant_total_m()
     }
 }
 
@@ -309,6 +383,10 @@ fn standard_temperature_k(altitude_m: f64) -> f64 {
 fn standard_water_vapor_pressure_hpa(altitude_m: f64, relative_humidity: f64) -> f64 {
     let temperature_k = standard_temperature_k(altitude_m);
     relative_humidity.clamp(0.0, 1.0) * saturation_vapor_pressure_hpa(temperature_k)
+}
+
+fn equatorial_standard_receiver() -> Llh {
+    Llh { lat_deg: 0.0, lon_deg: 0.0, alt_m: 0.0 }
 }
 
 fn saturation_vapor_pressure_hpa(temperature_k: f64) -> f64 {
@@ -497,6 +575,7 @@ mod tests {
         assert!(high_elevation.is_finite());
         assert!(low_elevation > high_elevation);
         assert!(low_elevation > 5.0);
+        assert!((low_elevation - 5.552_239_502).abs() < 1.0e-9);
     }
 
     #[test]
@@ -517,6 +596,20 @@ mod tests {
         assert!(high_elevation_delay_m > zenith_delay_m);
         assert!(high_elevation_delay_m < zenith_delay_m * 1.1);
         assert!(low_elevation_delay_m > high_elevation_delay_m * 2.0);
+    }
+
+    #[test]
+    fn saastamoinen_delay_components_map_hydrostatic_and_wet_terms_separately() {
+        let receiver = Llh { lat_deg: 45.0, lon_deg: 8.0, alt_m: 100.0 };
+        let components =
+            SaastamoinenModel::delay_components_m(receiver, 10.0, seconds_at_day_of_year(28.0));
+
+        assert!((components.zenith_hydrostatic_m - 2.279_806_971).abs() < 1.0e-9);
+        assert!((components.zenith_wet_m - 0.115_469_373).abs() < 1.0e-9);
+        assert!((components.hydrostatic_mapping - 5.556_157_591).abs() < 1.0e-9);
+        assert!((components.wet_mapping - 5.657_127_345).abs() < 1.0e-9);
+        assert!((components.slant_total_m() - 13.320_191_757).abs() < 1.0e-9);
+        assert!((components.equivalent_total_mapping() - 5.561_025_052).abs() < 1.0e-9);
     }
 
     #[test]
@@ -562,5 +655,21 @@ mod tests {
 
         assert!(observed_delay_m.is_finite());
         assert!((observed_delay_m - standard_delay_m).abs() > 0.05);
+    }
+
+    #[test]
+    fn saastamoinen_slant_delay_uses_local_meteorology_components() {
+        let receiver = sample_receiver();
+        let dry = TroposphereMeteorology::new(980.0, 285.15, 0.2);
+        let humid = TroposphereMeteorology::new(980.0, 301.15, 0.9);
+
+        let dry_delay_m =
+            SaastamoinenModel::delay_with_meteorology_m(receiver, 12.0, Seconds(120_000.0), dry);
+        let humid_delay_m =
+            SaastamoinenModel::delay_with_meteorology_m(receiver, 12.0, Seconds(120_000.0), humid);
+
+        assert!(dry_delay_m.is_finite());
+        assert!(humid_delay_m.is_finite());
+        assert!(humid_delay_m > dry_delay_m + 1.0);
     }
 }
