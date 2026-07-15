@@ -7,8 +7,8 @@ use bijux_gnss_core::api::{
 use bijux_gnss_receiver::api::{
     build_dd, build_sd, choose_ref_sat, rtk_ambiguity_state_from_fixed_solution,
     rtk_conditioned_baseline_from_fixed_ambiguities,
-    rtk_float_ambiguity_state_from_baseline_solution, solve_float_baseline_dd,
-    RtkAmbiguityFixPolicy, RtkAmbiguityFixState, RtkAmbiguityTracker,
+    rtk_float_ambiguity_state_from_baseline_solution, rtk_transform_fixed_ambiguity_reference,
+    solve_float_baseline_dd, RtkAmbiguityFixPolicy, RtkAmbiguityFixState, RtkAmbiguityTracker,
     RtkDoubleDifferenceAmbiguityId, RtkFloatAmbiguityEstimate, RtkFloatBaselineSolution,
     RtkRatioTestFixer,
 };
@@ -190,12 +190,43 @@ fn receiver_rtk_ambiguity_tracker_resets_on_invalid_carrier_phase_arc() {
 }
 
 fn gps_l1_id(prn: u8) -> RtkDoubleDifferenceAmbiguityId {
-    let sig = SigId {
+    let sig = gps_l1_sig(prn);
+    RtkDoubleDifferenceAmbiguityId { sig, ref_sig: sig }
+}
+
+fn gps_l1_sig(prn: u8) -> SigId {
+    SigId {
         sat: SatId { constellation: Constellation::Gps, prn },
         band: SignalBand::L1,
         code: bijux_gnss_core::api::SignalCode::Ca,
+    }
+}
+
+fn gps_l1_dd_id(sig_prn: u8, ref_prn: u8) -> RtkDoubleDifferenceAmbiguityId {
+    let sig = SigId {
+        sat: SatId { constellation: Constellation::Gps, prn: sig_prn },
+        band: SignalBand::L1,
+        code: bijux_gnss_core::api::SignalCode::Ca,
     };
-    RtkDoubleDifferenceAmbiguityId { sig, ref_sig: sig }
+    let ref_sig = SigId {
+        sat: SatId { constellation: Constellation::Gps, prn: ref_prn },
+        band: SignalBand::L1,
+        code: bijux_gnss_core::api::SignalCode::Ca,
+    };
+    RtkDoubleDifferenceAmbiguityId { sig, ref_sig }
+}
+
+#[test]
+fn receiver_fixed_ambiguity_reference_transform_preserves_integer_arcs() {
+    let fixed_ids = vec![gps_l1_dd_id(7, 3), gps_l1_dd_id(11, 3), gps_l1_dd_id(14, 3)];
+    let fixed_integers = vec![20, 35, 50];
+
+    let (ids, integers) =
+        rtk_transform_fixed_ambiguity_reference(&fixed_ids, &fixed_integers, gps_l1_sig(11))
+            .expect("fixed transform");
+
+    assert_eq!(ids, vec![gps_l1_dd_id(3, 11), gps_l1_dd_id(7, 11), gps_l1_dd_id(14, 11)]);
+    assert_eq!(integers, vec![-35, -15, 15]);
 }
 
 #[test]

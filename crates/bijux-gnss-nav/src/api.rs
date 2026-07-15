@@ -131,11 +131,12 @@ pub use crate::estimation::rtk::ambiguity::{
     rtk_conditioned_baseline_from_fixed_ambiguities,
     rtk_float_ambiguity_state_from_baseline_solution, rtk_float_ambiguity_state_from_filter_state,
     rtk_integer_ambiguity_candidates, rtk_lambda_decorrelate, rtk_ratio_test_acceptance,
-    rtk_select_partial_ambiguity_fix, rtk_transform_float_ambiguity_reference,
-    rtk_transform_float_baseline_reference, RtkAmbiguityFixAudit, RtkAmbiguityFixPolicy,
-    RtkAmbiguityFixResult, RtkAmbiguityFixState, RtkAmbiguityFixStatus, RtkAmbiguityTracker,
-    RtkConditionedBaselineSolution, RtkDecorrelatedAmbiguityState, RtkDoubleDifferenceAmbiguityId,
-    RtkFloatAmbiguityState, RtkIntegerAmbiguityCandidate, RtkRatioTestFixer,
+    rtk_select_partial_ambiguity_fix, rtk_transform_fixed_ambiguity_reference,
+    rtk_transform_float_ambiguity_reference, rtk_transform_float_baseline_reference,
+    RtkAmbiguityFixAudit, RtkAmbiguityFixPolicy, RtkAmbiguityFixResult, RtkAmbiguityFixState,
+    RtkAmbiguityFixStatus, RtkAmbiguityTracker, RtkConditionedBaselineSolution,
+    RtkDecorrelatedAmbiguityState, RtkDoubleDifferenceAmbiguityId, RtkFloatAmbiguityState,
+    RtkIntegerAmbiguityCandidate, RtkRatioTestFixer,
 };
 pub use crate::estimation::rtk::baseline::{
     rtk_float_baseline_from_double_differences,

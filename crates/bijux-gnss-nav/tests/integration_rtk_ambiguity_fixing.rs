@@ -4,10 +4,10 @@ use bijux_gnss_core::api::{Constellation, SatId, SigId, SignalBand};
 use bijux_gnss_nav::api::{
     rtk_ambiguity_state_from_fixed_solution, rtk_conditioned_baseline_from_fixed_ambiguities,
     rtk_float_ambiguity_state_from_baseline_solution, rtk_float_baseline_from_double_differences,
-    rtk_transform_float_ambiguity_reference, rtk_transform_float_baseline_reference,
-    RtkAmbiguityFixPolicy, RtkAmbiguityFixState, RtkAmbiguityFixStatus,
-    RtkDoubleDifferenceAmbiguityId, RtkFloatAmbiguityEstimate, RtkFloatAmbiguityState,
-    RtkFloatBaselineSolution, RtkRatioTestFixer,
+    rtk_transform_fixed_ambiguity_reference, rtk_transform_float_ambiguity_reference,
+    rtk_transform_float_baseline_reference, RtkAmbiguityFixPolicy, RtkAmbiguityFixState,
+    RtkAmbiguityFixStatus, RtkDoubleDifferenceAmbiguityId, RtkFloatAmbiguityEstimate,
+    RtkFloatAmbiguityState, RtkFloatBaselineSolution, RtkRatioTestFixer,
 };
 use bijux_gnss_testkit::rtk_baseline::clean_gps_l1_short_baseline_case;
 
@@ -132,6 +132,29 @@ fn rtk_float_ambiguity_reference_transform_refuses_missing_reference() {
     };
 
     assert!(rtk_transform_float_ambiguity_reference(&float_state, gps_l1_sig(14)).is_none());
+}
+
+#[test]
+fn rtk_fixed_ambiguity_reference_transform_preserves_integer_arcs() {
+    let fixed_ids = vec![gps_l1_dd_id(7, 3), gps_l1_dd_id(11, 3), gps_l1_dd_id(14, 3)];
+    let fixed_integers = vec![20, 35, 50];
+
+    let (ids, integers) =
+        rtk_transform_fixed_ambiguity_reference(&fixed_ids, &fixed_integers, gps_l1_sig(11))
+            .expect("fixed transform");
+
+    assert_eq!(ids, vec![gps_l1_dd_id(3, 11), gps_l1_dd_id(7, 11), gps_l1_dd_id(14, 11)]);
+    assert_eq!(integers, vec![-35, -15, 15]);
+}
+
+#[test]
+fn rtk_fixed_ambiguity_reference_transform_rejects_incomplete_state() {
+    let fixed_ids = vec![gps_l1_dd_id(7, 3), gps_l1_dd_id(11, 3)];
+
+    assert!(rtk_transform_fixed_ambiguity_reference(&fixed_ids, &[20], gps_l1_sig(11)).is_none());
+    assert!(
+        rtk_transform_fixed_ambiguity_reference(&fixed_ids, &[20, 35], gps_l1_sig(14)).is_none()
+    );
 }
 
 #[test]

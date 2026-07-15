@@ -367,6 +367,32 @@ pub fn rtk_ambiguity_state_from_fixed_solution(
     Some((result.selected_ids.clone()?, result.selected_integers.clone()?))
 }
 
+/// Transform fixed double-difference integer ambiguities to a different reference signal.
+pub fn rtk_transform_fixed_ambiguity_reference(
+    fixed_ids: &[RtkDoubleDifferenceAmbiguityId],
+    fixed_integers: &[i64],
+    new_ref_sig: SigId,
+) -> Option<(Vec<RtkDoubleDifferenceAmbiguityId>, Vec<i64>)> {
+    if fixed_ids.len() != fixed_integers.len() || fixed_ids.is_empty() {
+        return None;
+    }
+    let float = RtkFloatAmbiguityState {
+        ids: fixed_ids.to_vec(),
+        float_cycles: fixed_integers.iter().map(|value| *value as f64).collect(),
+        covariance_cycles2: identity_rows(fixed_ids.len()),
+    };
+    let transformed = rtk_transform_float_ambiguity_reference(&float, new_ref_sig)?;
+    let mut integers = Vec::with_capacity(transformed.float_cycles.len());
+    for value in transformed.float_cycles {
+        let integer = value.round();
+        if (value - integer).abs() > 1.0e-9 {
+            return None;
+        }
+        integers.push(integer as i64);
+    }
+    Some((transformed.ids, integers))
+}
+
 pub fn rtk_float_ambiguity_state_from_filter_state(
     ids: Vec<RtkDoubleDifferenceAmbiguityId>,
     indices: Vec<usize>,
@@ -704,6 +730,10 @@ fn matrix_rows(matrix: &Matrix) -> Vec<Vec<f64>> {
     (0..matrix.rows())
         .map(|row| (0..matrix.cols()).map(|col| matrix[(row, col)]).collect())
         .collect()
+}
+
+fn identity_rows(size: usize) -> Vec<Vec<f64>> {
+    (0..size).map(|row| (0..size).map(|col| if row == col { 1.0 } else { 0.0 }).collect()).collect()
 }
 
 fn matrix_from_covariance_3x3(covariance: [[f64; 3]; 3]) -> Matrix {
