@@ -61,6 +61,12 @@ struct ResolvedPseudorange {
     code_delay_s: Seconds,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct CodePhaseTiming {
+    code_period_s: f64,
+    code_delay_s: f64,
+}
+
 #[derive(Debug, Clone)]
 struct CarrierPhaseArcState {
     phase_cycles: f64,
@@ -1248,18 +1254,25 @@ fn pseudorange_from_tracking_epoch(
     receive_gps_time: Option<GpsTime>,
     clock_bias_s: f64,
 ) -> PseudorangeComputation {
-    let sample_delay_samples = epoch
-        .signal_delay_alignment
-        .as_ref()
-        .map(|alignment| alignment.sample_delay_samples)
-        .unwrap_or_default();
-    let corrected_code_phase_samples = epoch.code_phase_samples.0 + sample_delay_samples as f64;
-    let code_phase_chips = aligned_code_phase_chips(
+    let Some(code_phase_timing) = code_phase_timing_from_tracking_epoch(
+        epoch,
+        samples_per_chip,
+        code_rate_hz,
         code_length_chips,
-        corrected_code_phase_samples / samples_per_chip,
-    );
-    let code_period_s = code_length_chips / code_rate_hz;
-    let code_delay_s = code_phase_chips / code_rate_hz;
+    ) else {
+        return PseudorangeComputation {
+            pseudorange_m: Meters(f64::NAN),
+            timing: None,
+            model: "receiver_epoch_fallback",
+            time_source: None,
+            integer_code_periods: None,
+            code_delay_s: None,
+            alignment_source: None,
+            alignment_resolved: false,
+        };
+    };
+    let code_period_s = code_phase_timing.code_period_s;
+    let code_delay_s = code_phase_timing.code_delay_s;
 
     if let (Some(receive_gps_time), Some(transmit_time)) = (receive_gps_time, &epoch.transmit_time)
     {
@@ -1293,7 +1306,7 @@ fn pseudorange_from_tracking_epoch(
 
     if let Some(alignment) = &epoch.signal_delay_alignment {
         let code_time_s = (alignment.whole_code_periods as f64 * code_length_chips
-            + code_phase_chips)
+            + code_delay_s * code_rate_hz)
             / code_rate_hz;
         let pseudorange_m =
             Meters(code_time_s * SPEED_OF_LIGHT_MPS + clock_bias_s * SPEED_OF_LIGHT_MPS);
@@ -1315,7 +1328,7 @@ fn pseudorange_from_tracking_epoch(
     }
 
     let code_epoch = epoch.epoch.index as f64;
-    let code_time_s = (code_epoch * code_length_chips + code_phase_chips) / code_rate_hz;
+    let code_time_s = code_epoch * code_period_s + code_delay_s;
     PseudorangeComputation {
         pseudorange_m: Meters(code_time_s * SPEED_OF_LIGHT_MPS + clock_bias_s * SPEED_OF_LIGHT_MPS),
         timing: None,
@@ -1326,6 +1339,39 @@ fn pseudorange_from_tracking_epoch(
         alignment_source: None,
         alignment_resolved: false,
     }
+}
+
+fn code_phase_timing_from_tracking_epoch(
+    epoch: &TrackEpoch,
+    samples_per_chip: f64,
+    code_rate_hz: f64,
+    code_length_chips: f64,
+) -> Option<CodePhaseTiming> {
+    if !samples_per_chip.is_finite()
+        || !code_rate_hz.is_finite()
+        || !code_length_chips.is_finite()
+        || samples_per_chip <= 0.0
+        || code_rate_hz <= 0.0
+        || code_length_chips <= 0.0
+    {
+        return None;
+    }
+
+    let sample_delay_samples = epoch
+        .signal_delay_alignment
+        .as_ref()
+        .map(|alignment| alignment.sample_delay_samples)
+        .unwrap_or_default();
+    let corrected_code_phase_samples = epoch.code_phase_samples.0 + sample_delay_samples as f64;
+    let code_phase_chips = aligned_code_phase_chips(
+        code_length_chips,
+        corrected_code_phase_samples / samples_per_chip,
+    );
+    let code_period_s = code_length_chips / code_rate_hz;
+    let code_delay_s = code_phase_chips / code_rate_hz;
+
+    (code_period_s.is_finite() && code_period_s > 0.0 && code_delay_s.is_finite())
+        .then_some(CodePhaseTiming { code_period_s, code_delay_s })
 }
 
 fn resolve_pseudorange_from_transmit_time(
