@@ -304,15 +304,41 @@ impl SatelliteAntennaCalibrations {
             self.range_correction_m(sat, band_1, gps_time, sat_pos_m, receiver_pos_m)?;
         let correction_2 =
             self.range_correction_m(sat, band_2, gps_time, sat_pos_m, receiver_pos_m)?;
-        let f1_2 = f1_hz * f1_hz;
-        let f2_2 = f2_hz * f2_hz;
-        let denom = f1_2 - f2_2;
-        if !denom.is_finite() || denom.abs() <= f64::EPSILON {
-            return None;
-        }
-        let weight_1 = f1_2 / denom;
-        let weight_2 = -f2_2 / denom;
-        Some(weight_1 * correction_1 + weight_2 * correction_2)
+        iono_free_linear_combination_m(correction_1, f1_hz, correction_2, f2_hz)
+    }
+
+    pub fn iono_free_range_correction_with_phase_variation_m(
+        &self,
+        sat: SatId,
+        band_1: SignalBand,
+        f1_hz: f64,
+        band_2: SignalBand,
+        f2_hz: f64,
+        gps_time: Option<GpsTime>,
+        sat_pos_m: [f64; 3],
+        receiver_pos_m: [f64; 3],
+        elevation_deg: f64,
+        azimuth_deg: Option<f64>,
+    ) -> Option<f64> {
+        let correction_1 = self.range_correction_with_phase_variation_m(
+            sat,
+            band_1,
+            gps_time,
+            sat_pos_m,
+            receiver_pos_m,
+            elevation_deg,
+            azimuth_deg,
+        )?;
+        let correction_2 = self.range_correction_with_phase_variation_m(
+            sat,
+            band_2,
+            gps_time,
+            sat_pos_m,
+            receiver_pos_m,
+            elevation_deg,
+            azimuth_deg,
+        )?;
+        iono_free_linear_combination_m(correction_1, f1_hz, correction_2, f2_hz)
     }
 }
 
@@ -426,16 +452,59 @@ impl ReceiverAntennaCalibrations {
             self.range_correction_m(antenna_type, band_1, gps_time, receiver_pos_m, sat_pos_m)?;
         let correction_2 =
             self.range_correction_m(antenna_type, band_2, gps_time, receiver_pos_m, sat_pos_m)?;
-        let f1_2 = f1_hz * f1_hz;
-        let f2_2 = f2_hz * f2_hz;
-        let denom = f1_2 - f2_2;
-        if !denom.is_finite() || denom.abs() <= f64::EPSILON {
-            return None;
-        }
-        let weight_1 = f1_2 / denom;
-        let weight_2 = -f2_2 / denom;
-        Some(weight_1 * correction_1 + weight_2 * correction_2)
+        iono_free_linear_combination_m(correction_1, f1_hz, correction_2, f2_hz)
     }
+
+    pub fn iono_free_range_correction_with_phase_variation_m(
+        &self,
+        antenna_type: &str,
+        band_1: SignalBand,
+        f1_hz: f64,
+        band_2: SignalBand,
+        f2_hz: f64,
+        gps_time: Option<GpsTime>,
+        receiver_pos_m: [f64; 3],
+        sat_pos_m: [f64; 3],
+        elevation_deg: f64,
+        azimuth_deg: Option<f64>,
+    ) -> Option<f64> {
+        let correction_1 = self.range_correction_with_phase_variation_m(
+            antenna_type,
+            band_1,
+            gps_time,
+            receiver_pos_m,
+            sat_pos_m,
+            elevation_deg,
+            azimuth_deg,
+        )?;
+        let correction_2 = self.range_correction_with_phase_variation_m(
+            antenna_type,
+            band_2,
+            gps_time,
+            receiver_pos_m,
+            sat_pos_m,
+            elevation_deg,
+            azimuth_deg,
+        )?;
+        iono_free_linear_combination_m(correction_1, f1_hz, correction_2, f2_hz)
+    }
+}
+
+fn iono_free_linear_combination_m(
+    correction_1_m: f64,
+    f1_hz: f64,
+    correction_2_m: f64,
+    f2_hz: f64,
+) -> Option<f64> {
+    let f1_2 = f1_hz * f1_hz;
+    let f2_2 = f2_hz * f2_hz;
+    let denom = f1_2 - f2_2;
+    if !denom.is_finite() || denom.abs() <= f64::EPSILON {
+        return None;
+    }
+    let weight_1 = f1_2 / denom;
+    let weight_2 = -f2_2 / denom;
+    Some(weight_1 * correction_1_m + weight_2 * correction_2_m)
 }
 
 pub fn satellite_antenna_range_correction_m(
@@ -930,5 +999,88 @@ mod tests {
 
         assert!((satellite_variation - 0.015).abs() < 1.0e-12);
         assert!((receiver_variation - 0.010).abs() < 1.0e-12);
+    }
+
+    #[test]
+    fn antenna_calibrations_apply_phase_variation_to_iono_free_correction() {
+        let sat = SatId { constellation: Constellation::Gps, prn: 1 };
+        let gps_time = Some(GpsTime { week: 2200, tow_s: 0.0 });
+        let sat_pos_m = [20_200_000.0, 14_000_000.0, 21_700_000.0];
+        let receiver_pos_m = [1_111_111.0, -4_222_222.0, 4_333_333.0];
+        let satellite_calibrations = SatelliteAntennaCalibrations {
+            entries: vec![SatelliteAntennaCalibration {
+                sat,
+                antenna_type: "GPS-A".to_string(),
+                valid_from_unix_s: None,
+                valid_until_unix_s: None,
+                offsets_by_band: BTreeMap::from([
+                    (SignalBand::L1, SatellitePhaseCenterOffset::new(0.0, 0.0, 0.0)),
+                    (SignalBand::L2, SatellitePhaseCenterOffset::new(0.0, 0.0, 0.0)),
+                ]),
+                variations_by_band: BTreeMap::from([
+                    (
+                        SignalBand::L1,
+                        AntennaPhaseCenterVariation::no_azimuth(0.0, 10.0, vec![0.0, 0.10]),
+                    ),
+                    (
+                        SignalBand::L2,
+                        AntennaPhaseCenterVariation::no_azimuth(0.0, 10.0, vec![0.0, 0.02]),
+                    ),
+                ]),
+            }],
+        };
+        let receiver_calibrations = ReceiverAntennaCalibrations {
+            entries: vec![ReceiverAntennaCalibration {
+                antenna_type: "AOAD/M_T NONE".to_string(),
+                valid_from_unix_s: None,
+                valid_until_unix_s: None,
+                offsets_by_band: BTreeMap::from([
+                    (SignalBand::L1, ReceiverPhaseCenterOffset::new(0.0, 0.0, 0.0)),
+                    (SignalBand::L2, ReceiverPhaseCenterOffset::new(0.0, 0.0, 0.0)),
+                ]),
+                variations_by_band: BTreeMap::from([
+                    (
+                        SignalBand::L1,
+                        AntennaPhaseCenterVariation::no_azimuth(0.0, 10.0, vec![0.0, 0.10]),
+                    ),
+                    (
+                        SignalBand::L2,
+                        AntennaPhaseCenterVariation::no_azimuth(0.0, 10.0, vec![0.0, 0.02]),
+                    ),
+                ]),
+            }],
+        };
+
+        let satellite_correction = satellite_calibrations
+            .iono_free_range_correction_with_phase_variation_m(
+                sat,
+                SignalBand::L1,
+                10.0,
+                SignalBand::L2,
+                5.0,
+                gps_time,
+                sat_pos_m,
+                receiver_pos_m,
+                85.0,
+                None,
+            )
+            .expect("satellite iono-free phase variation correction");
+        let receiver_correction = receiver_calibrations
+            .iono_free_range_correction_with_phase_variation_m(
+                "aoad/m_t none",
+                SignalBand::L1,
+                10.0,
+                SignalBand::L2,
+                5.0,
+                gps_time,
+                receiver_pos_m,
+                sat_pos_m,
+                85.0,
+                None,
+            )
+            .expect("receiver iono-free phase variation correction");
+
+        assert!((satellite_correction - 0.063_333_333_333_333_34).abs() < 1.0e-12);
+        assert!((receiver_correction - 0.063_333_333_333_333_34).abs() < 1.0e-12);
     }
 }
