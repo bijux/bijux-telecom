@@ -337,6 +337,8 @@ struct VectorTrackingPrediction {
     mean_cn0_dbhz: f64,
     receiver_position_code_phase_error_samples: f64,
     receiver_clock_frequency_error_hz: f64,
+    receiver_clock_frequency_residual_spread_hz: f64,
+    receiver_clock_frequency_max_residual_hz: f64,
     receiver_code_rate_error_hz: f64,
     receiver_motion_frequency_rate_hz_per_s: f64,
 }
@@ -441,24 +443,21 @@ fn vector_tracking_prediction(
     if measurements.len() < VECTOR_TRACKING_MIN_CONTRIBUTORS {
         return None;
     }
-    let mut weighted_clock_error_hz = 0.0;
+    let common_frequency = common_tracking_frequency_estimate(measurements)?;
     let mut weighted_position_error_samples = 0.0;
     let mut weighted_code_error_hz = 0.0;
     let mut weighted_motion_rate_hz_per_s = 0.0;
-    let mut weighted_cn0_dbhz = 0.0;
     let mut weight_sum = 0.0;
     let mut code_weight_sum = 0.0;
     let mut sample_index = 0;
     for measurement in measurements {
         let weight = vector_tracking_cn0_weight(measurement.cn0_dbhz);
-        weighted_clock_error_hz += measurement.fll_error_hz * weight;
         if measurement.dll_locked {
             weighted_position_error_samples += measurement.dll_error_samples * weight;
             weighted_code_error_hz += measurement.code_rate_error_hz * weight;
             code_weight_sum += weight;
         }
         weighted_motion_rate_hz_per_s += measurement.carrier_rate_hz_per_s * weight;
-        weighted_cn0_dbhz += measurement.cn0_dbhz * weight;
         weight_sum += weight;
         sample_index = sample_index.max(measurement.sample_index);
     }
@@ -468,13 +467,15 @@ fn vector_tracking_prediction(
     Some(VectorTrackingPrediction {
         sample_index,
         contributor_count: measurements.len(),
-        mean_cn0_dbhz: weighted_cn0_dbhz / weight_sum,
+        mean_cn0_dbhz: common_frequency.mean_cn0_dbhz,
         receiver_position_code_phase_error_samples: if code_weight_sum > f64::EPSILON {
             weighted_position_error_samples / code_weight_sum
         } else {
             0.0
         },
-        receiver_clock_frequency_error_hz: weighted_clock_error_hz / weight_sum,
+        receiver_clock_frequency_error_hz: common_frequency.estimated_frequency_error_hz,
+        receiver_clock_frequency_residual_spread_hz: common_frequency.residual_spread_hz,
+        receiver_clock_frequency_max_residual_hz: common_frequency.max_supporting_residual_hz,
         receiver_code_rate_error_hz: if code_weight_sum > f64::EPSILON {
             weighted_code_error_hz / code_weight_sum
         } else {
@@ -598,12 +599,14 @@ fn vector_tracking_aiding_mode_label(signal_model: &TrackingSignalModel) -> Stri
 
 fn vector_tracking_provenance(application: VectorTrackingApplication) -> String {
     format!(
-        "vector_tracking=applied vector_prediction_sample_index={} vector_contributors={} vector_mean_cn0_dbhz={:.3} vector_position_code_phase_error_samples={:.6} vector_clock_frequency_error_hz={:.6} vector_code_rate_error_hz={:.6} vector_motion_frequency_rate_hz_per_s={:.6} vector_carrier_frequency_correction_hz={:.6} vector_code_rate_correction_hz={:.6} vector_code_phase_correction_samples={:.6} vector_carrier_rate_correction_hz_per_s={:.6}",
+        "vector_tracking=applied vector_prediction_sample_index={} vector_contributors={} vector_mean_cn0_dbhz={:.3} vector_position_code_phase_error_samples={:.6} vector_clock_frequency_error_hz={:.6} vector_clock_frequency_residual_spread_hz={:.6} vector_clock_frequency_max_residual_hz={:.6} vector_code_rate_error_hz={:.6} vector_motion_frequency_rate_hz_per_s={:.6} vector_carrier_frequency_correction_hz={:.6} vector_code_rate_correction_hz={:.6} vector_code_phase_correction_samples={:.6} vector_carrier_rate_correction_hz_per_s={:.6}",
         application.prediction.sample_index,
         application.prediction.contributor_count,
         application.prediction.mean_cn0_dbhz,
         application.prediction.receiver_position_code_phase_error_samples,
         application.prediction.receiver_clock_frequency_error_hz,
+        application.prediction.receiver_clock_frequency_residual_spread_hz,
+        application.prediction.receiver_clock_frequency_max_residual_hz,
         application.prediction.receiver_code_rate_error_hz,
         application.prediction.receiver_motion_frequency_rate_hz_per_s,
         application.carrier_frequency_correction_hz,
@@ -6337,6 +6340,8 @@ mod tests {
         assert_eq!(prediction.sample_index, 110);
         assert!((prediction.receiver_position_code_phase_error_samples - 0.05).abs() < 1.0e-9);
         assert!((prediction.receiver_clock_frequency_error_hz - 6.0).abs() < 1.0e-9);
+        assert!((prediction.receiver_clock_frequency_residual_spread_hz - 2.0).abs() < 1.0e-9);
+        assert!((prediction.receiver_clock_frequency_max_residual_hz - 1.0).abs() < 1.0e-9);
         assert!((prediction.receiver_code_rate_error_hz - 0.60).abs() < 1.0e-9);
         assert!((prediction.receiver_motion_frequency_rate_hz_per_s - 10.0).abs() < 1.0e-9);
     }
@@ -6425,6 +6430,8 @@ mod tests {
             mean_cn0_dbhz: 44.0,
             receiver_position_code_phase_error_samples: 10.0,
             receiver_clock_frequency_error_hz: 1_000.0,
+            receiver_clock_frequency_residual_spread_hz: 0.0,
+            receiver_clock_frequency_max_residual_hz: 0.0,
             receiver_code_rate_error_hz: 50.0,
             receiver_motion_frequency_rate_hz_per_s: 5_000.0,
         };
