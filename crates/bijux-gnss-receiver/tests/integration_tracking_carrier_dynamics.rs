@@ -102,6 +102,13 @@ fn carrier_dynamics_signal(
     }
 }
 
+fn provenance_metric(provenance: &str, key: &str) -> Option<f64> {
+    provenance.split_whitespace().find_map(|token| {
+        let (token_key, token_value) = token.split_once('=')?;
+        (token_key == key).then(|| token_value.parse::<f64>().ok()).flatten()
+    })
+}
+
 #[test]
 fn tracking_preserves_lock_inside_declared_acceleration_and_jerk_envelope() {
     let config = carrier_dynamics_tracking_config();
@@ -223,5 +230,24 @@ fn tracking_refuses_stable_solution_outside_acceleration_and_jerk_envelope() {
     assert!(
         divergent_doppler_epochs.iter().all(|epoch| !epoch.fll_lock),
         "divergent Doppler estimator evidence must not be reported as FLL lock: divergent_doppler_epochs={divergent_doppler_epochs:?}"
+    );
+    let uncertainty_evidence = divergent_doppler_epochs
+        .iter()
+        .filter_map(|epoch| {
+            let spread_hz =
+                provenance_metric(&epoch.tracking_provenance, "doppler_estimator_spread_hz")?;
+            let uncertainty_hz = epoch.tracking_uncertainty.as_ref()?.doppler_hz;
+            Some((spread_hz, uncertainty_hz))
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        !uncertainty_evidence.is_empty(),
+        "divergent Doppler epochs must carry parseable spread and uncertainty evidence: divergent_doppler_epochs={divergent_doppler_epochs:?}"
+    );
+    assert!(
+        uncertainty_evidence
+            .iter()
+            .all(|(spread_hz, uncertainty_hz)| uncertainty_hz + f64::EPSILON >= *spread_hz),
+        "divergent Doppler spread must inflate emitted uncertainty: uncertainty_evidence={uncertainty_evidence:?}"
     );
 }
