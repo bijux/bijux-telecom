@@ -5,9 +5,10 @@ use bijux_gnss_core::api::{
 };
 use serde::{Deserialize, Serialize};
 
+use super::carrier_phase::CarrierPhaseContinuity;
 use super::labels::carrier_phase_continuity_label;
 use super::variance::{evidence_sigma_from_variance, finite_sigma, finite_value};
-use super::{CarrierPhaseContinuity, SPEED_OF_LIGHT_MPS};
+use super::SPEED_OF_LIGHT_MPS;
 
 const PSEUDORANGE_RESIDUAL_REFERENCE_MODEL: &str = "signal_travel_time_from_gps_anchor";
 const CARRIER_PHASE_RESIDUAL_REFERENCE_MODEL: &str = "previous_continuous_phase_prediction";

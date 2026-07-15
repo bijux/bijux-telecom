@@ -2,7 +2,7 @@ use bijux_gnss_core::api::{
     ObservationStatus, ObservationSupportClass, ObservationUncertaintyClass,
 };
 
-use super::CarrierPhaseContinuity;
+use super::carrier_phase::CarrierPhaseContinuity;
 
 pub(super) fn observation_status_label(status: ObservationStatus) -> &'static str {
     match status {
