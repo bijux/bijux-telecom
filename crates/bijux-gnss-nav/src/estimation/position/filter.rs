@@ -14,7 +14,7 @@ use crate::estimation::ekf::models::{
 use crate::estimation::ekf::state::{Ekf, EkfConfig};
 use crate::estimation::ekf::statistics::InnovationConsistencyConfig;
 use crate::estimation::position::navigation::{
-    corrected_pseudorange_m, default_position_signal_id, resolve_position_inputs,
+    broadcast_group_delay_correction_chain, default_position_signal_id, resolve_position_inputs,
     satellite_state_from_observation, unknown_inter_system_time_offset_sats, PositionSolveInput,
     SatelliteState,
 };
@@ -549,11 +549,12 @@ impl PositionFilter {
         let mut used_sat_count = 0;
         let mut code_metrics = PositionFilterCodeMetrics::default();
         for input in &inputs {
-            let corrected_pseudorange_m = corrected_pseudorange_m(
+            let correction_chain = broadcast_group_delay_correction_chain(
                 &input.observation,
                 &input.navigation,
                 self.config.apply_broadcast_group_delay,
             );
+            let corrected_pseudorange_m = correction_chain.corrected_pseudorange_m;
             let Some(state) = satellite_state_from_observation(
                 &input.navigation,
                 input.receive_tow_s,
