@@ -3628,6 +3628,45 @@ mod tests {
     }
 
     #[test]
+    fn hatch_smoothed_observations_preserve_receiver_clock_uncertainty() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 4_092_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 1023,
+            receiver_clock_bias_sigma_s: 4.0e-8,
+            ..ReceiverPipelineConfig::default()
+        };
+        let carrier_hz = crate::pipeline::doppler::carrier_hz_from_doppler_hz(0.0, 100.0);
+        let first =
+            make_tracking_epoch_with_alignment(6, &config, 70, carrier_hz, 125.25, 68, 128.0);
+        let second =
+            make_tracking_epoch_with_alignment(6, &config, 71, carrier_hz, 126.25, 68, 128.0);
+
+        let report = observations_from_tracking_results(
+            &config,
+            &[TrackingResult {
+                sat: first.sat,
+                carrier_hz,
+                code_phase_samples: first.code_phase_samples.0,
+                acquisition_hypothesis: "accepted".to_string(),
+                acquisition_score: 1.0,
+                acquisition_code_phase_samples: 0,
+                acquisition_carrier_hz: carrier_hz,
+                acq_to_track_state: "accepted".to_string(),
+                epochs: vec![first, second],
+                transitions: Vec::new(),
+            }],
+            10,
+        );
+        let smoothed_sat = report.output[1].sats.first().expect("smoothed observation satellite");
+        let error_model = smoothed_sat.error_model.as_ref().expect("error model");
+
+        assert!(smoothed_sat.metadata.smoothing_age > 0);
+        assert!((error_model.clock_error_m.0 - 4.0e-8 * SPEED_OF_LIGHT_MPS).abs() <= 1.0e-12);
+    }
+
+    #[test]
     fn observations_without_alignment_keep_fallback_model_and_omit_signal_timing() {
         let config = ReceiverPipelineConfig::default();
         let track = make_track(5, &config);
