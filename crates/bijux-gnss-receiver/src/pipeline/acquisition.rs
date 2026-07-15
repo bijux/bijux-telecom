@@ -51,6 +51,10 @@ use code_phase_profile::{
     estimate_parabolic_code_phase_offset_samples, measure_code_phase_profile,
     wipeoff_search_carrier, wrap_acquisition_code_phase_samples,
 };
+use doppler_refinement::{
+    estimate_acquisition_doppler_refinement, find_best_candidate_by_carrier_hz_and_rate,
+    find_candidate_by_carrier_hz,
+};
 use false_alarm_calibration::{
     calibration_seed, false_alarm_rate, mix_seed, noise_only_frame, wilson_confidence_interval,
     FalseAlarmRateMeasurement,
@@ -95,6 +99,7 @@ use wrong_prn_suppression::{suppress_wrong_prn_correlations, AcquisitionSatEvalu
 mod cache;
 mod candidate_decision;
 mod code_phase_profile;
+mod doppler_refinement;
 mod false_alarm_calibration;
 mod likelihood_covariance;
 mod related_signal_follow_up;
@@ -131,7 +136,6 @@ pub struct AcquisitionStats {
 }
 
 const JOINT_ACQUISITION_REFINEMENT_METHOD: &str = "quadratic_likelihood_surface";
-const SUB_BIN_DOPPLER_REFINEMENT_METHOD: &str = "parabolic_peak";
 const SUB_BIN_DOPPLER_REFINEMENT_MAX_OFFSET_BINS: f64 = 0.5;
 const SUB_BIN_DOPPLER_REFINEMENT_EPSILON: f64 = 1e-12;
 const SUB_SAMPLE_CODE_PHASE_REFINEMENT_METHOD: &str = "parabolic_code_peak";
@@ -2499,65 +2503,6 @@ fn estimate_acquisition_uncertainty(
     })
 }
 
-fn estimate_acquisition_doppler_refinement(
-    coarse_carrier_hz: f64,
-    coarse_doppler_rate_hz_per_s: f64,
-    grid_candidates: &[AcqResult],
-    doppler_step_hz: i32,
-) -> Option<AcqDopplerRefinement> {
-    if doppler_step_hz <= 0 {
-        return None;
-    }
-    let step_hz = doppler_step_hz as f64;
-    let left = find_best_candidate_by_carrier_hz_and_rate(
-        grid_candidates,
-        coarse_carrier_hz - step_hz,
-        coarse_doppler_rate_hz_per_s,
-    )?;
-    let center = find_best_candidate_by_carrier_hz_and_rate(
-        grid_candidates,
-        coarse_carrier_hz,
-        coarse_doppler_rate_hz_per_s,
-    )?;
-    let right = find_best_candidate_by_carrier_hz_and_rate(
-        grid_candidates,
-        coarse_carrier_hz + step_hz,
-        coarse_doppler_rate_hz_per_s,
-    )?;
-    if center.peak_mean_ratio < left.peak_mean_ratio
-        || center.peak_mean_ratio < right.peak_mean_ratio
-    {
-        return None;
-    }
-
-    let left_peak_mean_ratio = left.peak_mean_ratio as f64;
-    let center_peak_mean_ratio = center.peak_mean_ratio as f64;
-    let right_peak_mean_ratio = right.peak_mean_ratio as f64;
-    let denominator = left_peak_mean_ratio - (2.0 * center_peak_mean_ratio) + right_peak_mean_ratio;
-    if !denominator.is_finite() || denominator.abs() <= SUB_BIN_DOPPLER_REFINEMENT_EPSILON {
-        return None;
-    }
-
-    let raw_offset_bins = 0.5 * (left_peak_mean_ratio - right_peak_mean_ratio) / denominator;
-    if !raw_offset_bins.is_finite() {
-        return None;
-    }
-    let offset_bins = raw_offset_bins.clamp(
-        -SUB_BIN_DOPPLER_REFINEMENT_MAX_OFFSET_BINS,
-        SUB_BIN_DOPPLER_REFINEMENT_MAX_OFFSET_BINS,
-    );
-
-    Some(AcqDopplerRefinement {
-        method: SUB_BIN_DOPPLER_REFINEMENT_METHOD.to_string(),
-        coarse_carrier_hz: Hertz(coarse_carrier_hz),
-        offset_hz: offset_bins * step_hz,
-        offset_bins,
-        left_peak_mean_ratio: left.peak_mean_ratio,
-        center_peak_mean_ratio: center.peak_mean_ratio,
-        right_peak_mean_ratio: right.peak_mean_ratio,
-    })
-}
-
 fn measure_local_acquisition_likelihood_surface(
     config: &ReceiverPipelineConfig,
     signal_model: &AcquisitionSignalModel,
@@ -2746,35 +2691,6 @@ fn estimate_quadratic_surface_peak_offsets(
             SUB_SAMPLE_CODE_PHASE_REFINEMENT_MAX_OFFSET_SAMPLES,
         ),
     ))
-}
-
-fn find_candidate_by_carrier_hz(candidates: &[AcqResult], carrier_hz: f64) -> Option<&AcqResult> {
-    candidates
-        .iter()
-        .filter(|candidate| (candidate.carrier_hz.0 - carrier_hz).abs() <= f64::EPSILON)
-        .max_by(|left, right| {
-            left.peak_mean_ratio
-                .partial_cmp(&right.peak_mean_ratio)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        })
-}
-
-fn find_best_candidate_by_carrier_hz_and_rate(
-    candidates: &[AcqResult],
-    carrier_hz: f64,
-    doppler_rate_hz_per_s: f64,
-) -> Option<&AcqResult> {
-    candidates
-        .iter()
-        .filter(|candidate| {
-            (candidate.carrier_hz.0 - carrier_hz).abs() <= f64::EPSILON
-                && (candidate.doppler_rate_hz_per_s - doppler_rate_hz_per_s).abs() <= f64::EPSILON
-        })
-        .max_by(|left, right| {
-            left.peak_mean_ratio
-                .partial_cmp(&right.peak_mean_ratio)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        })
 }
 
 #[allow(clippy::items_after_test_module)]
