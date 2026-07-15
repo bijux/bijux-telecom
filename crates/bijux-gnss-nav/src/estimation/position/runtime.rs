@@ -15,13 +15,13 @@ use crate::api::{
     PositionFilterDivergenceReason, PositionFilterMotionClass, PositionObservation,
     PositionRobustWeighting, PositionSolutionSmoother, PositionSolutionSmootherConfig,
     PositionSolveRefusalKind, PositionSolver, PositionWeightingModel, RaimFaultDetectionStatus,
-    ResidualTemporalCorrelation, WeightingConfig,
+    RaimFaultExclusion, ResidualTemporalCorrelation, WeightingConfig,
 };
 use bijux_gnss_core::api::{
     check_nav_solution_sanity, is_solution_valid, obs_epoch_stability_key, Constellation,
     MeasurementRejectReason, Meters, NavAssumptions, NavLifecycleState, NavProvenance,
     NavRefusalClass, NavResidual, NavSolutionEpoch, NavUncertaintyClass, ObsEpoch, ObsSatellite,
-    Seconds, SolutionStatus, SolutionValidity, NAV_OUTPUT_STABILITY_SIGNATURE_VERSION,
+    SatId, Seconds, SolutionStatus, SolutionValidity, NAV_OUTPUT_STABILITY_SIGNATURE_VERSION,
     NAV_SOLUTION_MODEL_VERSION,
 };
 
@@ -913,6 +913,54 @@ impl PositionRuntime {
                 "raim_solution_separation_compared_subsets={}",
                 solution_separation.compared_subset_count()
             ));
+            raim_explain_reasons.push(format!(
+                "raim_multi_fault_hypotheses={}",
+                solution_separation.compared_multi_fault_hypothesis_count()
+            ));
+            if let Some(best_hypothesis) = solution_separation.best_multi_fault_hypothesis() {
+                raim_explain_reasons.push(format!(
+                    "raim_multi_fault_best_prns={}",
+                    format_satellite_prns(&best_hypothesis.excluded_sats)
+                ));
+                raim_explain_reasons.push(format!(
+                    "raim_multi_fault_best_post_rms_m={:.3}",
+                    best_hypothesis.post_exclusion_rms_m
+                ));
+            }
+            if let Some(unresolved_hypothesis) =
+                solution_separation.unresolved_multi_fault_hypothesis(self.solver.separation_gate_m)
+            {
+                raim_explain_reasons.push("raim_multi_fault_unresolved".to_string());
+                raim_explain_reasons.push(format!(
+                    "raim_multi_fault_suspect_prns={}",
+                    format_satellite_prns(&unresolved_hypothesis.excluded_sats)
+                ));
+                self.record_event(bijux_gnss_core::api::DiagnosticEvent::new(
+                    bijux_gnss_core::api::DiagnosticSeverity::Warning,
+                    "NAV_RAIM_MULTI_FAULT",
+                    format!(
+                        "raim unresolved multi-fault hypothesis [{}]: separation {:.2} m > {:.2} m, post-exclusion rms {:.2} m",
+                        format_satellite_prns(&unresolved_hypothesis.excluded_sats),
+                        unresolved_hypothesis.separation_m,
+                        self.solver.separation_gate_m,
+                        unresolved_hypothesis.post_exclusion_rms_m
+                    ),
+                ));
+                nav_epoch = policy_refusal_epoch(
+                    nav_epoch,
+                    self.last_solution.as_ref().map(|row| row.status),
+                    NavRefusalClass::InconsistentObservations,
+                    vec![
+                        "integrity_unavailable".to_string(),
+                        "raim_multi_fault_unresolved".to_string(),
+                        format!(
+                            "raim_multi_fault_suspect_prns={}",
+                            format_satellite_prns(&unresolved_hypothesis.excluded_sats)
+                        ),
+                    ],
+                );
+                nav_epoch = mark_integrity_failure(nav_epoch);
+            }
             if let Some(max_subset) = solution_separation.max_separation() {
                 self.record_event(bijux_gnss_core::api::DiagnosticEvent::new(
                     bijux_gnss_core::api::DiagnosticSeverity::Info,
@@ -926,6 +974,16 @@ impl PositionRuntime {
                     ),
                 ));
             }
+        }
+        if solution.raim_fault_exclusions.len() > 1 {
+            raim_explain_reasons.push(format!(
+                "raim_excluded_prns={}",
+                format_raim_exclusion_prns(&solution.raim_fault_exclusions)
+            ));
+            raim_explain_reasons.push(format!(
+                "raim_excluded_satellite_count={}",
+                solution.raim_fault_exclusions.len()
+            ));
         }
         if let Some(raim_fault_exclusion) = solution.raim_fault_exclusion {
             raim_explain_reasons.push("raim_fault_excluded".to_string());
@@ -2421,6 +2479,19 @@ fn residual_temporal_correlation_explain_reasons(
         format!("residual_matched_satellites={}", correlation.matched_satellite_count),
         format!("residual_temporal_correlation_streak={}", correlation.persistent_suspect_epochs),
     ]
+}
+
+fn format_satellite_prns(sats: &[SatId]) -> String {
+    let mut prns = sats.iter().map(|sat| sat.prn).collect::<Vec<_>>();
+    prns.sort_unstable();
+    prns.iter().map(u8::to_string).collect::<Vec<_>>().join(",")
+}
+
+fn format_raim_exclusion_prns(exclusions: &[RaimFaultExclusion]) -> String {
+    let mut prns =
+        exclusions.iter().map(|exclusion| exclusion.excluded_sat.prn).collect::<Vec<_>>();
+    prns.sort_unstable();
+    prns.iter().map(u8::to_string).collect::<Vec<_>>().join(",")
 }
 
 fn decision_for_solution(solution: &NavSolutionEpoch) -> NavDecision {
