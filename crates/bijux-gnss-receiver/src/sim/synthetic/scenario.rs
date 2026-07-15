@@ -702,21 +702,13 @@ pub struct SyntheticQuantizationLossReport {
     pub points: Vec<SyntheticQuantizationLossPoint>,
 }
 
-fn shared_receiver_epoch_base(
-    pseudorange_chips: &[f64],
-) -> Result<u64, SyntheticNavigationValidationError> {
-    let mut epoch_indices = pseudorange_chips.iter().map(|chips| (chips / 1023.0).floor() as u64);
-    let Some(receiver_epoch_base) = epoch_indices.next() else {
-        return Err(SyntheticNavigationValidationError::EmptySatelliteSet);
-    };
-    if !epoch_indices.all(|epoch_idx| epoch_idx == receiver_epoch_base) {
-        return Err(SyntheticNavigationValidationError::InconsistentReceiverEpochBase);
-    }
-    Ok(receiver_epoch_base)
+pub(super) fn receiver_whole_code_periods(pseudorange_chips: f64) -> u64 {
+    (pseudorange_chips / 1023.0).floor() as u64
 }
 
-fn encode_receiver_code_phase_chips(pseudorange_chips: f64, receiver_epoch_base: u64) -> f64 {
-    let code_phase_chips = pseudorange_chips - receiver_epoch_base as f64 * 1023.0;
+fn encode_receiver_code_phase_chips(pseudorange_chips: f64) -> f64 {
+    let code_phase_chips =
+        pseudorange_chips - receiver_whole_code_periods(pseudorange_chips) as f64 * 1023.0;
     code_phase_chips.rem_euclid(1023.0)
 }
 
@@ -753,8 +745,6 @@ pub fn build_signal_scenario_from_navigation_validation_scenario(
             ) * (1_023_000.0 / SPEED_OF_LIGHT_MPS))
         })
         .collect::<Result<Vec<_>, SyntheticNavigationValidationError>>()?;
-    let receiver_epoch_base = shared_receiver_epoch_base(&pseudorange_chips)?;
-
     Ok(SyntheticScenario {
         sample_rate_hz: scenario.sample_rate_hz,
         intermediate_freq_hz: scenario.intermediate_freq_hz,
@@ -771,10 +761,7 @@ pub fn build_signal_scenario_from_navigation_validation_scenario(
                 signal_band: signal.signal_band,
                 signal_code: signal.signal_code,
                 doppler_hz: signal.doppler_hz,
-                code_phase_chips: encode_receiver_code_phase_chips(
-                    pseudorange_phase_chips,
-                    receiver_epoch_base,
-                ),
+                code_phase_chips: encode_receiver_code_phase_chips(pseudorange_phase_chips),
                 carrier_phase_rad: signal.carrier_phase_rad,
                 cn0_db_hz: signal.cn0_db_hz,
                 navigation_data: signal.navigation_data.clone(),

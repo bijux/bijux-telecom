@@ -203,7 +203,6 @@ fn signal_delay_alignments_from_navigation_validation_scenario(
             ) * (1_023_000.0 / SPEED_OF_LIGHT_MPS))
         })
         .collect::<Result<Vec<_>, SyntheticNavigationValidationError>>()?;
-    let receiver_epoch_base = shared_receiver_epoch_base(&pseudorange_chips)?;
     let source_front_end_sample_delay_samples = scenario
         .source_front_end_filter
         .as_ref()
@@ -213,13 +212,17 @@ fn signal_delay_alignments_from_navigation_validation_scenario(
     Ok(scenario
         .satellites
         .iter()
-        .map(|signal| SyntheticSignalDelayAlignment {
-            sat: signal.sat,
-            signal_delay_alignment: SignalDelayAlignment {
-                whole_code_periods: receiver_epoch_base,
-                sample_delay_samples: source_front_end_sample_delay_samples,
-                source: "synthetic_truth".to_string(),
-            },
+        .zip(pseudorange_chips.iter().copied())
+        .map(|(signal, pseudorange_phase_chips)| {
+            let whole_code_periods = receiver_whole_code_periods(pseudorange_phase_chips);
+            SyntheticSignalDelayAlignment {
+                sat: signal.sat,
+                signal_delay_alignment: SignalDelayAlignment {
+                    whole_code_periods,
+                    sample_delay_samples: source_front_end_sample_delay_samples,
+                    source: "synthetic_truth".to_string(),
+                },
+            }
         })
         .collect())
 }
