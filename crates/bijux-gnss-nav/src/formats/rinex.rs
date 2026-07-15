@@ -36,6 +36,11 @@ mod observation_export;
 
 pub use observation_export::{parse_rinex_obs_header, write_rinex_obs};
 
+mod navigation_types;
+
+use navigation_types::RinexNavHeader;
+pub use navigation_types::{RinexBroadcastNavigationDataset, RinexNavigationTimeSystemCorrection};
+
 fn push_rinex_line(output: &mut String, line: &str) {
     if line.len() > 80 {
         output.push_str(&line[..80]);
@@ -43,36 +48,6 @@ fn push_rinex_line(output: &mut String, line: &str) {
         output.push_str(line);
     }
     output.push('\n');
-}
-
-#[derive(Debug, Clone, PartialEq)]
-struct RinexNavHeader {
-    version: f64,
-    is_mixed: bool,
-    klobuchar: Option<KlobucharCoefficients>,
-    time_system_corrections: Vec<RinexNavigationTimeSystemCorrection>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct RinexNavigationTimeSystemCorrection {
-    pub code: String,
-    pub a0_s: f64,
-    pub a1_s_per_s: f64,
-    pub reference_time_s: u32,
-    pub reference_week: u32,
-    pub provider: Option<String>,
-    pub utc_id: Option<String>,
-}
-
-#[derive(Debug, Clone)]
-pub struct RinexBroadcastNavigationDataset {
-    pub version: f64,
-    pub klobuchar: Option<KlobucharCoefficients>,
-    pub time_system_corrections: Vec<RinexNavigationTimeSystemCorrection>,
-    pub gps: Vec<GpsEphemeris>,
-    pub galileo: Vec<GalileoBroadcastNavigationData>,
-    pub beidou: Vec<BeidouBroadcastNavigationData>,
-    pub glonass: Vec<GlonassBroadcastNavigationFrame>,
 }
 
 fn rinex_nav_float_regex() -> &'static Regex {
