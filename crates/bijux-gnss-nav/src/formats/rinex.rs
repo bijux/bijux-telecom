@@ -19,7 +19,11 @@ use crate::formats::rinex_obs::{
 };
 use crate::models::atmosphere::KlobucharCoefficients;
 use crate::orbits::beidou::BeidouBroadcastNavigationData;
-use crate::orbits::galileo::GalileoBroadcastNavigationData;
+use crate::orbits::galileo::{
+    GalileoBroadcastNavigationData, GalileoClockCorrection, GalileoEphemeris,
+    GalileoIonosphericCorrection, GalileoIonosphericDisturbanceFlags, GalileoSignalHealth,
+    GalileoSystemTime,
+};
 use crate::orbits::glonass::GlonassBroadcastNavigationFrame;
 use crate::orbits::gps::GpsBroadcastNavigationData;
 use crate::orbits::gps::GpsEphemeris;
@@ -506,6 +510,124 @@ fn parse_gps_rinex_nav_record(
     })
 }
 
+fn parse_galileo_rinex_nav_record(
+    header: &RinexNavHeader,
+    lines: &[&str],
+) -> Result<GalileoBroadcastNavigationData, ParseError> {
+    if lines.len() != 8 {
+        return Err(ParseError {
+            message: format!("Galileo RINEX NAV record requires 8 lines, found {}", lines.len()),
+        });
+    }
+
+    let first_line = lines[0];
+    let prn = first_line
+        .get(..3)
+        .unwrap_or_default()
+        .trim()
+        .strip_prefix('E')
+        .ok_or_else(|| ParseError {
+            message: format!(
+                "unsupported Galileo RINEX NAV satellite identifier '{}'",
+                &first_line[..3.min(first_line.len())]
+            ),
+        })?
+        .parse::<u8>()
+        .map_err(|err| ParseError {
+            message: format!(
+                "invalid Galileo satellite identifier '{}': {err}",
+                &first_line[..3.min(first_line.len())]
+            ),
+        })?;
+    let line1 = parse_rinex_numeric_fields(first_line.get(3..).unwrap_or_default())?;
+    if line1.len() < 9 {
+        return Err(ParseError {
+            message: format!(
+                "Galileo RINEX NAV first line requires 9 numeric fields, found {}",
+                line1.len()
+            ),
+        });
+    }
+    let line2 = pad_rinex_nav_record_fields(parse_rinex_numeric_fields(lines[1])?);
+    let line3 = pad_rinex_nav_record_fields(parse_rinex_numeric_fields(lines[2])?);
+    let line4 = pad_rinex_nav_record_fields(parse_rinex_numeric_fields(lines[3])?);
+    let line5 = pad_rinex_nav_record_fields(parse_rinex_numeric_fields(lines[4])?);
+    let line6 = pad_rinex_nav_record_fields(parse_rinex_numeric_fields(lines[5])?);
+    let line7 = pad_rinex_nav_record_fields(parse_rinex_numeric_fields(lines[6])?);
+
+    let year = parse_rinex_nav_year(line1[0] as i32, header.version);
+    let toc = parse_rinex_epoch_utc_civil(
+        year,
+        line1[1] as u8,
+        line1[2] as u8,
+        line1[3] as u8,
+        line1[4] as u8,
+        line1[5],
+    )?;
+    let toc_gps = utc_civil_to_gps_with_offset(toc, &LeapSeconds::default_table())
+        .map_err(rinex_utc_civil_error)?
+        .time;
+    let sat = SatId { constellation: Constellation::Galileo, prn };
+    let iodnav = line2[0].round().max(0.0) as u16;
+    let health = line7[0].round().max(0.0) as u8;
+
+    Ok(GalileoBroadcastNavigationData {
+        sat,
+        iodnav,
+        gst: GalileoSystemTime {
+            week: line6[2].round().max(0.0) as u16,
+            tow_s: line7[3].round().max(0.0) as u32,
+        },
+        sisa_e1_e5b: line6[3].round().max(0.0) as u8,
+        signal_health: GalileoSignalHealth {
+            e5b_signal_health: health & 0b11,
+            e1b_signal_health: (health >> 2) & 0b11,
+            e5b_data_valid: (health & 0b0001_0000) == 0,
+            e1b_data_valid: (health & 0b0010_0000) == 0,
+        },
+        clock: GalileoClockCorrection {
+            t0c_s: toc_gps.tow_s,
+            af0: line1[6],
+            af1: line1[7],
+            af2: line1[8],
+            bgd_e1_e5a_s: line7[1],
+            bgd_e1_e5b_s: line7[2],
+        },
+        ephemeris: GalileoEphemeris {
+            sat,
+            iodnav,
+            toe_s: line4[0].rem_euclid(604_800.0),
+            sqrt_a: line3[3],
+            e: line3[1],
+            i0: line5[0],
+            idot: line6[0],
+            omega0: line4[2],
+            omegadot: line5[3],
+            w: line5[2],
+            m0: line2[3],
+            delta_n: line2[2],
+            cuc: line3[0],
+            cus: line3[2],
+            crc: line5[1],
+            crs: line2[1],
+            cic: line4[1],
+            cis: line4[3],
+        },
+        ionosphere: GalileoIonosphericCorrection {
+            ai0: 0.0,
+            ai1: 0.0,
+            ai2: 0.0,
+            disturbance_flags: GalileoIonosphericDisturbanceFlags {
+                region_1: false,
+                region_2: false,
+                region_3: false,
+                region_4: false,
+                region_5: false,
+            },
+        },
+    })
+}
+
 pub fn parse_rinex_nav(data: &str) -> Result<Vec<GpsEphemeris>, ParseError> {
     Ok(parse_rinex_broadcast_navigation(data)?.ephemerides)
 }
@@ -520,7 +642,7 @@ pub fn parse_rinex_navigation_dataset(
         .filter(|line| !line.trim().is_empty())
         .collect::<Vec<_>>();
     let mut gps = Vec::new();
-    let galileo = Vec::new();
+    let mut galileo = Vec::new();
     let beidou = Vec::new();
     let glonass = Vec::new();
     let mut index = 0usize;
@@ -541,6 +663,8 @@ pub fn parse_rinex_navigation_dataset(
         let record = &lines[index..index + line_count];
         if header.version < 3.0 || line.starts_with('G') {
             gps.push(parse_gps_rinex_nav_record(&header, record)?);
+        } else if line.starts_with('E') {
+            galileo.push(parse_galileo_rinex_nav_record(&header, record)?);
         }
         index += line_count;
     }
@@ -875,6 +999,7 @@ mod tests {
     };
     use crate::formats::rinex_obs::{parse_rinex_observation_dataset, RinexObservationRecord};
     use crate::models::atmosphere::KlobucharCoefficients;
+    use crate::orbits::galileo::GalileoSystemTime;
     use crate::orbits::gps::{GpsBroadcastNavigationData, GpsEphemeris};
     use bijux_gnss_core::api::{
         Constellation, Cycles, Hertz, LockFlags, Meters, ObsEpoch, ObsMetadata, ObsSatellite,
@@ -1234,6 +1359,39 @@ G01 2022 05 13 20 00 00-1.234567890123D-04 2.345678901234D-12 0.000000000000D+00
         assert_eq!(dataset.time_system_corrections[0].code, "GPGA");
         assert_eq!(dataset.time_system_corrections[0].provider.as_deref(), Some("GPS"));
         assert_eq!(dataset.time_system_corrections[0].utc_id.as_deref(), Some("GAL"));
+    }
+
+    #[test]
+    fn parse_rinex_navigation_dataset_reads_galileo_records() {
+        let data = "\
+     3.05           NAVIGATION DATA     M (MIXED)           RINEX VERSION / TYPE
+bijux-gnss                              PGM / RUN BY / DATE
+                                                            END OF HEADER
+E19 1980 01 06 18 20 00-1.700000000000D-04 2.500000000000D-12-3.000000000000D-19
+    4.210000000000D+02-9.100000000000D+01 4.700000000000D-09 8.400000000000D-01
+   -3.200000000000D-06 1.230000000000D-03 4.100000000000D-06 5.440612319000D+03
+    6.480000000000D+04 1.900000000000D-07 1.170000000000D+00-2.400000000000D-07
+    9.530000000000D-01 1.780000000000D+02-3.700000000000D-01-5.800000000000D-09
+   -2.100000000000D-10 5.000000000000D+00 0.000000000000D+00 7.700000000000D+01
+    3.000000000000D+00-1.100000000000D-09 2.400000000000D-09 6.500000000000D+04
+    0.000000000000D+00 0.000000000000D+00 0.000000000000D+00 0.000000000000D+00
+";
+
+        let dataset = parse_rinex_navigation_dataset(data).expect("parse Galileo navigation");
+
+        assert!(dataset.gps.is_empty());
+        assert_eq!(dataset.galileo.len(), 1);
+        let galileo = &dataset.galileo[0];
+        assert_eq!(galileo.sat, SatId { constellation: Constellation::Galileo, prn: 19 });
+        assert_eq!(galileo.iodnav, 421);
+        assert_eq!(galileo.gst, GalileoSystemTime { week: 0, tow_s: 65_000 });
+        assert_eq!(galileo.sisa_e1_e5b, 77);
+        assert_eq!(galileo.signal_health.e5b_signal_health, 3);
+        assert!((galileo.clock.t0c_s - 66_000.0).abs() < 1.0e-9);
+        assert!((galileo.clock.af0 + 1.7e-4).abs() < 1.0e-16);
+        assert!((galileo.clock.bgd_e1_e5a_s + 1.1e-9).abs() < 1.0e-20);
+        assert!((galileo.ephemeris.sqrt_a - 5_440.612_319).abs() < 1.0e-12);
+        assert!((galileo.ephemeris.toe_s - 64_800.0).abs() < 1.0e-9);
     }
 
     #[test]
