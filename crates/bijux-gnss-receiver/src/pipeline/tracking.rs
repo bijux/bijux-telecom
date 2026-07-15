@@ -6,11 +6,11 @@ use num_complex::Complex;
 use serde::{Deserialize, Serialize};
 
 use bijux_gnss_core::api::{
-    AcqHypothesis, AcqTrackingSeed, AcqUncertainty, Chips, Constellation, Cycles, FreqHz, Hertz,
-    ReceiverSampleTrace, SampleClock, SampleTime, SamplesFrame, SatId, Seconds, SignalBand,
+    AcqHypothesis, AcqTrackingSeed, AcqUncertainty, Chips, Constellation, Cycles, FreqHz, GpsTime,
+    Hertz, ReceiverSampleTrace, SampleClock, SampleTime, SamplesFrame, SatId, Seconds, SignalBand,
     SignalCode, SignalComponentRole, SignalDelayAlignment, SignalSecondaryCodeSpec, SignalSpec,
-    SignalSubcarrierSpec, TrackEpoch, TrackTransition, TrackingAssumptions, TrackingUncertainty,
-    GPS_L1_CA_CARRIER_HZ,
+    SignalSubcarrierSpec, TrackEpoch, TrackTransition, TrackingAssumptions, TrackingTransmitTime,
+    TrackingUncertainty, GPS_L1_CA_CARRIER_HZ,
 };
 
 use crate::engine::receiver_config::{ReceiverPipelineConfig, TrackingParams};
@@ -2727,6 +2727,11 @@ impl Tracking {
                     &mut channel.epochs,
                 );
                 annotate_navigation_bit_signs(&channel.signal_model, &mut channel.epochs);
+                annotate_lnav_transmit_times(
+                    &channel.signal_model,
+                    self.runtime.config.capture_start_gps_time,
+                    &mut channel.epochs,
+                );
                 stabilize_joint_navigation_bit_signs(&channel.signal_model, &mut channel.epochs);
                 let stability_signature = tracking_stability_signature(&channel.epochs);
                 let outcome = if channel.epochs.is_empty() { "not_tracked" } else { "tracked" };
@@ -3407,8 +3412,79 @@ fn navigation_symbol_sync_is_confident(
         && demodulation.sync_confidence >= NAV_SYMBOL_SYNC_MIN_CONFIDENCE
 }
 
+#[cfg(feature = "nav")]
+fn annotate_lnav_transmit_times(
+    signal_model: &TrackingSignalModel,
+    capture_start_gps_time: Option<GpsTime>,
+    epochs: &mut [TrackEpoch],
+) {
+    if !signal_model.supports_navigation_bit_sign_recovery() || epochs.is_empty() {
+        return;
+    }
+    let Some(capture_start_gps_time) = capture_start_gps_time else {
+        return;
+    };
+
+    let prompt_history = epochs.iter().map(|epoch| epoch.prompt_i).collect::<Vec<_>>();
+    let decoded = bijux_gnss_nav::api::decode_gps_l1ca_lnav_from_prompt(&prompt_history);
+    for subframe in decoded.subframes {
+        if !subframe.tlm.parity_ok || !subframe.how.parity_ok {
+            continue;
+        }
+        let start = subframe.alignment.start_prompt_index.min(epochs.len());
+        let end = subframe.alignment.end_prompt_index_exclusive.min(epochs.len());
+        if start >= end {
+            continue;
+        }
+
+        for (offset_ms, epoch) in epochs[start..end].iter_mut().enumerate() {
+            let transmit_tow_s = subframe.how.tow_start_s as f64 + offset_ms as f64 * 0.001;
+            let transmit_gps_time =
+                gps_transmit_time_near_receive_time(capture_start_gps_time, epoch, transmit_tow_s);
+            epoch.transmit_time = Some(TrackingTransmitTime {
+                transmit_gps_time,
+                source: "gps_l1ca_lnav_how".to_string(),
+            });
+            epoch.tracking_provenance.push_str(&format!(
+                " lnav_transmit_time=decoded how_tow_s={} lnav_parity_ok_count={}",
+                subframe.how.tow_start_s, subframe.alignment.parity_ok_count
+            ));
+        }
+    }
+}
+
+#[cfg(feature = "nav")]
+fn gps_transmit_time_near_receive_time(
+    capture_start_gps_time: GpsTime,
+    epoch: &TrackEpoch,
+    transmit_tow_s: f64,
+) -> GpsTime {
+    let receive_time = capture_start_gps_time.offset_seconds(epoch.source_time.receiver_time_s.0);
+    let receive_seconds = receive_time.to_seconds();
+    let base_week = receive_time.week;
+    let mut best = GpsTime { week: base_week, tow_s: transmit_tow_s };
+    let mut best_delta = (best.to_seconds() - receive_seconds).abs();
+    for week in [base_week.saturating_sub(1), base_week.saturating_add(1)] {
+        let candidate = GpsTime { week, tow_s: transmit_tow_s };
+        let delta = (candidate.to_seconds() - receive_seconds).abs();
+        if delta < best_delta {
+            best = candidate;
+            best_delta = delta;
+        }
+    }
+    best
+}
+
 #[cfg(not(feature = "nav"))]
 fn annotate_navigation_bit_signs(_signal_model: &TrackingSignalModel, _epochs: &mut [TrackEpoch]) {}
+
+#[cfg(not(feature = "nav"))]
+fn annotate_lnav_transmit_times(
+    _signal_model: &TrackingSignalModel,
+    _reference_week: Option<u32>,
+    _epochs: &mut [TrackEpoch],
+) {
+}
 
 fn stabilize_joint_navigation_bit_signs(
     signal_model: &TrackingSignalModel,
@@ -4871,9 +4947,9 @@ mod tests {
     use crate::engine::runtime::ReceiverRuntime;
     use crate::sim::synthetic::{generate_l1_ca, SyntheticSignalParams};
     use bijux_gnss_core::api::{
-        AcqHypothesis, AcqUncertainty, Chips, Constellation, Epoch, Hertz, ReceiverSampleTrace,
-        SampleTime, SamplesFrame, SatId, Seconds, SignalBand, SignalCode, SignalComponentRole,
-        TrackEpoch, GPS_L1_CA_CARRIER_HZ,
+        AcqHypothesis, AcqUncertainty, Chips, Constellation, Epoch, GpsTime, Hertz,
+        ReceiverSampleTrace, SampleTime, SamplesFrame, SatId, Seconds, SignalBand, SignalCode,
+        SignalComponentRole, TrackEpoch, GPS_L1_CA_CARRIER_HZ,
     };
     use bijux_gnss_signal::api::TrackingLoopProfile as SignalTrackingLoopProfile;
     use bijux_gnss_signal::api::{
@@ -5745,12 +5821,192 @@ mod tests {
             .map(|(index, prompt_i)| TrackEpoch {
                 epoch: Epoch { index: index as u64 },
                 sample_index: index as u64,
+                source_time: ReceiverSampleTrace::from_sample_index(index as u64, 1000.0),
                 sat: SatId { constellation: Constellation::Gps, prn: 1 },
                 prompt_i: *prompt_i,
                 tracking_provenance: "tracking".to_string(),
                 ..TrackEpoch::default()
             })
             .collect()
+    }
+
+    #[cfg(feature = "nav")]
+    fn set_lnav_bits(data: &mut u32, start: usize, len: usize, value: u32) {
+        let shift = 24 - (start - 1) - len;
+        let mask = ((1_u32 << len) - 1) << shift;
+        *data &= !mask;
+        *data |= (value << shift) & mask;
+    }
+
+    #[cfg(feature = "nav")]
+    fn lnav_word_parity(data_bits: &[u8], d29_star: u8, d30_star: u8) -> (u8, u8, u8, u8, u8, u8) {
+        let d = |i: usize| -> u8 { data_bits[i - 1] };
+        let p1 = d(1)
+            ^ d(2)
+            ^ d(3)
+            ^ d(5)
+            ^ d(6)
+            ^ d(10)
+            ^ d(11)
+            ^ d(12)
+            ^ d(13)
+            ^ d(14)
+            ^ d(15)
+            ^ d(17)
+            ^ d(18)
+            ^ d(20)
+            ^ d(23)
+            ^ d(24)
+            ^ d29_star;
+        let p2 = d(2)
+            ^ d(3)
+            ^ d(4)
+            ^ d(6)
+            ^ d(7)
+            ^ d(11)
+            ^ d(12)
+            ^ d(13)
+            ^ d(14)
+            ^ d(15)
+            ^ d(16)
+            ^ d(18)
+            ^ d(19)
+            ^ d(21)
+            ^ d(24)
+            ^ d29_star
+            ^ d30_star;
+        let p3 = d(1)
+            ^ d(3)
+            ^ d(4)
+            ^ d(5)
+            ^ d(7)
+            ^ d(8)
+            ^ d(12)
+            ^ d(13)
+            ^ d(14)
+            ^ d(15)
+            ^ d(16)
+            ^ d(17)
+            ^ d(19)
+            ^ d(20)
+            ^ d(22)
+            ^ d29_star
+            ^ d30_star;
+        let p4 = d(1)
+            ^ d(2)
+            ^ d(4)
+            ^ d(5)
+            ^ d(6)
+            ^ d(8)
+            ^ d(9)
+            ^ d(13)
+            ^ d(14)
+            ^ d(15)
+            ^ d(16)
+            ^ d(17)
+            ^ d(18)
+            ^ d(20)
+            ^ d(21)
+            ^ d(23)
+            ^ d30_star;
+        let p5 = d(1)
+            ^ d(2)
+            ^ d(3)
+            ^ d(5)
+            ^ d(6)
+            ^ d(7)
+            ^ d(9)
+            ^ d(10)
+            ^ d(14)
+            ^ d(15)
+            ^ d(16)
+            ^ d(17)
+            ^ d(18)
+            ^ d(19)
+            ^ d(21)
+            ^ d(22)
+            ^ d(24)
+            ^ d29_star;
+        let p6 = d(2)
+            ^ d(3)
+            ^ d(4)
+            ^ d(6)
+            ^ d(7)
+            ^ d(8)
+            ^ d(10)
+            ^ d(11)
+            ^ d(15)
+            ^ d(16)
+            ^ d(17)
+            ^ d(18)
+            ^ d(19)
+            ^ d(20)
+            ^ d(22)
+            ^ d(23)
+            ^ d(24)
+            ^ d30_star;
+        (p1, p2, p3, p4, p5, p6)
+    }
+
+    #[cfg(feature = "nav")]
+    fn encode_lnav_word(data: u32, prev_d29: u8, prev_d30: u8) -> [u8; 30] {
+        let mut bits = [0_u8; 30];
+        for (index, bit) in bits.iter_mut().enumerate().take(24) {
+            let shift = 23 - index;
+            *bit = ((data >> shift) & 1) as u8;
+        }
+        let (p1, p2, p3, p4, p5, p6) = lnav_word_parity(&bits[..24], prev_d29, prev_d30);
+        bits[24] = p1;
+        bits[25] = p2;
+        bits[26] = p3;
+        bits[27] = p4;
+        bits[28] = p5;
+        bits[29] = p6;
+        if prev_d30 == 1 {
+            for bit in &mut bits {
+                *bit = 1 - *bit;
+            }
+        }
+        bits
+    }
+
+    #[cfg(feature = "nav")]
+    fn encode_lnav_subframe(subframe_id: u8, tow_count: u32) -> Vec<i8> {
+        let mut tlm = 0_u32;
+        set_lnav_bits(&mut tlm, 1, 8, 0x8B);
+
+        let mut how = 0_u32;
+        set_lnav_bits(&mut how, 1, 17, tow_count);
+        set_lnav_bits(&mut how, 20, 3, subframe_id as u32);
+
+        let mut words = vec![tlm, how];
+        for offset in 0..8_u32 {
+            words.push(0x012345 + offset * 0x010101);
+        }
+
+        let mut prev_d29 = 0_u8;
+        let mut prev_d30 = 0_u8;
+        let mut bits = Vec::with_capacity(300);
+        for data in words {
+            let encoded = encode_lnav_word(data, prev_d29, prev_d30);
+            prev_d29 = encoded[28];
+            prev_d30 = encoded[29];
+            bits.extend(encoded.into_iter().map(|bit| if bit == 1 { 1 } else { -1 }));
+        }
+        bits
+    }
+
+    #[cfg(feature = "nav")]
+    fn lnav_prompt_history_with_offset(
+        offset_ms: usize,
+        subframe_id: u8,
+        tow_count: u32,
+    ) -> Vec<f32> {
+        let mut prompt = vec![0.25_f32; offset_ms];
+        for bit in encode_lnav_subframe(subframe_id, tow_count) {
+            prompt.extend(std::iter::repeat_n(bit as f32, 20));
+        }
+        prompt
     }
 
     #[test]
@@ -5822,6 +6078,49 @@ mod tests {
         assert!(epochs[6..66]
             .iter()
             .all(|epoch| epoch.tracking_provenance.contains("nav_symbol_sync=confident")));
+    }
+
+    #[cfg(feature = "nav")]
+    #[test]
+    fn annotate_lnav_transmit_times_maps_decoded_how_to_tracking_epochs() {
+        let signal_model = gps_l1ca_tracking_signal_model();
+        let tow_count = 57_600;
+        let prompt = lnav_prompt_history_with_offset(7, 1, tow_count);
+        let mut epochs = prompt_history_epochs(&prompt);
+
+        super::annotate_lnav_transmit_times(
+            &signal_model,
+            Some(GpsTime { week: 2200, tow_s: 345_600.073 }),
+            &mut epochs,
+        );
+
+        assert!(epochs[..7].iter().all(|epoch| epoch.transmit_time.is_none()));
+        let subframe_start = epochs[7].transmit_time.as_ref().expect("subframe start time");
+        assert_eq!(subframe_start.source, "gps_l1ca_lnav_how");
+        assert_eq!(subframe_start.transmit_gps_time.week, 2200);
+        assert!((subframe_start.transmit_gps_time.tow_s - 345_600.0).abs() <= 1.0e-12);
+
+        let later = epochs[257].transmit_time.as_ref().expect("offset transmit time");
+        assert!((later.transmit_gps_time.tow_s - 345_600.250).abs() <= 1.0e-12);
+        assert!(epochs[257].tracking_provenance.contains("lnav_transmit_time=decoded"));
+    }
+
+    #[cfg(feature = "nav")]
+    #[test]
+    fn lnav_transmit_time_week_resolution_tracks_receive_time_boundary() {
+        let epoch = TrackEpoch {
+            source_time: ReceiverSampleTrace::from_sample_index(20, 1000.0),
+            ..TrackEpoch::default()
+        };
+
+        let transmit_time = super::gps_transmit_time_near_receive_time(
+            GpsTime { week: 2201, tow_s: 0.010 },
+            &epoch,
+            604_799.950,
+        );
+
+        assert_eq!(transmit_time.week, 2200);
+        assert!((transmit_time.tow_s - 604_799.950).abs() <= 1.0e-12);
     }
 
     #[test]
