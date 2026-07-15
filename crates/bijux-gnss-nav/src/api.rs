@@ -186,6 +186,10 @@ pub use crate::formats::beidou_b1i_navigation_decode::{
     BeidouD1Ephemeris2Subframe, BeidouD1Subframe, BeidouD1SubframeRejection,
     BeidouD1SubframeRejectionReason,
 };
+pub use crate::formats::beidou_d2_navigation_decode::{
+    decode_beidou_d2_page, BeidouD2Page, BeidouD2PageRejection, BeidouD2PageRejectionReason,
+    BeidouD2ParitySummary,
+};
 pub use crate::formats::bias_sinex::{BiasSinexProvider, BiasSinexWindow};
 /// GPS CNAV packet decoding.
 pub use crate::formats::cnav_decode::{
