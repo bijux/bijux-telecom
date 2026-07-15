@@ -42,6 +42,25 @@ pub struct TimeConversion<T> {
     pub offset: TimeOffsetEvidence,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct UtcCivilTime {
+    pub year: i32,
+    pub month: u8,
+    pub day: u8,
+    pub hour: u8,
+    pub minute: u8,
+    pub second: u8,
+    pub nanosecond: u32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum UtcCivilTimeError {
+    InvalidFormat,
+    InvalidDate,
+    InvalidTime,
+    LeapSecondNotDeclared,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct GalileoTime {
     pub week: u32,
@@ -128,6 +147,117 @@ impl GlonassUtcOffset {
     }
 }
 
+impl UtcCivilTime {
+    pub fn parse(value: &str) -> Result<Self, UtcCivilTimeError> {
+        let value = value.strip_suffix('Z').ok_or(UtcCivilTimeError::InvalidFormat)?;
+        let (date, time) = value.split_once('T').ok_or(UtcCivilTimeError::InvalidFormat)?;
+        let mut date_parts = date.split('-');
+        let year = parse_i32(date_parts.next())?;
+        let month = parse_u8(date_parts.next())?;
+        let day = parse_u8(date_parts.next())?;
+        if date_parts.next().is_some() {
+            return Err(UtcCivilTimeError::InvalidFormat);
+        }
+
+        let mut time_parts = time.split(':');
+        let hour = parse_u8(time_parts.next())?;
+        let minute = parse_u8(time_parts.next())?;
+        let second_text = time_parts.next().ok_or(UtcCivilTimeError::InvalidFormat)?;
+        if time_parts.next().is_some() {
+            return Err(UtcCivilTimeError::InvalidFormat);
+        }
+        let (second_text, fraction_text) = match second_text.split_once('.') {
+            Some((_, "")) => return Err(UtcCivilTimeError::InvalidFormat),
+            Some((second, fraction)) => (second, fraction),
+            None => (second_text, ""),
+        };
+        let second = parse_u8(Some(second_text))?;
+        let nanosecond = parse_nanosecond(fraction_text)?;
+        let time = Self { year, month, day, hour, minute, second, nanosecond };
+        time.validate_fields()?;
+        Ok(time)
+    }
+
+    pub fn format_utc(&self) -> String {
+        if self.nanosecond == 0 {
+            format!(
+                "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
+                self.year, self.month, self.day, self.hour, self.minute, self.second
+            )
+        } else {
+            let mut fraction = format!("{:09}", self.nanosecond);
+            while fraction.ends_with('0') {
+                fraction.pop();
+            }
+            format!(
+                "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}.{fraction}Z",
+                self.year, self.month, self.day, self.hour, self.minute, self.second
+            )
+        }
+    }
+
+    pub fn from_utc_time(utc: UtcTime) -> Self {
+        let mut whole_seconds = utc.unix_s.floor() as i64;
+        let fractional_s = utc.unix_s - whole_seconds as f64;
+        let mut nanosecond = (fractional_s * 1_000_000_000.0).round() as u32;
+        if nanosecond == 1_000_000_000 {
+            whole_seconds += 1;
+            nanosecond = 0;
+        }
+        let (year, month, day, hour, minute, second) = civil_from_unix_seconds(whole_seconds);
+        Self { year, month, day, hour, minute, second, nanosecond }
+    }
+
+    pub fn to_utc_time(&self) -> Result<UtcTime, UtcCivilTimeError> {
+        self.validate_fields()?;
+        if self.second == 60 {
+            return Err(UtcCivilTimeError::LeapSecondNotDeclared);
+        }
+        Ok(UtcTime {
+            unix_s: unix_seconds_from_civil(
+                self.year,
+                self.month,
+                self.day,
+                self.hour,
+                self.minute,
+                self.second,
+            ) as f64
+                + self.nanosecond as f64 / 1_000_000_000.0,
+        })
+    }
+
+    pub fn validate_leap_second(&self, leap: &LeapSeconds) -> Result<(), UtcCivilTimeError> {
+        self.validate_fields()?;
+        if self.second != 60 {
+            return Ok(());
+        }
+        let leap_boundary_unix_s =
+            unix_seconds_from_civil(self.year, self.month, self.day, self.hour, self.minute, 59)
+                + 1;
+        if leap.entries.iter().any(|entry| entry.utc_unix_s == leap_boundary_unix_s) {
+            Ok(())
+        } else {
+            Err(UtcCivilTimeError::LeapSecondNotDeclared)
+        }
+    }
+
+    fn validate_fields(&self) -> Result<(), UtcCivilTimeError> {
+        if !valid_date(self.year, self.month, self.day) {
+            return Err(UtcCivilTimeError::InvalidDate);
+        }
+        if self.hour > 23 || self.minute > 59 || self.second > 60 {
+            return Err(UtcCivilTimeError::InvalidTime);
+        }
+        if self.second == 60 && (self.hour != 23 || self.minute != 59) {
+            return Err(UtcCivilTimeError::InvalidTime);
+        }
+        if self.nanosecond >= 1_000_000_000 {
+            return Err(UtcCivilTimeError::InvalidTime);
+        }
+        Ok(())
+    }
+}
+
 pub fn normalize_tow(tow_s: f64) -> f64 {
     if tow_s.is_finite() {
         tow_s.rem_euclid(604_800.0)
@@ -155,6 +285,14 @@ pub fn gps_week_rollover(week: u16, reference_week: u32) -> u32 {
 
 pub fn gps_time_from_utc(utc: UtcTime) -> GpsTime {
     utc_to_gps(utc, &LeapSeconds::default_table())
+}
+
+pub fn parse_utc_civil_time(value: &str) -> Result<UtcCivilTime, UtcCivilTimeError> {
+    UtcCivilTime::parse(value)
+}
+
+pub fn format_utc_civil_time(time: UtcCivilTime) -> String {
+    time.format_utc()
 }
 
 pub fn utc_to_gps_with_offset(utc: UtcTime, leap: &LeapSeconds) -> TimeConversion<GpsTime> {
@@ -365,6 +503,98 @@ pub fn glonass_to_gps_with_offset(
     }
 }
 
+fn parse_i32(value: Option<&str>) -> Result<i32, UtcCivilTimeError> {
+    value
+        .ok_or(UtcCivilTimeError::InvalidFormat)?
+        .parse()
+        .map_err(|_| UtcCivilTimeError::InvalidFormat)
+}
+
+fn parse_u8(value: Option<&str>) -> Result<u8, UtcCivilTimeError> {
+    value
+        .ok_or(UtcCivilTimeError::InvalidFormat)?
+        .parse()
+        .map_err(|_| UtcCivilTimeError::InvalidFormat)
+}
+
+fn parse_nanosecond(value: &str) -> Result<u32, UtcCivilTimeError> {
+    if value.is_empty() {
+        return Ok(0);
+    }
+    if value.len() > 9 || !value.bytes().all(|byte| byte.is_ascii_digit()) {
+        return Err(UtcCivilTimeError::InvalidFormat);
+    }
+    let mut padded = value.to_string();
+    while padded.len() < 9 {
+        padded.push('0');
+    }
+    padded.parse().map_err(|_| UtcCivilTimeError::InvalidFormat)
+}
+
+fn valid_date(year: i32, month: u8, day: u8) -> bool {
+    if !(1..=12).contains(&month) {
+        return false;
+    }
+    (1..=days_in_month(year, month)).contains(&day)
+}
+
+fn days_in_month(year: i32, month: u8) -> u8 {
+    match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 if leap_year(year) => 29,
+        2 => 28,
+        _ => 0,
+    }
+}
+
+fn leap_year(year: i32) -> bool {
+    (year % 4 == 0 && year % 100 != 0) || year % 400 == 0
+}
+
+fn unix_seconds_from_civil(year: i32, month: u8, day: u8, hour: u8, minute: u8, second: u8) -> i64 {
+    days_from_civil(year, month, day) * 86_400
+        + hour as i64 * 3_600
+        + minute as i64 * 60
+        + second as i64
+}
+
+fn civil_from_unix_seconds(unix_s: i64) -> (i32, u8, u8, u8, u8, u8) {
+    let days = unix_s.div_euclid(86_400);
+    let seconds_of_day = unix_s.rem_euclid(86_400);
+    let (year, month, day) = civil_from_days(days);
+    let hour = (seconds_of_day / 3_600) as u8;
+    let minute = ((seconds_of_day % 3_600) / 60) as u8;
+    let second = (seconds_of_day % 60) as u8;
+    (year, month, day, hour, minute, second)
+}
+
+fn days_from_civil(year: i32, month: u8, day: u8) -> i64 {
+    let year = year as i64 - i64::from(month <= 2);
+    let era = if year >= 0 { year } else { year - 399 } / 400;
+    let year_of_era = year - era * 400;
+    let month = month as i64;
+    let shifted_month = month + if month > 2 { -3 } else { 9 };
+    let day_of_year = (153 * shifted_month + 2) / 5 + day as i64 - 1;
+    let day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
+    era * 146_097 + day_of_era - 719_468
+}
+
+fn civil_from_days(days: i64) -> (i32, u8, u8) {
+    let days = days + 719_468;
+    let era = if days >= 0 { days } else { days - 146_096 } / 146_097;
+    let day_of_era = days - era * 146_097;
+    let year_of_era =
+        (day_of_era - day_of_era / 1_460 + day_of_era / 36_524 - day_of_era / 146_096) / 365;
+    let year = year_of_era + era * 400;
+    let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
+    let month_prime = (5 * day_of_year + 2) / 153;
+    let day = day_of_year - (153 * month_prime + 2) / 5 + 1;
+    let month = month_prime + if month_prime < 10 { 3 } else { -9 };
+    let year = year + i64::from(month <= 2);
+    (year as i32, month as u8, day as u8)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -373,7 +603,7 @@ mod tests {
         gps_to_glonass_with_offset, gps_to_utc_with_offset, gps_week_rollover,
         tai_to_utc_with_offset, utc_to_glonass_with_offset, utc_to_gps_with_offset,
         utc_to_tai_with_offset, BeidouTime, GalileoGpsTimeOffset, GalileoTime, GlonassTime,
-        GlonassUtcOffset, GnssTimeSystem, TimeOffsetSource,
+        GlonassUtcOffset, GnssTimeSystem, TimeOffsetSource, UtcCivilTime, UtcCivilTimeError,
     };
     use bijux_gnss_core::api::{GpsTime, LeapSeconds, TaiTime, UtcTime};
 
@@ -545,5 +775,46 @@ mod tests {
         assert_eq!(glonass.offset.offset_s, 10_782.25);
         assert_eq!(glonass.time, GlonassTime { day_index: 17_167, seconds_of_day: 10_800.25 });
         assert!((round_trip.time.to_seconds() - gps.to_seconds()).abs() < 1.0e-9);
+    }
+
+    #[test]
+    fn utc_civil_time_parses_and_formats_declared_leap_second() {
+        let leap = LeapSeconds::default_table();
+        let civil = UtcCivilTime::parse("2016-12-31T23:59:60Z").expect("leap second parses");
+
+        civil.validate_leap_second(&leap).expect("declared leap second");
+        assert_eq!(civil.second, 60);
+        assert_eq!(civil.format_utc(), "2016-12-31T23:59:60Z");
+    }
+
+    #[test]
+    fn utc_civil_time_rejects_undeclared_leap_second() {
+        let leap = LeapSeconds::default_table();
+        let civil = UtcCivilTime::parse("2016-12-30T23:59:60Z").expect("syntax parses");
+
+        assert_eq!(
+            civil.validate_leap_second(&leap),
+            Err(UtcCivilTimeError::LeapSecondNotDeclared)
+        );
+    }
+
+    #[test]
+    fn utc_civil_time_orders_inserted_second_before_following_midnight() {
+        let before = UtcCivilTime::parse("2016-12-31T23:59:59Z").expect("before");
+        let inserted = UtcCivilTime::parse("2016-12-31T23:59:60Z").expect("inserted");
+        let after = UtcCivilTime::parse("2017-01-01T00:00:00Z").expect("after");
+
+        assert!(before < inserted);
+        assert!(inserted < after);
+    }
+
+    #[test]
+    fn utc_civil_time_preserves_fractional_ordinary_seconds() {
+        let civil = UtcCivilTime::parse("2026-07-15T12:34:56.125Z").expect("fractional time");
+        let utc = civil.to_utc_time().expect("ordinary utc");
+        let formatted = UtcCivilTime::from_utc_time(utc).format_utc();
+
+        assert_eq!(civil.nanosecond, 125_000_000);
+        assert_eq!(formatted, "2026-07-15T12:34:56.125Z");
     }
 }
