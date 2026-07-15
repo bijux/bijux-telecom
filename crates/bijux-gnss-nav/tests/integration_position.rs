@@ -22,7 +22,8 @@ use bijux_gnss_nav::api::{
     GpsL1CaHowWord, GpsL1CaLnavDecodedSubframe, GpsL1CaLnavSubframe1Clock,
     GpsL1CaLnavSubframe2Orbit, GpsL1CaLnavSubframe3Orbit, GpsL1CaLnavSubframeAlignment,
     GpsL1CaTlmWord, GpsL1CaWordParitySummary, PositionBroadcastNavigation, PositionObservation,
-    PositionRobustWeighting, PositionSolver, SatelliteOrbitUncertaintySource,
+    PositionObservationCorrectionKind, PositionRobustWeighting, PositionSolver,
+    SatelliteOrbitUncertaintySource,
 };
 use support::position_truth::{
     add_klobuchar_delay_to_observations, add_saastamoinen_delay_to_observations,
@@ -847,6 +848,27 @@ fn single_point_solver_recovers_four_satellite_fix() {
         .abs()
             < 1.0e-9
     );
+}
+
+#[test]
+fn single_point_solution_records_reconstructable_correction_chains() {
+    let scenario = four_satellite_position_scenario(0.0);
+    let solution = PositionSolver::new()
+        .solve_wls(&scenario.observations, &scenario.ephemerides, scenario.t_rx_s)
+        .expect("timed four-satellite observations should solve");
+
+    assert_eq!(solution.corrected_observations.len(), solution.used_sat_count);
+    for record in &solution.corrected_observations {
+        assert_eq!(record.correction_chain.components.len(), 11);
+        assert_eq!(record.reconstruction_error_m(), 0.0);
+        assert!((record.reconstructed_residual_m() - record.residual_m).abs() < 1.0e-6);
+        assert!(record.correction_chain.components.iter().any(|component| {
+            component.kind == PositionObservationCorrectionKind::SatelliteClock && component.applied
+        }));
+        assert!(record.correction_chain.components.iter().any(|component| {
+            component.kind == PositionObservationCorrectionKind::ReceiverClock && component.applied
+        }));
+    }
 }
 
 #[test]

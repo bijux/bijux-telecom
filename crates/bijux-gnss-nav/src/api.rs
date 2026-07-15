@@ -74,7 +74,9 @@ pub use crate::estimation::position::integrity::{
     },
 };
 pub use crate::estimation::position::navigation::{
-    position_satellite_state_from_observation, PositionSatelliteState,
+    position_satellite_state_from_observation, PositionObservationCorrectionChain,
+    PositionObservationCorrectionComponent, PositionObservationCorrectionKind,
+    PositionSatelliteState, POSITION_OBSERVATION_CORRECTION_ORDER,
 };
 pub use crate::estimation::position::navigation_filter::{
     NavigationFilter, NavigationFilterConfig, NavigationFilterThresholds,
@@ -101,9 +103,10 @@ pub use crate::estimation::position::solver::{
     position_measurement_weight, position_observation_has_valid_satellite_time,
     position_observations_from_epoch, weight_from_cn0, weight_from_elevation,
     weight_from_pseudorange_sigma, ImpossibleGeometryEvidence, PositionBroadcastNavigation,
-    PositionDops, PositionFilterDivergenceReason, PositionObservation, PositionRobustWeighting,
-    PositionSolution, PositionSolveRefusal, PositionSolveRefusalKind, PositionSolver,
-    PositionWeightingModel, ReplayTimingAnomalyEvidence, WeightingConfig,
+    PositionCorrectedObservation, PositionDops, PositionFilterDivergenceReason,
+    PositionObservation, PositionRobustWeighting, PositionSolution, PositionSolveRefusal,
+    PositionSolveRefusalKind, PositionSolver, PositionWeightingModel, ReplayTimingAnomalyEvidence,
+    WeightingConfig,
 };
 pub use crate::estimation::position::trajectory::{
     trajectory_reconstruction_report, TrajectoryReconstructionError, TrajectoryReconstructionInput,
