@@ -93,6 +93,13 @@ impl ArtifactPayloadValidate for RtkFloatAmbiguityEstimate {
                 "float ambiguity variance is invalid",
             ));
         }
+        if self.sig.sat.constellation != self.ref_sig.sat.constellation {
+            events.push(DiagnosticEvent::new(
+                DiagnosticSeverity::Error,
+                "RTK_FLOAT_AMBIGUITY_CONSTELLATION_MISMATCH",
+                "float ambiguity signal and reference satellites belong to different constellations",
+            ));
+        }
         events
     }
 }

@@ -677,7 +677,7 @@ fn rtk_float_baseline_artifact_validation_rejects_invalid_values() {
             code: bijux_gnss_core::api::SignalCode::Ca,
         },
         ref_sig: SigId {
-            sat: SatId { constellation: Constellation::Gps, prn: 3 },
+            sat: SatId { constellation: Constellation::Galileo, prn: 3 },
             band: SignalBand::L1,
             code: bijux_gnss_core::api::SignalCode::Ca,
         },
@@ -702,6 +702,9 @@ fn rtk_float_baseline_artifact_validation_rejects_invalid_values() {
     }));
     assert!(diagnostics.iter().any(|event| event.code == "RTK_FLOAT_AMBIGUITY_NUMERIC_INVALID"));
     assert!(diagnostics.iter().any(|event| event.code == "RTK_FLOAT_AMBIGUITY_VARIANCE_INVALID"));
+    assert!(diagnostics
+        .iter()
+        .any(|event| event.code == "RTK_FLOAT_AMBIGUITY_CONSTELLATION_MISMATCH"));
     assert!(diagnostics.iter().any(|event| {
         event.code == "RTK_FLOAT_AMBIGUITY_COVARIANCE_NUMERIC_INVALID"
             || event.code == "RTK_FLOAT_AMBIGUITY_COVARIANCE_SHAPE_INVALID"
