@@ -3,7 +3,8 @@
 use bijux_gnss_core::api::{Constellation, SatId};
 use bijux_gnss_nav::api::{
     BroadcastProductsProvider, ClkInterpolationEdgePolicy, ClkInterpolationWindowPolicy,
-    GpsEphemeris, ProductDiagnostics, Products, ProductsProvider,
+    GpsEphemeris, PreciseProductDiscontinuityKind, PreciseProductSurface, ProductDiagnostics,
+    Products, ProductsProvider,
 };
 
 fn make_eph(prn: u8) -> GpsEphemeris {
@@ -111,6 +112,11 @@ AS G01 2020 01 01 00 30 00.000000  1  0.000003500
         products.clock_correction(eph.sat, 1_350.0, &mut diag).expect("broadcast fallback clock");
 
     assert!(!diag.fallbacks.is_empty());
-    assert!(diag.fallbacks.iter().any(|message| message.contains("CLK unusable")));
+    assert!(diag.fallbacks.iter().any(|message| message.contains("CLK clock_jump")));
+    assert!(diag.discontinuities.iter().any(|discontinuity| {
+        discontinuity.surface == PreciseProductSurface::Clock
+            && discontinuity.kind == PreciseProductDiscontinuityKind::ClockJump
+            && discontinuity.sat == eph.sat
+    }));
     assert_ne!(correction.bias_s, 3.5e-6);
 }
