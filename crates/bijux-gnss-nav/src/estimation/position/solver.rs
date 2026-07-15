@@ -1137,7 +1137,7 @@ mod tests {
         position_broadcast_navigation_from_galileo_navigations,
         position_broadcast_navigation_from_glonass_frames,
         position_broadcast_navigation_from_gps_ephemerides, position_observations_from_epoch,
-        resolve_position_inputs, robust_weight, robust_weights,
+        resolve_position_inputs, robust_weight, robust_weights, solve_weighted_least_squares,
         unknown_inter_system_time_offset_sats, ClockStateModel, PositionBroadcastNavigation,
         PositionEstimate, PositionObservation, PositionRobustWeighting, SatelliteGeometry,
         SatelliteState, WorkingSetResidual, SPEED_OF_LIGHT_MPS,
@@ -1168,6 +1168,69 @@ mod tests {
         ReceiverSampleTrace, SatId, Seconds, SigId, SignalBand, SignalCode, TrackingUncertainty,
     };
     use bijux_gnss_signal::api::signal_spec_gps_l1_ca;
+
+    #[test]
+    fn weighted_least_squares_recovers_full_rank_solution() {
+        let h = vec![
+            vec![1.0, 0.0, 0.0, 0.0],
+            vec![0.0, 1.0, 0.0, 0.0],
+            vec![0.0, 0.0, 1.0, 0.0],
+            vec![0.0, 0.0, 0.0, 1.0],
+            vec![1.0, -1.0, 0.5, 2.0],
+        ];
+        let expected_delta = [2.0, -1.0, 0.5, 3.0];
+        let v = h
+            .iter()
+            .map(|row| row.iter().zip(expected_delta).map(|(left, right)| left * right).sum())
+            .collect::<Vec<_>>();
+
+        let solution = solve_weighted_least_squares(&h, &v, &[1.0; 5])
+            .expect("full-rank geometry should solve");
+
+        assert_eq!(solution.rank, 4);
+        assert!(solution.condition_number.is_some_and(|condition| condition.is_finite()));
+        for (actual, expected) in solution.delta.iter().zip(expected_delta) {
+            assert!((actual - expected).abs() < 1.0e-10);
+        }
+    }
+
+    #[test]
+    fn weighted_least_squares_rejects_rank_deficient_geometry() {
+        let h = vec![
+            vec![1.0, 0.0, 0.0, 1.0],
+            vec![1.0, 0.0, 0.0, 1.0],
+            vec![1.0, 0.0, 0.0, 1.0],
+            vec![1.0, 0.0, 0.0, 1.0],
+        ];
+
+        assert!(solve_weighted_least_squares(&h, &[1.0; 4], &[1.0; 4]).is_none());
+    }
+
+    #[test]
+    fn weighted_least_squares_reports_larger_condition_for_weak_geometry() {
+        let healthy = vec![
+            vec![1.0, 0.0, 0.0, 0.0],
+            vec![0.0, 1.0, 0.0, 0.0],
+            vec![0.0, 0.0, 1.0, 0.0],
+            vec![0.0, 0.0, 0.0, 1.0],
+        ];
+        let weak = vec![
+            vec![1.0, 0.0, 0.0, 1.0],
+            vec![0.0, 1.0, 0.0, 1.0],
+            vec![0.0, 0.0, 1.0, 1.0],
+            vec![1.0, 1.0, 1.0, 3.000_001],
+            vec![1.0, -1.0, 0.0, 0.0],
+        ];
+
+        let healthy_condition = solve_weighted_least_squares(&healthy, &[0.0; 4], &[1.0; 4])
+            .and_then(|solution| solution.condition_number)
+            .expect("healthy geometry condition");
+        let weak_condition = solve_weighted_least_squares(&weak, &[0.0; 5], &[1.0; 5])
+            .and_then(|solution| solution.condition_number)
+            .expect("weak geometry condition");
+
+        assert!(weak_condition > healthy_condition);
+    }
 
     fn sample_ephemeris(sat: SatId, toe_s: f64, toc_s: f64) -> GpsEphemeris {
         GpsEphemeris {
@@ -2659,6 +2722,8 @@ impl PositionSolver {
         let mut covariance_symmetrized = false;
         let mut covariance_clamped = false;
         let mut covariance_max_variance = None;
+        let mut solver_rank = 0;
+        let mut solver_condition_number = None;
 
         for iteration_index in 0..self.max_iterations {
             if geometry.len() < 4 {
@@ -2675,7 +2740,9 @@ impl PositionSolver {
             }
 
             let weights = self.measurement_weights(iteration_index, &geometry, &residual_values);
-            let (delta, covariance_out) = solve_weighted_normal_eq(&h, &residual_values, &weights)?;
+            let least_squares = solve_weighted_least_squares(&h, &residual_values, &weights)?;
+            let delta = least_squares.delta;
+            let covariance_out = least_squares.covariance;
             let (covariance_out, symmetrized, clamped, max_variance) =
                 sanitize_covariance(covariance_out);
             covariance_symmetrized |= symmetrized;
@@ -2688,6 +2755,8 @@ impl PositionSolver {
                 );
             }
             covariance = Some(covariance_out);
+            solver_rank = least_squares.rank;
+            solver_condition_number = least_squares.condition_number;
 
             estimate.ecef_x_m += delta.first().copied().unwrap_or(0.0);
             estimate.ecef_y_m += delta.get(1).copied().unwrap_or(0.0);
@@ -2736,8 +2805,8 @@ impl PositionSolver {
             covariance_symmetrized,
             covariance_clamped,
             covariance_max_variance,
-            solver_rank: 0,
-            solver_condition_number: None,
+            solver_rank,
+            solver_condition_number,
         })
     }
 
@@ -3253,32 +3322,219 @@ fn raim_fault_detection_from_separation(
     }
 }
 
-type NormalEqSolution = (Vec<f64>, Vec<Vec<f64>>);
+#[derive(Debug, Clone)]
+struct WeightedLeastSquaresSolution {
+    delta: Vec<f64>,
+    covariance: Vec<Vec<f64>>,
+    rank: usize,
+    condition_number: Option<f64>,
+}
 
-fn solve_weighted_normal_eq(h: &[Vec<f64>], v: &[f64], w: &[f64]) -> Option<NormalEqSolution> {
+#[derive(Debug, Clone)]
+struct PivotedQr {
+    q_columns: Vec<Vec<f64>>,
+    r: Vec<Vec<f64>>,
+    pivots: Vec<usize>,
+    rank: usize,
+    condition_number: Option<f64>,
+}
+
+fn solve_weighted_least_squares(
+    h: &[Vec<f64>],
+    v: &[f64],
+    w: &[f64],
+) -> Option<WeightedLeastSquaresSolution> {
     let dimension = h.first()?.len();
-    let mut n = vec![vec![0.0_f64; dimension]; dimension];
-    let mut u = vec![0.0_f64; dimension];
-    for (i, row) in h.iter().enumerate() {
-        let wi = w.get(i).copied().unwrap_or(1.0);
+    if h.len() != v.len() || h.len() < dimension {
+        return None;
+    }
+    let mut weighted_design = vec![vec![0.0_f64; dimension]; h.len()];
+    let mut weighted_residuals = vec![0.0_f64; h.len()];
+    for (row_index, row) in h.iter().enumerate() {
         if row.len() != dimension {
             return None;
         }
-        for r in 0..dimension {
-            u[r] += row[r] * v[i] * wi;
-            for c in 0..dimension {
-                n[r][c] += row[r] * row[c] * wi;
+        let weight = w.get(row_index).copied().unwrap_or(1.0);
+        if !weight.is_finite() || weight < 0.0 || !v[row_index].is_finite() {
+            return None;
+        }
+        let scale = weight.sqrt();
+        weighted_residuals[row_index] = v[row_index] * scale;
+        for col in 0..dimension {
+            if !row[col].is_finite() {
+                return None;
+            }
+            weighted_design[row_index][col] = row[col] * scale;
+        }
+    }
+
+    let decomposition = pivoted_qr(&weighted_design)?;
+    if decomposition.rank < dimension {
+        return None;
+    }
+    let pivoted_delta = solve_qr_coordinates(&decomposition, &weighted_residuals)?;
+    let delta = unpivot_vector(&pivoted_delta, &decomposition.pivots);
+    let covariance = covariance_from_upper_triangular(&decomposition.r, &decomposition.pivots)?;
+
+    Some(WeightedLeastSquaresSolution {
+        delta,
+        covariance,
+        rank: decomposition.rank,
+        condition_number: decomposition.condition_number,
+    })
+}
+
+fn pivoted_qr(a: &[Vec<f64>]) -> Option<PivotedQr> {
+    let row_count = a.len();
+    let dimension = a.first()?.len();
+    if dimension == 0 || a.iter().any(|row| row.len() != dimension) {
+        return None;
+    }
+    let mut columns = vec![vec![0.0_f64; row_count]; dimension];
+    for (row_index, row) in a.iter().enumerate() {
+        for col in 0..dimension {
+            columns[col][row_index] = row[col];
+        }
+    }
+    let mut pivots = (0..dimension).collect::<Vec<_>>();
+    let mut q_columns = vec![vec![0.0_f64; row_count]; dimension];
+    let mut r = vec![vec![0.0_f64; dimension]; dimension];
+    let mut column_norms = columns.iter().map(|column| dot(column, column)).collect::<Vec<_>>();
+    let max_initial_norm = column_norms.iter().copied().fold(0.0_f64, f64::max).sqrt();
+    if !max_initial_norm.is_finite() || max_initial_norm <= 0.0 {
+        return None;
+    }
+    let rank_tolerance = (row_count.max(dimension) as f64) * max_initial_norm * 1.0e-12;
+    let mut rank = 0;
+    let mut max_diagonal = 0.0_f64;
+    let mut min_diagonal = f64::INFINITY;
+
+    for col in 0..dimension {
+        let pivot_col = (col..dimension).max_by(|left, right| {
+            column_norms[*left]
+                .partial_cmp(&column_norms[*right])
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })?;
+        if pivot_col != col {
+            columns.swap(col, pivot_col);
+            column_norms.swap(col, pivot_col);
+            pivots.swap(col, pivot_col);
+            for row in r.iter_mut().take(col) {
+                row.swap(col, pivot_col);
             }
         }
-    }
-    let inv = invert_matrix(n)?;
-    let mut delta = vec![0.0_f64; dimension];
-    for row in 0..dimension {
-        for col in 0..dimension {
-            delta[row] += inv[row][col] * u[col];
+
+        let mut vector = columns[col].clone();
+        for previous_col in 0..col {
+            let projection = dot(&q_columns[previous_col], &vector);
+            r[previous_col][col] += projection;
+            axpy(&mut vector, &q_columns[previous_col], -projection);
+        }
+        for previous_col in 0..col {
+            let projection = dot(&q_columns[previous_col], &vector);
+            r[previous_col][col] += projection;
+            axpy(&mut vector, &q_columns[previous_col], -projection);
+        }
+        let diagonal = dot(&vector, &vector).sqrt();
+        r[col][col] = diagonal;
+        if diagonal <= rank_tolerance || !diagonal.is_finite() {
+            break;
+        }
+        max_diagonal = max_diagonal.max(diagonal);
+        min_diagonal = min_diagonal.min(diagonal);
+        for row in 0..row_count {
+            q_columns[col][row] = vector[row] / diagonal;
+        }
+        rank += 1;
+        for trailing_col in (col + 1)..dimension {
+            column_norms[trailing_col] = dot(&columns[trailing_col], &columns[trailing_col]);
         }
     }
-    Some((delta, inv))
+
+    let condition_number = (rank == dimension && min_diagonal.is_finite() && min_diagonal > 0.0)
+        .then_some(max_diagonal / min_diagonal);
+    Some(PivotedQr { q_columns, r, pivots, rank, condition_number })
+}
+
+fn solve_qr_coordinates(qr: &PivotedQr, b: &[f64]) -> Option<Vec<f64>> {
+    let dimension = qr.r.len();
+    if qr.rank < dimension || qr.q_columns.iter().any(|column| column.len() != b.len()) {
+        return None;
+    }
+    let mut qtb = vec![0.0_f64; dimension];
+    for col in 0..dimension {
+        qtb[col] = dot(&qr.q_columns[col], b);
+    }
+    solve_upper_triangular(&qr.r, &qtb)
+}
+
+fn solve_upper_triangular(r: &[Vec<f64>], b: &[f64]) -> Option<Vec<f64>> {
+    let dimension = r.len();
+    if dimension == 0 || b.len() != dimension || r.iter().any(|row| row.len() != dimension) {
+        return None;
+    }
+    let mut x = vec![0.0_f64; dimension];
+    for row in (0..dimension).rev() {
+        let diagonal = r[row][row];
+        if !diagonal.is_finite() || diagonal.abs() <= 1.0e-12 {
+            return None;
+        }
+        let mut sum = b[row];
+        for col in (row + 1)..dimension {
+            sum -= r[row][col] * x[col];
+        }
+        x[row] = sum / diagonal;
+    }
+    Some(x)
+}
+
+fn covariance_from_upper_triangular(r: &[Vec<f64>], pivots: &[usize]) -> Option<Vec<Vec<f64>>> {
+    let dimension = r.len();
+    if pivots.len() != dimension || r.iter().any(|row| row.len() != dimension) {
+        return None;
+    }
+    let mut inverse_r = vec![vec![0.0_f64; dimension]; dimension];
+    for basis_col in 0..dimension {
+        let mut basis = vec![0.0_f64; dimension];
+        basis[basis_col] = 1.0;
+        let solution = solve_upper_triangular(r, &basis)?;
+        for row in 0..dimension {
+            inverse_r[row][basis_col] = solution[row];
+        }
+    }
+    let mut covariance_pivoted = vec![vec![0.0_f64; dimension]; dimension];
+    for row in 0..dimension {
+        for col in 0..dimension {
+            covariance_pivoted[row][col] =
+                (0..dimension).map(|k| inverse_r[row][k] * inverse_r[col][k]).sum();
+        }
+    }
+    let mut covariance = vec![vec![0.0_f64; dimension]; dimension];
+    for pivoted_row in 0..dimension {
+        for pivoted_col in 0..dimension {
+            covariance[pivots[pivoted_row]][pivots[pivoted_col]] =
+                covariance_pivoted[pivoted_row][pivoted_col];
+        }
+    }
+    Some(covariance)
+}
+
+fn unpivot_vector(vector: &[f64], pivots: &[usize]) -> Vec<f64> {
+    let mut out = vec![0.0_f64; vector.len()];
+    for (pivoted_index, original_index) in pivots.iter().copied().enumerate() {
+        out[original_index] = vector[pivoted_index];
+    }
+    out
+}
+
+fn dot(left: &[f64], right: &[f64]) -> f64 {
+    left.iter().zip(right).map(|(left, right)| left * right).sum()
+}
+
+fn axpy(out: &mut [f64], x: &[f64], alpha: f64) {
+    for (out, x) in out.iter_mut().zip(x) {
+        *out += alpha * x;
+    }
 }
 
 fn robust_weights(residuals: &[f64], robust_weighting: PositionRobustWeighting) -> Vec<f64> {
