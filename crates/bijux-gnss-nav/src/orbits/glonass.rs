@@ -234,7 +234,10 @@ pub struct GlonassEarthRotationCorrection {
 pub struct GlonassNavigationAge {
     pub transmit_gps_tow_s: f64,
     pub transmit_glonass_time_s: f64,
+    pub transmit_day_index: Option<i64>,
     pub ephemeris_reference_time_s: f64,
+    pub ephemeris_day_index: Option<i64>,
+    pub delta_time_s: f64,
     pub age_s: f64,
     pub max_age_s: f64,
 }
@@ -312,17 +315,15 @@ pub fn glonass_navigation_age(
     navigation: &GlonassBroadcastNavigationFrame,
     transmit_gps_tow_s: f64,
 ) -> Option<GlonassNavigationAge> {
-    let transmit_glonass_time_s = glonass_time_of_day_from_gps_tow_s(
-        transmit_gps_tow_s,
-        glonass_gps_minus_glonass_s(navigation)?,
-    );
-    let ephemeris_reference_time_s = f64::from(navigation.immediate.ephemeris_reference_time_s);
+    let transmit_time = glonass_transmit_time(navigation, transmit_gps_tow_s)?;
     Some(GlonassNavigationAge {
         transmit_gps_tow_s,
-        transmit_glonass_time_s,
-        ephemeris_reference_time_s,
-        age_s: wrap_glonass_time_delta_s(transmit_glonass_time_s - ephemeris_reference_time_s)
-            .abs(),
+        transmit_glonass_time_s: transmit_time.transmit_seconds_of_day,
+        transmit_day_index: transmit_time.transmit_day_index,
+        ephemeris_reference_time_s: transmit_time.ephemeris_reference_time_s,
+        ephemeris_day_index: transmit_time.ephemeris_day_index,
+        delta_time_s: transmit_time.delta_time_s,
+        age_s: transmit_time.delta_time_s.abs(),
         max_age_s: GLONASS_MAX_NAVIGATION_AGE_S,
     })
 }
@@ -484,7 +485,7 @@ fn glonass_broadcast_delta_time_s(
     if age.is_stale() {
         return None;
     }
-    Some(wrap_glonass_time_delta_s(age.transmit_glonass_time_s - age.ephemeris_reference_time_s))
+    Some(age.delta_time_s)
 }
 
 fn glonass_time_of_day_from_gps_tow_s(transmit_gps_tow_s: f64, gps_minus_glonass_s: f64) -> f64 {
@@ -681,7 +682,10 @@ mod tests {
         let age = glonass_navigation_age(&navigation, 504_918.0).expect("GLONASS navigation age");
 
         assert_eq!(age.transmit_glonass_time_s, 83_700.0);
+        assert_eq!(age.transmit_day_index, None);
         assert_eq!(age.ephemeris_reference_time_s, 83_700.0);
+        assert_eq!(age.ephemeris_day_index, None);
+        assert_eq!(age.delta_time_s, 0.0);
         assert_eq!(age.age_s, 0.0);
         assert!(age.is_valid());
     }
@@ -823,6 +827,24 @@ mod tests {
     }
 
     #[test]
+    fn glonass_navigation_age_preserves_midnight_day_indices() {
+        let mut navigation = sample_navigation();
+        navigation.immediate.frame_time =
+            GlonassFrameTime { hour: 23, minute: 59, half_minute: true };
+        navigation.immediate.ephemeris_reference_time_s = 0;
+        navigation.immediate.resolved_day_index = Some(864);
+        navigation.system_time.as_mut().expect("system time").gps_minus_glonass_s = 0.0;
+
+        let age = glonass_navigation_age(&navigation, 5.0).expect("navigation age");
+
+        assert_eq!(age.transmit_day_index, Some(865));
+        assert_eq!(age.ephemeris_day_index, Some(865));
+        assert_eq!(age.delta_time_s, 5.0);
+        assert_eq!(age.age_s, 5.0);
+        assert!(age.is_valid());
+    }
+
+    #[test]
     fn glonass_satellite_clock_correction_tracks_broadcast_drift() {
         let navigation = sample_navigation();
 
@@ -833,6 +855,24 @@ mod tests {
         assert!((clock.base_bias_s - 2.572_406_083_345_413_2e-5).abs() < 1.0e-18);
         assert!((clock.bias_s - expected_bias_s).abs() < 1.0e-18);
         assert_eq!(clock.drift_s_per_s, 0.0);
+    }
+
+    #[test]
+    fn glonass_satellite_clock_correction_uses_resolved_midnight_delta() {
+        let mut navigation = sample_navigation();
+        navigation.immediate.frame_time =
+            GlonassFrameTime { hour: 23, minute: 59, half_minute: true };
+        navigation.immediate.ephemeris_reference_time_s = 0;
+        navigation.immediate.resolved_day_index = Some(864);
+        navigation.immediate.clock_bias_s = 0.0;
+        navigation.immediate.relative_frequency_bias = 1.0e-10;
+        navigation.system_time.as_mut().expect("system time").gps_minus_glonass_s = 0.0;
+
+        let clock = glonass_satellite_clock_correction(&navigation, 5.0).expect("clock correction");
+
+        assert!((clock.bias_s - 5.0e-10).abs() < 1.0e-18);
+        assert_eq!(clock.drift_s_per_s, 1.0e-10);
+        assert_eq!(clock.base_bias_s, 0.0);
     }
 
     #[test]
