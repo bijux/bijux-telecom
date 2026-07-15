@@ -243,9 +243,9 @@ pub fn validate_truth_guided_observation_table(
     let satellites = truth
         .satellites
         .iter()
-        .enumerate()
-        .map(|(signal_index, sat_truth)| {
-            let expected_band = tracks.get(signal_index).and_then(tracked_signal_band);
+        .map(|sat_truth| {
+            let matching_track = tracks.iter().find(|track| track.sat == sat_truth.sat);
+            let expected_band = matching_track.and_then(tracked_signal_band);
             let signal_id = expected_band
                 .map(|band| expected_signal_id(sat_truth.sat, Some(band)))
                 .unwrap_or_else(|| expected_signal_id(sat_truth.sat, None));
@@ -253,11 +253,8 @@ pub fn validate_truth_guided_observation_table(
                 comparable_signal_band_observations(&observations, sat_truth.sat, expected_band);
             let expected_doppler_hz = sat_truth.doppler_hz + truth.receiver_clock_frequency_bias_hz;
             let mut notes = Vec::new();
-            if tracks.get(signal_index).is_none() {
+            if matching_track.is_none() {
                 notes.push("missing_tracking_result_for_truth_signal".to_string());
-            }
-            if tracks.get(signal_index).is_some_and(|track| track.sat != sat_truth.sat) {
-                notes.push("truth_signal_tracking_satellite_mismatch".to_string());
             }
             if observed_rows.is_empty() {
                 notes.push("no_comparable_observation_rows".to_string());
