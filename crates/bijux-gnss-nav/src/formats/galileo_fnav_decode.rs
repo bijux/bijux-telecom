@@ -47,6 +47,18 @@ pub struct GalileoFnavClockStatusPage {
     pub gst: GalileoSystemTime,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct GalileoFnavKeplerianPage {
+    pub iodnav: u16,
+    pub m0: f64,
+    pub omegadot: f64,
+    pub e: f64,
+    pub sqrt_a: f64,
+    pub omega0: f64,
+    pub idot: f64,
+    pub gst: GalileoSystemTime,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum GalileoFnavPageRejectionReason {
@@ -141,6 +153,24 @@ pub fn decode_galileo_fnav_clock_status_page(
         gst: GalileoSystemTime {
             week: page.unsigned_bits(156, 12) as u16,
             tow_s: page.unsigned_bits(168, 20) as u32,
+        },
+    })
+}
+
+pub fn decode_galileo_fnav_keplerian_page(
+    page: &GalileoFnavPage,
+) -> Option<GalileoFnavKeplerianPage> {
+    (page.page_type == 2).then(|| GalileoFnavKeplerianPage {
+        iodnav: page.unsigned_bits(7, 10) as u16,
+        m0: page.signed_bits(17, 32) as f64 * 2f64.powi(-31) * std::f64::consts::PI,
+        omegadot: page.signed_bits(49, 24) as f64 * 2f64.powi(-43) * std::f64::consts::PI,
+        e: page.unsigned_bits(73, 32) as f64 * 2f64.powi(-33),
+        sqrt_a: page.unsigned_bits(105, 32) as f64 * 2f64.powi(-19),
+        omega0: page.signed_bits(137, 32) as f64 * 2f64.powi(-31) * std::f64::consts::PI,
+        idot: page.signed_bits(169, 14) as f64 * 2f64.powi(-43) * std::f64::consts::PI,
+        gst: GalileoSystemTime {
+            week: page.unsigned_bits(183, 12) as u16,
+            tow_s: page.unsigned_bits(195, 20) as u32,
         },
     })
 }
@@ -333,5 +363,40 @@ mod tests {
         assert!(status.signal_status.e5a_data_valid);
         assert_eq!(status.gst.week, 2_222);
         assert_eq!(status.gst.tow_s, 456_789);
+    }
+
+    #[test]
+    fn keplerian_page_decodes_orbit_shape_and_gst_fields() {
+        let mut bits = vec![0_u8; GALILEO_FNAV_PAGE_BITS];
+        set_bits(&mut bits, 1, 6, 2);
+        set_bits(&mut bits, 7, 10, 0x155);
+        set_bits(&mut bits, 17, 32, encode_signed(-0x1020_304_i64, 32));
+        set_bits(&mut bits, 49, 24, encode_signed(-0x04_321_i64, 24));
+        set_bits(&mut bits, 73, 32, 0x0123_4567);
+        set_bits(&mut bits, 105, 32, 0x0987_6543);
+        set_bits(&mut bits, 137, 32, encode_signed(0x1020_3040_i64, 32));
+        set_bits(&mut bits, 169, 14, encode_signed(-0x03A5_i64, 14));
+        set_bits(&mut bits, 183, 12, 2_223);
+        set_bits(&mut bits, 195, 20, 456_799);
+        apply_crc(&mut bits);
+        let page = decode_galileo_fnav_page(&bits).expect("valid type 2 page");
+
+        let keplerian = super::decode_galileo_fnav_keplerian_page(&page).expect("type 2 payload");
+
+        assert_eq!(keplerian.iodnav, 0x155);
+        assert_eq!(keplerian.m0, -0x1020_304_i64 as f64 * 2f64.powi(-31) * std::f64::consts::PI);
+        assert_eq!(
+            keplerian.omegadot,
+            -0x04_321_i64 as f64 * 2f64.powi(-43) * std::f64::consts::PI
+        );
+        assert_eq!(keplerian.e, 0x0123_4567_u64 as f64 * 2f64.powi(-33));
+        assert_eq!(keplerian.sqrt_a, 0x0987_6543_u64 as f64 * 2f64.powi(-19));
+        assert_eq!(
+            keplerian.omega0,
+            0x1020_3040_i64 as f64 * 2f64.powi(-31) * std::f64::consts::PI
+        );
+        assert_eq!(keplerian.idot, -0x03A5_i64 as f64 * 2f64.powi(-43) * std::f64::consts::PI);
+        assert_eq!(keplerian.gst.week, 2_223);
+        assert_eq!(keplerian.gst.tow_s, 456_799);
     }
 }
