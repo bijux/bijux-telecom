@@ -8,6 +8,7 @@ use bijux_gnss_core::api::{
 };
 use bijux_gnss_nav::api::{
     RtkDoubleDifferenceObservation, RtkEpochAlignmentEvidence,
+    RtkGlonassInterFrequencyBiasEvidence, RtkGlonassInterFrequencyBiasStatus,
     RtkSingleDifferenceCovarianceEvidence, RtkSingleDifferenceObservation,
     RtkSourceObservationVariance, RTK_EPOCH_ALIGNMENT_TOLERANCE_S,
 };
@@ -161,6 +162,10 @@ pub(crate) fn double_differences_from_single_differences(
                 signal: observation.covariance_evidence,
                 reference: reference.covariance_evidence,
             },
+            glonass_inter_frequency_bias: glonass_inter_frequency_bias_evidence(
+                observation,
+                reference,
+            ),
             code_m: observation.code_m - reference.code_m,
             phase_cycles: observation.phase_cycles - reference.phase_cycles,
             doppler_hz: observation.doppler_hz - reference.doppler_hz,
@@ -177,6 +182,29 @@ pub(crate) fn double_differences_from_single_differences(
     }
     differences.sort_by_key(|difference| difference.sig);
     differences
+}
+
+fn glonass_inter_frequency_bias_evidence(
+    signal: &RtkSingleDifferenceObservation,
+    reference: &RtkSingleDifferenceObservation,
+) -> RtkGlonassInterFrequencyBiasEvidence {
+    if signal.sig.sat.constellation != Constellation::Glonass {
+        return RtkGlonassInterFrequencyBiasEvidence::default();
+    }
+    let status = match (signal.glonass_frequency_channel, reference.glonass_frequency_channel) {
+        (Some(signal_channel), Some(reference_channel)) if signal_channel == reference_channel => {
+            RtkGlonassInterFrequencyBiasStatus::BiasHandled
+        }
+        (Some(_), Some(_)) => RtkGlonassInterFrequencyBiasStatus::CalibrationRequired,
+        _ => RtkGlonassInterFrequencyBiasStatus::ChannelEvidenceMissing,
+    };
+    RtkGlonassInterFrequencyBiasEvidence {
+        status,
+        signal_channel: signal.glonass_frequency_channel,
+        reference_channel: reference.glonass_frequency_channel,
+        code_bias_m: 0.0,
+        phase_bias_cycles: 0.0,
+    }
 }
 
 fn usable_for_single_difference(observation: &ObsSatellite) -> bool {

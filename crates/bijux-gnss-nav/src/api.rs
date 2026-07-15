@@ -188,8 +188,10 @@ pub use crate::estimation::rtk::{
         rtk_double_difference_phase_covariance_matrix, rtk_double_difference_residual_metrics,
         rtk_double_difference_residual_metrics_with_antenna_corrections,
         rtk_double_differences_by_constellation, rtk_double_differences_from_single_differences,
+        rtk_glonass_inter_frequency_bias_is_integer_compatible,
         rtk_switch_double_difference_reference, RtkDoubleDifferenceCovarianceEvidence,
         RtkDoubleDifferenceObservation, RtkDoubleDifferenceResidualMetrics,
+        RtkGlonassInterFrequencyBiasEvidence, RtkGlonassInterFrequencyBiasStatus,
     },
 };
 /// Advanced PPP/RTK solution claim and refusal surfaces.

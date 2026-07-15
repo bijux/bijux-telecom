@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use bijux_gnss_core::api::{
     AmbiguityId, ArtifactPayloadValidate, Constellation, DiagnosticEvent, DiagnosticSeverity,
-    GpsTime, ObsSignalTiming, SigId,
+    GlonassFrequencyChannel, GpsTime, ObsSignalTiming, SigId,
 };
 use serde::{Deserialize, Serialize};
 
@@ -20,6 +20,35 @@ pub struct RtkDoubleDifferenceCovarianceEvidence {
     pub signal: RtkSingleDifferenceCovarianceEvidence,
     /// Reference single-difference covariance evidence.
     pub reference: RtkSingleDifferenceCovarianceEvidence,
+}
+
+/// GLONASS FDMA receiver-bias handling state for one double difference.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RtkGlonassInterFrequencyBiasStatus {
+    /// The double difference is not GLONASS and does not require FDMA bias handling.
+    NotApplicable,
+    /// Required GLONASS FDMA channel evidence is absent.
+    ChannelEvidenceMissing,
+    /// Channels differ and receiver-dependent inter-frequency calibration is required.
+    CalibrationRequired,
+    /// The inter-frequency bias requirement has been handled for integer ambiguity use.
+    BiasHandled,
+}
+
+impl Default for RtkGlonassInterFrequencyBiasStatus {
+    fn default() -> Self {
+        Self::NotApplicable
+    }
+}
+
+/// Evidence used to decide whether a GLONASS double-difference ambiguity is integer-compatible.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
+pub struct RtkGlonassInterFrequencyBiasEvidence {
+    pub status: RtkGlonassInterFrequencyBiasStatus,
+    pub signal_channel: Option<GlonassFrequencyChannel>,
+    pub reference_channel: Option<GlonassFrequencyChannel>,
+    pub code_bias_m: f64,
+    pub phase_bias_cycles: f64,
 }
 
 /// RTK double-difference observation formed against a reference satellite.
@@ -55,6 +84,9 @@ pub struct RtkDoubleDifferenceObservation {
     /// Covariance evidence for the signal and reference single differences.
     #[serde(default)]
     pub covariance_evidence: RtkDoubleDifferenceCovarianceEvidence,
+    /// GLONASS FDMA receiver-bias evidence for integer ambiguity compatibility.
+    #[serde(default)]
+    pub glonass_inter_frequency_bias: RtkGlonassInterFrequencyBiasEvidence,
     /// Double-difference code observation in meters.
     pub code_m: f64,
     /// Double-difference carrier phase observation in cycles.
@@ -123,6 +155,22 @@ impl ArtifactPayloadValidate for RtkDoubleDifferenceObservation {
                 "double-difference covariance evidence is invalid",
             ));
         }
+        if !glonass_inter_frequency_bias_evidence_is_valid(&self.glonass_inter_frequency_bias) {
+            events.push(DiagnosticEvent::new(
+                DiagnosticSeverity::Error,
+                "RTK_DD_GLONASS_BIAS_EVIDENCE_INVALID",
+                "GLONASS inter-frequency bias evidence is invalid",
+            ));
+        }
+        if self.sig.sat.constellation == Constellation::Glonass
+            && !rtk_glonass_inter_frequency_bias_is_integer_compatible(self)
+        {
+            events.push(DiagnosticEvent::new(
+                DiagnosticSeverity::Error,
+                "RTK_DD_GLONASS_BIAS_UNHANDLED",
+                "GLONASS double-difference ambiguity requires FDMA bias handling before integer fixing",
+            ));
+        }
         if self.code_variance_m2 < 0.0 || self.phase_variance_cycles2 < 0.0 {
             events.push(DiagnosticEvent::new(
                 DiagnosticSeverity::Error,
@@ -172,6 +220,10 @@ pub fn rtk_double_differences_from_single_differences(
                 signal: observation.covariance_evidence,
                 reference: reference.covariance_evidence,
             },
+            glonass_inter_frequency_bias: glonass_inter_frequency_bias_evidence(
+                observation,
+                reference,
+            ),
             code_m: observation.code_m - reference.code_m,
             phase_cycles: observation.phase_cycles - reference.phase_cycles,
             doppler_hz: observation.doppler_hz - reference.doppler_hz,
@@ -263,6 +315,9 @@ pub fn rtk_switch_double_difference_reference(
                 signal: signal.covariance_evidence,
                 reference: reference.covariance_evidence,
             },
+            glonass_inter_frequency_bias: glonass_inter_frequency_bias_evidence_from_components(
+                &signal, &reference,
+            ),
             code_m: signal.code_m - reference.code_m,
             phase_cycles: signal.phase_cycles - reference.phase_cycles,
             doppler_hz: signal.doppler_hz - reference.doppler_hz,
@@ -283,6 +338,15 @@ pub fn rtk_switch_double_difference_reference(
     }
     out.sort_by_key(|observation| observation.sig);
     Some(out)
+}
+
+/// Return true when a double-difference ambiguity is safe for integer treatment.
+pub fn rtk_glonass_inter_frequency_bias_is_integer_compatible(
+    observation: &RtkDoubleDifferenceObservation,
+) -> bool {
+    observation.sig.sat.constellation != Constellation::Glonass
+        || observation.glonass_inter_frequency_bias.status
+            == RtkGlonassInterFrequencyBiasStatus::BiasHandled
 }
 
 /// Build the code covariance matrix for an ordered set of double differences.
@@ -499,6 +563,7 @@ struct SingleDifferenceComponent {
     base_signal_timing: Option<ObsSignalTiming>,
     epoch_alignment: RtkEpochAlignmentEvidence,
     covariance_evidence: RtkSingleDifferenceCovarianceEvidence,
+    glonass_frequency_channel: Option<GlonassFrequencyChannel>,
     code_m: f64,
     phase_cycles: f64,
     doppler_hz: f64,
@@ -528,6 +593,7 @@ fn signal_component(
         base_signal_timing: observation.base_signal_timing,
         epoch_alignment: observation.epoch_alignment,
         covariance_evidence: observation.covariance_evidence.signal,
+        glonass_frequency_channel: observation.glonass_inter_frequency_bias.signal_channel,
         code_m: observation.code_m,
         phase_cycles: observation.phase_cycles,
         doppler_hz: observation.doppler_hz,
@@ -551,12 +617,59 @@ fn reference_component(
         base_signal_timing: observation.base_ref_signal_timing,
         epoch_alignment: observation.epoch_alignment,
         covariance_evidence: observation.covariance_evidence.reference,
+        glonass_frequency_channel: observation.glonass_inter_frequency_bias.reference_channel,
         code_m: 0.0,
         phase_cycles: 0.0,
         doppler_hz: 0.0,
         ambiguity_rover,
         ambiguity_base,
     })
+}
+
+fn glonass_inter_frequency_bias_evidence(
+    signal: &RtkSingleDifferenceObservation,
+    reference: &RtkSingleDifferenceObservation,
+) -> RtkGlonassInterFrequencyBiasEvidence {
+    if signal.sig.sat.constellation != Constellation::Glonass {
+        return RtkGlonassInterFrequencyBiasEvidence::default();
+    }
+    glonass_inter_frequency_bias_evidence_from_channels(
+        signal.glonass_frequency_channel,
+        reference.glonass_frequency_channel,
+    )
+}
+
+fn glonass_inter_frequency_bias_evidence_from_components(
+    signal: &SingleDifferenceComponent,
+    reference: &SingleDifferenceComponent,
+) -> RtkGlonassInterFrequencyBiasEvidence {
+    if signal.sig.sat.constellation != Constellation::Glonass {
+        return RtkGlonassInterFrequencyBiasEvidence::default();
+    }
+    glonass_inter_frequency_bias_evidence_from_channels(
+        signal.glonass_frequency_channel,
+        reference.glonass_frequency_channel,
+    )
+}
+
+fn glonass_inter_frequency_bias_evidence_from_channels(
+    signal_channel: Option<GlonassFrequencyChannel>,
+    reference_channel: Option<GlonassFrequencyChannel>,
+) -> RtkGlonassInterFrequencyBiasEvidence {
+    let status = match (signal_channel, reference_channel) {
+        (Some(signal), Some(reference)) if signal == reference => {
+            RtkGlonassInterFrequencyBiasStatus::BiasHandled
+        }
+        (Some(_), Some(_)) => RtkGlonassInterFrequencyBiasStatus::CalibrationRequired,
+        _ => RtkGlonassInterFrequencyBiasStatus::ChannelEvidenceMissing,
+    };
+    RtkGlonassInterFrequencyBiasEvidence {
+        status,
+        signal_channel,
+        reference_channel,
+        code_bias_m: 0.0,
+        phase_bias_cycles: 0.0,
+    }
 }
 
 fn double_difference_covariance_matrix(
@@ -706,6 +819,34 @@ fn double_difference_covariance_evidence_is_valid(
 ) -> bool {
     single_difference_covariance_evidence_is_valid(&evidence.signal)
         && single_difference_covariance_evidence_is_valid(&evidence.reference)
+}
+
+fn glonass_inter_frequency_bias_evidence_is_valid(
+    evidence: &RtkGlonassInterFrequencyBiasEvidence,
+) -> bool {
+    evidence.code_bias_m.is_finite()
+        && evidence.phase_bias_cycles.is_finite()
+        && match evidence.status {
+            RtkGlonassInterFrequencyBiasStatus::NotApplicable => {
+                evidence.signal_channel.is_none()
+                    && evidence.reference_channel.is_none()
+                    && evidence.code_bias_m == 0.0
+                    && evidence.phase_bias_cycles == 0.0
+            }
+            RtkGlonassInterFrequencyBiasStatus::ChannelEvidenceMissing => {
+                evidence.signal_channel.is_none() || evidence.reference_channel.is_none()
+            }
+            RtkGlonassInterFrequencyBiasStatus::CalibrationRequired => {
+                evidence.signal_channel.is_some()
+                    && evidence.reference_channel.is_some()
+                    && evidence.signal_channel != evidence.reference_channel
+                    && evidence.code_bias_m == 0.0
+                    && evidence.phase_bias_cycles == 0.0
+            }
+            RtkGlonassInterFrequencyBiasStatus::BiasHandled => {
+                evidence.signal_channel.is_some() && evidence.reference_channel.is_some()
+            }
+        }
 }
 
 fn single_difference_covariance_evidence_is_valid(
@@ -1002,6 +1143,7 @@ mod tests {
                 signal: independent_single_difference_covariance(),
                 reference: independent_single_difference_covariance(),
             },
+            glonass_inter_frequency_bias: RtkGlonassInterFrequencyBiasEvidence::default(),
             code_m: 0.0,
             phase_cycles: 0.0,
             doppler_hz: 0.0,

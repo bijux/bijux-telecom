@@ -3,9 +3,10 @@
 use std::collections::BTreeMap;
 
 use bijux_gnss_core::api::{
-    ArtifactPayloadValidate, Constellation, GpsTime, LockFlags, ObsEpoch, ObsMetadata,
-    ObsSatellite, ObsSignalTiming, ObservationStatus, ReceiverRole, ReceiverSampleTrace, SatId,
-    Seconds, SigId, SignalBand, SignalSpec,
+    ArtifactPayloadValidate, Constellation, FreqHz, GlonassFrequencyChannel, GpsTime, LockFlags,
+    ObsEpoch, ObsMetadata, ObsSatellite, ObsSignalTiming, ObservationStatus, ReceiverRole,
+    ReceiverSampleTrace, SatId, Seconds, SigId, SignalBand, SignalSpec, GLONASS_L1_CARRIER_HZ,
+    GLONASS_L1_CHANNEL_SPACING_HZ,
 };
 use bijux_gnss_nav::api::{
     choose_rtk_single_difference_reference_signal,
@@ -13,10 +14,11 @@ use bijux_gnss_nav::api::{
     geodetic_to_ecef, rtk_double_difference_code_covariance_matrix,
     rtk_double_difference_residual_metrics, rtk_double_differences_by_constellation,
     rtk_double_differences_from_single_differences,
+    rtk_glonass_inter_frequency_bias_is_integer_compatible,
     rtk_single_differences_from_aligned_obs_epochs_with_covariance,
     rtk_single_differences_from_obs_epochs, rtk_switch_double_difference_reference,
     sat_state_gps_l1ca_at_receive_time, GpsEphemeris, RtkDifferencedCovarianceConfig,
-    RtkEpochAlignmentEvidence, RTK_EPOCH_ALIGNMENT_TOLERANCE_S,
+    RtkEpochAlignmentEvidence, RtkGlonassInterFrequencyBiasStatus, RTK_EPOCH_ALIGNMENT_TOLERANCE_S,
 };
 
 const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
@@ -208,6 +210,24 @@ fn make_satellite(
     }
 }
 
+fn glonass_l1_carrier_hz(channel: GlonassFrequencyChannel) -> FreqHz {
+    FreqHz::new(
+        GLONASS_L1_CARRIER_HZ.value()
+            + f64::from(channel.value()) * GLONASS_L1_CHANNEL_SPACING_HZ.value(),
+    )
+}
+
+fn make_glonass_satellite(
+    prn: u8,
+    channel: GlonassFrequencyChannel,
+    pseudorange_m: f64,
+    cn0_dbhz: f64,
+) -> ObsSatellite {
+    let mut satellite = make_satellite(Constellation::Glonass, prn, pseudorange_m, cn0_dbhz);
+    satellite.metadata.signal.carrier_hz = glonass_l1_carrier_hz(channel);
+    satellite
+}
+
 fn make_epoch(role: ReceiverRole, sats: Vec<ObsSatellite>) -> ObsEpoch {
     ObsEpoch {
         t_rx_s: Seconds(0.0),
@@ -259,6 +279,107 @@ fn rtk_double_difference_builder_uses_reference_satellite_deltas() {
         .any(|observation| observation.sig.sat.prn == 7
             && (observation.code_m - 50.0).abs() < 1.0e-9));
     assert!(double_differences.iter().all(|observation| observation.canceled.len() == 4));
+}
+
+#[test]
+fn rtk_double_difference_builder_marks_same_channel_glonass_bias_handled() {
+    let channel = GlonassFrequencyChannel::new(-4).expect("valid GLONASS channel");
+    let base = make_epoch(
+        ReceiverRole::Base,
+        vec![
+            make_glonass_satellite(3, channel, 20_000_000.0, 46.0),
+            make_glonass_satellite(7, channel, 20_100_000.0, 42.0),
+        ],
+    );
+    let rover = make_epoch(
+        ReceiverRole::Rover,
+        vec![
+            make_glonass_satellite(3, channel, 20_000_120.0, 46.0),
+            make_glonass_satellite(7, channel, 20_100_170.0, 42.0),
+        ],
+    );
+
+    let single_differences = rtk_single_differences_from_obs_epochs(&base, &rover);
+    let reference =
+        choose_rtk_single_difference_reference_signal(&single_differences).expect("reference");
+    let double_differences =
+        rtk_double_differences_from_single_differences(&single_differences, reference);
+
+    assert_eq!(double_differences.len(), 1);
+    assert_eq!(
+        double_differences[0].glonass_inter_frequency_bias.status,
+        RtkGlonassInterFrequencyBiasStatus::BiasHandled
+    );
+    assert!(rtk_glonass_inter_frequency_bias_is_integer_compatible(&double_differences[0]));
+    assert!(double_differences[0].validate_payload().is_empty());
+}
+
+#[test]
+fn rtk_double_difference_builder_requires_calibration_for_mixed_glonass_channels() {
+    let reference_channel = GlonassFrequencyChannel::new(-4).expect("valid GLONASS channel");
+    let signal_channel = GlonassFrequencyChannel::new(5).expect("valid GLONASS channel");
+    let base = make_epoch(
+        ReceiverRole::Base,
+        vec![
+            make_glonass_satellite(3, reference_channel, 20_000_000.0, 46.0),
+            make_glonass_satellite(7, signal_channel, 20_100_000.0, 42.0),
+        ],
+    );
+    let rover = make_epoch(
+        ReceiverRole::Rover,
+        vec![
+            make_glonass_satellite(3, reference_channel, 20_000_120.0, 46.0),
+            make_glonass_satellite(7, signal_channel, 20_100_170.0, 42.0),
+        ],
+    );
+
+    let single_differences = rtk_single_differences_from_obs_epochs(&base, &rover);
+    let reference =
+        choose_rtk_single_difference_reference_signal(&single_differences).expect("reference");
+    let double_differences =
+        rtk_double_differences_from_single_differences(&single_differences, reference);
+
+    assert_eq!(double_differences.len(), 1);
+    assert_eq!(
+        double_differences[0].glonass_inter_frequency_bias.status,
+        RtkGlonassInterFrequencyBiasStatus::CalibrationRequired
+    );
+    assert!(!rtk_glonass_inter_frequency_bias_is_integer_compatible(&double_differences[0]));
+    let diagnostics = double_differences[0].validate_payload();
+    assert!(diagnostics.iter().any(|event| event.code == "RTK_DD_GLONASS_BIAS_UNHANDLED"));
+}
+
+#[test]
+fn rtk_double_difference_builder_rejects_glonass_without_channel_evidence() {
+    let base = make_epoch(
+        ReceiverRole::Base,
+        vec![
+            make_satellite(Constellation::Glonass, 3, 20_000_000.0, 46.0),
+            make_satellite(Constellation::Glonass, 7, 20_100_000.0, 42.0),
+        ],
+    );
+    let rover = make_epoch(
+        ReceiverRole::Rover,
+        vec![
+            make_satellite(Constellation::Glonass, 3, 20_000_120.0, 46.0),
+            make_satellite(Constellation::Glonass, 7, 20_100_170.0, 42.0),
+        ],
+    );
+
+    let single_differences = rtk_single_differences_from_obs_epochs(&base, &rover);
+    let reference =
+        choose_rtk_single_difference_reference_signal(&single_differences).expect("reference");
+    let double_differences =
+        rtk_double_differences_from_single_differences(&single_differences, reference);
+
+    assert_eq!(double_differences.len(), 1);
+    assert_eq!(
+        double_differences[0].glonass_inter_frequency_bias.status,
+        RtkGlonassInterFrequencyBiasStatus::ChannelEvidenceMissing
+    );
+    assert!(!rtk_glonass_inter_frequency_bias_is_integer_compatible(&double_differences[0]));
+    let diagnostics = double_differences[0].validate_payload();
+    assert!(diagnostics.iter().any(|event| event.code == "RTK_DD_GLONASS_BIAS_UNHANDLED"));
 }
 
 #[test]
