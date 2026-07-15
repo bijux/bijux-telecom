@@ -830,7 +830,10 @@ impl PositionSolver {
                     self.apply_broadcast_group_delay,
                 );
                 if self.raim
-                    && !supports_reliable_raim_exclusion(working_inputs.len())
+                    && !supports_reliable_raim_exclusion_after_prior_exclusions(
+                        working_inputs.len(),
+                        !raim_fault_exclusions.is_empty(),
+                    )
                     && rejection_reason != MeasurementRejectReason::InvalidEphemeris
                 {
                     push_unique_rejection(
@@ -3367,6 +3370,14 @@ fn solution_separation_m(left: &PositionEstimate, right: &PositionEstimate) -> f
 
 fn supports_reliable_raim_exclusion(usable_sat_count: usize) -> bool {
     usable_sat_count >= 6
+}
+
+fn supports_reliable_raim_exclusion_after_prior_exclusions(
+    usable_sat_count: usize,
+    has_prior_exclusion: bool,
+) -> bool {
+    supports_reliable_raim_exclusion(usable_sat_count)
+        || (has_prior_exclusion && usable_sat_count >= 5)
 }
 
 fn raim_fault_detection_from_separation(
