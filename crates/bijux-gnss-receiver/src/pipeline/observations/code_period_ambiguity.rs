@@ -10,7 +10,8 @@ use crate::pipeline::observations::labels::{observation_status_label, observatio
 use crate::pipeline::observations::pseudorange_timing::code_phase_timing_from_tracking_epoch;
 use crate::pipeline::observations::signal_model::observation_signal_model;
 
-use super::{observation_signal_key, observation_snapshot_key, push_observation_reject_reason};
+use super::status::push_observation_reject_reason;
+use super::{observation_signal_key, observation_snapshot_key};
 
 const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
 pub(super) const CODE_PERIOD_AMBIGUITY_SEARCH_PERIODS: i64 = 2;

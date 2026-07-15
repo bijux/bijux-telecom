@@ -7,8 +7,8 @@ use bijux_gnss_signal::api::samples_per_code;
 
 use crate::engine::receiver_config::ReceiverPipelineConfig;
 
-use super::push_observation_reject_reason;
 use super::signal_model::ObservationSignalModel;
+use super::status::push_observation_reject_reason;
 
 pub(super) fn observation_timing_interval_diagnostic(
     config: &ReceiverPipelineConfig,

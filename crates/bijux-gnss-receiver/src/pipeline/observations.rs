@@ -6,11 +6,11 @@
 //! - clock_error_m comes from configured receiver-clock bias uncertainty.
 
 use bijux_gnss_core::api::{
-    CarrierPhaseArc, CodeCarrierDivergence, ConventionsConfig, CycleSlipDecisionEvidence,
-    CycleSlipDetector, CycleSlipDetectorEvidence, Cycles, DiagnosticEvent, DiagnosticSeverity,
-    GpsTime, LockFlags, Meters, ObsDecisionArtifact, ObsEpoch, ObsEpochManifest, ObsMetadata,
-    ObsSatellite, ObservationEpochDecision, ObservationStatus, ReceiverRole, SatId,
-    SatObservationDecision, Seconds, SigId, TrackEpoch,
+    CarrierPhaseArc, CodeCarrierDivergence, CycleSlipDecisionEvidence, CycleSlipDetector,
+    CycleSlipDetectorEvidence, Cycles, DiagnosticEvent, DiagnosticSeverity, GpsTime, LockFlags,
+    Meters, ObsDecisionArtifact, ObsEpoch, ObsEpochManifest, ObsMetadata, ObsSatellite,
+    ObservationEpochDecision, ReceiverRole, SatId, SatObservationDecision, Seconds, SigId,
+    TrackEpoch,
 };
 
 use crate::engine::receiver_config::ReceiverPipelineConfig;
@@ -34,6 +34,10 @@ use crate::pipeline::observations::residual_reports::{
     observation_residual_reports_from_epochs, raw_observation_snapshot, RawObservationSnapshot,
 };
 use crate::pipeline::observations::signal_model::observation_signal_model;
+use crate::pipeline::observations::status::{
+    apply_epoch_decision, apply_pseudorange_physics_rejection, classify_observation_status,
+    push_observation_reject_reason,
+};
 use crate::pipeline::observations::timing::{
     grouped_epoch_time_mismatch_diagnostic, grouped_epoch_time_mismatch_reasons,
     mark_grouped_epoch_time_mismatch, normalize_observation_cn0_dbhz, observation_epoch_id,
@@ -46,13 +50,15 @@ use crate::pipeline::observations::variance::{
 };
 use crate::pipeline::tracking::TrackingResult;
 use crate::pipeline::{StepReport, StepStats};
-use bijux_gnss_signal::api::{signal_cycles_to_meters, signal_wavelength_m, validate_obs_epochs};
+#[cfg(feature = "reference-checks")]
+use bijux_gnss_signal::api::validate_obs_epochs;
+use bijux_gnss_signal::api::{signal_cycles_to_meters, signal_wavelength_m};
 use serde::{Deserialize, Serialize};
 
 #[cfg(test)]
 use bijux_gnss_core::api::{
-    Constellation, GlonassFrequencyChannel, Hertz, ObsSignalTiming, ReceiverSampleTrace,
-    SignalBand, SignalCode, SignalSpec, GPS_L1_CA_CARRIER_HZ,
+    Constellation, GlonassFrequencyChannel, Hertz, ObsSignalTiming, ObservationStatus,
+    ReceiverSampleTrace, SignalBand, SignalCode, SignalSpec, GPS_L1_CA_CARRIER_HZ,
 };
 #[cfg(test)]
 use bijux_gnss_signal::api::{glonass_l1_carrier_hz, samples_per_code};
@@ -71,6 +77,7 @@ mod pseudorange_timing;
 mod receiver_clock;
 mod residual_reports;
 mod signal_model;
+mod status;
 mod timing;
 mod variance;
 
@@ -93,7 +100,6 @@ pub(crate) use signal_model::supports_observation_signal;
 use signal_model::{tracked_signal_center_hz, tracked_signal_code_for_band};
 
 const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
-const OBS_WEAK_CN0_DBHZ: f64 = 25.0;
 #[derive(Debug, Clone)]
 struct CarrierPhaseArcState {
     phase_cycles: f64,
@@ -1232,99 +1238,6 @@ fn carrier_phase_reset_priority(value: CarrierPhaseContinuity) -> u8 {
     }
 }
 
-fn classify_observation_status(
-    epoch: &TrackEpoch,
-    cn0_dbhz: f64,
-) -> (ObservationStatus, Vec<String>) {
-    let mut reasons = Vec::new();
-    if epoch.lock_state_reason.as_deref() == Some("sample_rate_mismatch") {
-        reasons.push("sample_rate_mismatch".to_string());
-    }
-    if !epoch.lock {
-        reasons.push("tracking_unlock".to_string());
-    }
-    if cn0_dbhz < OBS_WEAK_CN0_DBHZ {
-        reasons.push(format!("cn0_below_{OBS_WEAK_CN0_DBHZ:.1}dbhz"));
-    }
-    if epoch.cycle_slip {
-        reasons.push("cycle_slip".to_string());
-    }
-    if !epoch.prompt_i.is_finite() || !epoch.prompt_q.is_finite() || !cn0_dbhz.is_finite() {
-        reasons.push("non_finite_observable".to_string());
-    }
-
-    let status = if reasons
-        .iter()
-        .any(|reason| reason == "non_finite_observable" || reason == "sample_rate_mismatch")
-    {
-        ObservationStatus::Inconsistent
-    } else if reasons.iter().any(|reason| reason == "tracking_unlock") {
-        ObservationStatus::Missing
-    } else if reasons.iter().any(|reason| reason.starts_with("cn0_below_")) {
-        ObservationStatus::Weak
-    } else {
-        ObservationStatus::Accepted
-    };
-    (status, reasons)
-}
-
-fn apply_epoch_decision(epoch: &mut ObsEpoch) {
-    let accepted_count = epoch
-        .sats
-        .iter()
-        .filter(|sat| sat.observation_status == ObservationStatus::Accepted)
-        .count();
-    let has_inconsistent =
-        epoch.sats.iter().any(|sat| sat.observation_status == ObservationStatus::Inconsistent);
-
-    if has_inconsistent {
-        epoch.decision = ObservationEpochDecision::Rejected;
-        epoch.decision_reason = Some("inconsistent_observable".to_string());
-        epoch.valid = false;
-        return;
-    }
-    if accepted_count == 0 {
-        epoch.decision = ObservationEpochDecision::Rejected;
-        epoch.decision_reason = Some("no_accepted_observables".to_string());
-        epoch.valid = false;
-        return;
-    }
-    if let Err(reason) = validate_obs_epochs(std::slice::from_ref(epoch)) {
-        epoch.decision = ObservationEpochDecision::Rejected;
-        epoch.decision_reason = Some(format!("malformed_observation_set:{reason}"));
-        epoch.valid = false;
-        return;
-    }
-    epoch.decision = ObservationEpochDecision::Accepted;
-    epoch.decision_reason = Some("accepted_observables_present".to_string());
-}
-
-fn apply_pseudorange_physics_rejection(sat: &mut ObsSatellite) {
-    let mut reasons = pseudorange_physics_reject_reasons(sat.pseudorange_m);
-    if reasons.is_empty() {
-        return;
-    }
-    sat.observation_status = ObservationStatus::Inconsistent;
-    sat.observation_reject_reasons.append(&mut reasons);
-    sat.observation_reject_reasons.sort();
-    sat.observation_reject_reasons.dedup();
-}
-
-fn pseudorange_physics_reject_reasons(pseudorange_m: Meters) -> Vec<String> {
-    let pseudorange_m = pseudorange_m.0;
-    if !pseudorange_m.is_finite() {
-        return vec!["non_finite_pseudorange".to_string()];
-    }
-    if pseudorange_m <= 0.0 {
-        return vec!["non_positive_pseudorange".to_string()];
-    }
-    let cfg = ConventionsConfig::default();
-    if pseudorange_m < cfg.min_pseudorange_m || pseudorange_m > cfg.max_pseudorange_m {
-        return vec!["pseudorange_out_of_bounds".to_string()];
-    }
-    Vec::new()
-}
-
 fn slip_threshold_m(cn0_dbhz: f64, elevation_deg: Option<f64>) -> f64 {
     let cn0 = cn0_dbhz.clamp(20.0, 60.0);
     let cn0_factor = 45.0 / cn0;
@@ -1817,14 +1730,6 @@ fn apply_cycle_slip_surface(sat: &mut ObsSatellite, reason: Option<&str>) {
         sat.metadata.observation_lock_reason = Some(reason.unwrap_or("cycle_slip").to_string());
     }
     sat.metadata.lock_quality *= 0.2;
-}
-
-fn push_observation_reject_reason(reasons: &mut Vec<String>, reason: &str) {
-    if reasons.iter().any(|existing| existing == reason) {
-        return;
-    }
-    reasons.push(reason.to_string());
-    reasons.sort();
 }
 
 #[cfg(test)]

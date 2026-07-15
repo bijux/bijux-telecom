@@ -6,7 +6,7 @@ use crate::pipeline::observations::receiver_clock::{
     receiver_clock_error_m, ObservationReceiverClock,
 };
 
-use super::push_observation_reject_reason;
+use super::status::push_observation_reject_reason;
 
 #[derive(Debug, Clone)]
 pub(super) struct ObservationVarianceEvidence {
