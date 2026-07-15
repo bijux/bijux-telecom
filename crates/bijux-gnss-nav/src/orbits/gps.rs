@@ -357,6 +357,53 @@ mod tests {
     }
 
     #[test]
+    fn gps_satellite_state_matches_independent_reference() {
+        let eph = GpsEphemeris {
+            sat: SatId { constellation: Constellation::Gps, prn: 11 },
+            iodc: 0x123,
+            iode: 0x45,
+            week: 2200,
+            sv_health: 0,
+            toe_s: 345_600.0,
+            toc_s: 345_520.0,
+            sqrt_a: 5_153.795_477_5,
+            e: 0.0123,
+            i0: 0.947,
+            idot: 2.1e-10,
+            omega0: 1.35,
+            omegadot: -8.4e-9,
+            w: 0.71,
+            m0: -0.23,
+            delta_n: 4.7e-9,
+            cuc: 1.2e-6,
+            cus: -2.4e-6,
+            crc: 145.0,
+            crs: -83.0,
+            cic: -1.7e-7,
+            cis: 2.3e-7,
+            af0: 2.4e-4,
+            af1: -1.1e-12,
+            af2: 4.0e-20,
+            tgd: -7.2e-9,
+        };
+        let transmit_tow_s = 348_123.456;
+        let signal_travel_time_s = 0.073_5;
+
+        let state = sat_state_gps_l1ca(&eph, transmit_tow_s, signal_travel_time_s);
+        let expected = reference_gps_satellite_state(&eph, transmit_tow_s, signal_travel_time_s);
+
+        assert!((state.x_m - expected.x_m).abs() < 1.0e-6);
+        assert!((state.y_m - expected.y_m).abs() < 1.0e-6);
+        assert!((state.z_m - expected.z_m).abs() < 1.0e-6);
+        assert!((state.clock_correction.bias_s - expected.clock_correction.bias_s).abs() < 1.0e-18);
+        assert!(
+            (state.clock_correction.relativistic_s - expected.clock_correction.relativistic_s)
+                .abs()
+                < 1.0e-18
+        );
+    }
+
+    #[test]
     fn earth_rotation_correction_is_identity_for_zero_travel_time() {
         let correction = gps_earth_rotation_correction(12_345.0, -67_890.0, 0.0);
 
@@ -771,5 +818,94 @@ mod tests {
 
         assert_eq!(selected.toe_s, current.toe_s);
         assert_eq!(selected.toc_s, current.toc_s);
+    }
+
+    fn reference_gps_satellite_state(
+        eph: &GpsEphemeris,
+        transmit_tow_s: f64,
+        signal_travel_time_s: f64,
+    ) -> GpsSatState {
+        let semi_major_axis_m = eph.sqrt_a * eph.sqrt_a;
+        let nominal_mean_motion_rad_s = (MU / semi_major_axis_m.powi(3)).sqrt();
+        let corrected_mean_motion_rad_s = nominal_mean_motion_rad_s + eph.delta_n;
+        let time_from_ephemeris_s = reference_wrap_time(transmit_tow_s - eph.toe_s);
+        let mean_anomaly_rad = eph.m0 + corrected_mean_motion_rad_s * time_from_ephemeris_s;
+        let eccentric_anomaly_rad = reference_solve_kepler(mean_anomaly_rad, eph.e);
+        let sin_e = eccentric_anomaly_rad.sin();
+        let cos_e = eccentric_anomaly_rad.cos();
+        let true_anomaly_rad = ((1.0 - eph.e * eph.e).sqrt() * sin_e).atan2(cos_e - eph.e);
+        let argument_of_latitude_rad = true_anomaly_rad + eph.w;
+        let sin_double_latitude = (2.0 * argument_of_latitude_rad).sin();
+        let cos_double_latitude = (2.0 * argument_of_latitude_rad).cos();
+        let corrected_argument_of_latitude_rad = argument_of_latitude_rad
+            + eph.cuc * cos_double_latitude
+            + eph.cus * sin_double_latitude;
+        let corrected_radius_m = semi_major_axis_m * (1.0 - eph.e * cos_e)
+            + eph.crc * cos_double_latitude
+            + eph.crs * sin_double_latitude;
+        let corrected_inclination_rad = eph.i0
+            + eph.idot * time_from_ephemeris_s
+            + eph.cic * cos_double_latitude
+            + eph.cis * sin_double_latitude;
+        let orbital_x_m = corrected_radius_m * corrected_argument_of_latitude_rad.cos();
+        let orbital_y_m = corrected_radius_m * corrected_argument_of_latitude_rad.sin();
+        let corrected_right_ascension_rad = eph.omega0
+            + (eph.omegadot - OMEGA_E_DOT) * time_from_ephemeris_s
+            - OMEGA_E_DOT * eph.toe_s;
+        let x_unrotated_m = orbital_x_m * corrected_right_ascension_rad.cos()
+            - orbital_y_m * corrected_inclination_rad.cos() * corrected_right_ascension_rad.sin();
+        let y_unrotated_m = orbital_x_m * corrected_right_ascension_rad.sin()
+            + orbital_y_m * corrected_inclination_rad.cos() * corrected_right_ascension_rad.cos();
+        let z_m = orbital_y_m * corrected_inclination_rad.sin();
+        let rotation_rad = OMEGA_E_DOT * signal_travel_time_s;
+        let x_m = rotation_rad.cos() * x_unrotated_m + rotation_rad.sin() * y_unrotated_m;
+        let y_m = -rotation_rad.sin() * x_unrotated_m + rotation_rad.cos() * y_unrotated_m;
+        let clock_correction = reference_gps_clock_correction(eph, transmit_tow_s, sin_e);
+
+        GpsSatState { x_m, y_m, z_m, clock_correction }
+    }
+
+    fn reference_gps_clock_correction(
+        eph: &GpsEphemeris,
+        transmit_tow_s: f64,
+        sin_e: f64,
+    ) -> GpsSatelliteClockCorrection {
+        let clock_time_s = reference_wrap_time(transmit_tow_s - eph.toc_s);
+        let base_bias_s = eph.af0 + eph.af1 * clock_time_s + eph.af2 * clock_time_s * clock_time_s;
+        let relativistic_s = RELATIVISTIC_F * eph.e * eph.sqrt_a * sin_e;
+        GpsSatelliteClockCorrection {
+            bias_s: base_bias_s + relativistic_s - eph.tgd,
+            drift_s_per_s: eph.af1 + 2.0 * eph.af2 * clock_time_s,
+            drift_rate_s_per_s2: 2.0 * eph.af2,
+            base_bias_s,
+            relativistic_s,
+            group_delay_s: eph.tgd,
+        }
+    }
+
+    fn reference_solve_kepler(mean_anomaly_rad: f64, eccentricity: f64) -> f64 {
+        let mut eccentric_anomaly_rad = mean_anomaly_rad;
+        for _ in 0..20 {
+            let residual = eccentric_anomaly_rad
+                - eccentricity * eccentric_anomaly_rad.sin()
+                - mean_anomaly_rad;
+            let derivative = 1.0 - eccentricity * eccentric_anomaly_rad.cos();
+            let step = residual / derivative;
+            eccentric_anomaly_rad -= step;
+            if step.abs() < 1.0e-14 {
+                break;
+            }
+        }
+        eccentric_anomaly_rad
+    }
+
+    fn reference_wrap_time(mut seconds: f64) -> f64 {
+        while seconds > 302_400.0 {
+            seconds -= 604_800.0;
+        }
+        while seconds < -302_400.0 {
+            seconds += 604_800.0;
+        }
+        seconds
     }
 }
