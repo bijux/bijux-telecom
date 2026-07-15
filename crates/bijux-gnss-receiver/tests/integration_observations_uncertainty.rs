@@ -2,7 +2,7 @@
 
 use bijux_gnss_core::api::{
     Chips, Constellation, Cycles, Epoch, Hertz, ReceiverSampleTrace, SatId, SignalDelayAlignment,
-    TrackEpoch,
+    TrackEpoch, TrackingUncertainty,
 };
 use bijux_gnss_receiver::api::{
     observations_from_tracking_results, ReceiverPipelineConfig, TrackingResult,
@@ -34,6 +34,7 @@ fn tracking_epoch(
     sat: SatId,
     epoch_idx: u64,
     cn0_dbhz: f64,
+    code_phase_sigma_samples: f64,
 ) -> TrackEpoch {
     let sample_index = epoch_idx * samples_per_epoch(config);
     TrackEpoch {
@@ -79,7 +80,12 @@ fn tracking_epoch(
             source: "synthetic_truth".to_string(),
         }),
         transmit_time: None,
-        tracking_uncertainty: None,
+        tracking_uncertainty: Some(TrackingUncertainty {
+            code_phase_samples: code_phase_sigma_samples,
+            carrier_phase_cycles: 0.02,
+            doppler_hz: 1.0,
+            cn0_dbhz: 0.5,
+        }),
         processing_ms: None,
     }
 }
@@ -106,17 +112,17 @@ fn observation_variance(config: &ReceiverPipelineConfig, epoch: TrackEpoch) -> f
 }
 
 #[test]
-fn pseudorange_variance_responds_to_cn0_and_integration() {
+fn pseudorange_variance_uses_tracking_uncertainty_for_signal_strength_and_integration() {
     let sat = SatId { constellation: Constellation::Gps, prn: 7 };
     let short_config = observation_config(1);
     let long_config = observation_config(10);
 
     let strong_short =
-        observation_variance(&short_config, tracking_epoch(&short_config, sat, 70, 48.0));
+        observation_variance(&short_config, tracking_epoch(&short_config, sat, 70, 48.0, 0.04));
     let weak_short =
-        observation_variance(&short_config, tracking_epoch(&short_config, sat, 70, 28.0));
+        observation_variance(&short_config, tracking_epoch(&short_config, sat, 70, 28.0, 0.16));
     let strong_long =
-        observation_variance(&long_config, tracking_epoch(&long_config, sat, 70, 48.0));
+        observation_variance(&long_config, tracking_epoch(&long_config, sat, 70, 48.0, 0.02));
 
     assert!(
         weak_short > strong_short,
@@ -129,14 +135,14 @@ fn pseudorange_variance_responds_to_cn0_and_integration() {
 }
 
 #[test]
-fn pseudorange_variance_responds_to_dll_lock_and_lock_quality() {
+fn pseudorange_variance_uses_tracking_uncertainty_for_lock_quality() {
     let config = observation_config(1);
     let sat = SatId { constellation: Constellation::Gps, prn: 8 };
 
-    let locked_epoch = tracking_epoch(&config, sat, 70, 45.0);
-    let mut dll_unlocked_epoch = tracking_epoch(&config, sat, 70, 45.0);
+    let locked_epoch = tracking_epoch(&config, sat, 70, 45.0, 0.04);
+    let mut dll_unlocked_epoch = tracking_epoch(&config, sat, 70, 45.0, 0.18);
     dll_unlocked_epoch.dll_lock = false;
-    let mut guarded_epoch = tracking_epoch(&config, sat, 70, 45.0);
+    let mut guarded_epoch = tracking_epoch(&config, sat, 70, 45.0, 0.12);
     guarded_epoch.anti_false_lock = true;
 
     let locked = observation_variance(&config, locked_epoch);
