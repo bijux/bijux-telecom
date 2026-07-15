@@ -23,6 +23,7 @@ const OSCILLATOR_NOISE_CN0_DB_HZ: f32 = 72.0;
 const OSCILLATOR_NOISE_DURATION_S: f64 = 0.100;
 const OSCILLATOR_NOISE_MIN_STABLE_EPOCHS: usize = 6;
 const BOUNDED_WHITE_PHASE_STD_RAD: f64 = 0.018;
+const BOUNDED_WHITE_FREQUENCY_STD_HZ: f64 = 0.18;
 const BOUNDED_MAX_CYCLE_SLIP_RATE: f64 = 0.05;
 
 #[derive(Debug)]
@@ -179,5 +180,42 @@ fn tracking_error_increases_but_lock_remains_stable_under_bounded_white_phase_no
     assert!(
         white_phase.carrier_phase_step_jitter_cycles > nominal.carrier_phase_step_jitter_cycles,
         "white phase noise should increase phase-step jitter: white_phase={white_phase:?}, nominal={nominal:?}"
+    );
+}
+
+#[test]
+fn tracking_error_increases_but_lock_remains_stable_under_bounded_white_frequency_noise() {
+    let nominal =
+        tracking_metrics_for_oscillator(SyntheticReceiverOscillatorModel::default(), 0xA551_2902);
+    let white_frequency = tracking_metrics_for_oscillator(
+        SyntheticReceiverOscillatorModel {
+            noise: SyntheticReceiverOscillatorNoiseModel {
+                seed: 0xF2E1_4451,
+                update_interval_samples: 1_023,
+                white_phase_std_rad: 0.0,
+                white_frequency_std_hz: BOUNDED_WHITE_FREQUENCY_STD_HZ,
+                random_walk_frequency_step_std_hz: 0.0,
+            },
+            ..SyntheticReceiverOscillatorModel::default()
+        },
+        0xA551_2902,
+    );
+
+    assert!(
+        white_frequency.stable_epoch_count >= OSCILLATOR_NOISE_MIN_STABLE_EPOCHS,
+        "bounded white frequency noise should retain a stable lock window: white_frequency={white_frequency:?}, nominal={nominal:?}"
+    );
+    assert!(
+        white_frequency.cycle_slip_rate <= BOUNDED_MAX_CYCLE_SLIP_RATE,
+        "bounded white frequency noise produced excessive slips: white_frequency={white_frequency:?}, nominal={nominal:?}"
+    );
+    assert!(
+        white_frequency.pll_error_rms > nominal.pll_error_rms,
+        "white frequency noise should increase measured PLL error: white_frequency={white_frequency:?}, nominal={nominal:?}"
+    );
+    assert!(
+        white_frequency.carrier_phase_step_jitter_cycles
+            > nominal.carrier_phase_step_jitter_cycles,
+        "white frequency noise should increase phase-step jitter: white_frequency={white_frequency:?}, nominal={nominal:?}"
     );
 }
