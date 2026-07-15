@@ -68,6 +68,7 @@ fn sample_navigation() -> GlonassBroadcastNavigationFrame {
             satellite_type: GlonassSatelliteType::GlonassM,
             reported_slot: None,
             system_time: Some(GlonassSystemTime { day_number: 864, four_year_interval: Some(8) }),
+            resolved_day_index: Some(864),
             accuracy_code: Some(2),
         },
         system_time: Some(GlonassAlmanacTimeData {
