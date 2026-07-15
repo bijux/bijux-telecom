@@ -90,9 +90,24 @@ impl EpochAligner {
         let mut out = Vec::new();
         let mut i = 0;
         let mut j = 0;
+        if !self.tolerance_s.is_finite() || self.tolerance_s < 0.0 {
+            self.dropped_base += base.len();
+            self.dropped_rover += rover.len();
+            return out;
+        }
         while i < base.len() && j < rover.len() {
             let b = &base[i];
             let r = &rover[j];
+            if !b.t_rx_s.0.is_finite() {
+                self.dropped_base += 1;
+                i += 1;
+                continue;
+            }
+            if !r.t_rx_s.0.is_finite() {
+                self.dropped_rover += 1;
+                j += 1;
+                continue;
+            }
             let dt = (b.t_rx_s.0 - r.t_rx_s.0).abs();
             if dt <= self.tolerance_s {
                 out.push((b.clone(), r.clone()));
@@ -108,6 +123,8 @@ impl EpochAligner {
                 j += 1;
             }
         }
+        self.dropped_base += base.len().saturating_sub(i);
+        self.dropped_rover += rover.len().saturating_sub(j);
         out
     }
 
@@ -115,6 +132,9 @@ impl EpochAligner {
         let total = base_len.max(rover_len).max(1) as f64;
         let matched_pct = (self.aligned as f64) / total;
         AlignmentReport {
+            tolerance_s: self.tolerance_s,
+            attempted_base_epochs: base_len,
+            attempted_rover_epochs: rover_len,
             base: AlignmentDiagnostic {
                 role: ReceiverRole::Base,
                 aligned: self.aligned,
@@ -290,8 +310,69 @@ pub struct AlignmentDiagnostic {
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct AlignmentReport {
+    pub tolerance_s: f64,
+    pub attempted_base_epochs: usize,
+    pub attempted_rover_epochs: usize,
     pub base: AlignmentDiagnostic,
     pub rover: AlignmentDiagnostic,
     pub matched_pct: f64,
     pub jitter: JitterSummary,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::EpochAligner;
+    use bijux_gnss_core::api::{
+        ObsEpoch, ObservationEpochDecision, ReceiverRole, ReceiverSampleTrace, Seconds,
+    };
+
+    #[test]
+    fn epoch_aligner_reports_unmatched_tail_epochs() {
+        let base = vec![empty_epoch(0.0), empty_epoch(0.001), empty_epoch(0.002)];
+        let rover = vec![empty_epoch(0.0)];
+        let mut aligner = EpochAligner::new(0.0001);
+
+        let aligned = aligner.align(&base, &rover);
+        let report = aligner.report(base.len(), rover.len());
+
+        assert_eq!(aligned.len(), 1);
+        assert_eq!(report.base.aligned, 1);
+        assert_eq!(report.base.dropped, 2);
+        assert_eq!(report.rover.dropped, 0);
+        assert_eq!(report.attempted_base_epochs, 3);
+        assert_eq!(report.attempted_rover_epochs, 1);
+        assert_eq!(report.tolerance_s, 0.0001);
+    }
+
+    #[test]
+    fn epoch_aligner_refuses_invalid_tolerance() {
+        let base = vec![empty_epoch(0.0)];
+        let rover = vec![empty_epoch(0.0)];
+        let mut aligner = EpochAligner::new(f64::NAN);
+
+        let aligned = aligner.align(&base, &rover);
+        let report = aligner.report(base.len(), rover.len());
+
+        assert!(aligned.is_empty());
+        assert_eq!(report.base.dropped, 1);
+        assert_eq!(report.rover.dropped, 1);
+    }
+
+    fn empty_epoch(t_rx_s: f64) -> ObsEpoch {
+        ObsEpoch {
+            t_rx_s: Seconds(t_rx_s),
+            source_time: ReceiverSampleTrace::from_sample_index(0, 1_000.0),
+            gps_week: None,
+            tow_s: None,
+            epoch_idx: 0,
+            discontinuity: false,
+            valid: true,
+            processing_ms: None,
+            role: ReceiverRole::Rover,
+            sats: Vec::new(),
+            decision: ObservationEpochDecision::Accepted,
+            decision_reason: Some("test_epoch".to_string()),
+            manifest: None,
+        }
+    }
 }

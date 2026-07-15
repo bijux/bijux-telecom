@@ -397,7 +397,8 @@ mod tests {
     use super::{
         geometric_range_m, rtk_single_difference_residual_metrics,
         rtk_single_difference_residual_metrics_with_antenna_corrections,
-        RtkSingleDifferenceObservation, SPEED_OF_LIGHT_MPS,
+        RtkEpochAlignmentEvidence, RtkSingleDifferenceObservation,
+        RTK_EPOCH_ALIGNMENT_TOLERANCE_S, SPEED_OF_LIGHT_MPS,
     };
     use crate::estimation::rtk::antenna::modeled_pseudorange_with_antenna_corrections_m;
     use crate::estimation::rtk::antenna::RtkAntennaCorrectionConfig;

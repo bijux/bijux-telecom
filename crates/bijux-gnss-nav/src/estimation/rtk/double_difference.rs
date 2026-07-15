@@ -389,6 +389,9 @@ mod tests {
         rtk_double_difference_residual_metrics_with_antenna_corrections,
         RtkDoubleDifferenceObservation,
     };
+    use crate::estimation::rtk::single_difference::{
+        RtkEpochAlignmentEvidence, RTK_EPOCH_ALIGNMENT_TOLERANCE_S,
+    };
     use crate::estimation::position::solver::{ecef_to_enu, ecef_to_geodetic};
     use crate::estimation::rtk::antenna::{
         modeled_pseudorange_with_antenna_corrections_m, RtkAntennaCorrectionConfig,
@@ -577,7 +580,7 @@ mod tests {
                 base_receive_time_s: receive_gps_time.tow_s,
                 rover_receive_time_s: receive_gps_time.tow_s,
                 delta_s: 0.0,
-                tolerance_s: super::single_difference::RTK_EPOCH_ALIGNMENT_TOLERANCE_S,
+                tolerance_s: RTK_EPOCH_ALIGNMENT_TOLERANCE_S,
             },
             code_m: 0.0,
             phase_cycles: 0.0,
