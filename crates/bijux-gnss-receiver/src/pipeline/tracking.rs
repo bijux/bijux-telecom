@@ -88,6 +88,8 @@ const REACQUISITION_CONFIRMATION_EPOCHS: u8 = 2;
 const REACQUISITION_PULL_IN_EPOCH_BUDGET: u8 = 20;
 const REACQUISITION_REFERENCE_CN0_MARGIN_DBHZ: f64 = 12.0;
 const REACQUISITION_STABLE_TRACKING_EPOCHS: u8 = 5;
+const REACQUISITION_AMBIGUITY_CN0_MARGIN_DB: f64 = 1.5;
+const REACQUISITION_AMBIGUITY_PROMPT_POWER_RATIO: f32 = 0.85;
 const TRACKING_CN0_WINDOW_EPOCHS: usize = 8;
 const TRACKING_CN0_MIN_WINDOW_EPOCHS: usize = 4;
 const TRACKING_UNCERTAINTY_WINDOW_EPOCHS: usize = 8;
@@ -1721,11 +1723,109 @@ struct PromptPhaseDecision {
     cycle_slip: bool,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 struct ReacquisitionSeed {
     carrier_hz: f64,
     code_phase_samples: f64,
     cn0_dbhz: f64,
+    carrier_sign: ReacquisitionCarrierSign,
+    secondary_code_phase_periods: Option<usize>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ReacquisitionCarrierSign {
+    Aligned,
+    Inverted,
+}
+
+impl ReacquisitionCarrierSign {
+    fn phase_offset_cycles(self) -> f64 {
+        match self {
+            Self::Aligned => 0.0,
+            Self::Inverted => 0.5,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ReacquisitionHypothesis {
+    doppler_bin: i8,
+    code_bin: i8,
+    carrier_sign: ReacquisitionCarrierSign,
+    secondary_code_phase_periods: Option<usize>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ReacquisitionCandidate {
+    hypothesis: ReacquisitionHypothesis,
+    carrier_hz: f64,
+    code_phase_samples: f64,
+    cn0_dbhz: f64,
+    prompt_power: f32,
+}
+
+impl ReacquisitionCandidate {
+    fn seed(self) -> ReacquisitionSeed {
+        ReacquisitionSeed {
+            carrier_hz: self.carrier_hz,
+            code_phase_samples: self.code_phase_samples,
+            cn0_dbhz: self.cn0_dbhz,
+            carrier_sign: self.hypothesis.carrier_sign,
+            secondary_code_phase_periods: self.hypothesis.secondary_code_phase_periods,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum ReacquisitionSelection {
+    Accepted(ReacquisitionSeed),
+    Refused,
+}
+
+fn select_reacquisition_candidate(
+    candidates: &[ReacquisitionCandidate],
+    min_cn0_dbhz: f64,
+) -> ReacquisitionSelection {
+    let mut eligible = candidates
+        .iter()
+        .copied()
+        .filter(|candidate| {
+            candidate.cn0_dbhz.is_finite()
+                && candidate.prompt_power.is_finite()
+                && candidate.cn0_dbhz >= min_cn0_dbhz
+        })
+        .collect::<Vec<_>>();
+    eligible.sort_by(|left, right| {
+        right
+            .cn0_dbhz
+            .partial_cmp(&left.cn0_dbhz)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| {
+                right
+                    .prompt_power
+                    .partial_cmp(&left.prompt_power)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+            .then_with(|| {
+                left.hypothesis.doppler_bin.abs().cmp(&right.hypothesis.doppler_bin.abs())
+            })
+            .then_with(|| left.hypothesis.code_bin.abs().cmp(&right.hypothesis.code_bin.abs()))
+    });
+
+    let Some(best) = eligible.first().copied() else {
+        return ReacquisitionSelection::Refused;
+    };
+    let ambiguous_alternate = eligible.iter().skip(1).any(|candidate| {
+        candidate.cn0_dbhz >= best.cn0_dbhz - REACQUISITION_AMBIGUITY_CN0_MARGIN_DB
+            && candidate.prompt_power
+                >= best.prompt_power * REACQUISITION_AMBIGUITY_PROMPT_POWER_RATIO
+            && candidate.hypothesis != best.hypothesis
+    });
+    if ambiguous_alternate {
+        ReacquisitionSelection::Refused
+    } else {
+        ReacquisitionSelection::Accepted(best.seed())
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -4456,6 +4556,9 @@ impl Tracking {
             channel.tracking_params,
             true,
         );
+        channel.state.carrier_phase_cycles = wrap_phase_cycles_signed(
+            channel.state.carrier_phase_cycles + seed.carrier_sign.phase_offset_cycles(),
+        );
         ReacquisitionOutcome::Started
     }
 
@@ -4474,6 +4577,8 @@ impl Tracking {
             .unwrap_or(2.0);
         (left.carrier_hz - right.carrier_hz).abs() <= doppler_tolerance_hz
             && (left.code_phase_samples - right.code_phase_samples).abs() <= code_tolerance_samples
+            && left.carrier_sign == right.carrier_sign
+            && left.secondary_code_phase_periods == right.secondary_code_phase_periods
     }
 
     fn quick_reacquire(
@@ -4492,41 +4597,68 @@ impl Tracking {
         let code_step = acquisition_uncertainty
             .map(|uncertainty| uncertainty.code_phase_samples.clamp(0.5, 2.0))
             .unwrap_or(1.0);
-        let doppler_bins = [-2.0, -1.0, 0.0, 1.0, 2.0].map(|bin| bin * doppler_step);
-        let code_bins = [-2.0, -1.0, 0.0, 1.0, 2.0].map(|bin| bin * code_step);
-        let mut best = None;
-        let mut best_cn0_dbhz = f64::NEG_INFINITY;
+        let doppler_bins = [-2_i8, -1, 0, 1, 2];
+        let code_bins = [-2_i8, -1, 0, 1, 2];
+        let signal_model = TrackingSignalModel::for_sat(&self.config, sat);
+        let carrier_signs = reacquisition_carrier_signs(&signal_model);
+        let mut candidates = Vec::new();
         let min_cn0_dbhz = reacquisition_min_cn0_dbhz(lock_reference_cn0_dbhz);
-        for d in doppler_bins {
-            for c in code_bins {
-                let corr = self.correlate_epoch(
-                    frame,
-                    sat,
-                    carrier_hz + d,
-                    0.0,
-                    self.config.code_freq_basis_hz,
-                    code_phase_samples + c,
-                    0.5,
-                );
-                let cn0_dbhz = estimate_cn0_dbhz(
-                    corr.prompt,
-                    corr.early - corr.late,
-                    self.config.sampling_freq_hz,
-                    frame.len() as f64,
-                    corr.early_late_noise_weight_energy,
-                );
-                let anti_false_lock = anti_false_lock_detected(corr.early, corr.prompt, corr.late);
-                if !anti_false_lock && cn0_dbhz >= min_cn0_dbhz && cn0_dbhz > best_cn0_dbhz {
-                    best_cn0_dbhz = cn0_dbhz;
-                    best = Some(ReacquisitionSeed {
-                        carrier_hz: carrier_hz + d,
-                        code_phase_samples: code_phase_samples + c,
-                        cn0_dbhz,
-                    });
+        for doppler_bin in doppler_bins {
+            for code_bin in code_bins {
+                let doppler_offset_hz = f64::from(doppler_bin) * doppler_step;
+                let code_offset_samples = f64::from(code_bin) * code_step;
+                let candidate_carrier_hz = carrier_hz + doppler_offset_hz;
+                let candidate_code_phase_samples = code_phase_samples + code_offset_samples;
+                for &carrier_sign in carrier_signs {
+                    let corr = self.correlate_epoch(
+                        frame,
+                        sat,
+                        candidate_carrier_hz,
+                        carrier_sign.phase_offset_cycles(),
+                        self.config.code_freq_basis_hz,
+                        candidate_code_phase_samples,
+                        0.5,
+                    );
+                    let cn0_dbhz = estimate_cn0_dbhz(
+                        corr.prompt,
+                        corr.early - corr.late,
+                        self.config.sampling_freq_hz,
+                        frame.len() as f64,
+                        corr.early_late_noise_weight_energy,
+                    );
+                    let anti_false_lock =
+                        anti_false_lock_detected(corr.early, corr.prompt, corr.late);
+                    if !anti_false_lock {
+                        candidates.push(ReacquisitionCandidate {
+                            hypothesis: ReacquisitionHypothesis {
+                                doppler_bin,
+                                code_bin,
+                                carrier_sign,
+                                secondary_code_phase_periods: None,
+                            },
+                            carrier_hz: candidate_carrier_hz,
+                            code_phase_samples: candidate_code_phase_samples,
+                            cn0_dbhz,
+                            prompt_power: corr.prompt.norm_sqr(),
+                        });
+                    }
                 }
             }
         }
-        best
+        match select_reacquisition_candidate(&candidates, min_cn0_dbhz) {
+            ReacquisitionSelection::Accepted(seed) => Some(seed),
+            ReacquisitionSelection::Refused => None,
+        }
+    }
+}
+
+fn reacquisition_carrier_signs(
+    signal_model: &TrackingSignalModel,
+) -> &'static [ReacquisitionCarrierSign] {
+    if signal_model.carrier_phase_transition_source().allows_half_cycle_transition() {
+        &[ReacquisitionCarrierSign::Aligned, ReacquisitionCarrierSign::Inverted]
+    } else {
+        &[ReacquisitionCarrierSign::Aligned]
     }
 }
 
@@ -5766,6 +5898,91 @@ mod tests {
         assert_eq!(projected, 5.5);
     }
 
+    fn reacquisition_candidate(
+        doppler_bin: i8,
+        code_bin: i8,
+        carrier_sign: super::ReacquisitionCarrierSign,
+        secondary_code_phase_periods: Option<usize>,
+        cn0_dbhz: f64,
+        prompt_power: f32,
+    ) -> super::ReacquisitionCandidate {
+        super::ReacquisitionCandidate {
+            hypothesis: super::ReacquisitionHypothesis {
+                doppler_bin,
+                code_bin,
+                carrier_sign,
+                secondary_code_phase_periods,
+            },
+            carrier_hz: 1000.0 + f64::from(doppler_bin),
+            code_phase_samples: 42.0 + f64::from(code_bin),
+            cn0_dbhz,
+            prompt_power,
+        }
+    }
+
+    #[test]
+    fn reacquisition_selection_chooses_strongest_hypothesis_not_first_peak() {
+        let selection = super::select_reacquisition_candidate(
+            &[
+                reacquisition_candidate(
+                    -2,
+                    -2,
+                    super::ReacquisitionCarrierSign::Aligned,
+                    None,
+                    39.0,
+                    200.0,
+                ),
+                reacquisition_candidate(
+                    1,
+                    1,
+                    super::ReacquisitionCarrierSign::Aligned,
+                    None,
+                    44.0,
+                    300.0,
+                ),
+            ],
+            35.0,
+        );
+
+        assert_eq!(
+            selection,
+            super::ReacquisitionSelection::Accepted(super::ReacquisitionSeed {
+                carrier_hz: 1001.0,
+                code_phase_samples: 43.0,
+                cn0_dbhz: 44.0,
+                carrier_sign: super::ReacquisitionCarrierSign::Aligned,
+                secondary_code_phase_periods: None,
+            })
+        );
+    }
+
+    #[test]
+    fn reacquisition_selection_refuses_ambiguous_hypotheses() {
+        let selection = super::select_reacquisition_candidate(
+            &[
+                reacquisition_candidate(
+                    0,
+                    0,
+                    super::ReacquisitionCarrierSign::Aligned,
+                    None,
+                    44.0,
+                    300.0,
+                ),
+                reacquisition_candidate(
+                    1,
+                    0,
+                    super::ReacquisitionCarrierSign::Inverted,
+                    None,
+                    43.0,
+                    270.0,
+                ),
+            ],
+            35.0,
+        );
+
+        assert_eq!(selection, super::ReacquisitionSelection::Refused);
+    }
+
     #[test]
     fn reacquisition_seed_matches_respects_acquisition_uncertainty_tolerances() {
         let tracking = Tracking::new(ReceiverPipelineConfig::default(), ReceiverRuntime::default());
@@ -5781,11 +5998,15 @@ mod tests {
                 carrier_hz: 1250.0,
                 code_phase_samples: 42.0,
                 cn0_dbhz: 36.0,
+                carrier_sign: super::ReacquisitionCarrierSign::Aligned,
+                secondary_code_phase_periods: None,
             },
             super::ReacquisitionSeed {
                 carrier_hz: 1400.0,
                 code_phase_samples: 42.5,
                 cn0_dbhz: 34.0,
+                carrier_sign: super::ReacquisitionCarrierSign::Aligned,
+                secondary_code_phase_periods: None,
             },
             Some(&uncertainty),
         ));
@@ -5794,11 +6015,15 @@ mod tests {
                 carrier_hz: 1250.0,
                 code_phase_samples: 42.0,
                 cn0_dbhz: 36.0,
+                carrier_sign: super::ReacquisitionCarrierSign::Aligned,
+                secondary_code_phase_periods: None,
             },
             super::ReacquisitionSeed {
                 carrier_hz: 1705.0,
                 code_phase_samples: 43.0,
                 cn0_dbhz: 34.0,
+                carrier_sign: super::ReacquisitionCarrierSign::Aligned,
+                secondary_code_phase_periods: None,
             },
             Some(&uncertainty),
         ));
