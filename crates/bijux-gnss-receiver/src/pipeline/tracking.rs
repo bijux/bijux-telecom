@@ -115,6 +115,7 @@ const SUBCARRIER_AMBIGUITY_MIN_PROMPT_RELATIVE_POWER: f32 = 0.05;
 const SUBCARRIER_AMBIGUITY_GUARD_OFFSETS_CHIPS: [f64; 2] = [-0.5, 0.5];
 const DOPPLER_ESTIMATOR_SPREAD_LOCK_MULTIPLIER: f64 = 3.0;
 const DOPPLER_ESTIMATOR_MIN_SPREAD_LIMIT_HZ: f64 = 25.0;
+const DOPPLER_ESTIMATOR_PROVENANCE_TOKEN_COUNT: usize = 6;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChannelState {
     Idle,
@@ -2710,6 +2711,14 @@ impl Tracking {
                         epoch.tracking_provenance.push(' ');
                         epoch.tracking_provenance.push_str(&subcarrier_ambiguity_provenance);
                     }
+                    if let Some(doppler_estimator_provenance) = tracking_provenance_segment(
+                        &runtime_tracking_provenance,
+                        "doppler_estimator_consistency=",
+                        DOPPLER_ESTIMATOR_PROVENANCE_TOKEN_COUNT,
+                    ) {
+                        epoch.tracking_provenance.push(' ');
+                        epoch.tracking_provenance.push_str(&doppler_estimator_provenance);
+                    }
                 }
                 self.apply_sample_rate_mismatch_diagnostic(
                     channel.sat,
@@ -3694,6 +3703,20 @@ fn doppler_estimator_provenance(consistency: DopplerEstimatorConsistency) -> Str
         consistency.phase_rate_residual_hz,
         consistency.prompt_correlation_residual_hz,
     )
+}
+
+fn tracking_provenance_segment(
+    provenance: &str,
+    first_token_prefix: &str,
+    token_count: usize,
+) -> Option<String> {
+    let mut tokens = provenance
+        .split_whitespace()
+        .skip_while(|token| !token.starts_with(first_token_prefix))
+        .take(token_count)
+        .peekable();
+    tokens.peek()?;
+    Some(tokens.collect::<Vec<_>>().join(" "))
 }
 
 fn update_windowed_tracking_cn0_estimate(
@@ -6582,6 +6605,22 @@ mod tests {
 
         assert!(provenance.contains("doppler_estimator_consistency=divergent"));
         assert!(provenance.contains("doppler_estimator_spread_hz=95.000"));
+    }
+
+    #[test]
+    fn tracking_provenance_segment_preserves_doppler_estimator_evidence() {
+        let provenance = "tracking lock_detector_fll_hz=10.000 doppler_estimator_consistency=divergent doppler_estimator_spread_hz=95.000 doppler_estimator_limit_hz=25.000 doppler_loop_residual_hz=0.000 doppler_phase_rate_residual_hz=12.000 doppler_prompt_residual_hz=95.000 unrelated=true";
+        let segment = super::tracking_provenance_segment(
+            provenance,
+            "doppler_estimator_consistency=",
+            super::DOPPLER_ESTIMATOR_PROVENANCE_TOKEN_COUNT,
+        )
+        .expect("doppler estimator segment");
+
+        assert_eq!(
+            segment,
+            "doppler_estimator_consistency=divergent doppler_estimator_spread_hz=95.000 doppler_estimator_limit_hz=25.000 doppler_loop_residual_hz=0.000 doppler_phase_rate_residual_hz=12.000 doppler_prompt_residual_hz=95.000"
+        );
     }
 
     #[test]

@@ -210,4 +210,18 @@ fn tracking_refuses_stable_solution_outside_acceleration_and_jerk_envelope() {
         epochs.iter().any(|epoch| !epoch.pll_lock || !epoch.fll_lock || !epoch.dll_lock),
         "excessive dynamics must expose detector refusal evidence instead of silently reporting full lock: epochs={epochs:?}"
     );
+    let divergent_doppler_epochs = epochs
+        .iter()
+        .filter(|epoch| {
+            epoch.tracking_provenance.contains("doppler_estimator_consistency=divergent")
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        !divergent_doppler_epochs.is_empty(),
+        "excessive dynamics must expose divergent Doppler estimator evidence: epochs={epochs:?}"
+    );
+    assert!(
+        divergent_doppler_epochs.iter().all(|epoch| !epoch.fll_lock),
+        "divergent Doppler estimator evidence must not be reported as FLL lock: divergent_doppler_epochs={divergent_doppler_epochs:?}"
+    );
 }
