@@ -9,6 +9,9 @@ use bijux_gnss_signal::api::{
     registered_signal_registry_entries, signal_cycles_to_meters, signal_meters_to_cycles,
 };
 
+#[path = "tests/signal_support.rs"]
+mod signal_support;
+
 fn make_tracking_epoch(
     prn: u8,
     config: &ReceiverPipelineConfig,
@@ -16,64 +19,6 @@ fn make_tracking_epoch(
     carrier_hz: f64,
 ) -> TrackEpoch {
     make_tracking_epoch_with_phase(prn, config, epoch_idx, carrier_hz, 0.0)
-}
-
-#[test]
-fn observation_signal_support_follows_tracked_signal_mapping() {
-    assert!(supports_observation_signal(Constellation::Gps, SignalBand::L1, SignalCode::Ca));
-    assert!(supports_observation_signal(Constellation::Gps, SignalBand::L2, SignalCode::L2C));
-    assert!(supports_observation_signal(Constellation::Gps, SignalBand::L5, SignalCode::L5I));
-    assert!(supports_observation_signal(Constellation::Galileo, SignalBand::E5, SignalCode::E5a));
-    assert!(supports_observation_signal(Constellation::Beidou, SignalBand::B2, SignalCode::B2I));
-    assert!(supports_observation_signal(
-        Constellation::Glonass,
-        SignalBand::L1,
-        SignalCode::Unknown
-    ));
-    assert!(!supports_observation_signal(Constellation::Gps, SignalBand::L2, SignalCode::Ca));
-    assert_eq!(tracked_signal_code_for_band(Constellation::Unknown, SignalBand::Unknown), None);
-}
-
-#[test]
-fn observation_signal_support_matches_registered_signal_inventory() {
-    let registered = registered_signal_registry_entries();
-    let supported = registered
-        .iter()
-        .filter(|entry| {
-            supports_observation_signal(entry.spec.constellation, entry.spec.band, entry.spec.code)
-        })
-        .map(|entry| (entry.spec.constellation, entry.spec.band, entry.spec.code))
-        .collect::<BTreeSet<_>>();
-    let unsupported = registered
-        .iter()
-        .filter(|entry| {
-            !supports_observation_signal(entry.spec.constellation, entry.spec.band, entry.spec.code)
-        })
-        .map(|entry| (entry.spec.constellation, entry.spec.band, entry.spec.code))
-        .collect::<BTreeSet<_>>();
-
-    assert_eq!(
-        supported,
-        BTreeSet::from([
-            (Constellation::Gps, SignalBand::L1, SignalCode::Ca),
-            (Constellation::Gps, SignalBand::L2, SignalCode::L2C),
-            (Constellation::Gps, SignalBand::L5, SignalCode::L5I),
-            (Constellation::Gps, SignalBand::L5, SignalCode::L5Q),
-            (Constellation::Galileo, SignalBand::E1, SignalCode::E1B),
-            (Constellation::Galileo, SignalBand::E5, SignalCode::E5a),
-            (Constellation::Galileo, SignalBand::E5, SignalCode::E5b),
-            (Constellation::Glonass, SignalBand::L1, SignalCode::Unknown),
-            (Constellation::Beidou, SignalBand::B1, SignalCode::B1I),
-            (Constellation::Beidou, SignalBand::B2, SignalCode::B2I),
-        ])
-    );
-    assert_eq!(
-        unsupported,
-        BTreeSet::from([
-            (Constellation::Gps, SignalBand::L2, SignalCode::Py),
-            (Constellation::Galileo, SignalBand::E1, SignalCode::E1C),
-        ])
-    );
 }
 
 fn make_tracking_epoch_with_phase(
