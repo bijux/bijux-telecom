@@ -10,7 +10,8 @@ use bijux_gnss_signal::api::signal_registry;
 use crate::models::nequick::model::GalileoNequickModel;
 use crate::orbits::broadcast_orbit::{
     earth_rotation_correction, propagate_broadcast_orbit, solve_broadcast_orbit_anomaly,
-    wrap_gnss_week_seconds, BroadcastKeplerianOrbit, BroadcastOrbitConstants,
+    wrap_gnss_week_seconds, BroadcastKeplerianOrbit, BroadcastOrbitAnomaly,
+    BroadcastOrbitConstants,
 };
 
 const OMEGA_E_DOT: f64 = 7.292_115_146_7e-5;
@@ -96,6 +97,9 @@ pub struct GalileoSatState {
     pub x_m: f64,
     pub y_m: f64,
     pub z_m: f64,
+    pub vx_mps: f64,
+    pub vy_mps: f64,
+    pub vz_mps: f64,
     pub clock_correction: GalileoSatelliteClockCorrection,
 }
 
@@ -216,7 +220,7 @@ pub fn galileo_satellite_clock_correction_e1(
         t_tx_s,
         galileo_orbit_constants(),
     );
-    satellite_clock_correction_from_sin_e(navigation, t_tx_s, anomaly.kepler.sin_eccentric_anomaly)
+    satellite_clock_correction_from_anomaly(navigation, t_tx_s, anomaly)
 }
 
 pub fn galileo_earth_rotation_correction(
@@ -249,10 +253,17 @@ pub fn sat_state_galileo_e1(
         x_m: orbit_state.x_m,
         y_m: orbit_state.y_m,
         z_m: orbit_state.z_m,
-        clock_correction: satellite_clock_correction_from_sin_e(
+        vx_mps: orbit_state.vx_mps,
+        vy_mps: orbit_state.vy_mps,
+        vz_mps: orbit_state.vz_mps,
+        clock_correction: satellite_clock_correction_from_anomaly(
             navigation,
             t_tx_s,
-            orbit_state.sin_eccentric_anomaly,
+            solve_broadcast_orbit_anomaly(
+                galileo_broadcast_orbit(&navigation.ephemeris),
+                t_tx_s,
+                galileo_orbit_constants(),
+            ),
         ),
     }
 }
@@ -313,20 +324,28 @@ pub fn sat_state_galileo_e1_from_observation(
     sat_state_galileo_e1(navigation, transmit_tow_s, signal_travel_time_s)
 }
 
-fn satellite_clock_correction_from_sin_e(
+fn satellite_clock_correction_from_anomaly(
     navigation: &GalileoBroadcastNavigationData,
     t_tx_s: f64,
-    sin_e: f64,
+    anomaly: BroadcastOrbitAnomaly,
 ) -> GalileoSatelliteClockCorrection {
     let dt = wrap_time(t_tx_s - navigation.clock.t0c_s);
     let base_bias_s =
         navigation.clock.af0 + navigation.clock.af1 * dt + navigation.clock.af2 * dt * dt;
+    let sin_e = anomaly.kepler.sin_eccentric_anomaly;
     let relativistic_s =
         RELATIVISTIC_F * navigation.ephemeris.e * navigation.ephemeris.sqrt_a * sin_e;
+    let relativistic_drift_s_per_s = RELATIVISTIC_F
+        * navigation.ephemeris.e
+        * navigation.ephemeris.sqrt_a
+        * anomaly.kepler.cos_eccentric_anomaly
+        * anomaly.kepler.eccentric_anomaly_rate_rad_s;
 
     GalileoSatelliteClockCorrection {
         bias_s: base_bias_s + relativistic_s - navigation.clock.bgd_e1_e5b_s,
-        drift_s_per_s: navigation.clock.af1 + 2.0 * navigation.clock.af2 * dt,
+        drift_s_per_s: navigation.clock.af1
+            + 2.0 * navigation.clock.af2 * dt
+            + relativistic_drift_s_per_s,
         drift_rate_s_per_s2: 2.0 * navigation.clock.af2,
         base_bias_s,
         relativistic_s,
@@ -446,24 +465,54 @@ mod tests {
         let sin_e = e_anom.sin();
         let cos_e = e_anom.cos();
         let v = ((1.0 - eph.e * eph.e).sqrt() * sin_e).atan2(cos_e - eph.e);
+        let e_anom_rate = n / (1.0 - eph.e * cos_e);
+        let v_rate = (1.0 - eph.e * eph.e).sqrt() * e_anom_rate / (1.0 - eph.e * cos_e);
         let phi = v + eph.w;
+        let phi_rate = v_rate;
         let sin2phi = (2.0 * phi).sin();
         let cos2phi = (2.0 * phi).cos();
+        let sin2phi_rate = 2.0 * phi_rate * cos2phi;
+        let cos2phi_rate = -2.0 * phi_rate * sin2phi;
         let u = phi + eph.cuc * cos2phi + eph.cus * sin2phi;
+        let u_rate = phi_rate + eph.cuc * cos2phi_rate + eph.cus * sin2phi_rate;
         let r = a * (1.0 - eph.e * cos_e) + eph.crc * cos2phi + eph.crs * sin2phi;
+        let r_rate =
+            a * eph.e * sin_e * e_anom_rate + eph.crc * cos2phi_rate + eph.crs * sin2phi_rate;
         let i = eph.i0 + eph.idot * tk + eph.cic * cos2phi + eph.cis * sin2phi;
+        let i_rate = eph.idot + eph.cic * cos2phi_rate + eph.cis * sin2phi_rate;
         let x_orb = r * u.cos();
         let y_orb = r * u.sin();
+        let x_orb_rate = r_rate * u.cos() - r * u.sin() * u_rate;
+        let y_orb_rate = r_rate * u.sin() + r * u.cos() * u_rate;
         let omega =
             eph.omega0 + (eph.omegadot - TEST_OMEGA_E_DOT) * tk - TEST_OMEGA_E_DOT * eph.toe_s;
+        let omega_rate = eph.omegadot - TEST_OMEGA_E_DOT;
+        let cos_omega = omega.cos();
+        let sin_omega = omega.sin();
+        let cos_i = i.cos();
+        let sin_i = i.sin();
 
         let mut x_m = x_orb * omega.cos() - y_orb * i.cos() * omega.sin();
         let mut y_m = x_orb * omega.sin() + y_orb * i.cos() * omega.cos();
         let z_m = y_orb * i.sin();
+        let x_rate_mps = x_orb_rate * cos_omega
+            - x_orb * sin_omega * omega_rate
+            - y_orb_rate * cos_i * sin_omega
+            + y_orb * sin_i * i_rate * sin_omega
+            - y_orb * cos_i * cos_omega * omega_rate;
+        let y_rate_mps = x_orb_rate * sin_omega
+            + x_orb * cos_omega * omega_rate
+            + y_orb_rate * cos_i * cos_omega
+            - y_orb * sin_i * i_rate * cos_omega
+            - y_orb * cos_i * sin_omega * omega_rate;
+        let z_rate_mps = y_orb_rate * sin_i + y_orb * cos_i * i_rate;
 
         let rotation_rad = TEST_OMEGA_E_DOT * signal_travel_time_s;
         let rotated_x_m = rotation_rad.cos() * x_m + rotation_rad.sin() * y_m;
         let rotated_y_m = -rotation_rad.sin() * x_m + rotation_rad.cos() * y_m;
+        let vx_mps = rotation_rad.cos() * x_rate_mps + rotation_rad.sin() * y_rate_mps;
+        let vy_mps = -rotation_rad.sin() * x_rate_mps + rotation_rad.cos() * y_rate_mps;
+        let vz_mps = z_rate_mps;
         x_m = rotated_x_m;
         y_m = rotated_y_m;
 
@@ -471,14 +520,21 @@ mod tests {
         let base_bias_s =
             navigation.clock.af0 + navigation.clock.af1 * dt + navigation.clock.af2 * dt * dt;
         let relativistic_s = TEST_RELATIVISTIC_F * eph.e * eph.sqrt_a * sin_e;
+        let relativistic_drift_s_per_s =
+            TEST_RELATIVISTIC_F * eph.e * eph.sqrt_a * cos_e * e_anom_rate;
 
         GalileoSatState {
             x_m,
             y_m,
             z_m,
+            vx_mps,
+            vy_mps,
+            vz_mps,
             clock_correction: GalileoSatelliteClockCorrection {
                 bias_s: base_bias_s + relativistic_s - navigation.clock.bgd_e1_e5b_s,
-                drift_s_per_s: navigation.clock.af1 + 2.0 * navigation.clock.af2 * dt,
+                drift_s_per_s: navigation.clock.af1
+                    + 2.0 * navigation.clock.af2 * dt
+                    + relativistic_drift_s_per_s,
                 drift_rate_s_per_s2: 2.0 * navigation.clock.af2,
                 base_bias_s,
                 relativistic_s,
@@ -566,6 +622,9 @@ mod tests {
         assert!((state.x_m - expected.x_m).abs() < 1.0e-6);
         assert!((state.y_m - expected.y_m).abs() < 1.0e-6);
         assert!((state.z_m - expected.z_m).abs() < 1.0e-6);
+        assert!((state.vx_mps - expected.vx_mps).abs() < 1.0e-6);
+        assert!((state.vy_mps - expected.vy_mps).abs() < 1.0e-6);
+        assert!((state.vz_mps - expected.vz_mps).abs() < 1.0e-6);
         assert!((state.clock_correction.bias_s - expected.clock_correction.bias_s).abs() < 1.0e-15);
         assert!(
             (state.clock_correction.drift_s_per_s - expected.clock_correction.drift_s_per_s).abs()
