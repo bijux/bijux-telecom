@@ -14,6 +14,31 @@ const MIN_PHYSICAL_PRESSURE_HPA: f64 = 100.0;
 const MAX_PHYSICAL_PRESSURE_HPA: f64 = 1_100.0;
 const MIN_PHYSICAL_TEMPERATURE_K: f64 = 180.0;
 const MAX_PHYSICAL_TEMPERATURE_K: f64 = 330.0;
+const SECONDS_PER_MEAN_YEAR: f64 = 365.25 * SECONDS_PER_DAY;
+const NIELL_SEASONAL_PHASE_DAY_NORTH: f64 = 28.0;
+const NIELL_LATITUDE_GRID_DEG: [f64; 5] = [15.0, 30.0, 45.0, 60.0, 75.0];
+const NIELL_HYDROSTATIC_AVERAGE: [[f64; 3]; 5] = [
+    [1.276_993_4e-3, 2.915_369_5e-3, 62.610_505e-3],
+    [1.268_323_0e-3, 2.915_229_9e-3, 62.837_393e-3],
+    [1.246_539_7e-3, 2.928_844_5e-3, 63.721_774e-3],
+    [1.219_604_9e-3, 2.902_256_5e-3, 63.824_265e-3],
+    [1.204_599_6e-3, 2.902_491_2e-3, 64.258_455e-3],
+];
+const NIELL_HYDROSTATIC_AMPLITUDE: [[f64; 3]; 5] = [
+    [0.0, 0.0, 0.0],
+    [1.270_962_6e-5, 2.141_497_9e-5, 9.012_840_0e-5],
+    [2.652_366_2e-5, 3.016_077_9e-5, 4.349_703_7e-5],
+    [3.400_045_2e-5, 7.256_272_2e-5, 84.795_348e-5],
+    [4.120_219_1e-5, 11.723_375e-5, 170.372_06e-5],
+];
+const NIELL_WET: [[f64; 3]; 5] = [
+    [5.802_189_7e-4, 1.427_526_8e-3, 4.347_296_1e-2],
+    [5.679_484_7e-4, 1.513_862_5e-3, 4.672_951_0e-2],
+    [5.811_801_9e-4, 1.457_275_2e-3, 4.390_893_1e-2],
+    [5.972_754_2e-4, 1.500_742_8e-3, 4.462_698_2e-2],
+    [6.164_169_3e-4, 1.759_908_2e-3, 5.473_603_8e-2],
+];
+const NIELL_HEIGHT: [f64; 3] = [2.53e-5, 5.49e-3, 1.14e-3];
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct KlobucharCoefficients {
@@ -107,6 +132,67 @@ impl IonosphereModel for KlobucharModel {
             NIGHTTIME_IONO_DELAY_S
         };
         slant_factor * SPEED_OF_LIGHT_MPS * vertical_delay_s
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct NiellMappingFactors {
+    pub hydrostatic: f64,
+    pub wet: f64,
+}
+
+#[derive(Debug, Clone)]
+pub struct NiellMappingFunction;
+
+impl NiellMappingFunction {
+    pub fn mapping_factors(receiver: Llh, el_deg: f64, t: Seconds) -> NiellMappingFactors {
+        NiellMappingFactors {
+            hydrostatic: Self::hydrostatic_mapping_factor(receiver, el_deg, t),
+            wet: Self::wet_mapping_factor(receiver, el_deg),
+        }
+    }
+
+    pub fn hydrostatic_mapping_factor(receiver: Llh, el_deg: f64, t: Seconds) -> f64 {
+        if !receiver.lat_deg.is_finite()
+            || !receiver.alt_m.is_finite()
+            || !el_deg.is_finite()
+            || !t.0.is_finite()
+            || el_deg <= 0.0
+        {
+            return 0.0;
+        }
+        let elevation_rad = el_deg.max(MIN_TROPOSPHERE_ELEVATION_DEG).to_radians();
+        let day_of_year = day_of_year_from_seconds(t);
+        let seasonal_phase_days = if receiver.lat_deg < 0.0 {
+            NIELL_SEASONAL_PHASE_DAY_NORTH + 365.25 / 2.0
+        } else {
+            NIELL_SEASONAL_PHASE_DAY_NORTH
+        };
+        let seasonal_cosine =
+            (2.0 * std::f64::consts::PI * (day_of_year - seasonal_phase_days) / 365.25).cos();
+        let average = interpolate_niell_coefficients(receiver.lat_deg, NIELL_HYDROSTATIC_AVERAGE);
+        let amplitude =
+            interpolate_niell_coefficients(receiver.lat_deg, NIELL_HYDROSTATIC_AMPLITUDE);
+        let coefficients = [
+            average[0] - amplitude[0] * seasonal_cosine,
+            average[1] - amplitude[1] * seasonal_cosine,
+            average[2] - amplitude[2] * seasonal_cosine,
+        ];
+        let sea_level_mapping = continued_fraction_mapping(elevation_rad, coefficients);
+        let height_km = receiver.alt_m.max(0.0) / 1_000.0;
+        let height_mapping = continued_fraction_mapping(elevation_rad, NIELL_HEIGHT);
+        sea_level_mapping + (1.0 / elevation_rad.sin() - height_mapping) * height_km
+    }
+
+    pub fn wet_mapping_factor(receiver: Llh, el_deg: f64) -> f64 {
+        if !receiver.lat_deg.is_finite() || !el_deg.is_finite() || el_deg <= 0.0 {
+            return 0.0;
+        }
+        let coefficients = interpolate_niell_coefficients(receiver.lat_deg, NIELL_WET);
+        continued_fraction_mapping(
+            el_deg.max(MIN_TROPOSPHERE_ELEVATION_DEG).to_radians(),
+            coefficients,
+        )
     }
 }
 
@@ -230,11 +316,42 @@ fn saturation_vapor_pressure_hpa(temperature_k: f64) -> f64 {
     6.108 * ((17.15 * temperature_c) / (234.7 + temperature_c)).exp()
 }
 
+fn day_of_year_from_seconds(t: Seconds) -> f64 {
+    t.0.rem_euclid(SECONDS_PER_MEAN_YEAR) / SECONDS_PER_DAY + 1.0
+}
+
+fn interpolate_niell_coefficients(latitude_deg: f64, table: [[f64; 3]; 5]) -> [f64; 3] {
+    let latitude_deg = latitude_deg.abs().clamp(
+        *NIELL_LATITUDE_GRID_DEG.first().expect("latitude grid"),
+        *NIELL_LATITUDE_GRID_DEG.last().expect("latitude grid"),
+    );
+    for index in 0..NIELL_LATITUDE_GRID_DEG.len() - 1 {
+        let lower_latitude_deg = NIELL_LATITUDE_GRID_DEG[index];
+        let upper_latitude_deg = NIELL_LATITUDE_GRID_DEG[index + 1];
+        if latitude_deg <= upper_latitude_deg {
+            let fraction =
+                (latitude_deg - lower_latitude_deg) / (upper_latitude_deg - lower_latitude_deg);
+            return [
+                table[index][0] + fraction * (table[index + 1][0] - table[index][0]),
+                table[index][1] + fraction * (table[index + 1][1] - table[index][1]),
+                table[index][2] + fraction * (table[index + 1][2] - table[index][2]),
+            ];
+        }
+    }
+    table[NIELL_LATITUDE_GRID_DEG.len() - 1]
+}
+
+fn continued_fraction_mapping(elevation_rad: f64, coefficients: [f64; 3]) -> f64 {
+    let sine = elevation_rad.sin();
+    let [a, b, c] = coefficients;
+    (1.0 + a / (1.0 + b / (1.0 + c))) / (sine + a / (sine + b / (sine + c)))
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        IonosphereModel, KlobucharCoefficients, KlobucharModel, SaastamoinenModel,
-        TroposphereMeteorology, TroposphereModel,
+        IonosphereModel, KlobucharCoefficients, KlobucharModel, NiellMappingFunction,
+        SaastamoinenModel, TroposphereMeteorology, TroposphereModel, SECONDS_PER_DAY,
     };
     use bijux_gnss_core::api::{Llh, Seconds};
 
@@ -248,6 +365,10 @@ mod tests {
 
     fn alpine_receiver() -> Llh {
         Llh { lat_deg: 46.0, lon_deg: 7.0, alt_m: 2_500.0 }
+    }
+
+    fn seconds_at_day_of_year(day_of_year: f64) -> Seconds {
+        Seconds((day_of_year - 1.0) * SECONDS_PER_DAY)
     }
 
     #[test]
@@ -292,6 +413,61 @@ mod tests {
         assert!(high_elevation_delay_m.is_finite());
         assert!(low_elevation_delay_m > high_elevation_delay_m);
         assert!(low_elevation_delay_m > low_elevation_floor_m);
+    }
+
+    #[test]
+    fn niell_mapping_matches_midlatitude_winter_reference_values() {
+        let receiver = Llh { lat_deg: 45.0, lon_deg: 8.0, alt_m: 100.0 };
+        let factors =
+            NiellMappingFunction::mapping_factors(receiver, 10.0, seconds_at_day_of_year(28.0));
+
+        assert!((factors.hydrostatic - 5.556_157_591).abs() < 1.0e-9);
+        assert!((factors.wet - 5.657_127_345).abs() < 1.0e-9);
+    }
+
+    #[test]
+    fn niell_hydrostatic_mapping_changes_with_season_and_hemisphere() {
+        let northern = Llh { lat_deg: 60.0, lon_deg: 10.0, alt_m: 0.0 };
+        let southern = Llh { lat_deg: -60.0, lon_deg: 10.0, alt_m: 0.0 };
+        let january_north = NiellMappingFunction::hydrostatic_mapping_factor(
+            northern,
+            7.0,
+            seconds_at_day_of_year(28.0),
+        );
+        let july_north = NiellMappingFunction::hydrostatic_mapping_factor(
+            northern,
+            7.0,
+            seconds_at_day_of_year(210.625),
+        );
+        let january_south = NiellMappingFunction::hydrostatic_mapping_factor(
+            southern,
+            7.0,
+            seconds_at_day_of_year(28.0),
+        );
+
+        assert!((january_north - 7.671_180_454).abs() < 1.0e-9);
+        assert!((july_north - 7.645_142_217).abs() < 1.0e-9);
+        assert!((january_south - july_north).abs() < 1.0e-9);
+    }
+
+    #[test]
+    fn niell_hydrostatic_height_correction_increases_low_elevation_mapping() {
+        let sea_level = Llh { lat_deg: 45.0, lon_deg: 8.0, alt_m: 0.0 };
+        let mountain = Llh { lat_deg: 45.0, lon_deg: 8.0, alt_m: 2_000.0 };
+        let sea_level_mapping = NiellMappingFunction::hydrostatic_mapping_factor(
+            sea_level,
+            5.0,
+            seconds_at_day_of_year(100.0),
+        );
+        let mountain_mapping = NiellMappingFunction::hydrostatic_mapping_factor(
+            mountain,
+            5.0,
+            seconds_at_day_of_year(100.0),
+        );
+
+        assert!((sea_level_mapping - 10.136_144_698).abs() < 1.0e-9);
+        assert!((mountain_mapping - 10.180_088_797).abs() < 1.0e-9);
+        assert!(mountain_mapping > sea_level_mapping);
     }
 
     #[test]
