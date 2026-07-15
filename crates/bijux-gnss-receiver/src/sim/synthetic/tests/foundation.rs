@@ -288,6 +288,7 @@ fn synthetic_signal_source_preserves_broadcast_ephemerides() {
         iode: 0,
         week: 0,
         sv_health: 0,
+        sv_accuracy: Some(2),
         toe_s: 100_000.0,
         toc_s: 100_000.0,
         sqrt_a: 5153.7954775,

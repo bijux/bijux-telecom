@@ -358,7 +358,7 @@ pub use crate::orbits::gps::{
 };
 /// Satellite state uncertainty and provenance helpers.
 pub use crate::orbits::satellite_uncertainty::{
-    beidou_urai_sigma_m, galileo_sisa_sigma_m, glonass_accuracy_code_sigma_m,
+    beidou_urai_sigma_m, galileo_sisa_sigma_m, glonass_accuracy_code_sigma_m, gps_ura_sigma_m,
     SatelliteClockUncertaintySource, SatelliteHealthSource, SatelliteHealthStatus,
     SatelliteOrbitUncertaintySource, SatelliteStateUncertainty,
 };

@@ -83,10 +83,14 @@ impl SatelliteStateUncertainty {
 }
 
 pub fn gps_broadcast_uncertainty(eph: &GpsEphemeris) -> SatelliteStateUncertainty {
+    let orbit_sigma_m = eph.sv_accuracy.and_then(gps_ura_sigma_m);
     SatelliteStateUncertainty {
-        orbit_sigma_m: None,
+        orbit_sigma_m,
         clock_sigma_s: None,
-        orbit_source: SatelliteOrbitUncertaintySource::Unavailable,
+        orbit_source: source_for_optional_orbit(
+            orbit_sigma_m,
+            SatelliteOrbitUncertaintySource::GpsUra,
+        ),
         clock_source: SatelliteClockUncertaintySource::Unavailable,
         health_status: if eph.sv_health == 0 {
             SatelliteHealthStatus::Healthy
@@ -94,6 +98,27 @@ pub fn gps_broadcast_uncertainty(eph: &GpsEphemeris) -> SatelliteStateUncertaint
             SatelliteHealthStatus::Unhealthy
         },
         health_source: SatelliteHealthSource::GpsSvHealth,
+    }
+}
+
+pub fn gps_ura_sigma_m(index: u8) -> Option<f64> {
+    match index {
+        0 => Some(2.4),
+        1 => Some(3.4),
+        2 => Some(4.85),
+        3 => Some(6.85),
+        4 => Some(9.65),
+        5 => Some(13.65),
+        6 => Some(24.0),
+        7 => Some(48.0),
+        8 => Some(96.0),
+        9 => Some(192.0),
+        10 => Some(384.0),
+        11 => Some(768.0),
+        12 => Some(1536.0),
+        13 => Some(3072.0),
+        14 => Some(6144.0),
+        _ => None,
     }
 }
 
@@ -235,7 +260,7 @@ fn max_finite_positive(values: [Option<f64>; 3]) -> Option<f64> {
 #[cfg(test)]
 mod tests {
     use super::{
-        beidou_urai_sigma_m, galileo_sisa_sigma_m, glonass_accuracy_code_sigma_m,
+        beidou_urai_sigma_m, galileo_sisa_sigma_m, glonass_accuracy_code_sigma_m, gps_ura_sigma_m,
         sp3_accuracy_uncertainty, SatelliteClockUncertaintySource, SatelliteOrbitUncertaintySource,
     };
     use crate::formats::sp3::Sp3RecordAccuracy;
@@ -251,6 +276,9 @@ mod tests {
 
     #[test]
     fn broadcast_accuracy_mappings_refuse_unusable_codes() {
+        assert_eq!(gps_ura_sigma_m(0), Some(2.4));
+        assert_eq!(gps_ura_sigma_m(14), Some(6144.0));
+        assert_eq!(gps_ura_sigma_m(15), None);
         assert_eq!(beidou_urai_sigma_m(0), Some(2.4));
         assert_eq!(beidou_urai_sigma_m(14), Some(6144.0));
         assert_eq!(beidou_urai_sigma_m(15), None);

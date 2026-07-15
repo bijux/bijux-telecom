@@ -1570,6 +1570,7 @@ mod tests {
             iode: 11,
             week: 2209,
             sv_health: 0,
+            sv_accuracy: Some(2),
             toe_s: 345_600.0,
             toc_s: 504_018.0,
             sqrt_a: 5_153.795_477_5,

@@ -687,6 +687,7 @@ mod tests {
             iode: 1,
             week: 2209,
             sv_health: 0,
+            sv_accuracy: Some(2),
             toe_s: 504_000.0,
             toc_s: 504_018.0,
             sqrt_a: 5153.7954775,
@@ -895,6 +896,8 @@ mod tests {
                 < 1.0e-18
         );
         assert_eq!(state.uncertainty, direct_state.uncertainty);
+        assert_eq!(state.uncertainty.orbit_source, SatelliteOrbitUncertaintySource::GpsUra);
+        assert_eq!(state.uncertainty.orbit_sigma_m, Some(4.85));
         assert_eq!(state.uncertainty.health_status, SatelliteHealthStatus::Healthy);
         assert_eq!(state.uncertainty.health_source, SatelliteHealthSource::GpsSvHealth);
         assert!(speed_mps > 100.0, "speed_mps={speed_mps}");

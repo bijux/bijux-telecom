@@ -151,6 +151,7 @@ pub fn sample_ephemeris_with_clock_parameters(
         iode: 1,
         week: 2209,
         sv_health: 0,
+        sv_accuracy: Some(2),
         toe_s: 504_000.0,
         toc_s: 504_018.0,
         sqrt_a: 5153.7954775,

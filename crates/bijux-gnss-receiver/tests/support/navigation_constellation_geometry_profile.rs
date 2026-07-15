@@ -220,6 +220,7 @@ fn make_gps_ephemeris(prn: u8, omega0: f64, m0: f64, t_ref_s: f64) -> GpsEphemer
         iode: 1,
         week: 2209,
         sv_health: 0,
+        sv_accuracy: Some(2),
         toe_s: t_ref_s,
         toc_s: t_ref_s,
         sqrt_a: 5153.7954775,

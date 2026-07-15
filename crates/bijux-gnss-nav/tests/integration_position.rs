@@ -1752,6 +1752,7 @@ fn decoded_lnav_subframes_from_ephemeris(eph: &GpsEphemeris) -> Vec<GpsL1CaLnavD
             clock: Some(GpsL1CaLnavSubframe1Clock {
                 week: (eph.week % 1024) as u16,
                 iodc: eph.iodc,
+                sv_accuracy: eph.sv_accuracy.unwrap_or(0),
                 sv_health: eph.sv_health,
                 toc_s: eph.toc_s,
                 af0: eph.af0,

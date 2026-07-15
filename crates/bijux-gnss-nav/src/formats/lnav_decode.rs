@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 pub struct GpsL1CaLnavSubframe1Clock {
     pub week: u16,
     pub iodc: u16,
+    pub sv_accuracy: u8,
     pub sv_health: u8,
     pub toc_s: f64,
     pub af0: f64,
@@ -96,6 +97,7 @@ pub fn decode_subframe1_clock(words: &[GpsWord]) -> Option<GpsL1CaLnavSubframe1C
     let w10 = words[9].data;
 
     let week = get_bits(w3, 1, 10) as u16;
+    let sv_accuracy = get_bits(w3, 11, 4) as u8;
     let sv_health = get_bits(w3, 17, 6) as u8;
     let iodc_msb = get_bits(w3, 23, 2) as u16;
     let iodc_lsb = get_bits(w8, 1, 8) as u16;
@@ -106,7 +108,17 @@ pub fn decode_subframe1_clock(words: &[GpsWord]) -> Option<GpsL1CaLnavSubframe1C
     let af1 = signed(get_bits(w9, 9, 16), 16) as f64 * 2f64.powi(-43);
     let af0 = signed(get_bits(w10, 1, 22), 22) as f64 * 2f64.powi(-31);
 
-    Some(GpsL1CaLnavSubframe1Clock { week, iodc, sv_health, toc_s, af0, af1, af2, tgd })
+    Some(GpsL1CaLnavSubframe1Clock {
+        week,
+        iodc,
+        sv_accuracy,
+        sv_health,
+        toc_s,
+        af0,
+        af1,
+        af2,
+        tgd,
+    })
 }
 
 pub fn parse_subframe1(words: &[GpsWord]) -> Option<EphemerisPart> {
@@ -154,6 +166,7 @@ pub fn ephemeris_part_from_subframe1_clock(clock: &GpsL1CaLnavSubframe1Clock) ->
         iodc: Some(clock.iodc),
         iode: None,
         week: Some(clock.week),
+        sv_accuracy: Some(clock.sv_accuracy),
         sv_health: Some(clock.sv_health),
         toe_s: None,
         toc_s: Some(clock.toc_s),
@@ -184,6 +197,7 @@ pub fn ephemeris_part_from_subframe2_orbit(orbit: &GpsL1CaLnavSubframe2Orbit) ->
         iodc: None,
         iode: Some(orbit.iode),
         week: None,
+        sv_accuracy: None,
         sv_health: None,
         toe_s: Some(orbit.toe_s),
         toc_s: None,
@@ -214,6 +228,7 @@ pub fn ephemeris_part_from_subframe3_orbit(orbit: &GpsL1CaLnavSubframe3Orbit) ->
         iodc: None,
         iode: Some(orbit.iode),
         week: None,
+        sv_accuracy: None,
         sv_health: None,
         toe_s: None,
         toc_s: None,
@@ -286,6 +301,7 @@ pub struct EphemerisPart {
     iodc: Option<u16>,
     iode: Option<u8>,
     week: Option<u16>,
+    sv_accuracy: Option<u8>,
     sv_health: Option<u8>,
     toe_s: Option<f64>,
     toc_s: Option<f64>,
@@ -317,6 +333,7 @@ pub struct EphemerisBuilder {
     iodc: Option<u16>,
     iode: Option<u8>,
     week: Option<u16>,
+    sv_accuracy: Option<u8>,
     sv_health: Option<u8>,
     toe_s: Option<f64>,
     toc_s: Option<f64>,
@@ -361,6 +378,9 @@ impl EphemerisBuilder {
         }
         if let Some(value) = part.week {
             self.week = Some(value);
+        }
+        if let Some(value) = part.sv_accuracy {
+            self.sv_accuracy = Some(value);
         }
         if let Some(value) = part.sv_health {
             self.sv_health = Some(value);
@@ -442,6 +462,7 @@ impl EphemerisBuilder {
             Some(reference_week),
             Some(iodc),
             Some(iode),
+            Some(sv_accuracy),
             Some(sv_health),
             Some(toe_s),
             Some(toc_s),
@@ -469,6 +490,7 @@ impl EphemerisBuilder {
             self.reference_week,
             self.iodc,
             self.iode,
+            self.sv_accuracy,
             self.sv_health,
             self.toe_s,
             self.toc_s,
@@ -505,6 +527,7 @@ impl EphemerisBuilder {
             iode,
             week: resolved_week,
             sv_health,
+            sv_accuracy: Some(sv_accuracy),
             toe_s,
             toc_s,
             sqrt_a,
@@ -709,6 +732,7 @@ mod tests {
     #[test]
     fn subframe_1_clock_decodes_week_health_and_clock_terms() {
         let week = 987_u16;
+        let sv_accuracy = 2_u8;
         let sv_health = 0b10_1101_u8;
         let iodc = 0x2AB_u16;
         let tgd_raw = -20_i32;
@@ -719,6 +743,7 @@ mod tests {
 
         let mut w3 = 0_u32;
         set_bits(&mut w3, 1, 10, week as u32);
+        set_bits(&mut w3, 11, 4, sv_accuracy as u32);
         set_bits(&mut w3, 17, 6, sv_health as u32);
         set_bits(&mut w3, 23, 2, ((iodc >> 8) & 0b11) as u32);
 
@@ -752,6 +777,7 @@ mod tests {
         let clock = decode_subframe1_clock(&words).expect("subframe 1 clock");
 
         assert_eq!(clock.week, week);
+        assert_eq!(clock.sv_accuracy, sv_accuracy);
         assert_eq!(clock.sv_health, sv_health);
         assert_eq!(clock.iodc, iodc);
         assert!((clock.tgd - tgd_raw as f64 * 2f64.powi(-31)).abs() < f64::EPSILON);

@@ -734,6 +734,7 @@ mod tests {
     fn encode_subframe_1_with_clock(
         tow_count: u32,
         week: u16,
+        sv_accuracy: u8,
         sv_health: u8,
         iodc: u16,
         toc_raw: u32,
@@ -751,6 +752,7 @@ mod tests {
 
         let mut w3 = 0_u32;
         set_bits(&mut w3, 1, 10, week as u32);
+        set_bits(&mut w3, 11, 4, sv_accuracy as u32);
         set_bits(&mut w3, 17, 6, sv_health as u32);
         set_bits(&mut w3, 23, 2, ((iodc >> 8) & 0b11) as u32);
 
@@ -1072,7 +1074,7 @@ mod tests {
     fn decoded_subframes_emit_subframe_1_clock_fields() {
         let decoded = decode_gps_l1ca_lnav_subframes(
             &encode_subframe_1_with_clock(
-                3, 987, 0b10_1101, 0x2AB, 21_600, -12, 3_210, -123_456, -20,
+                3, 987, 2, 0b10_1101, 0x2AB, 21_600, -12, 3_210, -123_456, -20,
             ),
             4,
         );
@@ -1081,6 +1083,7 @@ mod tests {
         let clock = decoded[0].clock.as_ref().expect("subframe 1 clock");
         assert_eq!(decoded[0].how.subframe_id, 1);
         assert_eq!(clock.week, 987);
+        assert_eq!(clock.sv_accuracy, 2);
         assert_eq!(clock.sv_health, 0b10_1101);
         assert_eq!(clock.iodc, 0x2AB);
         assert!((clock.toc_s - 345_600.0).abs() < f64::EPSILON);
@@ -1161,7 +1164,7 @@ mod tests {
 
     #[test]
     fn decode_subframes_refuse_mixed_issue_numbers() {
-        let mut bits = encode_subframe_1_with_clock(1, 42, 0, 0x1A5, 21_600, 0, 0, 0, 0);
+        let mut bits = encode_subframe_1_with_clock(1, 42, 0, 0, 0x1A5, 21_600, 0, 0, 0, 0);
         bits.extend(encode_subframe_2_with_orbit(
             2,
             0xA5,
@@ -1204,7 +1207,7 @@ mod tests {
 
     #[test]
     fn decoded_subframes_refuse_mixed_issue_numbers() {
-        let mut bits = encode_subframe_1_with_clock(1, 42, 0, 0x1A5, 21_600, 0, 0, 0, 0);
+        let mut bits = encode_subframe_1_with_clock(1, 42, 0, 0, 0x1A5, 21_600, 0, 0, 0, 0);
         bits.extend(encode_subframe_2_with_orbit(
             2,
             0xA5,

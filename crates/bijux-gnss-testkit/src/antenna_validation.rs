@@ -213,6 +213,7 @@ fn make_eph(receive_gps_time: GpsTime, prn: u8, omega0: f64, m0: f64) -> GpsEphe
         iode: 0,
         week: receive_gps_time.week,
         sv_health: 0,
+        sv_accuracy: Some(2),
         toe_s: receive_gps_time.tow_s - 900.0,
         toc_s: receive_gps_time.tow_s - 900.0,
         sqrt_a: 5153.7954775,

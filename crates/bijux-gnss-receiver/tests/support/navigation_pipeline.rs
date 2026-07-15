@@ -453,6 +453,7 @@ fn make_ephemeris(prn: u8, omega0: f64, m0: f64) -> GpsEphemeris {
         iode: 0,
         week: 0,
         sv_health: 0,
+        sv_accuracy: Some(2),
         toe_s: CLEAN_SYNTHETIC_RECEIVE_TIME_S,
         toc_s: CLEAN_SYNTHETIC_RECEIVE_TIME_S,
         sqrt_a: 5153.7954775,
