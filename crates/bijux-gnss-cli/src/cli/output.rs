@@ -3,368 +3,7 @@ include!("output/signal_quality.rs");
 include!("output/sample_windows.rs");
 include!("output/experiment_artifacts.rs");
 include!("output/navigation_artifacts.rs");
-
-fn write_track_timeseries_for_command(
-    common: &CommonArgs,
-    command: &str,
-    report: &TrackingReport,
-    profile: &ReceiverConfig,
-    dataset: Option<&DatasetEntry>,
-) -> Result<()> {
-    let out_dir = artifacts_dir(common, command, dataset)?;
-    let header = artifact_header(common, profile, dataset)?;
-    let path = out_dir.join("track.jsonl");
-    let mut lines = Vec::new();
-    for epoch in &report.epochs {
-        let wrapped = TrackEpochV1 {
-            header: header.clone(),
-            payload: TrackEpoch {
-                epoch: bijux_gnss_infra::api::core::Epoch { index: epoch.epoch_idx },
-                sample_index: epoch.sample_index,
-                source_time: bijux_gnss_infra::api::core::ReceiverSampleTrace::from_sample_index(
-                    epoch.sample_index,
-                    profile.sample_rate_hz,
-                ),
-                sat: epoch.sat,
-                signal_band: bijux_gnss_infra::api::core::SignalBand::L1,
-                signal_code: bijux_gnss_infra::api::core::SignalCode::Unknown,
-                glonass_frequency_channel: None,
-                prompt_i: epoch.prompt_i,
-                prompt_q: epoch.prompt_q,
-                early_i: epoch.early_i,
-                early_q: epoch.early_q,
-                late_i: epoch.late_i,
-                late_q: epoch.late_q,
-                carrier_hz: bijux_gnss_infra::api::core::Hertz(epoch.carrier_hz),
-                carrier_phase_cycles: bijux_gnss_infra::api::core::Cycles(
-                    epoch.carrier_phase_cycles,
-                ),
-                code_rate_hz: bijux_gnss_infra::api::core::Hertz(epoch.code_rate_hz),
-                code_phase_samples: bijux_gnss_infra::api::core::Chips(epoch.code_phase_samples),
-                lock: epoch.lock,
-                cn0_dbhz: epoch.cn0_dbhz,
-                pll_lock: epoch.pll_lock,
-                dll_lock: epoch.dll_lock,
-                fll_lock: epoch.fll_lock,
-                cycle_slip: epoch.cycle_slip,
-                nav_bit_lock: epoch.nav_bit_lock,
-                navigation_bit_sign: epoch.navigation_bit_sign,
-                transmit_time: None,
-                dll_err: epoch.dll_err,
-                pll_err: epoch.pll_err,
-                fll_err: epoch.fll_err,
-                anti_false_lock: epoch.anti_false_lock,
-                cycle_slip_reason: epoch.cycle_slip_reason.clone(),
-                lock_state: epoch.lock_state.clone(),
-                lock_state_reason: epoch.lock_state_reason.clone(),
-                channel_id: None,
-                channel_uid: String::new(),
-                tracking_provenance: String::new(),
-                tracking_assumptions: None,
-                signal_delay_alignment: None,
-                tracking_uncertainty: None,
-                processing_ms: None,
-            },
-        };
-        let line = serde_json::to_string(&wrapped)?;
-        lines.push(line);
-    }
-    fs::write(&path, lines.join("\n"))?;
-    validate_jsonl_schema(&schema_path("track_epoch_v1.schema.json"), &path, false)?;
-    Ok(())
-}
-
-fn write_track_timeseries(
-    common: &CommonArgs,
-    report: &TrackingReport,
-    profile: &ReceiverConfig,
-    dataset: Option<&DatasetEntry>,
-) -> Result<()> {
-    write_track_timeseries_for_command(common, "track", report, profile, dataset)
-}
-
-#[cfg(test)]
-fn write_obs_timeseries_for_command(
-    common: &CommonArgs,
-    command: &str,
-    config: &ReceiverPipelineConfig,
-    tracks: &[bijux_gnss_infra::api::receiver::TrackingResult],
-    hatch_window: u32,
-    profile: &ReceiverConfig,
-    dataset: Option<&DatasetEntry>,
-) -> Result<bijux_gnss_infra::api::receiver::ObservationPipelineArtifacts> {
-    let runtime = runtime_config_from_env(common, None);
-    let obs_report = bijux_gnss_infra::api::receiver::observation_artifacts_from_tracking_results_with_gps_anchor(
-        config,
-        dataset
-            .and_then(|entry| entry.capture_start_utc.as_deref())
-            .and_then(capture_start_gps_time),
-        tracks,
-        hatch_window,
-    );
-    for event in obs_report.events {
-        runtime.logger.event(&event);
-    }
-    write_observation_artifacts_for_command(common, command, &obs_report.output, profile, dataset)
-}
-
-fn write_observation_artifacts_for_command(
-    common: &CommonArgs,
-    command: &str,
-    observation_artifacts: &bijux_gnss_infra::api::receiver::ObservationPipelineArtifacts,
-    profile: &ReceiverConfig,
-    dataset: Option<&DatasetEntry>,
-) -> Result<bijux_gnss_infra::api::receiver::ObservationPipelineArtifacts> {
-    let out_dir = artifacts_dir(common, command, dataset)?;
-    let header = artifact_header(common, profile, dataset)?;
-    let mut observation_artifacts = observation_artifacts.clone();
-    let path = out_dir.join("obs.jsonl");
-    let mut lines = Vec::new();
-    let mut timing_lines = Vec::new();
-    for epoch in &mut observation_artifacts.epochs {
-        if common.deterministic {
-            sort_obs_sats(epoch);
-        }
-        let wrapped = ObsEpochV1 { header: header.clone(), payload: epoch.clone() };
-        lines.push(serde_json::to_string(&wrapped)?);
-        if let Some(ms) = epoch.processing_ms {
-            timing_lines.push(serde_json::to_string(&serde_json::json!({
-                "epoch_idx": epoch.epoch_idx,
-                "stage": "observations",
-                "processing_ms": ms
-            }))?);
-        }
-    }
-    fs::write(&path, lines.join("\n"))?;
-    validate_jsonl_schema(&schema_path("obs_epoch_v1.schema.json"), &path, false)?;
-    if !timing_lines.is_empty() {
-        let timing_path = out_dir.join("timing_obs.jsonl");
-        fs::write(&timing_path, timing_lines.join("\n"))?;
-    }
-    let residual_path = out_dir.join("observation_residuals.jsonl");
-    let mut residual_lines = Vec::new();
-    for residual in &observation_artifacts.residuals {
-        let wrapped =
-            ObservationResidualEpochV1 { header: header.clone(), payload: residual.clone() };
-        residual_lines.push(serde_json::to_string(&wrapped)?);
-    }
-    fs::write(&residual_path, residual_lines.join("\n"))?;
-    validate_jsonl_schema(
-        &schema_path("observation_residual_epoch_v1.schema.json"),
-        &residual_path,
-        false,
-    )?;
-    let quality_path = out_dir.join("observation_measurement_quality.jsonl");
-    let mut quality_lines = Vec::new();
-    for quality in &observation_artifacts.measurement_quality {
-        let wrapped = ObservationMeasurementQualityEpochV1 {
-            header: header.clone(),
-            payload: quality.clone(),
-        };
-        quality_lines.push(serde_json::to_string(&wrapped)?);
-    }
-    fs::write(&quality_path, quality_lines.join("\n"))?;
-    validate_jsonl_schema(
-        &schema_path("observation_measurement_quality_epoch_v1.schema.json"),
-        &quality_path,
-        false,
-    )?;
-    let mut combos = Vec::new();
-    for (band_1, band_2) in supported_observed_dual_frequency_pairs(&observation_artifacts.epochs) {
-        combos.extend(bijux_gnss_infra::api::nav::combinations_from_obs_epochs(
-            &observation_artifacts.epochs,
-            band_1,
-            band_2,
-        ));
-    }
-    if !combos.is_empty() {
-        let combo_path = out_dir.join("combinations.jsonl");
-        let mut combo_lines = Vec::new();
-        for combo in combos {
-            combo_lines.push(serde_json::to_string(&combo)?);
-        }
-        fs::write(&combo_path, combo_lines.join("\n"))?;
-        validate_jsonl_schema(&schema_path("combinations.schema.json"), &combo_path, false)?;
-    }
-    write_iono_free_code_artifact(&out_dir, &observation_artifacts.epochs, None)?;
-    write_narrow_lane_artifact(&out_dir, &observation_artifacts.epochs)?;
-    write_melbourne_wubbena_diagnostics(&out_dir, &observation_artifacts.epochs)?;
-    write_carrier_smoothed_code_validation(&out_dir, &observation_artifacts)?;
-    Ok(observation_artifacts)
-}
-
-fn dual_frequency_pair_observed(obs: &[ObsEpoch], band_1: SignalBand, band_2: SignalBand) -> bool {
-    for epoch in obs {
-        let mut bands_by_sat = std::collections::BTreeMap::<SatId, (bool, bool)>::new();
-        for satellite in &epoch.sats {
-            let entry = bands_by_sat.entry(satellite.signal_id.sat).or_insert((false, false));
-            if satellite.signal_id.band == band_1 {
-                entry.0 = true;
-            }
-            if satellite.signal_id.band == band_2 {
-                entry.1 = true;
-            }
-        }
-        if bands_by_sat.values().any(|(first_seen, second_seen)| *first_seen && *second_seen) {
-            return true;
-        }
-    }
-    false
-}
-
-fn supported_observed_dual_frequency_pairs(obs: &[ObsEpoch]) -> Vec<(SignalBand, SignalBand)> {
-    bijux_gnss_infra::api::signal::supported_dual_frequency_band_pairs()
-        .iter()
-        .copied()
-        .filter(|&(band_1, band_2)| dual_frequency_pair_observed(obs, band_1, band_2))
-        .collect()
-}
-
-pub(crate) fn write_iono_free_code_artifact(
-    out_dir: &Path,
-    obs: &[ObsEpoch],
-    biases: Option<&dyn CodeBiasProvider>,
-) -> Result<()> {
-    let mut lines = Vec::new();
-    for (band_1, band_2) in supported_observed_dual_frequency_pairs(obs) {
-        let observations = bijux_gnss_infra::api::nav::iono_free_code_from_obs_epochs_with_biases(
-            obs, band_1, band_2, biases,
-        );
-        for observation in observations {
-            lines.push(serde_json::to_string(&observation)?);
-        }
-    }
-
-    if lines.is_empty() {
-        return Ok(());
-    }
-
-    let path = out_dir.join("iono_free_code.jsonl");
-    fs::write(&path, lines.join("\n"))?;
-    validate_jsonl_schema(&schema_path("iono_free_code.schema.json"), &path, false)?;
-    Ok(())
-}
-
-pub(crate) fn write_narrow_lane_artifact(out_dir: &Path, obs: &[ObsEpoch]) -> Result<()> {
-    let mut lines = Vec::new();
-    for (band_1, band_2) in supported_observed_dual_frequency_pairs(obs) {
-        let observations =
-            bijux_gnss_infra::api::nav::narrow_lane_from_obs_epochs(obs, band_1, band_2);
-        for observation in observations {
-            lines.push(serde_json::to_string(&observation)?);
-        }
-    }
-
-    if lines.is_empty() {
-        return Ok(());
-    }
-
-    let path = out_dir.join("narrow_lane.jsonl");
-    fs::write(&path, lines.join("\n"))?;
-    validate_jsonl_schema(&schema_path("narrow_lane.schema.json"), &path, false)?;
-    Ok(())
-}
-
-pub(crate) fn write_melbourne_wubbena_diagnostics(out_dir: &Path, obs: &[ObsEpoch]) -> Result<()> {
-    let mut diagnostics = Vec::new();
-    for (band_1, band_2) in supported_observed_dual_frequency_pairs(obs) {
-        let pair_diagnostics =
-            bijux_gnss_infra::api::nav::melbourne_wubbena_diagnostics_from_obs_epochs(
-                obs,
-                band_1,
-                band_2,
-                bijux_gnss_infra::api::nav::MelbourneWubbenaThresholds::default(),
-            );
-        if pair_diagnostics.iter().any(|diagnostic| diagnostic.status == "ok") {
-            diagnostics.extend(pair_diagnostics);
-        }
-    }
-
-    if diagnostics.is_empty() {
-        return Ok(());
-    }
-
-    let path = out_dir.join("melbourne_wubbena.jsonl");
-    let mut lines = Vec::new();
-    for diagnostic in diagnostics {
-        lines.push(serde_json::to_string(&diagnostic)?);
-    }
-    fs::write(&path, lines.join("\n"))?;
-    validate_jsonl_schema(&schema_path("melbourne_wubbena.schema.json"), &path, false)?;
-    Ok(())
-}
-
-fn write_carrier_smoothed_code_validation(
-    out_dir: &Path,
-    observation_artifacts: &bijux_gnss_infra::api::receiver::ObservationPipelineArtifacts,
-) -> Result<()> {
-    let report = bijux_gnss_infra::api::receiver::validate_carrier_smoothed_code_from_artifacts(
-        observation_artifacts,
-    );
-    let path = out_dir.join("carrier_smoothed_code_validation.json");
-    fs::write(&path, serde_json::to_string_pretty(&report)?)?;
-    validate_json_schema(
-        &schema_path("carrier_smoothed_code_validation.schema.json"),
-        &path,
-        false,
-    )?;
-    Ok(())
-}
-
-#[cfg(test)]
-fn write_obs_timeseries(
-    common: &CommonArgs,
-    config: &ReceiverPipelineConfig,
-    tracks: &[bijux_gnss_infra::api::receiver::TrackingResult],
-    hatch_window: u32,
-    profile: &ReceiverConfig,
-    dataset: Option<&DatasetEntry>,
-) -> Result<bijux_gnss_infra::api::receiver::ObservationPipelineArtifacts> {
-    write_obs_timeseries_for_command(
-        common,
-        "track",
-        config,
-        tracks,
-        hatch_window,
-        profile,
-        dataset,
-    )
-}
-
-fn write_tracking_timing_for_command(
-    common: &CommonArgs,
-    command: &str,
-    tracks: &[bijux_gnss_infra::api::receiver::TrackingResult],
-    dataset: Option<&DatasetEntry>,
-) -> Result<()> {
-    let timing_path = artifacts_dir(common, command, dataset)?.join("timing.jsonl");
-    let mut timing_lines = Vec::new();
-    for track in tracks {
-        for epoch in &track.epochs {
-            if let Some(ms) = epoch.processing_ms {
-                timing_lines.push(serde_json::to_string(&serde_json::json!({
-                    "epoch_idx": epoch.epoch.index,
-                    "stage": "tracking",
-                    "processing_ms": ms
-                }))?);
-            }
-        }
-    }
-    fs::write(&timing_path, timing_lines.join("\n"))?;
-    Ok(())
-}
-
-#[derive(Debug, Clone, Serialize)]
-struct ObservationResidualEpochV1 {
-    header: ArtifactHeaderV1,
-    payload: bijux_gnss_infra::api::receiver::ObservationResidualEpochReport,
-}
-
-#[derive(Debug, Clone, Serialize)]
-struct ObservationMeasurementQualityEpochV1 {
-    header: ArtifactHeaderV1,
-    payload: bijux_gnss_infra::api::receiver::ObservationMeasurementQualityEpochReport,
-}
+include!("output/tracking_observation_artifacts.rs");
 
 fn read_tracking_dump(path: &Path) -> Result<Vec<TrackingRow>> {
     let data = fs::read_to_string(path)?;
@@ -894,12 +533,12 @@ mod tests {
         assert_eq!(parsed.klobuchar, Some(klobuchar));
     }
 
-    fn temp_file_path(name: &str) -> PathBuf {
+    fn unique_iq_fixture_path(name: &str) -> PathBuf {
         let nanos = SystemTime::now().duration_since(UNIX_EPOCH).expect("unix epoch").as_nanos();
         std::env::temp_dir().join(format!("bijux_{}_{}_{}.iq", name, std::process::id(), nanos))
     }
 
-    fn temp_output_dir(name: &str) -> PathBuf {
+    fn unique_artifact_output_dir(name: &str) -> PathBuf {
         let nanos = SystemTime::now().duration_since(UNIX_EPOCH).expect("unix epoch").as_nanos();
         std::env::temp_dir().join(format!("bijux_{}_{}_{}", name, std::process::id(), nanos))
     }
@@ -1076,7 +715,7 @@ mod tests {
 
     #[test]
     fn load_frame_removes_dc_offset_when_enabled() {
-        let path = temp_file_path("load_frame_dc_removal");
+        let path = unique_iq_fixture_path("load_frame_dc_removal");
         let sample_count = 4_092usize;
         let mut raw = Vec::with_capacity(sample_count * 2);
         for _ in 0..sample_count {
@@ -1132,7 +771,7 @@ mod tests {
 
     #[test]
     fn load_tracking_frame_reads_multiple_code_periods() {
-        let path = temp_file_path("load_tracking_frame_window");
+        let path = unique_iq_fixture_path("load_tracking_frame_window");
         let sample_count = 4_092usize * super::TRACKING_HISTORY_CODE_PERIODS;
         let mut raw = Vec::with_capacity(sample_count * 2);
         for _ in 0..sample_count {
@@ -1166,7 +805,7 @@ mod tests {
 
     #[test]
     fn read_tracking_dump_accepts_wrapped_track_artifacts() {
-        let path = temp_file_path("read_tracking_dump_artifact");
+        let path = unique_iq_fixture_path("read_tracking_dump_artifact");
         let wrapped = TrackEpochV1 {
             header: ArtifactHeaderV1 {
                 schema_version: 1,
@@ -1239,7 +878,7 @@ mod tests {
 
     #[test]
     fn read_tracking_dump_accepts_track_report_json() {
-        let path = temp_file_path("read_tracking_dump_report");
+        let path = unique_iq_fixture_path("read_tracking_dump_report");
         let report = TrackingReport {
             sats: vec![SatId { constellation: Constellation::Gps, prn: 12 }],
             doppler_search: DopplerSearchSettings {
@@ -1304,7 +943,7 @@ mod tests {
 
     #[test]
     fn load_acquisition_frame_reads_configured_integration_window() {
-        let path = temp_file_path("load_acquisition_frame_window");
+        let path = unique_iq_fixture_path("load_acquisition_frame_window");
         let coherent_ms = 5u32;
         let noncoherent = 4u32;
         let sample_count = 4_092usize * super::acquisition_code_periods(coherent_ms, noncoherent);
@@ -1443,7 +1082,7 @@ mod tests {
 
     #[test]
     fn write_obs_timeseries_emits_observation_residual_artifact() {
-        let out_dir = temp_output_dir("obs_residual_output");
+        let out_dir = unique_artifact_output_dir("obs_residual_output");
         let common = sample_common_args(out_dir.clone());
         let profile = ReceiverConfig::default();
         let config = ReceiverPipelineConfig {
@@ -1489,8 +1128,8 @@ mod tests {
                     dll_lock: true,
                     fll_lock: true,
                     cycle_slip: false,
-                    nav_bit_lock: false,
-                    navigation_bit_sign: None,
+                    nav_bit_lock: true,
+                    navigation_bit_sign: Some(1),
                     transmit_time: None,
                     dll_err: 0.0,
                     pll_err: 0.0,
@@ -1508,7 +1147,12 @@ mod tests {
                         sample_delay_samples: 0,
                         source: "synthetic_truth".to_string(),
                     }),
-                    tracking_uncertainty: None,
+                    tracking_uncertainty: Some(TrackingUncertainty {
+                        code_phase_samples: 0.05,
+                        carrier_phase_cycles: 0.02,
+                        doppler_hz: 0.5,
+                        cn0_dbhz: 0.75,
+                    }),
                     processing_ms: None,
                 },
                 TrackEpoch {
@@ -1535,8 +1179,8 @@ mod tests {
                     dll_lock: true,
                     fll_lock: true,
                     cycle_slip: false,
-                    nav_bit_lock: false,
-                    navigation_bit_sign: None,
+                    nav_bit_lock: true,
+                    navigation_bit_sign: Some(1),
                     transmit_time: None,
                     dll_err: 0.0,
                     pll_err: 0.0,
@@ -1554,7 +1198,12 @@ mod tests {
                         sample_delay_samples: 0,
                         source: "synthetic_truth".to_string(),
                     }),
-                    tracking_uncertainty: None,
+                    tracking_uncertainty: Some(TrackingUncertainty {
+                        code_phase_samples: 0.05,
+                        carrier_phase_cycles: 0.02,
+                        doppler_hz: 0.5,
+                        cn0_dbhz: 0.75,
+                    }),
                     processing_ms: None,
                 },
             ],
@@ -1687,7 +1336,7 @@ mod tests {
             }
         }
 
-        let out_dir = temp_output_dir("obs_quality_output");
+        let out_dir = unique_artifact_output_dir("obs_quality_output");
         let common = sample_common_args(out_dir.clone());
         let profile = ReceiverConfig::default();
         let config = ReceiverPipelineConfig {
@@ -1702,7 +1351,7 @@ mod tests {
         let mut l5 = quality_track(
             &config,
             SatId { constellation: Constellation::Gps, prn: 5 },
-            quality_signal(Constellation::Gps, SignalBand::L5, SignalCode::Unknown),
+            quality_signal(Constellation::Gps, SignalBand::L5, SignalCode::L5I),
             43.0,
         );
         l5.epochs[0].cycle_slip = true;
@@ -1801,7 +1450,7 @@ mod tests {
 
     #[test]
     fn write_melbourne_wubbena_diagnostics_emits_wide_lane_events() {
-        let out_dir = temp_output_dir("melbourne_wubbena_output");
+        let out_dir = unique_artifact_output_dir("melbourne_wubbena_output");
         fs::create_dir_all(&out_dir).expect("create output directory");
 
         super::write_melbourne_wubbena_diagnostics(
@@ -1835,7 +1484,7 @@ mod tests {
 
     #[test]
     fn write_iono_free_code_artifact_emits_bias_corrected_rows() {
-        let out_dir = temp_output_dir("iono_free_code_output");
+        let out_dir = unique_artifact_output_dir("iono_free_code_output");
         fs::create_dir_all(&out_dir).expect("create output directory");
 
         let provider = fs::read_to_string(bias_sinex_fixture("gps_l1_l2_absolute_biases.bia"))
@@ -1885,7 +1534,7 @@ mod tests {
 
     #[test]
     fn write_iono_free_code_artifact_emits_supported_constellation_rows() {
-        let out_dir = temp_output_dir("iono_free_code_constellations_output");
+        let out_dir = unique_artifact_output_dir("iono_free_code_constellations_output");
         fs::create_dir_all(&out_dir).expect("create output directory");
 
         let epochs = [
@@ -1923,7 +1572,7 @@ mod tests {
 
     #[test]
     fn write_narrow_lane_artifact_emits_supported_constellation_rows() {
-        let out_dir = temp_output_dir("narrow_lane_output");
+        let out_dir = unique_artifact_output_dir("narrow_lane_output");
         fs::create_dir_all(&out_dir).expect("create output directory");
 
         let epochs = vec![
