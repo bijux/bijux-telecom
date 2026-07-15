@@ -160,6 +160,10 @@ impl ProductsProvider for Products {
                         }
                         return Some(state);
                     }
+                    diag.fallback(format!(
+                        "SP3 unusable for {:?} at {:.3}s because interpolation crossed a gap, prediction, maneuver, or event",
+                        sat, t_s
+                    ));
                 } else {
                     diag.fallback(format!("SP3 out of coverage for {:?}", sat));
                 }
@@ -178,12 +182,16 @@ impl ProductsProvider for Products {
         if let Some(clk) = &self.clk {
             if let Some((start, end)) = clk.coverage_s(sat) {
                 if t_s >= start && t_s <= end {
-                    if let Some(bias) = clk.bias_s(sat, t_s) {
+                    if let Some(correction) = clk.clock_correction(sat, t_s) {
                         if let Some(summary) = clk.interpolation_summary(sat) {
                             diag.precise_clock_interpolation(summary);
                         }
-                        return Some(GpsSatelliteClockCorrection::from_bias_s(bias));
+                        return Some(correction);
                     }
+                    diag.fallback(format!(
+                        "CLK unusable for {:?} at {:.3}s because interpolation crossed a gap or clock jump",
+                        sat, t_s
+                    ));
                 } else {
                     diag.fallback(format!("CLK out of coverage for {:?}", sat));
                 }

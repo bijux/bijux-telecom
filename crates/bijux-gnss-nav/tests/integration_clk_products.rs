@@ -65,3 +65,43 @@ AS G01 2020 01 01 01 00 00.000000  2  0.000000313  0.000000065
     assert!(summary.max_sigma_error_s.expect("sigma summary").abs() < 1e-18);
     assert!(summary.rms_sigma_error_s.expect("sigma RMS summary").abs() < 1e-18);
 }
+
+#[test]
+fn precise_clock_products_preserve_clk_clock_rate() {
+    let eph = make_eph(1);
+    let clk_data = "\
+AS G01 2020 01 01 00 00 00.000000  6  0.000000001  0.000000001 -0.000000003  0.000000001  0.000000005  0.000000001
+AS G01 2020 01 01 00 15 00.000000  6  0.000000010  0.000000002 -0.000000012  0.000000002  0.000000014  0.000000002
+";
+    let clk = clk_data.parse().expect("parse CLK");
+    let products = Products::new(BroadcastProductsProvider::new(vec![eph.clone()])).with_clk(clk);
+    let mut diag = ProductDiagnostics::default();
+
+    let correction =
+        products.clock_correction(eph.sat, 900.0, &mut diag).expect("precise clock correction");
+
+    assert!(diag.fallbacks.is_empty());
+    assert_eq!(correction.bias_s, 1.0e-8);
+    assert_eq!(correction.drift_s_per_s, -12.0e-9);
+    assert_eq!(correction.drift_rate_s_per_s2, 14.0e-9);
+}
+
+#[test]
+fn precise_clock_products_report_unusable_clk_jump_before_broadcast_fallback() {
+    let eph = make_eph(1);
+    let clk_data = "\
+AS G01 2020 01 01 00 00 00.000000  1  0.000000001
+AS G01 2020 01 01 00 15 00.000000  1  0.000000002
+AS G01 2020 01 01 00 30 00.000000  1  0.000003500
+";
+    let clk = clk_data.parse().expect("parse CLK");
+    let products = Products::new(BroadcastProductsProvider::new(vec![eph.clone()])).with_clk(clk);
+    let mut diag = ProductDiagnostics::default();
+
+    let correction =
+        products.clock_correction(eph.sat, 1_350.0, &mut diag).expect("broadcast fallback clock");
+
+    assert!(!diag.fallbacks.is_empty());
+    assert!(diag.fallbacks.iter().any(|message| message.contains("CLK unusable")));
+    assert_ne!(correction.bias_s, 3.5e-6);
+}

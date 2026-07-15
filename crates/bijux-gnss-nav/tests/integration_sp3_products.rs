@@ -67,3 +67,25 @@ PG01  313.000000  64.000000  21.000000  0.000000
     assert!(summary.max_position_error_m.abs() < 1e-6);
     assert!(summary.rms_position_error_m.abs() < 1e-6);
 }
+
+#[test]
+fn precise_orbit_products_report_unusable_sp3_gap_before_broadcast_fallback() {
+    let eph = make_eph(1);
+    let sp3_data = "\
+* 2020 01 01 00 00 00.000000
+PG01  1.000000  0.000000  5.000000  0.000000
+* 2020 01 01 00 15 00.000000
+PG01  10.000000  1.000000  6.000000  0.000000
+* 2020 01 01 01 00 00.000000
+PG01  313.000000  64.000000  21.000000  0.000000
+";
+    let sp3 = sp3_data.parse().expect("parse SP3");
+    let products = Products::new(BroadcastProductsProvider::new(vec![eph.clone()])).with_sp3(sp3);
+    let mut diag = ProductDiagnostics::default();
+
+    let state = products.sat_state(eph.sat, 2_700.0, &mut diag).expect("broadcast fallback state");
+
+    assert!(!diag.fallbacks.is_empty());
+    assert!(diag.fallbacks.iter().any(|message| message.contains("SP3 unusable")));
+    assert!(state.x_m.is_finite());
+}

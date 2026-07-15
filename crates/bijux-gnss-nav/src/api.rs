@@ -282,7 +282,7 @@ pub use crate::formats::rinex_obs::{
 /// Precise product parsing helpers.
 pub use crate::formats::{
     clk::{ClkInterpolationSummary, ClkProvider},
-    sp3::{Sp3InterpolationSummary, Sp3Provider},
+    sp3::{Sp3InterpolationSummary, Sp3Provider, Sp3RecordAccuracy, Sp3RecordFlags, Sp3State},
 };
 /// Linear algebra helper.
 pub use crate::linalg::Matrix;
