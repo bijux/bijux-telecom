@@ -114,7 +114,7 @@ const CARRIER_AID_DOPPLER_WINDOW_MARGIN_HZ: f64 = 500.0;
 const SUBCARRIER_AMBIGUITY_MIN_PROMPT_RELATIVE_POWER: f32 = 0.05;
 const SUBCARRIER_AMBIGUITY_GUARD_OFFSETS_CHIPS: [f64; 2] = [-0.5, 0.5];
 const DOPPLER_ESTIMATOR_SPREAD_LOCK_MULTIPLIER: f64 = 3.0;
-const DOPPLER_ESTIMATOR_MIN_SPREAD_LIMIT_HZ: f64 = 25.0;
+const DOPPLER_ESTIMATOR_MIN_SPREAD_LIMIT_HZ: f64 = 75.0;
 const DOPPLER_ESTIMATOR_PROVENANCE_TOKEN_COUNT: usize = 6;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChannelState {
@@ -3035,9 +3035,7 @@ impl Tracking {
             if matches!(from_state, ChannelState::Tracking | ChannelState::Degraded) {
                 steady_state_tracking_ready
             } else {
-                cn0_supports_lock
-                    && state.pull_in_stable_epochs >= PULL_IN_REQUIRED_STABLE_EPOCHS
-                    && doppler_consistency.consistent
+                cn0_supports_lock && state.pull_in_stable_epochs >= PULL_IN_REQUIRED_STABLE_EPOCHS
             };
         let short_fade_relock_evidence = doppler_consistency.consistent
             && !anti_false_lock
