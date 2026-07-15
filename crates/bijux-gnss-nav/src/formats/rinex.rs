@@ -18,6 +18,9 @@ use crate::formats::rinex_obs::{
     RinexObservationValue, RinexSatelliteObservation,
 };
 use crate::models::atmosphere::KlobucharCoefficients;
+use crate::orbits::beidou::BeidouBroadcastNavigationData;
+use crate::orbits::galileo::GalileoBroadcastNavigationData;
+use crate::orbits::glonass::GlonassBroadcastNavigationFrame;
 use crate::orbits::gps::GpsBroadcastNavigationData;
 use crate::orbits::gps::GpsEphemeris;
 use crate::time::{utc_civil_to_gps_with_offset, UtcCivilTime, UtcCivilTimeError};
@@ -33,11 +36,34 @@ fn write_header_line(writer: &mut BufWriter<File>, line: &str) -> Result<(), IoE
     Ok(())
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 struct RinexNavHeader {
     version: f64,
     is_mixed: bool,
     klobuchar: Option<KlobucharCoefficients>,
+    time_system_corrections: Vec<RinexNavigationTimeSystemCorrection>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct RinexNavigationTimeSystemCorrection {
+    pub code: String,
+    pub a0_s: f64,
+    pub a1_s_per_s: f64,
+    pub reference_time_s: u32,
+    pub reference_week: u32,
+    pub provider: Option<String>,
+    pub utc_id: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct RinexBroadcastNavigationDataset {
+    pub version: f64,
+    pub klobuchar: Option<KlobucharCoefficients>,
+    pub time_system_corrections: Vec<RinexNavigationTimeSystemCorrection>,
+    pub gps: Vec<GpsEphemeris>,
+    pub galileo: Vec<GalileoBroadcastNavigationData>,
+    pub beidou: Vec<BeidouBroadcastNavigationData>,
+    pub glonass: Vec<GlonassBroadcastNavigationFrame>,
 }
 
 fn rinex_nav_float_regex() -> &'static Regex {
@@ -84,6 +110,7 @@ fn parse_rinex_nav_header(data: &str) -> Result<(RinexNavHeader, usize), ParseEr
                 version,
                 is_mixed: line.contains("M (MIXED)"),
                 klobuchar: None,
+                time_system_corrections: Vec::new(),
             });
         }
         if line.contains("ION ALPHA") {
@@ -101,6 +128,17 @@ fn parse_rinex_nav_header(data: &str) -> Result<(RinexNavHeader, usize), ParseEr
                         Some(parse_rinex_klobuchar_header_fields(line, "GPSB IONOSPHERIC CORR")?);
                 }
                 _ => {}
+            }
+        } else if line.contains("TIME SYSTEM CORR") {
+            let correction = parse_rinex_time_system_correction(line)?;
+            header.get_or_insert(RinexNavHeader {
+                version: 0.0,
+                is_mixed: false,
+                klobuchar: None,
+                time_system_corrections: Vec::new(),
+            });
+            if let Some(header) = header.as_mut() {
+                header.time_system_corrections.push(correction);
             }
         }
         if line.contains("END OF HEADER") {
@@ -125,6 +163,38 @@ fn parse_rinex_nav_header(data: &str) -> Result<(RinexNavHeader, usize), ParseEr
         }
         _ => Err(ParseError { message: "invalid or incomplete RINEX NAV header".to_string() }),
     }
+}
+
+fn parse_rinex_time_system_correction(
+    line: &str,
+) -> Result<RinexNavigationTimeSystemCorrection, ParseError> {
+    let content = line.get(..60).unwrap_or_default();
+    let code = content.get(..4).unwrap_or_default().trim().to_string();
+    if code.is_empty() {
+        return Err(ParseError { message: "RINEX TIME SYSTEM CORR is missing code".to_string() });
+    }
+    let numeric_fields = parse_rinex_numeric_fields(content.get(4..).unwrap_or_default())?;
+    if numeric_fields.len() < 4 {
+        return Err(ParseError {
+            message: format!(
+                "RINEX TIME SYSTEM CORR {code} requires code, a0, a1, reference time, and reference week"
+            ),
+        });
+    }
+    let text_fields = content
+        .split_whitespace()
+        .skip(1)
+        .filter(|field| field.chars().all(|char| char.is_ascii_alphabetic()))
+        .collect::<Vec<_>>();
+    Ok(RinexNavigationTimeSystemCorrection {
+        code,
+        a0_s: numeric_fields[0],
+        a1_s_per_s: numeric_fields[1],
+        reference_time_s: numeric_fields[2].round().max(0.0) as u32,
+        reference_week: numeric_fields[3].round().max(0.0) as u32,
+        provider: text_fields.first().map(|value| (*value).to_string()),
+        utc_id: text_fields.get(1).map(|value| (*value).to_string()),
+    })
 }
 
 fn parse_rinex_klobuchar_header_fields(line: &str, label: &str) -> Result<[f64; 4], ParseError> {
@@ -310,7 +380,7 @@ fn rinex_nav_record_line_count(version: f64, line: &str) -> Result<usize, ParseE
 }
 
 fn parse_gps_rinex_nav_record(
-    header: RinexNavHeader,
+    header: &RinexNavHeader,
     lines: &[&str],
 ) -> Result<GpsEphemeris, ParseError> {
     if lines.len() != 8 {
@@ -470,7 +540,7 @@ pub fn parse_rinex_broadcast_navigation(
             continue;
         }
         let record = &lines[index..index + line_count];
-        ephemerides.push(parse_gps_rinex_nav_record(header, record)?);
+        ephemerides.push(parse_gps_rinex_nav_record(&header, record)?);
         index += line_count;
     }
 
@@ -1005,6 +1075,30 @@ GPSB  1.1670D+05-2.2940D+05-1.3110D+05 1.0490D+06       IONOSPHERIC CORR
                 [0.1167e6, -0.2294e6, -0.1311e6, 0.1049e7],
             ))
         );
+    }
+
+    #[test]
+    fn parse_rinex_nav_header_reads_time_system_corrections() {
+        let data = "\
+     3.05           NAVIGATION DATA     M (MIXED)           RINEX VERSION / TYPE
+bijux-gnss                              PGM / RUN BY / DATE
+GAUT -1.8626451492D-09-8.881784197D-16 432000 2209 GAL UTC TIME SYSTEM CORR
+BDUT  4.6566128731D-10 0.000000000D+00 345600 0850 BDS UTC TIME SYSTEM CORR
+                                                            END OF HEADER
+";
+
+        let (header, _) = parse_rinex_nav_header(data).expect("RINEX NAV header");
+
+        assert_eq!(header.version, 3.05);
+        assert!(header.is_mixed);
+        assert_eq!(header.time_system_corrections.len(), 2);
+        assert_eq!(header.time_system_corrections[0].code, "GAUT");
+        assert!((header.time_system_corrections[0].a0_s + 1.862_645_149_2e-9).abs() < 1.0e-20);
+        assert_eq!(header.time_system_corrections[0].reference_time_s, 432_000);
+        assert_eq!(header.time_system_corrections[0].reference_week, 2209);
+        assert_eq!(header.time_system_corrections[0].provider.as_deref(), Some("GAL"));
+        assert_eq!(header.time_system_corrections[0].utc_id.as_deref(), Some("UTC"));
+        assert_eq!(header.time_system_corrections[1].code, "BDUT");
     }
 
     #[test]
