@@ -586,6 +586,9 @@ impl PppFilter {
             clock_bias: self.indices.clock_bias,
             clock_drift: self.indices.clock_drift,
             ztd: self.indices.ztd,
+            inter_system_biases: self.indices.isb.values().copied().collect(),
+            ionospheres: self.indices.iono.values().copied().collect(),
+            ambiguities: self.indices.ambiguity.values().copied().collect(),
             process: self.config.process_noise.clone(),
         };
         self.ekf.predict(&model, dt_s);

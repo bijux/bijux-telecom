@@ -1384,6 +1384,7 @@ fn build_ppp_config(profile: &ReceiverConfig) -> PppConfig {
             ztd_m: p.noise_ztd,
             iono_m: p.noise_iono,
             ambiguity_cycles: p.noise_ambiguity,
+            ..PppProcessNoise::default()
         },
         weighting: WeightingConfig {
             model: match profile.navigation.weighting.mode {

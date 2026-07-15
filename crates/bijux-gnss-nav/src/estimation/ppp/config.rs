@@ -21,10 +21,29 @@ pub const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
 
 #[derive(Debug, Clone)]
 pub struct PppProcessNoise {
+    pub position_m: f64,
+    pub velocity_mps: f64,
+    pub clock_bias_s: f64,
     pub clock_drift_s: f64,
+    pub inter_system_bias_s: f64,
     pub ztd_m: f64,
     pub iono_m: f64,
     pub ambiguity_cycles: f64,
+}
+
+impl Default for PppProcessNoise {
+    fn default() -> Self {
+        Self {
+            position_m: 0.02,
+            velocity_mps: 0.005,
+            clock_bias_s: 1e-7,
+            clock_drift_s: 1e-5,
+            inter_system_bias_s: 1e-9,
+            ztd_m: 0.01,
+            iono_m: 0.1,
+            ambiguity_cycles: 0.05,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -96,12 +115,7 @@ impl Default for PppConfig {
             receiver_antenna_type: None,
             receiver_antenna_calibrations: None,
             satellite_antenna_calibrations: None,
-            process_noise: PppProcessNoise {
-                clock_drift_s: 1e-5,
-                ztd_m: 0.01,
-                iono_m: 0.1,
-                ambiguity_cycles: 0.05,
-            },
+            process_noise: PppProcessNoise::default(),
             weighting: WeightingConfig::default(),
             convergence: PppConvergenceConfig {
                 min_time_s: 60.0,
