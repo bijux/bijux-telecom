@@ -2692,7 +2692,7 @@ mod tests {
     #[test]
     fn science_fixture_integrity_classes_are_deterministic() {
         let fixture_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../bijux-gnss-receiver/tests/data/validation/science_iteration07.json");
+            .join("../bijux-gnss-receiver/tests/data/validation/science_integrity_classification.json");
         let cases: Vec<ScienceFixtureCase> =
             serde_json::from_str(&std::fs::read_to_string(fixture_path).expect("fixture"))
                 .expect("cases");
