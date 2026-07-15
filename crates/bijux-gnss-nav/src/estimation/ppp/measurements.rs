@@ -1,8 +1,11 @@
 #![allow(missing_docs)]
 
-use bijux_gnss_core::api::{GpsTime, ObsEpoch, ObsSatellite, SatId, SigId, SignalBand};
+use bijux_gnss_core::api::{
+    Constellation, GpsTime, ObsEpoch, ObsSatellite, SatId, SigId, SignalBand, SignalSpec,
+};
 use bijux_gnss_signal::api::{
-    signal_cycles_to_meters, signal_wavelength_m,
+    signal_cycles_to_meters, signal_spec_beidou_b1i, signal_spec_galileo_e1b,
+    signal_spec_gps_l1_ca, signal_wavelength_m,
     supported_dual_frequency_band_pairs_for_constellation,
 };
 
@@ -69,6 +72,26 @@ struct DualFrequencyObservationPair<'a> {
     second: &'a ObsSatellite,
 }
 
+pub fn ppp_ionosphere_delay_scale(signal: SignalSpec) -> f64 {
+    let reference_hz = ppp_reference_ionosphere_carrier_hz(signal);
+    let carrier_hz = signal.carrier_hz.value();
+    if reference_hz.is_finite() && reference_hz > 0.0 && carrier_hz.is_finite() && carrier_hz > 0.0
+    {
+        (reference_hz / carrier_hz).powi(2)
+    } else {
+        1.0
+    }
+}
+
+fn ppp_reference_ionosphere_carrier_hz(signal: SignalSpec) -> f64 {
+    match signal.constellation {
+        Constellation::Gps => signal_spec_gps_l1_ca().carrier_hz.value(),
+        Constellation::Galileo => signal_spec_galileo_e1b().carrier_hz.value(),
+        Constellation::Beidou => signal_spec_beidou_b1i().carrier_hz.value(),
+        Constellation::Glonass | Constellation::Unknown => signal.carrier_hz.value(),
+    }
+}
+
 impl MeasurementModel for PppCodeMeasurement {
     fn name(&self) -> &'static str {
         "ppp_code"
@@ -105,10 +128,10 @@ impl MeasurementModel for PppCodeMeasurement {
         let mut iono = 0.0;
         if let Some(idx) = self.iono_index {
             if let Some(v) = x.get(idx) {
-                iono = *v;
+                iono = *v * self.ionosphere_scale;
             }
         }
-        let mut pred = range + SPEED_OF_LIGHT_MPS * (x[6] - self.sat_clock_s) + tropo - iono;
+        let mut pred = range + SPEED_OF_LIGHT_MPS * (x[6] - self.sat_clock_s) + tropo + iono;
         pred += self.antenna_range_correction_m;
         if let Some(idx) = self.isb_index {
             if let Some(isb) = x.get(idx) {
@@ -134,7 +157,7 @@ impl MeasurementModel for PppCodeMeasurement {
         }
         if let Some(idx) = self.iono_index {
             if idx < h.cols() {
-                h[(0, idx)] = -1.0;
+                h[(0, idx)] = self.ionosphere_scale;
             }
         }
         if let Some(idx) = self.isb_index {
@@ -157,6 +180,7 @@ pub struct PppPhaseMeasurement {
     pub antenna_range_correction_m: f64,
     pub sigma_cycles: f64,
     pub troposphere_mapping: f64,
+    pub ionosphere_scale: f64,
     pub iono_index: Option<usize>,
     pub ztd_index: Option<usize>,
     pub isb_index: Option<usize>,
@@ -201,7 +225,7 @@ impl MeasurementModel for PppPhaseMeasurement {
         let mut iono = 0.0;
         if let Some(idx) = self.iono_index {
             if let Some(v) = x.get(idx) {
-                iono = *v;
+                iono = *v * self.ionosphere_scale;
             }
         }
         let mut pred = (range
@@ -240,7 +264,7 @@ impl MeasurementModel for PppPhaseMeasurement {
         }
         if let Some(idx) = self.iono_index {
             if idx < h.cols() {
-                h[(0, idx)] = -1.0 / self.wavelength_m;
+                h[(0, idx)] = -self.ionosphere_scale / self.wavelength_m;
             }
         }
         if let Some(idx) = self.isb_index {
@@ -570,8 +594,9 @@ fn select_dual_frequency_pair(
 mod tests {
     use super::{
         iono_free_code_observation_from_obs, iono_free_from_obs,
-        iono_free_phase_observation_from_obs, wide_lane_from_obs, PppIonoFreeCodeMeasurement,
-        PppIonoFreePhaseMeasurement, PppPhaseMeasurement, SPEED_OF_LIGHT_MPS,
+        iono_free_phase_observation_from_obs, ppp_ionosphere_delay_scale, wide_lane_from_obs,
+        PppIonoFreeCodeMeasurement, PppIonoFreePhaseMeasurement, PppPhaseMeasurement,
+        SPEED_OF_LIGHT_MPS,
     };
     use crate::corrections::Corrections;
     use crate::estimation::ekf::traits::MeasurementModel;
@@ -1052,6 +1077,7 @@ mod tests {
             antenna_range_correction_m: 0.4,
             sigma_m: 1.0,
             troposphere_mapping: 2.75,
+            ionosphere_scale: 1.0,
             iono_index: None,
             ztd_index: Some(8),
             isb_index: None,
@@ -1089,6 +1115,7 @@ mod tests {
             antenna_range_correction_m: 0.0,
             sigma_m: 1.0,
             troposphere_mapping: 1.0,
+            ionosphere_scale: 1.0,
             iono_index: None,
             ztd_index: None,
             isb_index: None,
@@ -1111,6 +1138,58 @@ mod tests {
     }
 
     #[test]
+    fn ppp_ionosphere_delay_scale_uses_reference_carrier_frequency() {
+        let l1 = signal_spec_gps_l1_ca();
+        let l2 = signal_spec_gps_l2_py();
+
+        let l1_scale = ppp_ionosphere_delay_scale(l1);
+        let l2_scale = ppp_ionosphere_delay_scale(l2);
+        let expected_l2_scale = (l1.carrier_hz.value() / l2.carrier_hz.value()).powi(2);
+
+        assert!((l1_scale - 1.0).abs() < 1.0e-12);
+        assert!((l2_scale - expected_l2_scale).abs() < 1.0e-12);
+        assert!(l2_scale > l1_scale);
+    }
+
+    #[test]
+    fn ppp_code_measurement_adds_scaled_ionosphere_delay() {
+        let ionosphere_scale = ppp_ionosphere_delay_scale(signal_spec_gps_l2_py());
+        let measurement = PppCodeMeasurement {
+            z_m: 0.0,
+            sat_pos_m: [20_200_000.0, 14_000_000.0, 21_700_000.0],
+            sat_clock_s: 0.0,
+            antenna_range_correction_m: 0.0,
+            sigma_m: 1.0,
+            troposphere_mapping: 1.0,
+            ionosphere_scale,
+            iono_index: Some(8),
+            ztd_index: None,
+            isb_index: None,
+            corr: Corrections::default(),
+        };
+        let mut state = vec![0.0; 9];
+        state[0] = 1_111_111.0;
+        state[1] = -4_222_222.0;
+        state[2] = 4_333_333.0;
+        state[8] = 5.0;
+
+        let mut predicted = [0.0];
+        measurement.h(&state, &mut predicted);
+
+        let dx = state[0] - measurement.sat_pos_m[0];
+        let dy = state[1] - measurement.sat_pos_m[1];
+        let dz = state[2] - measurement.sat_pos_m[2];
+        let expected = (dx * dx + dy * dy + dz * dz).sqrt() + ionosphere_scale * state[8];
+
+        assert!((predicted[0] - expected).abs() < 1.0e-9);
+
+        let mut jacobian = Matrix::new(1, 9, 0.0);
+        measurement.jacobian(&state, &mut jacobian);
+
+        assert!((jacobian[(0, 8)] - ionosphere_scale).abs() < 1.0e-12);
+    }
+
+    #[test]
     fn ppp_phase_measurement_maps_zenith_delay_by_elevation() {
         let measurement = PppPhaseMeasurement {
             z_cycles: 0.0,
@@ -1119,6 +1198,7 @@ mod tests {
             antenna_range_correction_m: -0.25,
             sigma_cycles: 0.01,
             troposphere_mapping: 3.1,
+            ionosphere_scale: 1.0,
             iono_index: None,
             ztd_index: Some(8),
             isb_index: None,
@@ -1159,6 +1239,7 @@ mod tests {
             antenna_range_correction_m: 0.0,
             sigma_cycles: 0.01,
             troposphere_mapping: 1.0,
+            ionosphere_scale: 1.0,
             iono_index: None,
             ztd_index: None,
             isb_index: None,
@@ -1181,6 +1262,51 @@ mod tests {
         let expected = (dx * dx + dy * dy + dz * dz).sqrt() / measurement.wavelength_m + state[9];
 
         assert!((predicted[0] - expected).abs() < 1.0e-9);
+    }
+
+    #[test]
+    fn ppp_phase_measurement_subtracts_scaled_ionosphere_advance() {
+        let signal = signal_spec_gps_l2_py();
+        let ionosphere_scale = ppp_ionosphere_delay_scale(signal);
+        let wavelength_m = SPEED_OF_LIGHT_MPS / signal.carrier_hz.value();
+        let measurement = PppPhaseMeasurement {
+            z_cycles: 0.0,
+            sat_pos_m: [20_200_000.0, 14_000_000.0, 21_700_000.0],
+            sat_clock_s: 0.0,
+            antenna_range_correction_m: 0.0,
+            sigma_cycles: 0.01,
+            troposphere_mapping: 1.0,
+            ionosphere_scale,
+            iono_index: Some(8),
+            ztd_index: None,
+            isb_index: None,
+            ambiguity_index: Some(9),
+            corr: Corrections::default(),
+            wavelength_m,
+        };
+        let mut state = vec![0.0; 10];
+        state[0] = 1_111_111.0;
+        state[1] = -4_222_222.0;
+        state[2] = 4_333_333.0;
+        state[8] = 5.0;
+        state[9] = 12.0;
+
+        let mut predicted = [0.0];
+        measurement.h(&state, &mut predicted);
+
+        let dx = state[0] - measurement.sat_pos_m[0];
+        let dy = state[1] - measurement.sat_pos_m[1];
+        let dz = state[2] - measurement.sat_pos_m[2];
+        let range_m = (dx * dx + dy * dy + dz * dz).sqrt();
+        let expected = (range_m - ionosphere_scale * state[8]) / wavelength_m + state[9];
+
+        assert!((predicted[0] - expected).abs() < 1.0e-9);
+
+        let mut jacobian = Matrix::new(1, 10, 0.0);
+        measurement.jacobian(&state, &mut jacobian);
+
+        assert!((jacobian[(0, 8)] + ionosphere_scale / wavelength_m).abs() < 1.0e-12);
+        assert!((jacobian[(0, 9)] - 1.0).abs() < 1.0e-12);
     }
 
     #[test]

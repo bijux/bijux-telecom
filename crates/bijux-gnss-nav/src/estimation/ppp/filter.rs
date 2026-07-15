@@ -7,8 +7,8 @@ use bijux_gnss_signal::api::signal_wavelength_m;
 
 use super::config::{PppConfig, PppFilter, PppIndices, PppStateIdentity};
 use super::measurements::{
-    iono_free_from_obs, IonoFreeCodeMeasurementObservation, PppIonoFreeCodeMeasurement,
-    PppIonoFreePhaseMeasurement, PppPhaseMeasurement,
+    iono_free_from_obs, ppp_ionosphere_delay_scale, IonoFreeCodeMeasurementObservation,
+    PppIonoFreeCodeMeasurement, PppIonoFreePhaseMeasurement, PppPhaseMeasurement,
 };
 use super::models::{PppCodeMeasurement, PppProcessModel};
 use super::state::estimate_position_uncertainty;
@@ -249,6 +249,7 @@ impl PppFilter {
             let code_bias_m =
                 resolved_code_bias_m(self.code_bias.as_ref(), sat.signal_id, obs.gps_time());
             let phase_bias_cycles = self.phase_bias.phase_bias_cycles(sat.signal_id).unwrap_or(0.0);
+            let ionosphere_scale = ppp_ionosphere_delay_scale(sat.metadata.signal);
             let sat_pos_m = [state.x_m, state.y_m, state.z_m];
             let mut phase_corr = corr.clone();
             phase_corr.phase_windup_cycles = phase_windup_cycles_for_satellite(
@@ -353,6 +354,7 @@ impl PppFilter {
                     ),
                     sigma_m,
                     troposphere_mapping,
+                    ionosphere_scale,
                     iono_index,
                     ztd_index: Some(self.indices.ztd),
                     isb_index,
@@ -381,6 +383,7 @@ impl PppFilter {
                     ),
                     sigma_cycles: 0.05,
                     troposphere_mapping,
+                    ionosphere_scale,
                     iono_index,
                     ztd_index: Some(self.indices.ztd),
                     isb_index,
