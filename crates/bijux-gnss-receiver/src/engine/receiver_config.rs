@@ -29,6 +29,9 @@ pub struct ReceiverConfig {
     /// Front-end conditioning configuration.
     #[serde(default)]
     pub front_end: FrontEndConfig,
+    /// Receiver clock model used when forming observations from receiver time.
+    #[serde(default)]
+    pub receiver_clock: ReceiverClockConfig,
     /// RNG seed for deterministic operations.
     pub seed: u64,
     /// Acquisition configuration.
@@ -50,6 +53,14 @@ pub struct ReceiverPipelineConfig {
     pub remove_dc_offset: bool,
     /// Optional complex front-end FIR filter applied before acquisition and tracking consume input.
     pub front_end_filter: Option<FrontEndFilterSpec>,
+    /// Receiver clock bias applied to code and carrier observables, in seconds.
+    pub receiver_clock_bias_s: f64,
+    /// Receiver oscillator frequency bias applied to Doppler observations, in Hz.
+    pub receiver_clock_frequency_bias_hz: f64,
+    /// One-sigma receiver clock bias uncertainty represented in observation error models, in seconds.
+    pub receiver_clock_bias_sigma_s: f64,
+    /// Source label for receiver clock terms.
+    pub receiver_clock_source: String,
     /// Code frequency basis, in Hz.
     pub code_freq_basis_hz: f64,
     /// Code length in chips.
@@ -129,6 +140,10 @@ impl Default for ReceiverPipelineConfig {
             intermediate_freq_hz: 0.0,
             remove_dc_offset: false,
             front_end_filter: None,
+            receiver_clock_bias_s: 0.0,
+            receiver_clock_frequency_bias_hz: 0.0,
+            receiver_clock_bias_sigma_s: 0.0,
+            receiver_clock_source: "config".to_string(),
             code_freq_basis_hz: 1_023_000.0,
             code_length: 1023,
             channels: 12,
@@ -177,6 +192,38 @@ pub struct FrontEndConfig {
     /// Optional complex front-end FIR filter applied before acquisition and tracking.
     #[serde(default)]
     pub filter: Option<FrontEndFilterSpec>,
+}
+
+/// Receiver clock terms applied when observations are generated.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+pub struct ReceiverClockConfig {
+    /// Receiver clock bias relative to GNSS time, in seconds.
+    #[serde(default)]
+    pub bias_s: f64,
+    /// Receiver oscillator frequency bias added to Doppler observations, in Hz.
+    #[serde(default)]
+    pub frequency_bias_hz: f64,
+    /// One-sigma receiver clock bias uncertainty, in seconds.
+    #[serde(default)]
+    pub bias_sigma_s: f64,
+    /// Source label for configured clock terms.
+    #[serde(default = "default_receiver_clock_source")]
+    pub source: String,
+}
+
+impl Default for ReceiverClockConfig {
+    fn default() -> Self {
+        Self {
+            bias_s: 0.0,
+            frequency_bias_hz: 0.0,
+            bias_sigma_s: 0.0,
+            source: default_receiver_clock_source(),
+        }
+    }
+}
+
+pub fn default_receiver_clock_source() -> String {
+    "config".to_string()
 }
 
 /// Tracking parameters for a specific band.

@@ -26,6 +26,26 @@ impl ValidateConfig for ReceiverConfig {
                 report.errors.push(ConfigError { message: format!("front_end.filter {error}") });
             }
         }
+        if !self.receiver_clock.bias_s.is_finite() {
+            report
+                .errors
+                .push(ConfigError { message: "receiver_clock.bias_s must be finite".to_string() });
+        }
+        if !self.receiver_clock.frequency_bias_hz.is_finite() {
+            report.errors.push(ConfigError {
+                message: "receiver_clock.frequency_bias_hz must be finite".to_string(),
+            });
+        }
+        if !self.receiver_clock.bias_sigma_s.is_finite() || self.receiver_clock.bias_sigma_s < 0.0 {
+            report.errors.push(ConfigError {
+                message: "receiver_clock.bias_sigma_s must be finite and >= 0".to_string(),
+            });
+        }
+        if self.receiver_clock.source.trim().is_empty() {
+            report.errors.push(ConfigError {
+                message: "receiver_clock.source must not be empty".to_string(),
+            });
+        }
         if self.code_length == 0 {
             report.errors.push(ConfigError { message: "code_length must be > 0".to_string() });
         }
@@ -298,6 +318,10 @@ impl ReceiverConfig {
             intermediate_freq_hz: self.intermediate_freq_hz,
             remove_dc_offset: self.front_end.remove_dc_offset,
             front_end_filter: self.front_end.filter.clone(),
+            receiver_clock_bias_s: self.receiver_clock.bias_s,
+            receiver_clock_frequency_bias_hz: self.receiver_clock.frequency_bias_hz,
+            receiver_clock_bias_sigma_s: self.receiver_clock.bias_sigma_s,
+            receiver_clock_source: self.receiver_clock.source.clone(),
             code_freq_basis_hz: self.code_freq_basis_hz,
             code_length: self.code_length,
             channels: self.tracking.max_channels,
@@ -504,6 +528,49 @@ mod tests {
         assert!(!reparsed.tracking.vector_tracking_enabled);
         assert!(!pipeline.vector_tracking_enabled);
         assert!(raw.contains("vector_tracking_enabled = false"));
+    }
+
+    #[test]
+    fn receiver_clock_model_round_trips_into_pipeline_config() {
+        let mut config = ReceiverConfig::default();
+        config.receiver_clock.bias_s = 1.25e-6;
+        config.receiver_clock.frequency_bias_hz = -42.0;
+        config.receiver_clock.bias_sigma_s = 2.5e-8;
+        config.receiver_clock.source = "rinex_reference_clock".to_string();
+
+        let raw = toml::to_string(&config).expect("serialize receiver config");
+        let reparsed: ReceiverConfig = toml::from_str(&raw).expect("parse receiver config");
+        let pipeline = reparsed.to_pipeline_config();
+
+        assert!((pipeline.receiver_clock_bias_s - 1.25e-6).abs() <= f64::EPSILON);
+        assert!((pipeline.receiver_clock_frequency_bias_hz + 42.0).abs() <= f64::EPSILON);
+        assert!((pipeline.receiver_clock_bias_sigma_s - 2.5e-8).abs() <= f64::EPSILON);
+        assert_eq!(pipeline.receiver_clock_source, "rinex_reference_clock");
+        assert!(raw.contains("[receiver_clock]"));
+        assert!(raw.contains("frequency_bias_hz = -42.0"));
+    }
+
+    #[test]
+    fn receiver_clock_model_rejects_invalid_terms() {
+        let mut config = ReceiverConfig::default();
+        config.receiver_clock.bias_s = f64::NAN;
+        config.receiver_clock.frequency_bias_hz = f64::INFINITY;
+        config.receiver_clock.bias_sigma_s = -1.0;
+        config.receiver_clock.source = " ".to_string();
+
+        let report = <ReceiverConfig as ValidateConfig>::validate(&config);
+        let messages = report.errors.iter().map(|error| error.message.as_str()).collect::<Vec<_>>();
+
+        assert!(messages.iter().any(|message| *message == "receiver_clock.bias_s must be finite"));
+        assert!(messages
+            .iter()
+            .any(|message| *message == "receiver_clock.frequency_bias_hz must be finite"));
+        assert!(messages
+            .iter()
+            .any(|message| *message == "receiver_clock.bias_sigma_s must be finite and >= 0"));
+        assert!(messages
+            .iter()
+            .any(|message| *message == "receiver_clock.source must not be empty"));
     }
 
     #[test]

@@ -9,7 +9,8 @@ use crate::engine::receiver_config::{
     default_tracking_integration_ms, default_vector_tracking_enabled, AcquisitionConfig,
     AcquisitionThresholdMode, AcquisitionThresholdPolicyConfig, ConstellationSelectionPolicy,
     FrontEndConfig, NavigationConfig, NavigationMotionClass, NavigationWeightingConfig,
-    NavigationWeightingMode, PppConfig, ReceiverConfig, ScienceThresholdsConfig, TrackingConfig,
+    NavigationWeightingMode, PppConfig, ReceiverClockConfig, ReceiverConfig,
+    ScienceThresholdsConfig, TrackingConfig,
 };
 
 impl Default for ReceiverConfig {
@@ -22,6 +23,7 @@ impl Default for ReceiverConfig {
             code_freq_basis_hz: 1_023_000.0,
             code_length: 1023,
             front_end: FrontEndConfig::default(),
+            receiver_clock: ReceiverClockConfig::default(),
             seed: 1,
             acquisition: AcquisitionConfig::default(),
             tracking: TrackingConfig::default(),
