@@ -100,6 +100,9 @@ pub(crate) fn double_differences_from_single_differences(
         if observation.sig.sat.constellation != reference.sig.sat.constellation {
             continue;
         }
+        if observation.epoch_alignment != reference.epoch_alignment {
+            continue;
+        }
 
         differences.push(RtkDoubleDifferenceObservation {
             sig: observation.sig,
@@ -114,6 +117,7 @@ pub(crate) fn double_differences_from_single_differences(
             rover_ref_signal_timing: reference.rover_signal_timing,
             base_ref_pseudorange_m: reference.base_pseudorange_m,
             base_ref_signal_timing: reference.base_signal_timing,
+            epoch_alignment: observation.epoch_alignment,
             code_m: observation.code_m - reference.code_m,
             phase_cycles: observation.phase_cycles - reference.phase_cycles,
             doppler_hz: observation.doppler_hz - reference.doppler_hz,

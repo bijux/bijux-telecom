@@ -13,6 +13,7 @@ use bijux_gnss_nav::api::{
     geodetic_to_ecef, rtk_double_difference_residual_metrics,
     rtk_double_differences_by_constellation, rtk_double_differences_from_single_differences,
     rtk_single_differences_from_obs_epochs, sat_state_gps_l1ca_at_receive_time, GpsEphemeris,
+    RtkEpochAlignmentEvidence,
 };
 
 const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
@@ -255,6 +256,43 @@ fn rtk_double_difference_builder_uses_reference_satellite_deltas() {
         .any(|observation| observation.sig.sat.prn == 7
             && (observation.code_m - 50.0).abs() < 1.0e-9));
     assert!(double_differences.iter().all(|observation| observation.canceled.len() == 4));
+}
+
+#[test]
+fn rtk_double_difference_builder_refuses_mixed_epoch_alignment_evidence() {
+    let base = make_epoch(
+        ReceiverRole::Base,
+        vec![
+            make_satellite(Constellation::Gps, 3, 20_000_000.0, 46.0),
+            make_satellite(Constellation::Gps, 7, 20_100_000.0, 42.0),
+        ],
+    );
+    let rover = make_epoch(
+        ReceiverRole::Rover,
+        vec![
+            make_satellite(Constellation::Gps, 3, 20_000_120.0, 46.0),
+            make_satellite(Constellation::Gps, 7, 20_100_170.0, 42.0),
+        ],
+    );
+
+    let mut single_differences = rtk_single_differences_from_obs_epochs(&base, &rover);
+    let reference =
+        choose_rtk_single_difference_reference_signal(&single_differences).expect("reference");
+    for observation in &mut single_differences {
+        if observation.sig != reference {
+            observation.epoch_alignment = RtkEpochAlignmentEvidence {
+                base_receive_time_s: 0.0,
+                rover_receive_time_s: 0.0001,
+                delta_s: 0.0001,
+                tolerance_s: 0.0005,
+            };
+        }
+    }
+
+    let double_differences =
+        rtk_double_differences_from_single_differences(&single_differences, reference);
+
+    assert!(double_differences.is_empty());
 }
 
 #[test]

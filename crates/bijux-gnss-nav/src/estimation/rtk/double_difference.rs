@@ -7,7 +7,7 @@ use bijux_gnss_core::api::{
 use serde::{Deserialize, Serialize};
 
 use super::antenna::{modeled_pseudorange_with_antenna_corrections_m, RtkAntennaCorrectionConfig};
-use super::single_difference::RtkSingleDifferenceObservation;
+use super::single_difference::{RtkEpochAlignmentEvidence, RtkSingleDifferenceObservation};
 use crate::orbits::gps::{sat_state_gps_l1ca_from_observation, GpsEphemeris};
 
 /// RTK double-difference observation formed against a reference satellite.
@@ -37,6 +37,9 @@ pub struct RtkDoubleDifferenceObservation {
     pub base_ref_pseudorange_m: f64,
     /// Optional base-station timing for the reference satellite.
     pub base_ref_signal_timing: Option<ObsSignalTiming>,
+    /// Base/rover epoch alignment evidence shared by all four contributing observations.
+    #[serde(default)]
+    pub epoch_alignment: RtkEpochAlignmentEvidence,
     /// Double-difference code observation in meters.
     pub code_m: f64,
     /// Double-difference carrier phase observation in cycles.
@@ -91,6 +94,13 @@ impl ArtifactPayloadValidate for RtkDoubleDifferenceObservation {
                 "double-difference timing contains NaN/Inf",
             ));
         }
+        if !epoch_alignment_is_valid(&self.epoch_alignment) {
+            events.push(DiagnosticEvent::new(
+                DiagnosticSeverity::Error,
+                "RTK_DD_EPOCH_ALIGNMENT_INVALID",
+                "double-difference base/rover epoch alignment is invalid",
+            ));
+        }
         if self.code_variance_m2 < 0.0 || self.phase_variance_cycles2 < 0.0 {
             events.push(DiagnosticEvent::new(
                 DiagnosticSeverity::Error,
@@ -119,6 +129,9 @@ pub fn rtk_double_differences_from_single_differences(
         if observation.sig.sat.constellation != reference.sig.sat.constellation {
             continue;
         }
+        if !same_epoch_alignment(&observation.epoch_alignment, &reference.epoch_alignment) {
+            continue;
+        }
         out.push(RtkDoubleDifferenceObservation {
             sig: observation.sig,
             ref_sig: reference.sig,
@@ -132,6 +145,7 @@ pub fn rtk_double_differences_from_single_differences(
             rover_ref_signal_timing: reference.rover_signal_timing,
             base_ref_pseudorange_m: reference.base_pseudorange_m,
             base_ref_signal_timing: reference.base_signal_timing,
+            epoch_alignment: observation.epoch_alignment,
             code_m: observation.code_m - reference.code_m,
             phase_cycles: observation.phase_cycles - reference.phase_cycles,
             doppler_hz: observation.doppler_hz - reference.doppler_hz,
@@ -302,6 +316,32 @@ fn timing_is_invalid(timing: Option<ObsSignalTiming>) -> bool {
         return false;
     };
     !timing.signal_travel_time_s.0.is_finite() || !timing.transmit_gps_time.tow_s.is_finite()
+}
+
+fn same_epoch_alignment(
+    left: &RtkEpochAlignmentEvidence,
+    right: &RtkEpochAlignmentEvidence,
+) -> bool {
+    epoch_alignment_is_valid(left)
+        && epoch_alignment_is_valid(right)
+        && left.base_receive_time_s == right.base_receive_time_s
+        && left.rover_receive_time_s == right.rover_receive_time_s
+        && left.delta_s == right.delta_s
+        && left.tolerance_s == right.tolerance_s
+}
+
+fn epoch_alignment_is_valid(evidence: &RtkEpochAlignmentEvidence) -> bool {
+    evidence.base_receive_time_s.is_finite()
+        && evidence.rover_receive_time_s.is_finite()
+        && evidence.delta_s.is_finite()
+        && evidence.tolerance_s.is_finite()
+        && evidence.delta_s >= 0.0
+        && evidence.tolerance_s >= 0.0
+        && evidence.delta_s <= evidence.tolerance_s
+        && (evidence.delta_s
+            - (evidence.base_receive_time_s - evidence.rover_receive_time_s).abs())
+        .abs()
+            <= 1.0e-12
 }
 
 fn enu_to_ecef(base_ecef_m: [f64; 3], enu_m: [f64; 3]) -> [f64; 3] {
@@ -533,6 +573,12 @@ mod tests {
                 )
                 .1,
             ),
+            epoch_alignment: RtkEpochAlignmentEvidence {
+                base_receive_time_s: receive_gps_time.tow_s,
+                rover_receive_time_s: receive_gps_time.tow_s,
+                delta_s: 0.0,
+                tolerance_s: super::single_difference::RTK_EPOCH_ALIGNMENT_TOLERANCE_S,
+            },
             code_m: 0.0,
             phase_cycles: 0.0,
             doppler_hz: 0.0,
