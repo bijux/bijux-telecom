@@ -40,6 +40,13 @@ const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
 const OBS_WEAK_CN0_DBHZ: f64 = 25.0;
 const OBS_BASE_THERMAL_CODE_SIGMA_SAMPLES: f64 = 0.02;
 const OBS_MIN_TRACKING_JITTER_SAMPLES: f64 = 0.01;
+const CODE_PERIOD_AMBIGUITY_SEARCH_PERIODS: i64 = 2;
+const CODE_PERIOD_AMBIGUITY_EPS_S: f64 = 2.5e-7;
+const CODE_PERIOD_AMBIGUITY_MAX_COHERENCE_FRACTION: f64 = 0.20;
+const CODE_PERIOD_AMBIGUITY_MAX_CLOCK_BIAS_FRACTION: f64 = 0.55;
+const CODE_PERIOD_AMBIGUITY_NON_UNIQUE: &str = "integer_code_period_ambiguity_non_unique";
+const CODE_PERIOD_AMBIGUITY_INCOHERENT: &str = "integer_code_period_ambiguity_incoherent";
+const CODE_PERIOD_AMBIGUITY_UNAVAILABLE: &str = "integer_code_period_ambiguity_unavailable";
 
 #[derive(Debug, Clone)]
 struct PseudorangeComputation {
@@ -65,6 +72,43 @@ struct ResolvedPseudorange {
 struct CodePhaseTiming {
     code_period_s: f64,
     code_delay_s: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct CodePeriodAmbiguityInput {
+    signal_id: SigId,
+    receive_gps_time: GpsTime,
+    decoded_transmit_gps_time: GpsTime,
+    code_period_s: f64,
+    code_delay_s: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct CodePeriodCandidate {
+    integer_code_periods: u64,
+    signal_travel_time_s: f64,
+    residual_s: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct CodePeriodAmbiguitySatellite {
+    signal_id: SigId,
+    integer_code_periods: u64,
+    signal_travel_time_s: Seconds,
+    transmit_gps_time: GpsTime,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct CodePeriodAmbiguitySolution {
+    common_receiver_clock_bias_s: Seconds,
+    satellites: Vec<CodePeriodAmbiguitySatellite>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct ScoredCodePeriodAmbiguitySolution {
+    score_s: f64,
+    non_unique_candidate_selection: bool,
+    solution: CodePeriodAmbiguitySolution,
 }
 
 #[derive(Debug, Clone)]
@@ -638,8 +682,19 @@ pub fn observation_artifacts_from_tracking_results_with_gps_anchor(
     let mut by_epoch: BTreeMap<u64, ObsEpoch> = BTreeMap::new();
     let mut hatch: HashMap<SigId, HatchFilterState> = HashMap::new();
     let mut raw_snapshots: HashMap<String, RawObservationSnapshot> = HashMap::new();
+    let mut ambiguity_inputs: HashMap<String, CodePeriodAmbiguityInput> = HashMap::new();
     let mut diagnostics = Vec::new();
     for track in tracks {
+        for epoch in &track.epochs {
+            if let Some(input) = code_period_ambiguity_input_from_tracking_epoch(
+                config,
+                capture_start_gps_time,
+                epoch,
+            ) {
+                ambiguity_inputs
+                    .insert(observation_snapshot_key(epoch.epoch.index, input.signal_id), input);
+            }
+        }
         let (obs, mut events) = observations_from_tracking_with_provenance(
             config,
             capture_start_gps_time,
@@ -738,6 +793,11 @@ pub fn observation_artifacts_from_tracking_results_with_gps_anchor(
     let mut previous_epoch: Option<ObsEpoch> = None;
     for mut epoch in by_epoch.into_values() {
         bijux_gnss_core::api::sort_obs_sats(&mut epoch);
+        apply_grouped_integer_code_period_ambiguities(
+            &mut epoch,
+            &ambiguity_inputs,
+            &mut diagnostics,
+        );
         apply_epoch_decision(&mut epoch);
         if let Some(prev) = previous_epoch.as_ref() {
             if let Some(event) = observation_timing_interval_diagnostic(config, prev, &epoch) {
@@ -1412,6 +1472,296 @@ fn resolve_pseudorange_from_transmit_time(
         integer_code_periods,
         code_delay_s: Seconds(code_delay_s),
     })
+}
+
+fn resolve_integer_code_period_ambiguities(
+    inputs: &[CodePeriodAmbiguityInput],
+) -> Result<CodePeriodAmbiguitySolution, &'static str> {
+    if inputs.is_empty() {
+        return Err(CODE_PERIOD_AMBIGUITY_UNAVAILABLE);
+    }
+
+    let mut candidate_sets = Vec::with_capacity(inputs.len());
+    let mut anchors = vec![0.0_f64];
+    let mut minimum_code_period_s = f64::INFINITY;
+
+    for input in sorted_code_period_ambiguity_inputs(inputs) {
+        let candidates = code_period_candidates(input);
+        if candidates.is_empty() {
+            return Err(CODE_PERIOD_AMBIGUITY_UNAVAILABLE);
+        }
+        minimum_code_period_s = minimum_code_period_s.min(input.code_period_s);
+        anchors.extend(candidates.iter().map(|candidate| candidate.residual_s));
+        candidate_sets.push((*input, candidates));
+    }
+
+    if !minimum_code_period_s.is_finite() || minimum_code_period_s <= 0.0 {
+        return Err(CODE_PERIOD_AMBIGUITY_UNAVAILABLE);
+    }
+
+    anchors.sort_by(|a, b| a.total_cmp(b));
+    anchors.dedup_by(|a, b| (*a - *b).abs() <= CODE_PERIOD_AMBIGUITY_EPS_S);
+
+    let max_coherence_s = minimum_code_period_s * CODE_PERIOD_AMBIGUITY_MAX_COHERENCE_FRACTION;
+    let max_clock_bias_s = minimum_code_period_s * CODE_PERIOD_AMBIGUITY_MAX_CLOCK_BIAS_FRACTION;
+    let mut scored_solutions = Vec::new();
+
+    for anchor_s in anchors {
+        if let Some(solution) =
+            scored_code_period_ambiguity_solution(&candidate_sets, anchor_s, max_coherence_s)
+        {
+            if solution.solution.common_receiver_clock_bias_s.0.abs() <= max_clock_bias_s {
+                scored_solutions.push(solution);
+            }
+        }
+    }
+
+    if scored_solutions.is_empty() {
+        return Err(CODE_PERIOD_AMBIGUITY_INCOHERENT);
+    }
+
+    scored_solutions.sort_by(|a, b| a.score_s.total_cmp(&b.score_s));
+    let best = scored_solutions.remove(0);
+    if best.non_unique_candidate_selection {
+        return Err(CODE_PERIOD_AMBIGUITY_NON_UNIQUE);
+    }
+    if scored_solutions.iter().any(|candidate| {
+        (candidate.score_s - best.score_s).abs() <= CODE_PERIOD_AMBIGUITY_EPS_S
+            && code_period_solution_key(&candidate.solution)
+                != code_period_solution_key(&best.solution)
+    }) {
+        return Err(CODE_PERIOD_AMBIGUITY_NON_UNIQUE);
+    }
+
+    Ok(best.solution)
+}
+
+fn sorted_code_period_ambiguity_inputs(
+    inputs: &[CodePeriodAmbiguityInput],
+) -> Vec<&CodePeriodAmbiguityInput> {
+    let mut sorted = inputs.iter().collect::<Vec<_>>();
+    sorted.sort_by_key(|input| observation_signal_key(input.signal_id));
+    sorted
+}
+
+fn code_period_candidates(input: &CodePeriodAmbiguityInput) -> Vec<CodePeriodCandidate> {
+    if !input.code_period_s.is_finite()
+        || !input.code_delay_s.is_finite()
+        || input.code_period_s <= 0.0
+        || input.code_delay_s < 0.0
+        || input.code_delay_s >= input.code_period_s
+        || !input.receive_gps_time.tow_s.is_finite()
+        || !input.decoded_transmit_gps_time.tow_s.is_finite()
+    {
+        return Vec::new();
+    }
+
+    let decoded_travel_time_s =
+        input.receive_gps_time.to_seconds() - input.decoded_transmit_gps_time.to_seconds();
+    if !decoded_travel_time_s.is_finite() || decoded_travel_time_s <= 0.0 {
+        return Vec::new();
+    }
+
+    let raw_periods = (decoded_travel_time_s - input.code_delay_s) / input.code_period_s;
+    if !raw_periods.is_finite() {
+        return Vec::new();
+    }
+
+    let center = raw_periods.floor() as i64;
+    let mut candidates = Vec::new();
+    for offset in -CODE_PERIOD_AMBIGUITY_SEARCH_PERIODS..=CODE_PERIOD_AMBIGUITY_SEARCH_PERIODS {
+        let candidate_periods = center + offset;
+        if candidate_periods < 0 {
+            continue;
+        }
+        let signal_travel_time_s =
+            candidate_periods as f64 * input.code_period_s + input.code_delay_s;
+        let residual_s = decoded_travel_time_s - signal_travel_time_s;
+        if signal_travel_time_s.is_finite() && signal_travel_time_s > 0.0 && residual_s.is_finite()
+        {
+            candidates.push(CodePeriodCandidate {
+                integer_code_periods: candidate_periods as u64,
+                signal_travel_time_s,
+                residual_s,
+            });
+        }
+    }
+    candidates.sort_by_key(|candidate| candidate.integer_code_periods);
+    candidates.dedup_by_key(|candidate| candidate.integer_code_periods);
+    candidates
+}
+
+fn scored_code_period_ambiguity_solution(
+    candidate_sets: &[(CodePeriodAmbiguityInput, Vec<CodePeriodCandidate>)],
+    anchor_s: f64,
+    max_coherence_s: f64,
+) -> Option<ScoredCodePeriodAmbiguitySolution> {
+    let mut chosen = Vec::with_capacity(candidate_sets.len());
+    let mut non_unique_candidate_selection = false;
+
+    for (input, candidates) in candidate_sets {
+        let best_distance_s = candidates
+            .iter()
+            .map(|candidate| (candidate.residual_s - anchor_s).abs())
+            .min_by(|a, b| a.total_cmp(b))?;
+        let nearest = candidates
+            .iter()
+            .filter(|candidate| {
+                ((candidate.residual_s - anchor_s).abs() - best_distance_s).abs()
+                    <= CODE_PERIOD_AMBIGUITY_EPS_S
+            })
+            .collect::<Vec<_>>();
+        if nearest.len() > 1 {
+            non_unique_candidate_selection = true;
+        }
+        chosen.push((*input, *nearest[0]));
+    }
+
+    let common_receiver_clock_bias_s =
+        chosen.iter().map(|(_, candidate)| candidate.residual_s).sum::<f64>() / chosen.len() as f64;
+    let max_residual_spread_s = chosen
+        .iter()
+        .map(|(_, candidate)| (candidate.residual_s - common_receiver_clock_bias_s).abs())
+        .fold(0.0_f64, f64::max);
+    if max_residual_spread_s > max_coherence_s {
+        return None;
+    }
+
+    let satellites = chosen
+        .into_iter()
+        .map(|(input, candidate)| CodePeriodAmbiguitySatellite {
+            signal_id: input.signal_id,
+            integer_code_periods: candidate.integer_code_periods,
+            signal_travel_time_s: Seconds(candidate.signal_travel_time_s),
+            transmit_gps_time: input
+                .receive_gps_time
+                .offset_seconds(-candidate.signal_travel_time_s),
+        })
+        .collect::<Vec<_>>();
+
+    Some(ScoredCodePeriodAmbiguitySolution {
+        score_s: max_residual_spread_s + common_receiver_clock_bias_s.abs(),
+        non_unique_candidate_selection,
+        solution: CodePeriodAmbiguitySolution {
+            common_receiver_clock_bias_s: Seconds(common_receiver_clock_bias_s),
+            satellites,
+        },
+    })
+}
+
+fn code_period_solution_key(solution: &CodePeriodAmbiguitySolution) -> Vec<(String, u64)> {
+    solution
+        .satellites
+        .iter()
+        .map(|satellite| {
+            (observation_signal_key(satellite.signal_id), satellite.integer_code_periods)
+        })
+        .collect()
+}
+
+fn code_period_ambiguity_input_from_tracking_epoch(
+    config: &ReceiverPipelineConfig,
+    capture_start_gps_time: Option<GpsTime>,
+    epoch: &TrackEpoch,
+) -> Option<CodePeriodAmbiguityInput> {
+    let transmit_time = epoch.transmit_time.as_ref()?;
+    let receive_gps_time =
+        capture_start_gps_time?.offset_seconds(epoch.sample_index as f64 / config.sampling_freq_hz);
+    let signal_model = observation_signal_model(config, epoch);
+    let code_phase_timing = code_phase_timing_from_tracking_epoch(
+        epoch,
+        signal_model.samples_per_chip,
+        signal_model.signal.code_rate_hz,
+        signal_model.code_length as f64,
+    )?;
+
+    Some(CodePeriodAmbiguityInput {
+        signal_id: signal_model.signal_id,
+        receive_gps_time,
+        decoded_transmit_gps_time: transmit_time.transmit_gps_time,
+        code_period_s: code_phase_timing.code_period_s,
+        code_delay_s: code_phase_timing.code_delay_s,
+    })
+}
+
+fn apply_grouped_integer_code_period_ambiguities(
+    epoch: &mut ObsEpoch,
+    ambiguity_inputs: &std::collections::HashMap<String, CodePeriodAmbiguityInput>,
+    diagnostics: &mut Vec<DiagnosticEvent>,
+) {
+    let inputs = epoch
+        .sats
+        .iter()
+        .filter(|sat| sat.metadata.pseudorange_model == "decoded_transmit_time_code_phase")
+        .filter_map(|sat| {
+            ambiguity_inputs.get(&observation_snapshot_key(epoch.epoch_idx, sat.signal_id)).copied()
+        })
+        .collect::<Vec<_>>();
+    if inputs.is_empty() {
+        return;
+    }
+
+    match resolve_integer_code_period_ambiguities(&inputs) {
+        Ok(solution) => apply_code_period_ambiguity_solution(epoch, solution),
+        Err(reason) => {
+            mark_code_period_ambiguity_refusal(epoch, &inputs, reason);
+            diagnostics.push(code_period_ambiguity_diagnostic(epoch, &inputs, reason));
+        }
+    }
+}
+
+fn apply_code_period_ambiguity_solution(
+    epoch: &mut ObsEpoch,
+    solution: CodePeriodAmbiguitySolution,
+) {
+    for resolved in solution.satellites {
+        if let Some(sat) = epoch.sats.iter_mut().find(|sat| sat.signal_id == resolved.signal_id) {
+            sat.pseudorange_m = Meters(resolved.signal_travel_time_s.0 * SPEED_OF_LIGHT_MPS);
+            sat.timing = Some(ObsSignalTiming {
+                signal_travel_time_s: resolved.signal_travel_time_s,
+                transmit_gps_time: resolved.transmit_gps_time,
+            });
+            sat.metadata.pseudorange_integer_code_periods = Some(resolved.integer_code_periods);
+            sat.metadata.observation_support_class =
+                observation_support_label(sat.observation_status, true).to_string();
+        }
+    }
+}
+
+fn mark_code_period_ambiguity_refusal(
+    epoch: &mut ObsEpoch,
+    inputs: &[CodePeriodAmbiguityInput],
+    reason: &str,
+) {
+    for input in inputs {
+        if let Some(sat) = epoch.sats.iter_mut().find(|sat| sat.signal_id == input.signal_id) {
+            sat.observation_status = ObservationStatus::Inconsistent;
+            push_observation_reject_reason(&mut sat.observation_reject_reasons, reason);
+            sat.metadata.observation_status =
+                observation_status_label(sat.observation_status).to_string();
+            sat.metadata.observation_reject_reasons = sat.observation_reject_reasons.clone();
+            sat.metadata.observation_support_class =
+                observation_support_label(sat.observation_status, false).to_string();
+        }
+    }
+}
+
+fn code_period_ambiguity_diagnostic(
+    epoch: &ObsEpoch,
+    inputs: &[CodePeriodAmbiguityInput],
+    reason: &str,
+) -> DiagnosticEvent {
+    let signal_count = inputs.len();
+    DiagnosticEvent::new(
+        DiagnosticSeverity::Warning,
+        "OBS_INTEGER_CODE_PERIOD_AMBIGUITY_REFUSED",
+        format!(
+            "refused integer code-period ambiguity resolution for {signal_count} decoded-time signals"
+        ),
+    )
+    .with_context("epoch", epoch.epoch_idx.to_string())
+    .with_context("reason", reason)
+    .with_context("stage", "observations")
 }
 
 fn carrier_phase_observation(
@@ -3167,6 +3517,79 @@ mod tests {
                 <= 1.0e-12
         );
         assert!((resolved.transmit_gps_time.tow_s - decoded_transmit_time.tow_s).abs() <= 1.0e-12);
+    }
+
+    #[test]
+    fn integer_code_period_solver_recovers_joint_vector_from_truth() {
+        let receive_gps_time = GpsTime { week: 2200, tow_s: 345_600.250 };
+        let code_period_s = 0.001;
+        let first_delay_s = 0.000_375;
+        let second_delay_s = 0.000_640;
+        let first_periods = 72;
+        let second_periods = 80;
+        let first_signal_id = SigId {
+            sat: SatId { constellation: Constellation::Gps, prn: 3 },
+            band: SignalBand::L1,
+            code: SignalCode::Ca,
+        };
+        let second_signal_id = SigId {
+            sat: SatId { constellation: Constellation::Gps, prn: 9 },
+            band: SignalBand::L1,
+            code: SignalCode::Ca,
+        };
+        let inputs = vec![
+            CodePeriodAmbiguityInput {
+                signal_id: second_signal_id,
+                receive_gps_time,
+                decoded_transmit_gps_time: receive_gps_time
+                    .offset_seconds(-(second_periods as f64 * code_period_s + second_delay_s)),
+                code_period_s,
+                code_delay_s: second_delay_s,
+            },
+            CodePeriodAmbiguityInput {
+                signal_id: first_signal_id,
+                receive_gps_time,
+                decoded_transmit_gps_time: receive_gps_time
+                    .offset_seconds(-(first_periods as f64 * code_period_s + first_delay_s)),
+                code_period_s,
+                code_delay_s: first_delay_s,
+            },
+        ];
+
+        let solution =
+            resolve_integer_code_period_ambiguities(&inputs).expect("unique ambiguity solution");
+
+        assert!(solution.common_receiver_clock_bias_s.0.abs() <= CODE_PERIOD_AMBIGUITY_EPS_S);
+        assert_eq!(solution.satellites[0].signal_id, first_signal_id);
+        assert_eq!(solution.satellites[0].integer_code_periods, first_periods);
+        assert_eq!(solution.satellites[1].signal_id, second_signal_id);
+        assert_eq!(solution.satellites[1].integer_code_periods, second_periods);
+    }
+
+    #[test]
+    fn integer_code_period_solver_refuses_non_unique_boundary() {
+        let receive_gps_time = GpsTime { week: 2200, tow_s: 345_600.250 };
+        let code_period_s = 0.001;
+        let delay_s = 0.000_250;
+        let signal_id = SigId {
+            sat: SatId { constellation: Constellation::Gps, prn: 4 },
+            band: SignalBand::L1,
+            code: SignalCode::Ca,
+        };
+        let decoded_transmit_gps_time =
+            receive_gps_time.offset_seconds(-(72.5 * code_period_s + delay_s));
+        let inputs = vec![CodePeriodAmbiguityInput {
+            signal_id,
+            receive_gps_time,
+            decoded_transmit_gps_time,
+            code_period_s,
+            code_delay_s: delay_s,
+        }];
+
+        let refusal = resolve_integer_code_period_ambiguities(&inputs)
+            .expect_err("half-period ambiguity must not be resolved");
+
+        assert_eq!(refusal, CODE_PERIOD_AMBIGUITY_NON_UNIQUE);
     }
 
     #[test]
