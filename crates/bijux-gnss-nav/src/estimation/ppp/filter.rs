@@ -16,6 +16,7 @@ use crate::api::compute_corrections;
 use crate::corrections::biases::{
     iono_free_code_bias_m_at, CodeBiasProvider, PhaseBiasProvider, ZeroBiases,
 };
+use crate::corrections::phase_windup::PhaseWindupState;
 use crate::corrections::CorrectionContext;
 use crate::estimation::ekf::state::{Ekf, EkfConfig};
 use crate::estimation::ekf::statistics::InnovationConsistencyConfig;
@@ -29,6 +30,7 @@ use crate::formats::precise_products::{ProductDiagnostics, ProductsProvider};
 use crate::linalg::Matrix;
 use crate::models::antenna::{ReceiverAntennaCalibrations, SatelliteAntennaCalibrations};
 use crate::models::atmosphere::SaastamoinenModel;
+use crate::models::celestial::approximate_sun_position_ecef_m;
 use crate::orbits::gps::{
     gps_ephemeris_age, gps_satellite_clock_correction, sat_state_gps_l1ca, select_best_ephemeris,
     GpsEphemeris, GpsSatState,
@@ -115,6 +117,7 @@ impl PppFilter {
             residual_history: BTreeMap::new(),
             drift_history: Vec::new(),
             wl_state: BTreeMap::new(),
+            phase_windup: BTreeMap::new(),
             ar_stable_epochs: 0,
         }
     }
@@ -243,6 +246,14 @@ impl PppFilter {
                 resolved_code_bias_m(self.code_bias.as_ref(), sat.signal_id, obs.gps_time());
             let phase_bias_cycles = self.phase_bias.phase_bias_cycles(sat.signal_id).unwrap_or(0.0);
             let sat_pos_m = [state.x_m, state.y_m, state.z_m];
+            let mut phase_corr = corr.clone();
+            phase_corr.phase_windup_cycles = phase_windup_cycles_for_satellite(
+                &mut self.phase_windup,
+                sat.signal_id.sat,
+                receiver_pos_m,
+                sat_pos_m,
+                obs.gps_time(),
+            );
 
             if self.config.use_iono_free {
                 if let Some(iono_free) = iono_free_from_obs(obs, sat.signal_id.sat) {
@@ -311,7 +322,7 @@ impl PppFilter {
                         isb_index,
                         ambiguity_index: amb_index,
                         wavelength_m: iono_free.phase_wavelength_m,
-                        corr: corr.clone(),
+                        corr: phase_corr.clone(),
                     };
                     let _ = self.ekf.update(&phase);
                 }
@@ -362,7 +373,7 @@ impl PppFilter {
                     ztd_index: Some(self.indices.ztd),
                     isb_index,
                     ambiguity_index: amb_index,
-                    corr: corr.clone(),
+                    corr: phase_corr.clone(),
                     wavelength_m: signal_wavelength_m(sat.metadata.signal).0,
                 };
                 let _ = self.ekf.update(&phase);
@@ -654,6 +665,25 @@ fn product_reference_time_s(obs: &ObsEpoch) -> f64 {
     obs.gps_time().map(|time| time.tow_s).unwrap_or(obs.t_rx_s.0)
 }
 
+fn phase_windup_cycles_for_satellite(
+    phase_windup: &mut BTreeMap<SatId, PhaseWindupState>,
+    sat: SatId,
+    receiver_pos_m: [f64; 3],
+    sat_pos_m: [f64; 3],
+    gps_time: Option<bijux_gnss_core::api::GpsTime>,
+) -> f64 {
+    let Some(gps_time) = gps_time else {
+        return 0.0;
+    };
+    let sun_pos_m = approximate_sun_position_ecef_m(gps_time);
+    phase_windup
+        .entry(sat)
+        .or_default()
+        .apply_geometry(receiver_pos_m, sat_pos_m, sun_pos_m)
+        .map(|correction| correction.continuous_cycles)
+        .unwrap_or(0.0)
+}
+
 fn single_frequency_antenna_range_correction_m(
     satellite_calibrations: Option<&SatelliteAntennaCalibrations>,
     receiver_antenna_type: Option<&str>,
@@ -816,7 +846,7 @@ mod tests {
 
     use super::{
         iono_free_antenna_range_correction_m, iono_free_satellite_representatives,
-        resolved_code_bias_m, resolved_iono_free_code_bias_m,
+        phase_windup_cycles_for_satellite, resolved_code_bias_m, resolved_iono_free_code_bias_m,
         single_frequency_antenna_range_correction_m, PppFilter,
     };
     use crate::api::{
@@ -1552,6 +1582,52 @@ mod tests {
         );
 
         assert!((resolved_bias_m - 123.5).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn ppp_filter_tracks_phase_windup_by_satellite() {
+        let sat = SatId { constellation: Constellation::Gps, prn: 7 };
+        let (receiver_x_m, receiver_y_m, receiver_z_m) = geodetic_to_ecef(45.0, 12.0, 80.0);
+        let receiver_pos_m = [receiver_x_m, receiver_y_m, receiver_z_m];
+        let sat_pos_m = [15_600_000.0, -10_200_000.0, 21_700_000.0];
+        let mut states = BTreeMap::new();
+
+        let first = phase_windup_cycles_for_satellite(
+            &mut states,
+            sat,
+            receiver_pos_m,
+            sat_pos_m,
+            Some(GpsTime { week: 2200, tow_s: 86_400.0 }),
+        );
+        let second = phase_windup_cycles_for_satellite(
+            &mut states,
+            sat,
+            receiver_pos_m,
+            sat_pos_m,
+            Some(GpsTime { week: 2200, tow_s: 86_430.0 }),
+        );
+
+        assert!(first.is_finite());
+        assert!(second.is_finite());
+        assert!(states.contains_key(&sat));
+        assert!((second - first).abs() < 0.5);
+    }
+
+    #[test]
+    fn ppp_filter_skips_phase_windup_without_epoch_time() {
+        let sat = SatId { constellation: Constellation::Gps, prn: 7 };
+        let mut states = BTreeMap::new();
+
+        let windup_cycles = phase_windup_cycles_for_satellite(
+            &mut states,
+            sat,
+            [1.0, 0.0, 0.0],
+            [20_200_000.0, 14_000_000.0, 21_700_000.0],
+            None,
+        );
+
+        assert_eq!(windup_cycles, 0.0);
+        assert!(states.is_empty());
     }
 
     #[test]

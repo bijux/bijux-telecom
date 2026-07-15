@@ -146,6 +146,7 @@ impl PppFilter {
         self.last_pos = None;
         self.drift_history.clear();
         self.wl_state.clear();
+        self.phase_windup.clear();
         self.ar_stable_epochs = 0;
     }
 
@@ -167,6 +168,7 @@ impl PppFilter {
             last_t_rx_s: self.last_t_rx_s,
             epoch0_t_s: self.epoch0_t_s,
             last_pos: self.last_pos,
+            phase_windup: self.phase_windup.iter().map(|(k, v)| (*k, *v)).collect(),
         }
     }
 
@@ -187,6 +189,7 @@ impl PppFilter {
         self.last_t_rx_s = ck.last_t_rx_s;
         self.epoch0_t_s = ck.epoch0_t_s;
         self.last_pos = ck.last_pos;
+        self.phase_windup = ck.phase_windup.into_iter().collect();
     }
 
     pub fn update_wide_lane(&mut self, obs: &ObsEpoch, sats: &[&ObsSatellite]) {
@@ -342,7 +345,9 @@ mod convergence_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::corrections::phase_windup::PhaseWindupState;
     use crate::estimation::ppp::config::PppConfig;
+    use bijux_gnss_core::api::{Constellation, SatId};
 
     #[test]
     fn ppp_consistency_uses_ekf_nis_bounds_for_high_warning() {
@@ -372,5 +377,32 @@ mod tests {
         assert!(filter.health.warnings.iter().any(|warning| {
             warning.contains("NIS low") && warning.contains("0.050") && warning.contains("0.100")
         }));
+    }
+
+    #[test]
+    fn checkpoint_preserves_phase_windup_continuity_state() {
+        let sat = SatId { constellation: Constellation::Gps, prn: 7 };
+        let mut filter = PppFilter::new(PppConfig::default());
+        filter.phase_windup.insert(sat, PhaseWindupState { previous_cycles: Some(0.42) });
+
+        let checkpoint = filter.checkpoint();
+        let mut restored = PppFilter::new(PppConfig::default());
+        restored.restore_from_checkpoint(checkpoint);
+
+        assert_eq!(
+            restored.phase_windup.get(&sat).and_then(|state| state.previous_cycles),
+            Some(0.42)
+        );
+    }
+
+    #[test]
+    fn reset_clears_phase_windup_continuity_state() {
+        let sat = SatId { constellation: Constellation::Gps, prn: 7 };
+        let mut filter = PppFilter::new(PppConfig::default());
+        filter.phase_windup.insert(sat, PhaseWindupState { previous_cycles: Some(0.42) });
+
+        filter.reset("receiver_discontinuity");
+
+        assert!(filter.phase_windup.is_empty());
     }
 }

@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use bijux_gnss_core::api::{ArtifactPayloadValidate, DiagnosticEvent, DiagnosticSeverity};
 
 use crate::corrections::biases::{CodeBiasProvider, PhaseBiasProvider};
+use crate::corrections::phase_windup::PhaseWindupState;
 use crate::corrections::CorrectionContext;
 use crate::estimation::ekf::state::Ekf;
 use crate::estimation::position::solver::WeightingConfig;
@@ -674,6 +675,7 @@ pub struct PppFilter {
     pub residual_history: BTreeMap<SigId, Vec<f64>>,
     pub drift_history: Vec<[f64; 3]>,
     pub wl_state: BTreeMap<SatId, WlAmbiguity>,
+    pub phase_windup: BTreeMap<SatId, PhaseWindupState>,
     pub ar_stable_epochs: u32,
     pub health: PppHealth,
     pub code_bias: Box<dyn CodeBiasProvider + Send + Sync>,
@@ -691,6 +693,7 @@ pub struct PppCheckpoint {
     pub last_t_rx_s: Option<f64>,
     pub epoch0_t_s: Option<f64>,
     pub last_pos: Option<[f64; 3]>,
+    pub phase_windup: Vec<(SatId, PhaseWindupState)>,
 }
 
 #[derive(Debug, Clone)]
