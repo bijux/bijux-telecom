@@ -2,7 +2,9 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use bijux_gnss_core::api::{Constellation, ObsEpoch, ObsSatellite, SatId, SigId, SignalBand};
+use bijux_gnss_core::api::{
+    Constellation, Llh, ObsEpoch, ObsSatellite, SatId, Seconds, SigId, SignalBand,
+};
 use bijux_gnss_signal::api::signal_wavelength_m;
 
 use super::config::{PppConfig, PppFilter, PppIndices};
@@ -226,7 +228,8 @@ impl PppFilter {
             if !el.is_finite() || el < self.config.weighting.min_elev_deg {
                 continue;
             }
-            let troposphere_mapping = SaastamoinenModel::mapping_factor(el);
+            let troposphere_mapping =
+                troposphere_mapping_for_receiver(receiver_pos_m, el, obs.t_rx_s.0);
             let weight = position_measurement_weight(
                 Some(sat.cn0_dbhz),
                 Some(el),
@@ -654,6 +657,23 @@ fn product_reference_time_s(obs: &ObsEpoch) -> f64 {
     obs.gps_time().map(|time| time.tow_s).unwrap_or(obs.t_rx_s.0)
 }
 
+fn troposphere_mapping_for_receiver(
+    receiver_ecef_m: [f64; 3],
+    elevation_deg: f64,
+    t_rx_s: f64,
+) -> f64 {
+    let (lat_deg, lon_deg, alt_m) =
+        ecef_to_geodetic(receiver_ecef_m[0], receiver_ecef_m[1], receiver_ecef_m[2]);
+    if !lat_deg.is_finite() || !lon_deg.is_finite() || !alt_m.is_finite() {
+        return SaastamoinenModel::mapping_factor(elevation_deg);
+    }
+    SaastamoinenModel::mapping_factor_for_receiver(
+        Llh { lat_deg, lon_deg, alt_m },
+        elevation_deg,
+        Seconds(t_rx_s),
+    )
+}
+
 fn single_frequency_antenna_range_correction_m(
     satellite_calibrations: Option<&SatelliteAntennaCalibrations>,
     receiver_antenna_type: Option<&str>,
@@ -817,7 +837,7 @@ mod tests {
     use super::{
         iono_free_antenna_range_correction_m, iono_free_satellite_representatives,
         resolved_code_bias_m, resolved_iono_free_code_bias_m,
-        single_frequency_antenna_range_correction_m, PppFilter,
+        single_frequency_antenna_range_correction_m, troposphere_mapping_for_receiver, PppFilter,
     };
     use crate::api::{
         ecef_to_geodetic, elevation_azimuth_deg, geodetic_to_ecef, BroadcastProductsProvider,
@@ -974,7 +994,11 @@ mod tests {
                     sat_pos_m[1],
                     sat_pos_m[2],
                 );
-                let troposphere_mapping = SaastamoinenModel::mapping_factor(elevation_deg);
+                let troposphere_mapping = troposphere_mapping_for_receiver(
+                    receiver_ecef_m,
+                    elevation_deg,
+                    gps_time.tow_s,
+                );
                 let pseudorange_m = range_m + ztd_m * troposphere_mapping;
                 ObsSatellite {
                     signal_id: SigId { sat: *sat, band: SignalBand::L1, code: SignalCode::Ca },
