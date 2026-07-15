@@ -38,7 +38,11 @@ pub struct ClkInterpolationSummary {
 impl ClkProvider {
     fn parse_internal(input: &str) -> Result<Self, String> {
         let mut records: BTreeMap<SatId, Vec<ClkRecord>> = BTreeMap::new();
-        for line in input.lines() {
+        let lines = input.lines().collect::<Vec<_>>();
+        let mut line_index = 0usize;
+        while line_index < lines.len() {
+            let line = lines[line_index];
+            line_index += 1;
             if !line.starts_with("AS") {
                 continue;
             }
@@ -54,10 +58,22 @@ impl ClkProvider {
             let min: u32 = parts[6].parse().map_err(|_| "invalid min")?;
             let sec: f64 = parts[7].parse().map_err(|_| "invalid sec")?;
             let value_count: usize = parts[8].parse().map_err(|_| "invalid value count")?;
-            if value_count == 0 || parts.len() < 9 + value_count {
+            if value_count == 0 {
                 return Err("missing clock values".to_string());
             }
-            let values = parse_clk_values(&parts[9..9 + value_count])?;
+            let mut value_fields = parts[9..].to_vec();
+            while value_fields.len() < value_count && line_index < lines.len() {
+                let continuation = lines[line_index];
+                if continuation.starts_with("AS") {
+                    break;
+                }
+                line_index += 1;
+                value_fields.extend(continuation.split_whitespace());
+            }
+            if value_fields.len() < value_count {
+                return Err("missing clock values".to_string());
+            }
+            let values = parse_clk_values(&value_fields[..value_count])?;
             let days = days_from_civil(year, month, day);
             let epoch_s = days as f64 * 86_400.0 + hour as f64 * 3600.0 + min as f64 * 60.0 + sec;
             records.entry(sat).or_default().push(ClkRecord {
@@ -521,6 +537,21 @@ AS G01 2020 01 01 00 15 00.000000  6  0.000000010  0.000000011 -0.000000012  0.0
         assert_eq!(correction.bias_s, 1.0e-8);
         assert_eq!(correction.drift_s_per_s, -12.0e-9);
         assert_eq!(correction.drift_rate_s_per_s2, 14.0e-9);
+    }
+
+    #[test]
+    fn clk_reads_continuation_values_for_rate_and_acceleration() {
+        let data = "\
+AS G01 2020 01 01 00 00 00.000000  6  0.000000001  0.000000002
+   -0.000000003  0.000000004  0.000000005  0.000000006
+";
+        let provider: ClkProvider = data.parse().expect("parse CLK continuation");
+        let sat = SatId { constellation: Constellation::Gps, prn: 1 };
+
+        assert_eq!(provider.rate_s_per_s(sat, 0.0), Some(-3.0e-9));
+        assert_eq!(provider.rate_sigma_s_per_s(sat, 0.0), Some(4.0e-9));
+        assert_eq!(provider.acceleration_s_per_s2(sat, 0.0), Some(5.0e-9));
+        assert_eq!(provider.acceleration_sigma_s_per_s2(sat, 0.0), Some(6.0e-9));
     }
 
     #[test]
