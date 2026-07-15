@@ -135,8 +135,9 @@ pub use bijux_gnss_nav::api::{
     rtk_float_ambiguity_state_from_baseline_solution, rtk_float_ambiguity_state_from_filter_state,
     rtk_integer_ambiguity_candidates, rtk_lambda_decorrelate,
     rtk_lambda_integer_ambiguity_candidates, rtk_ratio_test_acceptance,
-    rtk_select_partial_ambiguity_fix, rtk_single_difference_code_covariance_matrix,
-    rtk_single_difference_doppler_covariance_matrix, rtk_single_difference_phase_covariance_matrix,
+    rtk_select_partial_ambiguity_fix, rtk_select_partial_ambiguity_fix_with_evidence,
+    rtk_single_difference_code_covariance_matrix, rtk_single_difference_doppler_covariance_matrix,
+    rtk_single_difference_phase_covariance_matrix,
     rtk_single_differences_from_aligned_obs_epochs_with_covariance,
     rtk_switch_double_difference_reference, rtk_transform_fixed_ambiguity_reference,
     rtk_transform_float_ambiguity_reference, rtk_transform_float_baseline_reference,
@@ -144,8 +145,10 @@ pub use bijux_gnss_nav::api::{
     RtkAmbiguityFixStatus, RtkAmbiguityTracker, RtkConditionedBaselineSolution,
     RtkDecorrelatedAmbiguityState, RtkDifferencedCovarianceConfig, RtkDoubleDifferenceAmbiguityId,
     RtkDoubleDifferenceCovarianceEvidence, RtkDoubleDifferenceObservation, RtkFloatAmbiguityState,
-    RtkIntegerAmbiguityCandidate, RtkRatioTestFixer, RtkSingleDifferenceCovarianceEvidence,
-    RtkSingleDifferenceObservation, RtkSourceObservationVariance, RTK_EPOCH_ALIGNMENT_TOLERANCE_S,
+    RtkIntegerAmbiguityCandidate, RtkPartialAmbiguitySelection,
+    RtkPartialAmbiguitySelectionCriterion, RtkRatioTestFixer,
+    RtkSingleDifferenceCovarianceEvidence, RtkSingleDifferenceObservation,
+    RtkSourceObservationVariance, RTK_EPOCH_ALIGNMENT_TOLERANCE_S,
 };
 #[cfg(feature = "nav")]
 #[cfg_attr(docsrs, doc(cfg(feature = "nav")))]

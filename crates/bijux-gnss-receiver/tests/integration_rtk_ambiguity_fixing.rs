@@ -8,9 +8,10 @@ use bijux_gnss_receiver::api::{
     build_dd, build_sd, choose_ref_sat, rtk_ambiguity_state_from_fixed_solution,
     rtk_conditioned_baseline_from_fixed_ambiguities,
     rtk_float_ambiguity_state_from_baseline_solution, rtk_lambda_integer_ambiguity_candidates,
-    rtk_transform_fixed_ambiguity_reference, solve_float_baseline_dd, RtkAmbiguityFixPolicy,
-    RtkAmbiguityFixState, RtkAmbiguityTracker, RtkDoubleDifferenceAmbiguityId,
-    RtkFloatAmbiguityEstimate, RtkFloatAmbiguityState, RtkFloatBaselineSolution, RtkRatioTestFixer,
+    rtk_select_partial_ambiguity_fix_with_evidence, rtk_transform_fixed_ambiguity_reference,
+    solve_float_baseline_dd, RtkAmbiguityFixPolicy, RtkAmbiguityFixState, RtkAmbiguityTracker,
+    RtkDoubleDifferenceAmbiguityId, RtkFloatAmbiguityEstimate, RtkFloatAmbiguityState,
+    RtkFloatBaselineSolution, RtkPartialAmbiguitySelectionCriterion, RtkRatioTestFixer,
 };
 use bijux_gnss_testkit::rtk_baseline::clean_gps_l1_short_baseline_case;
 
@@ -244,6 +245,23 @@ fn receiver_lambda_integer_candidates_preserve_original_ambiguity_coordinates() 
         vec![vec![0, 0], vec![-1, -1], vec![-1, 0]]
     );
     assert!(candidates.windows(2).all(|pair| pair[0].cost <= pair[1].cost));
+}
+
+#[test]
+fn receiver_partial_ambiguity_selection_reports_excluded_ids() {
+    let float_state = RtkFloatAmbiguityState {
+        ids: vec![gps_l1_dd_id(7, 3), gps_l1_dd_id(11, 3), gps_l1_dd_id(14, 3)],
+        float_cycles: vec![5.45, -2.35, 3.62],
+        covariance_cycles2: vec![vec![4.0, 1.2, -0.6], vec![1.2, 2.25, 0.8], vec![-0.6, 0.8, 1.44]],
+    };
+
+    let (partial, selection) =
+        rtk_select_partial_ambiguity_fix_with_evidence(&float_state, 2).expect("partial selection");
+
+    assert_eq!(selection.criterion, RtkPartialAmbiguitySelectionCriterion::LowestVariance);
+    assert_eq!(selection.selected_ids, vec![gps_l1_dd_id(14, 3), gps_l1_dd_id(11, 3)]);
+    assert_eq!(selection.excluded_ids, vec![gps_l1_dd_id(7, 3)]);
+    assert_eq!(partial.ids, selection.selected_ids);
 }
 
 #[test]
