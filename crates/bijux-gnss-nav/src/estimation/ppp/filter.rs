@@ -127,6 +127,8 @@ impl PppFilter {
             phase_windup: BTreeMap::new(),
             product_support: BTreeMap::new(),
             ar_stable_epochs: 0,
+            ar_evidence: Default::default(),
+            ar_integer_ambiguities: Vec::new(),
         }
     }
 
@@ -576,8 +578,8 @@ impl PppFilter {
             nis_mean: self.health.nis_mean,
             ar_mode: self.config.ar_mode,
             fixed_wl,
-            ambiguity_resolution: Default::default(),
-            integer_ambiguities: Vec::new(),
+            ambiguity_resolution: self.ar_evidence.clone(),
+            integer_ambiguities: self.ar_integer_ambiguities.clone(),
         }
     }
 
@@ -1667,8 +1669,8 @@ mod tests {
     use crate::corrections::biases::{CodeBias, CodeBiasProvider, SignalCodeBiases};
     use crate::corrections::phase_windup::PhaseWindupState;
     use crate::estimation::ppp::config::{
-        PppLifecycleEventKind, PppMeasurementNoise, PppPreciseProductAction, PppProductSupport,
-        WlAmbiguity,
+        PppArMode, PppLifecycleEventKind, PppMeasurementNoise, PppPreciseProductAction,
+        PppProductSupport, WlAmbiguity,
     };
     use crate::estimation::ppp::measurements::iono_free_code_observation_from_obs;
     use crate::formats::precise_products::{
@@ -1943,6 +1945,83 @@ mod tests {
         }
     }
 
+    fn ppp_ar_test_filter() -> PppFilter {
+        PppFilter::new(PppConfig {
+            ar_mode: PppArMode::PppArWideLane,
+            ar_ratio_threshold: 3.0,
+            ar_stability_epochs: 1,
+            ar_max_sats: 8,
+            ..PppConfig::default()
+        })
+    }
+
+    #[test]
+    fn ppp_wide_lane_integer_acceptance_requires_phase_bias_provenance() {
+        let sig = SigId {
+            sat: SatId { constellation: Constellation::Gps, prn: 22 },
+            band: SignalBand::L1,
+            code: SignalCode::Ca,
+        };
+        let observation = ppp_test_signal_satellite(sig.sat, sig.band, sig.code);
+        let mut filter = ppp_ar_test_filter();
+        filter.wl_state.insert(
+            sig.sat,
+            WlAmbiguity {
+                float_cycles: 8.05,
+                variance: 0.001,
+                fixed: false,
+                integer_cycles: None,
+                ratio: None,
+                phase_bias_provenance_complete: false,
+                last_update_epoch: 1,
+            },
+        );
+
+        let fixed_count =
+            filter.try_fix_wide_lane(&ppp_test_epoch(vec![observation.clone()]), &[&observation]);
+
+        assert_eq!(fixed_count, 0);
+        assert_eq!(filter.ar_evidence.accepted_count, 0);
+        assert!(!filter.ar_integer_ambiguities[0].accepted);
+        assert!(filter.ar_integer_ambiguities[0]
+            .validation_reasons
+            .contains(&"missing_phase_bias_provenance".to_string()));
+    }
+
+    #[test]
+    fn ppp_wide_lane_integer_acceptance_records_validated_candidate_evidence() {
+        let sig = SigId {
+            sat: SatId { constellation: Constellation::Gps, prn: 23 },
+            band: SignalBand::L1,
+            code: SignalCode::Ca,
+        };
+        let observation = ppp_test_signal_satellite(sig.sat, sig.band, sig.code);
+        let mut filter = ppp_ar_test_filter();
+        filter.wl_state.insert(
+            sig.sat,
+            WlAmbiguity {
+                float_cycles: 8.05,
+                variance: 0.001,
+                fixed: false,
+                integer_cycles: None,
+                ratio: None,
+                phase_bias_provenance_complete: true,
+                last_update_epoch: 1,
+            },
+        );
+
+        let fixed_count =
+            filter.try_fix_wide_lane(&ppp_test_epoch(vec![observation.clone()]), &[&observation]);
+
+        assert_eq!(fixed_count, 1);
+        assert_eq!(filter.ar_evidence.candidate_count, 1);
+        assert_eq!(filter.ar_evidence.accepted_count, 1);
+        assert!(filter.ar_evidence.phase_bias_provenance_complete);
+        assert!(filter.ar_evidence.wide_lane_validated);
+        assert!(filter.ar_integer_ambiguities[0].accepted);
+        assert_eq!(filter.ar_integer_ambiguities[0].integer_cycles, 8);
+    }
+
     fn precise_product_discontinuity(
         sat: SatId,
         surface: PreciseProductSurface,
@@ -2196,7 +2275,15 @@ mod tests {
         filter.phase_windup.insert(sig.sat, PhaseWindupState { previous_cycles: Some(0.25) });
         filter.wl_state.insert(
             sig.sat,
-            WlAmbiguity { float_cycles: 8.0, variance: 0.2, fixed: true, last_update_epoch: 2 },
+            WlAmbiguity {
+                float_cycles: 8.0,
+                variance: 0.2,
+                fixed: true,
+                integer_cycles: Some(8),
+                ratio: Some(12.0),
+                phase_bias_provenance_complete: true,
+                last_update_epoch: 2,
+            },
         );
         let mut signals = BTreeSet::new();
         signals.insert(sig);
@@ -2236,7 +2323,15 @@ mod tests {
             .insert(stale.signal_id.sat, PhaseWindupState { previous_cycles: Some(0.4) });
         filter.wl_state.insert(
             stale.signal_id.sat,
-            WlAmbiguity { float_cycles: 2.0, variance: 0.1, fixed: false, last_update_epoch: 1 },
+            WlAmbiguity {
+                float_cycles: 2.0,
+                variance: 0.1,
+                fixed: false,
+                integer_cycles: None,
+                ratio: None,
+                phase_bias_provenance_complete: false,
+                last_update_epoch: 1,
+            },
         );
         filter.residual_history.insert(stale.signal_id, vec![4.0]);
 

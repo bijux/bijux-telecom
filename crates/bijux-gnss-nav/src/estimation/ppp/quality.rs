@@ -3,11 +3,12 @@
 use bijux_gnss_core::api::{ObsEpoch, ObsSatellite, SatId};
 
 use super::config::{PppFilter, WlAmbiguity};
-use super::measurements::{ratio_fix, wide_lane_from_obs};
+use super::measurements::{ratio_fix, wide_lane_from_obs_with_phase_biases};
 use crate::estimation::ekf::state::Ekf;
 use crate::estimation::ekf::traits::MeasurementModel;
 use crate::estimation::ppp::config::{
-    PppArMode, PppCheckpoint, PppLifecycleEvent, PppLifecycleEventKind,
+    PppAmbiguityResolutionEvidence, PppArMode, PppCheckpoint, PppIntegerAmbiguityCandidate,
+    PppIntegerAmbiguityKind, PppLifecycleEvent, PppLifecycleEventKind,
 };
 use crate::linalg::Matrix;
 
@@ -165,6 +166,8 @@ impl PppFilter {
         self.phase_windup.clear();
         self.product_support.clear();
         self.ar_stable_epochs = 0;
+        self.ar_evidence = Default::default();
+        self.ar_integer_ambiguities.clear();
         self.validate_state_layout("reset");
     }
 
@@ -243,34 +246,57 @@ impl PppFilter {
             return;
         }
         for sat in sats {
-            let Some(wide_lane) = wide_lane_from_obs(obs, sat.signal_id.sat) else {
+            let Some(wide_lane) = wide_lane_from_obs_with_phase_biases(
+                obs,
+                sat.signal_id.sat,
+                Some(self.phase_bias.as_ref()),
+            ) else {
                 continue;
             };
             let entry = self.wl_state.entry(sat.signal_id.sat).or_insert(WlAmbiguity {
                 float_cycles: wide_lane.cycles,
                 variance: wide_lane.variance,
                 fixed: false,
+                integer_cycles: None,
+                ratio: None,
+                phase_bias_provenance_complete: wide_lane.phase_bias_provenance_complete,
                 last_update_epoch: obs.epoch_idx,
             });
             entry.float_cycles = wide_lane.cycles;
             entry.variance = wide_lane.variance;
+            entry.phase_bias_provenance_complete = wide_lane.phase_bias_provenance_complete;
             entry.last_update_epoch = obs.epoch_idx;
         }
     }
 
     pub fn try_fix_wide_lane(&mut self, _obs: &ObsEpoch, sats: &[&ObsSatellite]) -> usize {
+        self.ar_integer_ambiguities.clear();
         if self.config.ar_mode == PppArMode::FloatPpp {
+            self.ar_evidence = PppAmbiguityResolutionEvidence::default();
             return 0;
         }
-        let mut candidates: Vec<(SatId, f64, f64, f64)> = Vec::new();
+        let mut candidates: Vec<(SatId, f64, f64, f64, bool)> = Vec::new();
         for sat in sats {
             if let Some(wl) = self.wl_state.get(&sat.signal_id.sat) {
                 let el = sat.elevation_deg.unwrap_or(0.0);
-                candidates.push((sat.signal_id.sat, wl.float_cycles, wl.variance, el));
+                candidates.push((
+                    sat.signal_id.sat,
+                    wl.float_cycles,
+                    wl.variance,
+                    el,
+                    wl.phase_bias_provenance_complete,
+                ));
             }
         }
         if candidates.is_empty() {
             self.health.ar_events.push("WL unavailable: no dual-frequency data".to_string());
+            self.ar_evidence = PppAmbiguityResolutionEvidence {
+                ratio_threshold: self.config.ar_ratio_threshold,
+                stability_epochs_required: self.config.ar_stability_epochs,
+                stable_epochs: self.ar_stable_epochs,
+                missing_reasons: vec!["missing_wide_lane_candidates".to_string()],
+                ..PppAmbiguityResolutionEvidence::default()
+            };
             return 0;
         }
         if self.config.ar_use_elevation {
@@ -279,26 +305,88 @@ impl PppFilter {
             candidates.sort_by(|a, b| a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal));
         }
         candidates.truncate(self.config.ar_max_sats.max(1));
-        let mut fixed_count = 0;
-        for (sat, float, var, _el) in candidates {
-            let (ratio, _fixed) = ratio_fix(float, var);
+        let mut provisional_count = 0;
+        let mut evaluated = Vec::new();
+        for (sat, float, var, _el, phase_bias_provenance_complete) in candidates {
+            let (ratio, integer_cycles) = ratio_fix(float, var);
             self.health.ar_events.push(format!("WL float {:?} ratio {:.2}", sat, ratio));
-            if ratio >= self.config.ar_ratio_threshold {
-                if let Some(entry) = self.wl_state.get_mut(&sat) {
-                    entry.fixed = true;
-                    fixed_count += 1;
-                }
-                self.health.ar_events.push(format!("WL fix {:?} ratio {:.2}", sat, ratio));
+            let mut validation_reasons = Vec::new();
+            if !phase_bias_provenance_complete {
+                validation_reasons.push("missing_phase_bias_provenance".to_string());
             }
+            if !float.is_finite() || !var.is_finite() || var < 0.0 || !ratio.is_finite() {
+                validation_reasons.push("invalid_candidate_statistics".to_string());
+            }
+            if ratio < self.config.ar_ratio_threshold {
+                validation_reasons.push("ratio_below_threshold".to_string());
+            }
+            let provisional = validation_reasons.is_empty();
+            if provisional {
+                provisional_count += 1;
+            }
+            evaluated.push((
+                sat,
+                PppIntegerAmbiguityCandidate {
+                    kind: PppIntegerAmbiguityKind::WideLane,
+                    sat,
+                    signal: None,
+                    float_cycles: float,
+                    integer_cycles,
+                    variance_cycles2: var,
+                    ratio,
+                    accepted: false,
+                    phase_bias_provenance_complete,
+                    validation_reasons,
+                },
+            ));
         }
-        if fixed_count > 0 {
+        if provisional_count > 0 {
             self.ar_stable_epochs += 1;
-            if self.ar_stable_epochs >= self.config.ar_stability_epochs {
-                self.apply_wl_constraints();
-            }
         } else {
             self.ar_stable_epochs = 0;
         }
+        let stable = self.ar_stable_epochs >= self.config.ar_stability_epochs;
+        let mut fixed_count = 0;
+        let mut all_phase_bias_provenance = true;
+        for (sat, mut candidate) in evaluated {
+            all_phase_bias_provenance &= candidate.phase_bias_provenance_complete;
+            if stable && candidate.validation_reasons.is_empty() {
+                candidate.accepted = true;
+                fixed_count += 1;
+                self.health
+                    .ar_events
+                    .push(format!("WL fix {:?} ratio {:.2}", sat, candidate.ratio));
+            } else if candidate.validation_reasons.is_empty() {
+                candidate.validation_reasons.push("stability_window_incomplete".to_string());
+            }
+            if let Some(entry) = self.wl_state.get_mut(&sat) {
+                entry.fixed = candidate.accepted;
+                entry.integer_cycles = Some(candidate.integer_cycles);
+                entry.ratio = Some(candidate.ratio);
+            }
+            self.ar_integer_ambiguities.push(candidate);
+        }
+        if fixed_count > 0 {
+            self.apply_wl_constraints();
+        }
+        let mut missing_reasons = Vec::new();
+        if !all_phase_bias_provenance {
+            missing_reasons.push("missing_phase_bias_provenance".to_string());
+        }
+        if fixed_count == 0 {
+            missing_reasons.push("no_validated_integer_candidates".to_string());
+        }
+        self.ar_evidence = PppAmbiguityResolutionEvidence {
+            candidate_count: self.ar_integer_ambiguities.len(),
+            accepted_count: fixed_count,
+            phase_bias_provenance_complete: all_phase_bias_provenance,
+            wide_lane_validated: fixed_count > 0,
+            narrow_lane_validated: false,
+            ratio_threshold: self.config.ar_ratio_threshold,
+            stability_epochs_required: self.config.ar_stability_epochs,
+            stable_epochs: self.ar_stable_epochs,
+            missing_reasons,
+        };
         fixed_count
     }
 
@@ -504,7 +592,15 @@ mod tests {
         filter.last_seen_amb.insert(sig, 43);
         filter.wl_state.insert(
             sig.sat,
-            WlAmbiguity { float_cycles: 7.25, variance: 0.125, fixed: true, last_update_epoch: 44 },
+            WlAmbiguity {
+                float_cycles: 7.25,
+                variance: 0.125,
+                fixed: true,
+                integer_cycles: Some(7),
+                ratio: Some(9.0),
+                phase_bias_provenance_complete: true,
+                last_update_epoch: 44,
+            },
         );
         filter
             .product_support
@@ -520,6 +616,9 @@ mod tests {
         assert_eq!(restored_wide_lane.float_cycles, 7.25);
         assert_eq!(restored_wide_lane.variance, 0.125);
         assert!(restored_wide_lane.fixed);
+        assert_eq!(restored_wide_lane.integer_cycles, Some(7));
+        assert_eq!(restored_wide_lane.ratio, Some(9.0));
+        assert!(restored_wide_lane.phase_bias_provenance_complete);
         assert_eq!(restored_wide_lane.last_update_epoch, 44);
         assert_eq!(
             restored.product_support.get(&sig.sat),

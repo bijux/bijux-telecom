@@ -1042,6 +1042,8 @@ pub struct PppFilter {
     pub phase_windup: BTreeMap<SatId, PhaseWindupState>,
     pub product_support: BTreeMap<SatId, PppProductSupport>,
     pub ar_stable_epochs: u32,
+    pub ar_evidence: PppAmbiguityResolutionEvidence,
+    pub ar_integer_ambiguities: Vec<PppIntegerAmbiguityCandidate>,
     pub health: PppHealth,
     pub code_bias: Box<dyn CodeBiasProvider + Send + Sync>,
     pub phase_bias: Box<dyn PhaseBiasProvider + Send + Sync>,
@@ -1076,5 +1078,11 @@ pub struct WlAmbiguity {
     pub float_cycles: f64,
     pub variance: f64,
     pub fixed: bool,
+    #[serde(default)]
+    pub integer_cycles: Option<i64>,
+    #[serde(default)]
+    pub ratio: Option<f64>,
+    #[serde(default)]
+    pub phase_bias_provenance_complete: bool,
     pub last_update_epoch: u64,
 }

@@ -9,6 +9,7 @@ use bijux_gnss_signal::api::{
     supported_dual_frequency_band_pairs_for_constellation,
 };
 
+use crate::corrections::biases::PhaseBiasProvider;
 use crate::corrections::combinations::wide_lane_wavelength_m_from_frequencies;
 use crate::corrections::iono_free_code::iono_free_code_from_pair;
 use crate::corrections::iono_free_phase::iono_free_phase_from_pair;
@@ -59,11 +60,14 @@ pub struct IonoFreeObservation {
 
 #[derive(Debug, Clone, Copy)]
 pub struct WideLaneObservation {
+    pub signal_1: SigId,
+    pub signal_2: SigId,
     pub cycles: f64,
     pub variance: f64,
     pub wavelength_m: f64,
     pub band_1: SignalBand,
     pub band_2: SignalBand,
+    pub phase_bias_provenance_complete: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -539,26 +543,58 @@ pub fn iono_free_phase_observation_from_obs(
 }
 
 pub fn wide_lane_from_obs(obs: &ObsEpoch, sat: SatId) -> Option<WideLaneObservation> {
+    wide_lane_from_obs_with_phase_biases(obs, sat, None)
+}
+
+pub fn wide_lane_from_obs_with_phase_biases(
+    obs: &ObsEpoch,
+    sat: SatId,
+    phase_biases: Option<&dyn PhaseBiasProvider>,
+) -> Option<WideLaneObservation> {
     let pair = select_dual_frequency_pair(obs, sat)?;
     let f1 = pair.first.metadata.signal.carrier_hz.value();
     let f2 = pair.second.metadata.signal.carrier_hz.value();
     let lambda_1 = signal_wavelength_m(pair.first.metadata.signal).0;
     let lambda_2 = signal_wavelength_m(pair.second.metadata.signal).0;
-    let phi1_m =
-        signal_cycles_to_meters(pair.first.carrier_phase_cycles, pair.first.metadata.signal).0;
-    let phi2_m =
-        signal_cycles_to_meters(pair.second.carrier_phase_cycles, pair.second.metadata.signal).0;
+    let (bias_1_cycles, bias_1_provenance) =
+        resolved_ar_phase_bias_cycles(phase_biases, pair.first.signal_id, obs.gps_time());
+    let (bias_2_cycles, bias_2_provenance) =
+        resolved_ar_phase_bias_cycles(phase_biases, pair.second.signal_id, obs.gps_time());
+    let phi1_m = signal_cycles_to_meters(
+        bijux_gnss_core::api::Cycles(pair.first.carrier_phase_cycles.0 - bias_1_cycles),
+        pair.first.metadata.signal,
+    )
+    .0;
+    let phi2_m = signal_cycles_to_meters(
+        bijux_gnss_core::api::Cycles(pair.second.carrier_phase_cycles.0 - bias_2_cycles),
+        pair.second.metadata.signal,
+    )
+    .0;
     let lambda_wl = wide_lane_wavelength_m_from_frequencies(f1, f2)?;
     let wl_cycles = (phi1_m - phi2_m) / lambda_wl;
     let variance = (lambda_1 / lambda_wl).powi(2) * pair.first.carrier_phase_var_cycles2
         + (lambda_2 / lambda_wl).powi(2) * pair.second.carrier_phase_var_cycles2;
     Some(WideLaneObservation {
+        signal_1: pair.first.signal_id,
+        signal_2: pair.second.signal_id,
         cycles: wl_cycles,
         variance,
         wavelength_m: lambda_wl,
         band_1: pair.first.signal_id.band,
         band_2: pair.second.signal_id.band,
+        phase_bias_provenance_complete: bias_1_provenance && bias_2_provenance,
     })
+}
+
+fn resolved_ar_phase_bias_cycles(
+    phase_biases: Option<&dyn PhaseBiasProvider>,
+    signal: SigId,
+    gps_time: Option<GpsTime>,
+) -> (f64, bool) {
+    phase_biases
+        .and_then(|provider| provider.phase_bias_for_ambiguity_resolution(signal, gps_time))
+        .map(|bias| (bias.bias_cycles, true))
+        .unwrap_or((0.0, false))
 }
 
 pub fn ratio_fix(float: f64, variance: f64) -> (f64, i64) {
