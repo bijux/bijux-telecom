@@ -22,7 +22,7 @@ use crate::estimation::ekf::state::{Ekf, EkfConfig};
 use crate::estimation::ekf::statistics::InnovationConsistencyConfig;
 use crate::estimation::position::solver::{ecef_to_geodetic, elevation_azimuth_deg};
 use crate::estimation::ppp::config::{
-    PppConvergenceEvidence, PppConvergenceState, PppHealth, PppSolutionEpoch,
+    PppConvergenceEvidence, PppConvergenceState, PppHealth, PppSolutionEpoch, PppStochasticEvidence,
 };
 use crate::formats::precise_products::{ProductDiagnostics, ProductsProvider};
 use crate::linalg::Matrix;
@@ -190,6 +190,7 @@ impl PppFilter {
         let mut used = 0;
         let mut slip_count = 0usize;
         let mut removed_state_identities = BTreeSet::new();
+        let mut stochastic_evidence = ppp_stochastic_evidence_from_config(&self.config);
         for sat in &sats {
             if sat.lock_flags.cycle_slip {
                 slip_count += 1;
@@ -208,6 +209,14 @@ impl PppFilter {
                     .warnings
                     .push(format!("products fallback used for {:?}", sat.signal_id.sat));
             }
+            stochastic_evidence.code_observation_variance_supported |=
+                positive_variance(sat.pseudorange_var_m2).is_some();
+            stochastic_evidence.phase_observation_variance_supported |=
+                positive_variance(sat.carrier_phase_var_cycles2).is_some();
+            stochastic_evidence.satellite_orbit_uncertainty_supported |=
+                state.uncertainty.orbit_sigma_m.is_some();
+            stochastic_evidence.satellite_clock_uncertainty_supported |=
+                state.uncertainty.clock_sigma_s.is_some();
             let rx_x = self.ekf.x[self.indices.pos[0]];
             let rx_y = self.ekf.x[self.indices.pos[1]];
             let rx_z = self.ekf.x[self.indices.pos[2]];
@@ -436,7 +445,13 @@ impl PppFilter {
         }
         self.prune_states(obs.epoch_idx);
 
-        Some(self.solution_epoch(obs.epoch_idx, obs.t_rx_s.0, residuals, fixed_wl))
+        Some(self.solution_epoch(
+            obs.epoch_idx,
+            obs.t_rx_s.0,
+            residuals,
+            fixed_wl,
+            stochastic_evidence,
+        ))
     }
 
     fn solution_epoch(
@@ -445,6 +460,7 @@ impl PppFilter {
         t_rx_s: f64,
         residuals: Vec<(SigId, f64)>,
         fixed_wl: usize,
+        stochastic_evidence: PppStochasticEvidence,
     ) -> PppSolutionEpoch {
         let pos = [
             self.ekf.x[self.indices.pos[0]],
@@ -508,6 +524,7 @@ impl PppFilter {
             constellation_clock_state_count: self.indices.isb.len(),
             slant_ionosphere_state_count: self.indices.iono.len(),
             carrier_ambiguity_state_count: self.indices.ambiguity.len(),
+            stochastic_evidence,
             rms_m: self.ekf.health.innovation_rms,
             sigma_h_m: sigma_h,
             sigma_v_m: sigma_v,
@@ -784,6 +801,33 @@ fn ppp_measurement_observations(obs: &ObsEpoch, use_iono_free: bool) -> Vec<&Obs
 
 fn product_reference_time_s(obs: &ObsEpoch) -> f64 {
     obs.gps_time().map(|time| time.tow_s).unwrap_or(obs.t_rx_s.0)
+}
+
+fn ppp_stochastic_evidence_from_config(config: &PppConfig) -> PppStochasticEvidence {
+    PppStochasticEvidence {
+        atmosphere_residual_supported: config.measurement_noise.troposphere_residual_m.is_finite()
+            && config.measurement_noise.troposphere_residual_m >= 0.0,
+        antenna_residual_supported: config.measurement_noise.antenna_residual_m.is_finite()
+            && config.measurement_noise.antenna_residual_m >= 0.0,
+        process_covariance_supported: ppp_process_noise_supported(config),
+        ..PppStochasticEvidence::default()
+    }
+}
+
+fn ppp_process_noise_supported(config: &PppConfig) -> bool {
+    let process = &config.process_noise;
+    [
+        process.position_m,
+        process.velocity_mps,
+        process.clock_bias_s,
+        process.clock_drift_s,
+        process.inter_system_bias_s,
+        process.ztd_m,
+        process.iono_m,
+        process.ambiguity_cycles,
+    ]
+    .iter()
+    .all(|value| value.is_finite() && *value >= 0.0)
 }
 
 fn ppp_common_range_sigma_m(
@@ -1260,8 +1304,9 @@ mod tests {
     use super::{
         iono_free_antenna_range_correction_m, iono_free_satellite_representatives,
         phase_windup_cycles_for_satellite, ppp_code_sigma_m, ppp_common_range_sigma_m,
-        ppp_phase_sigma_cycles, resolved_code_bias_m, resolved_iono_free_code_bias_m,
-        single_frequency_antenna_range_correction_m, PppFilter, SPEED_OF_LIGHT_MPS,
+        ppp_phase_sigma_cycles, ppp_stochastic_evidence_from_config, resolved_code_bias_m,
+        resolved_iono_free_code_bias_m, single_frequency_antenna_range_correction_m, PppFilter,
+        SPEED_OF_LIGHT_MPS,
     };
     use crate::api::{
         ecef_to_geodetic, elevation_azimuth_deg, geodetic_to_ecef, BroadcastProductsProvider,
@@ -1708,11 +1753,20 @@ mod tests {
         });
         filter.ensure_states(&[&l1, &l2]);
 
-        let solution = filter.solution_epoch(5, 12.0, Vec::new(), 0);
+        let solution = filter.solution_epoch(
+            5,
+            12.0,
+            Vec::new(),
+            0,
+            ppp_stochastic_evidence_from_config(&filter.config),
+        );
 
         assert_eq!(solution.constellation_clock_state_count, 1);
         assert_eq!(solution.slant_ionosphere_state_count, 1);
         assert_eq!(solution.carrier_ambiguity_state_count, 2);
+        assert!(solution.stochastic_evidence.process_covariance_supported);
+        assert!(solution.stochastic_evidence.atmosphere_residual_supported);
+        assert!(solution.stochastic_evidence.antenna_residual_supported);
     }
 
     #[test]
@@ -2098,7 +2152,13 @@ mod tests {
         filter.ekf.p[(filter.indices.pos[0], filter.indices.pos[1])] = 0.5;
         filter.ekf.p[(filter.indices.pos[1], filter.indices.pos[0])] = 0.5;
 
-        let solution = filter.solution_epoch(7, 7.0, Vec::new(), 0);
+        let solution = filter.solution_epoch(
+            7,
+            7.0,
+            Vec::new(),
+            0,
+            ppp_stochastic_evidence_from_config(&filter.config),
+        );
         let covariance = solution
             .position_covariance_ecef_m2
             .expect("PPP solution should emit position covariance");

@@ -114,6 +114,17 @@ pub enum PppTroposphereSource {
     LocalMeteorology,
 }
 
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+pub struct PppStochasticEvidence {
+    pub code_observation_variance_supported: bool,
+    pub phase_observation_variance_supported: bool,
+    pub satellite_orbit_uncertainty_supported: bool,
+    pub satellite_clock_uncertainty_supported: bool,
+    pub atmosphere_residual_supported: bool,
+    pub antenna_residual_supported: bool,
+    pub process_covariance_supported: bool,
+}
+
 impl Default for PppConfig {
     fn default() -> Self {
         Self {
@@ -210,6 +221,7 @@ pub struct PppSolutionEpoch {
     pub constellation_clock_state_count: usize,
     pub slant_ionosphere_state_count: usize,
     pub carrier_ambiguity_state_count: usize,
+    pub stochastic_evidence: PppStochasticEvidence,
     pub rms_m: f64,
     pub sigma_h_m: Option<f64>,
     pub sigma_v_m: Option<f64>,
@@ -363,7 +375,7 @@ impl ArtifactPayloadValidate for PppSolutionEpoch {
 mod tests {
     use super::{
         PppArMode, PppConfig, PppConvergenceEvidence, PppConvergenceState, PppSolutionEpoch,
-        PppTroposphereSource,
+        PppStochasticEvidence, PppTroposphereSource,
     };
     use crate::models::ocean_tide_loading::{
         OceanTideConstituent, OceanTideLoadingConstituent, OceanTideLoadingModel,
@@ -396,6 +408,15 @@ mod tests {
             constellation_clock_state_count: 1,
             slant_ionosphere_state_count: 1,
             carrier_ambiguity_state_count: 2,
+            stochastic_evidence: PppStochasticEvidence {
+                code_observation_variance_supported: true,
+                phase_observation_variance_supported: true,
+                satellite_orbit_uncertainty_supported: true,
+                satellite_clock_uncertainty_supported: true,
+                atmosphere_residual_supported: true,
+                antenna_residual_supported: true,
+                process_covariance_supported: true,
+            },
             rms_m: 1.5,
             sigma_h_m: Some(2.0),
             sigma_v_m: Some(3.0),
