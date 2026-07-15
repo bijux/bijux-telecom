@@ -4,11 +4,11 @@ use bijux_gnss_core::api::{Constellation, SatId, SigId, SignalBand};
 use bijux_gnss_nav::api::{
     rtk_ambiguity_state_from_fixed_solution, rtk_conditioned_baseline_from_fixed_ambiguities,
     rtk_float_ambiguity_state_from_baseline_solution, rtk_float_baseline_from_double_differences,
-    rtk_integer_ambiguity_candidates, rtk_transform_fixed_ambiguity_reference,
-    rtk_transform_float_ambiguity_reference, rtk_transform_float_baseline_reference,
-    RtkAmbiguityFixPolicy, RtkAmbiguityFixState, RtkAmbiguityFixStatus,
-    RtkDoubleDifferenceAmbiguityId, RtkFloatAmbiguityEstimate, RtkFloatAmbiguityState,
-    RtkFloatBaselineSolution, RtkRatioTestFixer,
+    rtk_integer_ambiguity_candidates, rtk_lambda_decorrelate,
+    rtk_transform_fixed_ambiguity_reference, rtk_transform_float_ambiguity_reference,
+    rtk_transform_float_baseline_reference, RtkAmbiguityFixPolicy, RtkAmbiguityFixState,
+    RtkAmbiguityFixStatus, RtkDoubleDifferenceAmbiguityId, RtkFloatAmbiguityEstimate,
+    RtkFloatAmbiguityState, RtkFloatBaselineSolution, RtkRatioTestFixer,
 };
 use bijux_gnss_testkit::rtk_baseline::clean_gps_l1_short_baseline_case;
 
@@ -50,6 +50,56 @@ fn assert_matrix_near(actual: &[Vec<f64>], expected: &[Vec<f64>], tolerance: f64
             );
         }
     }
+}
+
+fn integer_identity(size: usize) -> Vec<Vec<i64>> {
+    (0..size).map(|row| (0..size).map(|col| if row == col { 1 } else { 0 }).collect()).collect()
+}
+
+fn integer_matrix_mul(left: &[Vec<i64>], right: &[Vec<i64>]) -> Vec<Vec<i64>> {
+    let mut out = vec![vec![0_i64; right[0].len()]; left.len()];
+    for row in 0..left.len() {
+        for col in 0..right[0].len() {
+            out[row][col] =
+                (0..right.len()).map(|index| left[row][index] * right[index][col]).sum();
+        }
+    }
+    out
+}
+
+fn transformed_vector(transform: &[Vec<i64>], values: &[f64]) -> Vec<f64> {
+    transform
+        .iter()
+        .map(|row| {
+            row.iter()
+                .zip(values.iter())
+                .map(|(coefficient, value)| *coefficient as f64 * value)
+                .sum()
+        })
+        .collect()
+}
+
+fn transformed_covariance(transform: &[Vec<i64>], covariance: &[Vec<f64>]) -> Vec<Vec<f64>> {
+    let size = transform.len();
+    let mut out = vec![vec![0.0; size]; size];
+    for row in 0..size {
+        for col in 0..size {
+            let mut sum = 0.0;
+            for left in 0..size {
+                for right in 0..size {
+                    sum += transform[row][left] as f64
+                        * covariance[left][right]
+                        * transform[col][right] as f64;
+                }
+            }
+            out[row][col] = sum;
+        }
+    }
+    out
+}
+
+fn correlation_abs(covariance: &[Vec<f64>], left: usize, right: usize) -> f64 {
+    covariance[left][right].abs() / (covariance[left][left] * covariance[right][right]).sqrt()
 }
 
 #[test]
@@ -136,6 +186,33 @@ fn rtk_integer_ambiguity_candidates_use_full_covariance_squared_norm() {
     assert!(candidates.windows(2).all(|pair| pair[0].cost <= pair[1].cost));
     assert!((candidates[0].cost - 0.256_944_444_444_444_4).abs() < 1.0e-12);
     assert!((candidates[1].cost - 0.312_5).abs() < 1.0e-12);
+}
+
+#[test]
+fn rtk_lambda_decorrelation_carries_unimodular_transform_evidence() {
+    let float_state = RtkFloatAmbiguityState {
+        ids: vec![gps_l1_dd_id(7, 3), gps_l1_dd_id(11, 3)],
+        float_cycles: vec![-0.5, -0.45],
+        covariance_cycles2: vec![vec![1.0, 0.8], vec![0.8, 1.0]],
+    };
+
+    let decorrelated = rtk_lambda_decorrelate(&float_state);
+
+    assert_ne!(decorrelated.z_inverse, integer_identity(2));
+    assert_eq!(integer_matrix_mul(&decorrelated.z_inverse, &decorrelated.z), integer_identity(2));
+    assert_eq!(
+        decorrelated.n_prime,
+        transformed_vector(&decorrelated.z_inverse, &float_state.float_cycles)
+    );
+    assert_matrix_near(
+        &decorrelated.q_prime,
+        &transformed_covariance(&decorrelated.z_inverse, &float_state.covariance_cycles2),
+        1.0e-12,
+    );
+    assert!(
+        correlation_abs(&decorrelated.q_prime, 0, 1)
+            < correlation_abs(&float_state.covariance_cycles2, 0, 1)
+    );
 }
 
 #[test]

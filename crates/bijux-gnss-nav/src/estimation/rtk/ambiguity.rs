@@ -62,7 +62,10 @@ impl ArtifactPayloadValidate for RtkFloatAmbiguityState {
 /// Decorrelated ambiguity state used during integer candidate search.
 #[derive(Debug, Clone)]
 pub struct RtkDecorrelatedAmbiguityState {
+    /// Integer basis mapping decorrelated coordinates back to original ambiguity coordinates.
     pub z: Vec<Vec<i64>>,
+    /// Integer transform mapping original ambiguity coordinates into decorrelated coordinates.
+    pub z_inverse: Vec<Vec<i64>>,
     pub n_prime: Vec<f64>,
     pub q_prime: Vec<Vec<f64>>,
 }
@@ -465,16 +468,14 @@ pub fn rtk_transform_float_baseline_reference(
 }
 
 pub fn rtk_lambda_decorrelate(float: &RtkFloatAmbiguityState) -> RtkDecorrelatedAmbiguityState {
-    let n = float.float_cycles.len();
-    let mut z = vec![vec![0_i64; n]; n];
-    for (index, row) in z.iter_mut().enumerate() {
-        row[index] = 1;
+    if !float.validate_payload().is_empty()
+        || !valid_integer_search_input(&float.float_cycles, &float.covariance_cycles2)
+    {
+        return identity_decorrelated_state(float);
     }
-    RtkDecorrelatedAmbiguityState {
-        z,
-        n_prime: float.float_cycles.clone(),
-        q_prime: float.covariance_cycles2.clone(),
-    }
+    let mut reduced = LambdaReduction::new(&float.float_cycles, &float.covariance_cycles2);
+    reduced.reduce();
+    reduced.into_state()
 }
 
 #[derive(Debug, Clone)]
@@ -535,6 +536,106 @@ fn reference_switch_transform_from_ids(
 fn common_reference_signal(ids: &[RtkDoubleDifferenceAmbiguityId]) -> Option<SigId> {
     let first = ids.first()?.ref_sig;
     ids.iter().all(|id| id.ref_sig == first && id.sig != id.ref_sig).then_some(first)
+}
+
+#[derive(Debug, Clone)]
+struct LambdaReduction {
+    z: Vec<Vec<i64>>,
+    z_inverse: Vec<Vec<i64>>,
+    float: Vec<f64>,
+    covariance: Vec<Vec<f64>>,
+}
+
+impl LambdaReduction {
+    fn new(float: &[f64], covariance: &[Vec<f64>]) -> Self {
+        let size = float.len();
+        Self {
+            z: integer_identity(size),
+            z_inverse: integer_identity(size),
+            float: float.to_vec(),
+            covariance: covariance.to_vec(),
+        }
+    }
+
+    fn reduce(&mut self) {
+        let size = self.float.len();
+        if size < 2 {
+            return;
+        }
+        for _ in 0..(size * size * 8) {
+            let mut changed = false;
+            for target in 0..size {
+                for source in 0..size {
+                    if target == source {
+                        continue;
+                    }
+                    let variance = self.covariance[source][source];
+                    if !variance.is_finite() || variance.abs() < 1.0e-12 {
+                        continue;
+                    }
+                    let coefficient = (self.covariance[target][source] / variance).round();
+                    if coefficient.abs() >= 1.0 {
+                        changed |= self.apply_integer_gauss(target, source, -(coefficient as i64));
+                    }
+                }
+            }
+            for left in 0..(size - 1) {
+                if self.covariance[left + 1][left + 1] + 1.0e-12 < self.covariance[left][left] {
+                    self.apply_permutation(left, left + 1);
+                    changed = true;
+                }
+            }
+            if !changed {
+                break;
+            }
+        }
+    }
+
+    fn apply_integer_gauss(&mut self, target: usize, source: usize, coefficient: i64) -> bool {
+        if coefficient == 0 {
+            return false;
+        }
+        let size = self.float.len();
+        let mut transform = integer_identity(size);
+        transform[target][source] += coefficient;
+        let mut inverse = integer_identity(size);
+        inverse[target][source] -= coefficient;
+        self.apply_coordinate_transform(&transform, &inverse);
+        true
+    }
+
+    fn apply_permutation(&mut self, left: usize, right: usize) {
+        let size = self.float.len();
+        let mut transform = integer_identity(size);
+        transform.swap(left, right);
+        self.apply_coordinate_transform(&transform, &transform);
+    }
+
+    fn apply_coordinate_transform(&mut self, transform: &[Vec<i64>], inverse: &[Vec<i64>]) {
+        self.float = integer_matrix_vector_mul(transform, &self.float);
+        self.covariance = covariance_transform(transform, &self.covariance);
+        self.z_inverse = integer_matrix_mul(transform, &self.z_inverse);
+        self.z = integer_matrix_mul(&self.z, inverse);
+    }
+
+    fn into_state(self) -> RtkDecorrelatedAmbiguityState {
+        RtkDecorrelatedAmbiguityState {
+            z: self.z,
+            z_inverse: self.z_inverse,
+            n_prime: self.float,
+            q_prime: symmetrize_rows(self.covariance),
+        }
+    }
+}
+
+fn identity_decorrelated_state(float: &RtkFloatAmbiguityState) -> RtkDecorrelatedAmbiguityState {
+    let size = float.float_cycles.len();
+    RtkDecorrelatedAmbiguityState {
+        z: integer_identity(size),
+        z_inverse: integer_identity(size),
+        n_prime: float.float_cycles.clone(),
+        q_prime: float.covariance_cycles2.clone(),
+    }
 }
 
 pub fn rtk_integer_ambiguity_candidates(
@@ -829,6 +930,68 @@ fn round_to_i64(value: f64) -> Option<i64> {
         return None;
     }
     Some(value.round() as i64)
+}
+
+fn integer_identity(size: usize) -> Vec<Vec<i64>> {
+    (0..size).map(|row| (0..size).map(|col| if row == col { 1 } else { 0 }).collect()).collect()
+}
+
+fn integer_matrix_mul(left: &[Vec<i64>], right: &[Vec<i64>]) -> Vec<Vec<i64>> {
+    if left.is_empty() || right.is_empty() {
+        return Vec::new();
+    }
+    let rows = left.len();
+    let inner = right.len();
+    let cols = right[0].len();
+    let mut out = vec![vec![0_i64; cols]; rows];
+    for row in 0..rows {
+        for col in 0..cols {
+            let mut sum = 0_i64;
+            for index in 0..inner {
+                sum += left[row][index] * right[index][col];
+            }
+            out[row][col] = sum;
+        }
+    }
+    out
+}
+
+fn integer_matrix_vector_mul(matrix: &[Vec<i64>], vector: &[f64]) -> Vec<f64> {
+    matrix
+        .iter()
+        .map(|row| {
+            row.iter()
+                .zip(vector.iter())
+                .map(|(coefficient, value)| *coefficient as f64 * value)
+                .sum()
+        })
+        .collect()
+}
+
+fn covariance_transform(transform: &[Vec<i64>], covariance: &[Vec<f64>]) -> Vec<Vec<f64>> {
+    let transform_matrix = matrix_from_integer_rows(transform);
+    let covariance_matrix = matrix_from_rows(covariance);
+    matrix_rows(&transform_matrix.mul(&covariance_matrix).mul(&transform_matrix.transpose()))
+}
+
+fn matrix_from_integer_rows(rows: &[Vec<i64>]) -> Matrix {
+    let row_count = rows.len();
+    let col_count = rows.first().map_or(0, Vec::len);
+    let data =
+        rows.iter().flat_map(|row| row.iter().map(|value| *value as f64)).collect::<Vec<_>>();
+    Matrix::from_parts(row_count, col_count, data)
+}
+
+fn symmetrize_rows(rows: Vec<Vec<f64>>) -> Vec<Vec<f64>> {
+    let mut out = rows;
+    for row in 0..out.len() {
+        for col in 0..row {
+            let value = 0.5 * (out[row][col] + out[col][row]);
+            out[row][col] = value;
+            out[col][row] = value;
+        }
+    }
+    out
 }
 
 fn matrix_from_rows(rows: &[Vec<f64>]) -> Matrix {
