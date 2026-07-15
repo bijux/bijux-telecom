@@ -25,6 +25,7 @@ const OSCILLATOR_NOISE_MIN_STABLE_EPOCHS: usize = 6;
 const BOUNDED_WHITE_PHASE_STD_RAD: f64 = 0.018;
 const BOUNDED_WHITE_FREQUENCY_STD_HZ: f64 = 0.18;
 const BOUNDED_RANDOM_WALK_FREQUENCY_STEP_STD_HZ: f64 = 0.035;
+const EXCESSIVE_WHITE_PHASE_STD_RAD: f64 = 0.28;
 const BOUNDED_MAX_CYCLE_SLIP_RATE: f64 = 0.05;
 
 #[derive(Debug)]
@@ -255,5 +256,35 @@ fn tracking_error_increases_but_lock_remains_stable_under_bounded_random_walk_fr
         random_walk_frequency.carrier_phase_step_jitter_cycles
             > nominal.carrier_phase_step_jitter_cycles,
         "random-walk frequency noise should increase phase-step jitter: random_walk_frequency={random_walk_frequency:?}, nominal={nominal:?}"
+    );
+}
+
+#[test]
+fn tracking_slip_rate_or_stable_window_responds_to_excessive_white_phase_noise() {
+    let nominal =
+        tracking_metrics_for_oscillator(SyntheticReceiverOscillatorModel::default(), 0xA551_2904);
+    let excessive_white_phase = tracking_metrics_for_oscillator(
+        SyntheticReceiverOscillatorModel {
+            noise: SyntheticReceiverOscillatorNoiseModel {
+                seed: 0xBAAD_9A51,
+                update_interval_samples: 1_023,
+                white_phase_std_rad: EXCESSIVE_WHITE_PHASE_STD_RAD,
+                white_frequency_std_hz: 0.0,
+                random_walk_frequency_step_std_hz: 0.0,
+            },
+            ..SyntheticReceiverOscillatorModel::default()
+        },
+        0xA551_2904,
+    );
+
+    assert!(
+        excessive_white_phase.stable_epoch_count < nominal.stable_epoch_count
+            || excessive_white_phase.cycle_slip_rate > nominal.cycle_slip_rate,
+        "excessive oscillator phase noise must degrade stable tracking or increase slips instead of looking nominal: excessive_white_phase={excessive_white_phase:?}, nominal={nominal:?}"
+    );
+    assert!(
+        excessive_white_phase.pll_error_rms > nominal.pll_error_rms
+            || excessive_white_phase.stable_epoch_count == 0,
+        "excessive oscillator phase noise must increase measured error when a stable window remains: excessive_white_phase={excessive_white_phase:?}, nominal={nominal:?}"
     );
 }
