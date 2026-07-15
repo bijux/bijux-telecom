@@ -98,7 +98,12 @@ fn tracking_epoch(
         channel_uid: "Gps-07-ch00".to_string(),
         tracking_provenance: "integration_observations_doppler_sign".to_string(),
         transmit_time: None,
-        tracking_uncertainty: None,
+        tracking_uncertainty: Some(bijux_gnss_core::api::TrackingUncertainty {
+            code_phase_samples: 0.05,
+            carrier_phase_cycles: 0.02,
+            doppler_hz: 1.0,
+            cn0_dbhz: 0.5,
+        }),
         processing_ms: None,
     }
 }
