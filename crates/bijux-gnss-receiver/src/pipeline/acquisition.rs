@@ -11,7 +11,7 @@ use bijux_gnss_core::api::{
     AcqComponentCombinationMode, AcqComponentProvenance, AcqComponentStatistic,
     AcqDopplerRefinement, AcqEvidence, AcqExplain, AcqExplainCandidate, AcqHypothesis, AcqRequest,
     AcqResult, AcqThresholdProvenance, AcqUncertainty, AcqUncertaintyCovariance, Hertz,
-    ReceiverSampleTrace, SamplesFrame, SatId, SignalBand, SignalCode, SignalComponentRole,
+    ReceiverSampleTrace, SamplesFrame, SatId, SignalBand, SignalCode,
 };
 use num_complex::Complex;
 use rustfft::{num_traits::Zero, FftPlanner};
@@ -39,6 +39,10 @@ use bijux_gnss_signal::api::{
 
 mod peak_metrics;
 
+use cache::{
+    CacheMissReason, CodeFftCache, CodeFftCacheKey, ACQUISITION_CACHE_MODEL_VERSION,
+    ACQUISITION_CACHE_POLICY_VERSION,
+};
 use false_alarm_calibration::{
     calibration_seed, false_alarm_rate, mix_seed, noise_only_frame, wilson_confidence_interval,
     FalseAlarmRateMeasurement,
@@ -48,6 +52,7 @@ use peak_metrics::{
     CorrelationMetrics, DelayedSecondaryPeakDiagnostic,
 };
 
+mod cache;
 mod false_alarm_calibration;
 
 /// Acquisition engine (coarse search).
@@ -76,8 +81,6 @@ pub struct AcquisitionStats {
     pub deferred_count: u64,
 }
 
-const ACQUISITION_CACHE_MODEL_VERSION: u32 = 1;
-const ACQUISITION_CACHE_POLICY_VERSION: u32 = 1;
 const SEARCH_EDGE_HINT_PEAK_MEAN_RATIO_FRACTION: f32 = 0.9;
 const SEARCH_EDGE_RISE_RATIO_EPSILON: f32 = 0.05;
 const JOINT_ACQUISITION_REFINEMENT_METHOD: &str = "quadratic_likelihood_surface";
@@ -93,75 +96,6 @@ const FALSE_ALARM_CALIBRATION_SEARCH_ITERATIONS: usize = 7;
 const WRONG_PRN_DOMINANCE_RATIO_MIN: f32 = 4.0;
 const WRONG_PRN_PEAK_SECOND_RATIO_MAX: f32 = 1.1;
 
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
-struct CodeFftCacheKey {
-    sat: SatId,
-    signal_band: SignalBand,
-    signal_code: SignalCode,
-    component_role_key: u8,
-    samples_per_code: usize,
-    sampling_hz_bits: u64,
-    if_hz_bits: u64,
-    code_hz_bits: u64,
-    code_length: usize,
-    doppler_search_hz: i32,
-    doppler_step_hz: i32,
-    model_version: u32,
-    policy_version: u32,
-}
-
-impl CodeFftCacheKey {
-    fn from_runtime(
-        config: &ReceiverPipelineConfig,
-        model: &AcquisitionSignalModel,
-        component_role: SignalComponentRole,
-        sat: SatId,
-        signal_code: SignalCode,
-        samples_per_code: usize,
-        doppler_search_hz: i32,
-        doppler_step_hz: i32,
-    ) -> Self {
-        Self {
-            sat,
-            signal_band: model.signal_band,
-            signal_code,
-            component_role_key: signal_component_role_key(component_role),
-            samples_per_code,
-            sampling_hz_bits: config.sampling_freq_hz.to_bits(),
-            if_hz_bits: config.intermediate_freq_hz.to_bits(),
-            code_hz_bits: model.code_rate_hz.to_bits(),
-            code_length: model.code_length,
-            doppler_search_hz,
-            doppler_step_hz,
-            model_version: ACQUISITION_CACHE_MODEL_VERSION,
-            policy_version: ACQUISITION_CACHE_POLICY_VERSION,
-        }
-    }
-}
-
-fn signal_component_role_key(role: SignalComponentRole) -> u8 {
-    match role {
-        SignalComponentRole::Data => 0,
-        SignalComponentRole::Pilot => 1,
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-enum CacheMissReason {
-    ColdStart,
-    IncompatibleAssumptions,
-}
-
-impl CacheMissReason {
-    fn as_str(self) -> &'static str {
-        match self {
-            CacheMissReason::ColdStart => "cold_start",
-            CacheMissReason::IncompatibleAssumptions => "incompatible_assumptions",
-        }
-    }
-}
-
-type CodeFftCache = HashMap<CodeFftCacheKey, Vec<Complex<f32>>>;
 type ThresholdResolutionCache =
     HashMap<AcquisitionThresholdCacheKey, ResolvedAcquisitionThresholds>;
 
@@ -1830,7 +1764,7 @@ impl Acquisition {
         let miss_reason = self.cache.lock().ok().map_or(CacheMissReason::ColdStart, |cache| {
             let has_same_satellite = cache
                 .keys()
-                .any(|cached| cached.sat == sat && cached.samples_per_code == samples_per_code);
+                .any(|cached| cached.matches_signal_period(sat, samples_per_code));
             if has_same_satellite {
                 CacheMissReason::IncompatibleAssumptions
             } else {
