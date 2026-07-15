@@ -14,8 +14,9 @@ use bijux_gnss_nav::api::{
     rtk_double_difference_residual_metrics, rtk_double_differences_by_constellation,
     rtk_double_differences_from_single_differences,
     rtk_single_differences_from_aligned_obs_epochs_with_covariance,
-    rtk_single_differences_from_obs_epochs, sat_state_gps_l1ca_at_receive_time, GpsEphemeris,
-    RtkDifferencedCovarianceConfig, RtkEpochAlignmentEvidence, RTK_EPOCH_ALIGNMENT_TOLERANCE_S,
+    rtk_single_differences_from_obs_epochs, rtk_switch_double_difference_reference,
+    sat_state_gps_l1ca_at_receive_time, GpsEphemeris, RtkDifferencedCovarianceConfig,
+    RtkEpochAlignmentEvidence, RTK_EPOCH_ALIGNMENT_TOLERANCE_S,
 };
 
 const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
@@ -386,6 +387,66 @@ fn rtk_double_difference_covariance_matrix_refuses_invalid_evidence() {
     let diagnostics = double_differences[0].validate_payload();
     assert!(diagnostics.iter().any(|event| event.code == "RTK_DD_COVARIANCE_EVIDENCE_INVALID"));
     assert!(rtk_double_difference_code_covariance_matrix(&double_differences).is_none());
+}
+
+#[test]
+fn rtk_double_difference_reference_switch_preserves_measurements_and_covariance() {
+    let mut base = make_epoch(
+        ReceiverRole::Base,
+        vec![
+            make_satellite(Constellation::Gps, 3, 20_000_000.0, 46.0),
+            make_satellite(Constellation::Gps, 7, 20_100_000.0, 42.0),
+            make_satellite(Constellation::Gps, 11, 20_200_000.0, 40.0),
+        ],
+    );
+    let mut rover = make_epoch(
+        ReceiverRole::Rover,
+        vec![
+            make_satellite(Constellation::Gps, 3, 20_000_120.0, 46.0),
+            make_satellite(Constellation::Gps, 7, 20_100_170.0, 42.0),
+            make_satellite(Constellation::Gps, 11, 20_200_215.0, 40.0),
+        ],
+    );
+    for sat in &mut base.sats {
+        sat.pseudorange_var_m2 = 9.0;
+    }
+    for sat in &mut rover.sats {
+        sat.pseudorange_var_m2 = 4.0;
+    }
+
+    let single_differences = rtk_single_differences_from_aligned_obs_epochs_with_covariance(
+        &base,
+        &rover,
+        RTK_EPOCH_ALIGNMENT_TOLERANCE_S,
+        RtkDifferencedCovarianceConfig {
+            rover_base_code_correlation: 0.5,
+            shared_environment_code_m2: 5.25,
+            ..RtkDifferencedCovarianceConfig::default()
+        },
+    );
+    let old_reference =
+        choose_rtk_single_difference_reference_signal(&single_differences).expect("reference");
+    let old_double_differences =
+        rtk_double_differences_from_single_differences(&single_differences, old_reference);
+    let new_reference = single_differences
+        .iter()
+        .find(|observation| observation.sig.sat.prn == 7)
+        .expect("new reference")
+        .sig;
+
+    let switched = rtk_switch_double_difference_reference(&old_double_differences, new_reference)
+        .expect("switched reference");
+    let covariance = rtk_double_difference_code_covariance_matrix(&switched).expect("covariance");
+
+    assert_eq!(switched.len(), 2);
+    assert_eq!(switched[0].sig.sat.prn, 3);
+    assert_eq!(switched[0].ref_sig, new_reference);
+    assert!((switched[0].code_m + 50.0).abs() < 1.0e-12);
+    assert_eq!(switched[1].sig.sat.prn, 11);
+    assert!((switched[1].code_m - 45.0).abs() < 1.0e-12);
+    assert!((covariance[0][0] - 3.5).abs() < 1.0e-12);
+    assert!((covariance[1][1] - 3.5).abs() < 1.0e-12);
+    assert!((covariance[0][1] - 1.75).abs() < 1.0e-12);
 }
 
 #[test]

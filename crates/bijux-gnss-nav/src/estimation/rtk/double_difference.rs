@@ -215,6 +215,76 @@ pub fn rtk_double_differences_by_constellation(
     out
 }
 
+/// Rebuild double differences against a new reference signal without discarding the epoch state.
+pub fn rtk_switch_double_difference_reference(
+    observations: &[RtkDoubleDifferenceObservation],
+    new_ref_sig: SigId,
+) -> Option<Vec<RtkDoubleDifferenceObservation>> {
+    let old_ref_sig = common_double_difference_reference(observations)?;
+    if new_ref_sig == old_ref_sig {
+        return Some(observations.to_vec());
+    }
+
+    let mut components = BTreeMap::new();
+    let old_reference = reference_component(observations.first()?)?;
+    components.insert(old_reference.sig, old_reference);
+    for observation in observations {
+        if observation.ref_sig != old_ref_sig {
+            return None;
+        }
+        let component = signal_component(observation)?;
+        components.insert(component.sig, component);
+    }
+    let reference = components.get(&new_ref_sig)?.clone();
+
+    let mut out = Vec::new();
+    for signal in components.values().cloned() {
+        if signal.sig == new_ref_sig {
+            continue;
+        }
+        if !same_epoch_alignment(&signal.epoch_alignment, &reference.epoch_alignment) {
+            return None;
+        }
+        let mut observation = RtkDoubleDifferenceObservation {
+            sig: signal.sig,
+            ref_sig: reference.sig,
+            min_cn0_dbhz: signal.min_cn0_dbhz.min(reference.min_cn0_dbhz),
+            multipath_suspect: signal.multipath_suspect || reference.multipath_suspect,
+            rover_signal_pseudorange_m: signal.rover_pseudorange_m,
+            rover_signal_timing: signal.rover_signal_timing,
+            base_signal_pseudorange_m: signal.base_pseudorange_m,
+            base_signal_timing: signal.base_signal_timing,
+            rover_ref_pseudorange_m: reference.rover_pseudorange_m,
+            rover_ref_signal_timing: reference.rover_signal_timing,
+            base_ref_pseudorange_m: reference.base_pseudorange_m,
+            base_ref_signal_timing: reference.base_signal_timing,
+            epoch_alignment: signal.epoch_alignment,
+            covariance_evidence: RtkDoubleDifferenceCovarianceEvidence {
+                signal: signal.covariance_evidence,
+                reference: reference.covariance_evidence,
+            },
+            code_m: signal.code_m - reference.code_m,
+            phase_cycles: signal.phase_cycles - reference.phase_cycles,
+            doppler_hz: signal.doppler_hz - reference.doppler_hz,
+            code_variance_m2: 0.0,
+            phase_variance_cycles2: 0.0,
+            canceled: vec![
+                signal.ambiguity_rover,
+                signal.ambiguity_base,
+                reference.ambiguity_rover.clone(),
+                reference.ambiguity_base.clone(),
+            ],
+        };
+        observation.code_variance_m2 =
+            double_difference_variance_from_observation(&observation, MeasurementKind::Code);
+        observation.phase_variance_cycles2 =
+            double_difference_variance_from_observation(&observation, MeasurementKind::Phase);
+        out.push(observation);
+    }
+    out.sort_by_key(|observation| observation.sig);
+    Some(out)
+}
+
 /// Build the code covariance matrix for an ordered set of double differences.
 pub fn rtk_double_difference_code_covariance_matrix(
     observations: &[RtkDoubleDifferenceObservation],
@@ -416,6 +486,77 @@ fn aligned_receive_times(
     } else {
         (fallback_receive_time_s, fallback_receive_time_s)
     }
+}
+
+#[derive(Debug, Clone)]
+struct SingleDifferenceComponent {
+    sig: SigId,
+    min_cn0_dbhz: f64,
+    multipath_suspect: bool,
+    rover_pseudorange_m: f64,
+    rover_signal_timing: Option<ObsSignalTiming>,
+    base_pseudorange_m: f64,
+    base_signal_timing: Option<ObsSignalTiming>,
+    epoch_alignment: RtkEpochAlignmentEvidence,
+    covariance_evidence: RtkSingleDifferenceCovarianceEvidence,
+    code_m: f64,
+    phase_cycles: f64,
+    doppler_hz: f64,
+    ambiguity_rover: AmbiguityId,
+    ambiguity_base: AmbiguityId,
+}
+
+fn common_double_difference_reference(
+    observations: &[RtkDoubleDifferenceObservation],
+) -> Option<SigId> {
+    let first = observations.first()?.ref_sig;
+    observations.iter().all(|observation| observation.ref_sig == first).then_some(first)
+}
+
+fn signal_component(
+    observation: &RtkDoubleDifferenceObservation,
+) -> Option<SingleDifferenceComponent> {
+    let ambiguity_rover = observation.canceled.first()?.clone();
+    let ambiguity_base = observation.canceled.get(1)?.clone();
+    Some(SingleDifferenceComponent {
+        sig: observation.sig,
+        min_cn0_dbhz: observation.min_cn0_dbhz,
+        multipath_suspect: observation.multipath_suspect,
+        rover_pseudorange_m: observation.rover_signal_pseudorange_m,
+        rover_signal_timing: observation.rover_signal_timing,
+        base_pseudorange_m: observation.base_signal_pseudorange_m,
+        base_signal_timing: observation.base_signal_timing,
+        epoch_alignment: observation.epoch_alignment,
+        covariance_evidence: observation.covariance_evidence.signal,
+        code_m: observation.code_m,
+        phase_cycles: observation.phase_cycles,
+        doppler_hz: observation.doppler_hz,
+        ambiguity_rover,
+        ambiguity_base,
+    })
+}
+
+fn reference_component(
+    observation: &RtkDoubleDifferenceObservation,
+) -> Option<SingleDifferenceComponent> {
+    let ambiguity_rover = observation.canceled.get(2)?.clone();
+    let ambiguity_base = observation.canceled.get(3)?.clone();
+    Some(SingleDifferenceComponent {
+        sig: observation.ref_sig,
+        min_cn0_dbhz: observation.min_cn0_dbhz,
+        multipath_suspect: observation.multipath_suspect,
+        rover_pseudorange_m: observation.rover_ref_pseudorange_m,
+        rover_signal_timing: observation.rover_ref_signal_timing,
+        base_pseudorange_m: observation.base_ref_pseudorange_m,
+        base_signal_timing: observation.base_ref_signal_timing,
+        epoch_alignment: observation.epoch_alignment,
+        covariance_evidence: observation.covariance_evidence.reference,
+        code_m: 0.0,
+        phase_cycles: 0.0,
+        doppler_hz: 0.0,
+        ambiguity_rover,
+        ambiguity_base,
+    })
 }
 
 fn double_difference_covariance_matrix(
