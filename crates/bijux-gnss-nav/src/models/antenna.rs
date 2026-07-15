@@ -23,6 +23,29 @@ impl SatellitePhaseCenterOffset {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct SatelliteAntennaFrame {
+    pub x_axis_ecef: [f64; 3],
+    pub y_axis_ecef: [f64; 3],
+    pub z_axis_ecef: [f64; 3],
+}
+
+impl SatelliteAntennaFrame {
+    pub fn phase_center_offset_ecef_m(self, offset: SatellitePhaseCenterOffset) -> [f64; 3] {
+        [
+            self.x_axis_ecef[0] * offset.body_x_m
+                + self.y_axis_ecef[0] * offset.body_y_m
+                + self.z_axis_ecef[0] * offset.body_z_m,
+            self.x_axis_ecef[1] * offset.body_x_m
+                + self.y_axis_ecef[1] * offset.body_y_m
+                + self.z_axis_ecef[1] * offset.body_z_m,
+            self.x_axis_ecef[2] * offset.body_x_m
+                + self.y_axis_ecef[2] * offset.body_y_m
+                + self.z_axis_ecef[2] * offset.body_z_m,
+        ]
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AntennaAzimuthPhaseCenterVariation {
     pub azimuth_deg: f64,
@@ -135,6 +158,29 @@ pub struct ReceiverPhaseCenterOffset {
 impl ReceiverPhaseCenterOffset {
     pub fn new(north_m: f64, east_m: f64, up_m: f64) -> Self {
         Self { north_m, east_m, up_m }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct ReceiverAntennaFrame {
+    pub north_axis_ecef: [f64; 3],
+    pub east_axis_ecef: [f64; 3],
+    pub up_axis_ecef: [f64; 3],
+}
+
+impl ReceiverAntennaFrame {
+    pub fn phase_center_offset_ecef_m(self, offset: ReceiverPhaseCenterOffset) -> [f64; 3] {
+        [
+            self.north_axis_ecef[0] * offset.north_m
+                + self.east_axis_ecef[0] * offset.east_m
+                + self.up_axis_ecef[0] * offset.up_m,
+            self.north_axis_ecef[1] * offset.north_m
+                + self.east_axis_ecef[1] * offset.east_m
+                + self.up_axis_ecef[1] * offset.up_m,
+            self.north_axis_ecef[2] * offset.north_m
+                + self.east_axis_ecef[2] * offset.east_m
+                + self.up_axis_ecef[2] * offset.up_m,
+        ]
     }
 }
 
@@ -398,18 +444,10 @@ pub fn satellite_antenna_range_correction_m(
     sun_pos_m: [f64; 3],
     offset: SatellitePhaseCenterOffset,
 ) -> f64 {
-    let body_frame = satellite_body_frame_axes(sat_pos_m, sun_pos_m);
-    let phase_center_offset_ecef_m = [
-        body_frame.x_axis[0] * offset.body_x_m
-            + body_frame.y_axis[0] * offset.body_y_m
-            + body_frame.z_axis[0] * offset.body_z_m,
-        body_frame.x_axis[1] * offset.body_x_m
-            + body_frame.y_axis[1] * offset.body_y_m
-            + body_frame.z_axis[1] * offset.body_z_m,
-        body_frame.x_axis[2] * offset.body_x_m
-            + body_frame.y_axis[2] * offset.body_y_m
-            + body_frame.z_axis[2] * offset.body_z_m,
-    ];
+    let Some(body_frame) = satellite_antenna_frame_ecef(sat_pos_m, sun_pos_m) else {
+        return 0.0;
+    };
+    let phase_center_offset_ecef_m = body_frame.phase_center_offset_ecef_m(offset);
     let corrected_sat_pos_m = [
         sat_pos_m[0] + phase_center_offset_ecef_m[0],
         sat_pos_m[1] + phase_center_offset_ecef_m[1],
@@ -431,18 +469,10 @@ pub fn receiver_antenna_range_correction_m(
     sat_pos_m: [f64; 3],
     offset: ReceiverPhaseCenterOffset,
 ) -> f64 {
-    let local_frame = receiver_local_frame_axes(receiver_pos_m);
-    let phase_center_offset_ecef_m = [
-        local_frame.north_axis[0] * offset.north_m
-            + local_frame.east_axis[0] * offset.east_m
-            + local_frame.up_axis[0] * offset.up_m,
-        local_frame.north_axis[1] * offset.north_m
-            + local_frame.east_axis[1] * offset.east_m
-            + local_frame.up_axis[1] * offset.up_m,
-        local_frame.north_axis[2] * offset.north_m
-            + local_frame.east_axis[2] * offset.east_m
-            + local_frame.up_axis[2] * offset.up_m,
-    ];
+    let Some(local_frame) = receiver_antenna_frame_ecef(receiver_pos_m) else {
+        return 0.0;
+    };
+    let phase_center_offset_ecef_m = local_frame.phase_center_offset_ecef_m(offset);
     let corrected_receiver_pos_m = [
         receiver_pos_m[0] + phase_center_offset_ecef_m[0],
         receiver_pos_m[1] + phase_center_offset_ecef_m[1],
@@ -481,42 +511,36 @@ pub fn satellite_band_from_antex_frequency(
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-struct SatelliteBodyFrame {
-    x_axis: [f64; 3],
-    y_axis: [f64; 3],
-    z_axis: [f64; 3],
-}
-
-#[derive(Debug, Clone, Copy)]
-struct ReceiverLocalFrame {
-    north_axis: [f64; 3],
-    east_axis: [f64; 3],
-    up_axis: [f64; 3],
-}
-
-fn satellite_body_frame_axes(sat_pos_m: [f64; 3], sun_pos_m: [f64; 3]) -> SatelliteBodyFrame {
-    let z_axis = normalize3([-sat_pos_m[0], -sat_pos_m[1], -sat_pos_m[2]]);
-    let sat_to_sun = normalize3([
+pub fn satellite_antenna_frame_ecef(
+    sat_pos_m: [f64; 3],
+    sun_pos_m: [f64; 3],
+) -> Option<SatelliteAntennaFrame> {
+    let z_axis_ecef = try_normalize3([-sat_pos_m[0], -sat_pos_m[1], -sat_pos_m[2]])?;
+    let sat_to_sun = try_normalize3([
         sun_pos_m[0] - sat_pos_m[0],
         sun_pos_m[1] - sat_pos_m[1],
         sun_pos_m[2] - sat_pos_m[2],
-    ]);
-    let y_axis = normalize3(cross3(z_axis, sat_to_sun));
-    let x_axis = normalize3(cross3(y_axis, z_axis));
-    SatelliteBodyFrame { x_axis, y_axis, z_axis }
+    ])?;
+    let y_axis_ecef = try_normalize3(cross3(z_axis_ecef, sat_to_sun))?;
+    let x_axis_ecef = try_normalize3(cross3(y_axis_ecef, z_axis_ecef))?;
+    Some(SatelliteAntennaFrame { x_axis_ecef, y_axis_ecef, z_axis_ecef })
 }
 
-fn receiver_local_frame_axes(receiver_pos_m: [f64; 3]) -> ReceiverLocalFrame {
+pub fn receiver_antenna_frame_ecef(receiver_pos_m: [f64; 3]) -> Option<ReceiverAntennaFrame> {
+    if !receiver_pos_m.iter().all(|value| value.is_finite())
+        || norm3(receiver_pos_m) <= f64::EPSILON
+    {
+        return None;
+    }
     let (lat_rad, lon_rad) = receiver_lat_lon_rad(receiver_pos_m);
     let sin_lat = lat_rad.sin();
     let cos_lat = lat_rad.cos();
     let sin_lon = lon_rad.sin();
     let cos_lon = lon_rad.cos();
-    let east_axis = [-sin_lon, cos_lon, 0.0];
-    let north_axis = [-sin_lat * cos_lon, -sin_lat * sin_lon, cos_lat];
-    let up_axis = [cos_lat * cos_lon, cos_lat * sin_lon, sin_lat];
-    ReceiverLocalFrame { north_axis, east_axis, up_axis }
+    let east_axis_ecef = [-sin_lon, cos_lon, 0.0];
+    let north_axis_ecef = [-sin_lat * cos_lon, -sin_lat * sin_lon, cos_lat];
+    let up_axis_ecef = [cos_lat * cos_lon, cos_lat * sin_lon, sin_lat];
+    Some(ReceiverAntennaFrame { north_axis_ecef, east_axis_ecef, up_axis_ecef })
 }
 
 fn receiver_lat_lon_rad(receiver_pos_m: [f64; 3]) -> (f64, f64) {
@@ -617,9 +641,15 @@ fn norm3(vector: [f64; 3]) -> f64 {
     (vector[0] * vector[0] + vector[1] * vector[1] + vector[2] * vector[2]).sqrt()
 }
 
-fn normalize3(vector: [f64; 3]) -> [f64; 3] {
-    let norm = norm3(vector).max(f64::EPSILON);
-    [vector[0] / norm, vector[1] / norm, vector[2] / norm]
+fn try_normalize3(vector: [f64; 3]) -> Option<[f64; 3]> {
+    if !vector.iter().all(|value| value.is_finite()) {
+        return None;
+    }
+    let norm = norm3(vector);
+    if !norm.is_finite() || norm <= f64::EPSILON {
+        return None;
+    }
+    Some([vector[0] / norm, vector[1] / norm, vector[2] / norm])
 }
 
 #[cfg(test)]
@@ -629,12 +659,31 @@ mod tests {
     use bijux_gnss_core::api::{Constellation, GpsTime, SatId, SignalBand};
 
     use super::{
-        canonical_receiver_antenna_type, receiver_antenna_range_correction_m,
+        canonical_receiver_antenna_type, receiver_antenna_frame_ecef,
+        receiver_antenna_range_correction_m, satellite_antenna_frame_ecef,
         satellite_antenna_range_correction_m, satellite_band_from_antex_frequency,
         AntennaAzimuthPhaseCenterVariation, AntennaPhaseCenterVariation,
-        ReceiverAntennaCalibration, ReceiverAntennaCalibrations, ReceiverPhaseCenterOffset,
-        SatelliteAntennaCalibration, SatelliteAntennaCalibrations, SatellitePhaseCenterOffset,
+        ReceiverAntennaCalibration, ReceiverAntennaCalibrations, ReceiverAntennaFrame,
+        ReceiverPhaseCenterOffset, SatelliteAntennaCalibration, SatelliteAntennaCalibrations,
+        SatelliteAntennaFrame, SatellitePhaseCenterOffset,
     };
+
+    #[test]
+    fn satellite_antenna_frame_uses_nadir_and_sun_oriented_axes() {
+        let sat_pos_m = [20_200_000.0, 0.0, 0.0];
+        let sun_pos_m = [0.0, 149_597_870_700.0, 0.0];
+
+        let frame = satellite_antenna_frame_ecef(sat_pos_m, sun_pos_m).expect("satellite frame");
+
+        assert_eq!(
+            frame,
+            SatelliteAntennaFrame {
+                x_axis_ecef: [0.0, 1.0, 0.0],
+                y_axis_ecef: [0.0, 0.0, -1.0],
+                z_axis_ecef: [-1.0, 0.0, 0.0],
+            }
+        );
+    }
 
     #[test]
     fn satellite_phase_center_range_correction_projects_body_axes_into_ecef() {
@@ -655,6 +704,22 @@ mod tests {
 
         assert!((correction_m - expected).abs() < 1.0e-9);
         assert!(correction_m < 0.0);
+    }
+
+    #[test]
+    fn receiver_antenna_frame_uses_north_east_up_axes() {
+        let receiver_pos_m = [6_378_137.0, 0.0, 0.0];
+
+        let frame = receiver_antenna_frame_ecef(receiver_pos_m).expect("receiver frame");
+
+        assert_eq!(
+            frame,
+            ReceiverAntennaFrame {
+                north_axis_ecef: [0.0, 0.0, 1.0],
+                east_axis_ecef: [0.0, 1.0, 0.0],
+                up_axis_ecef: [1.0, 0.0, 0.0],
+            }
+        );
     }
 
     #[test]
