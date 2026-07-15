@@ -2845,7 +2845,7 @@
     }
 
     #[test]
-    fn apply_dll_code_loop_updates_code_rate_from_discriminator() {
+    fn apply_dll_code_loop_decreases_code_rate_for_positive_discriminator() {
         let coherent_integration_s = 5_000.0 / 1_023_000.0;
         let update = super::apply_dll_code_loop(super::CodeLoopInput {
             current_code_rate_hz: 1_023_000.0,
@@ -2862,7 +2862,7 @@
         });
 
         let expected = 1_023_000.0
-            + delay_lock_loop_coefficients(2.0, coherent_integration_s).rate_gain_hz_per_chip
+            - delay_lock_loop_coefficients(2.0, coherent_integration_s).rate_gain_hz_per_chip
                 * 0.25;
         assert!((update.code_rate_hz - expected).abs() < 1.0e-9, "{update:?}");
     }

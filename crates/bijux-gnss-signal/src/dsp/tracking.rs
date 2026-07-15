@@ -1481,7 +1481,7 @@ pub fn apply_code_loop(input: CodeLoopInput) -> CodeLoopUpdate {
         input.reference_code_rate_hz - input.previous_reference_code_rate_hz;
     let code_rate_hz = input.current_code_rate_hz
         + reference_rate_delta_hz
-        + coefficients.rate_gain_hz_per_chip * dll_error_chips;
+        - coefficients.rate_gain_hz_per_chip * dll_error_chips;
     let predicted_code_phase_samples = predict_code_phase_samples(
         input.current_code_phase_samples,
         input.epoch_len_samples,
@@ -2247,7 +2247,7 @@ mod tests {
     }
 
     #[test]
-    fn apply_code_loop_updates_code_rate_from_discriminator() {
+    fn apply_code_loop_decreases_code_rate_for_positive_discriminator() {
         let coherent_integration_s = coherent_integration_seconds(5_000, 1_023_000.0);
         let update = apply_code_loop(CodeLoopInput {
             current_code_rate_hz: 1_023_000.0,
@@ -2264,7 +2264,7 @@ mod tests {
         });
 
         let expected = 1_023_000.0
-            + delay_lock_loop_coefficients(2.0, coherent_integration_s).rate_gain_hz_per_chip
+            - delay_lock_loop_coefficients(2.0, coherent_integration_s).rate_gain_hz_per_chip
                 * 0.25;
         assert!((update.code_rate_hz - expected).abs() < 1.0e-9, "{update:?}");
     }
