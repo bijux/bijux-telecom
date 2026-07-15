@@ -17,7 +17,7 @@ const OBSERVATIONS_PER_LINE: usize = 5;
 const GPS_UNIX_EPOCH_OFFSET_S: f64 = 315_964_800.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum RinexObservationTimeSystem {
+pub enum RinexObservationTimeSystem {
     Gps,
     Utc,
 }
@@ -181,6 +181,19 @@ pub struct RinexBeidouObservationChannel {
     pub carrier_phase_observation_type: Option<String>,
     /// Signal-strength observation type used when present.
     pub signal_strength_observation_type: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct RinexObservationValue {
+    pub value: Option<f64>,
+    pub loss_of_lock_indicator: Option<u8>,
+    pub signal_strength_indicator: Option<u8>,
+}
+
+impl RinexObservationValue {
+    fn empty() -> Self {
+        Self { value: None, loss_of_lock_indicator: None, signal_strength_indicator: None }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -1123,6 +1136,17 @@ fn parse_observation_record(
     observation_count: usize,
     prefix_width: usize,
 ) -> Result<Vec<Option<f64>>, ParseError> {
+    Ok(parse_observation_cells(lines, observation_count, prefix_width)?
+        .into_iter()
+        .map(|cell| cell.value)
+        .collect())
+}
+
+fn parse_observation_cells(
+    lines: &[&str],
+    observation_count: usize,
+    prefix_width: usize,
+) -> Result<Vec<RinexObservationValue>, ParseError> {
     let mut observations = Vec::with_capacity(observation_count);
 
     for (line_offset, line) in lines.iter().enumerate() {
@@ -1131,20 +1155,42 @@ fn parse_observation_record(
             let end = (field_index + OBSERVATION_FIELD_WIDTH).min(line.len());
             let field = line.get(field_index..end).unwrap_or_default();
             let value = field.get(..14).unwrap_or_default().trim();
-            if value.is_empty() {
-                observations.push(None);
-            } else {
-                observations.push(Some(parse_rinex_float(value)?));
-            }
+            let loss_of_lock_indicator = parse_observation_flag(field, 14, "LLI")?;
+            let signal_strength_indicator = parse_observation_flag(field, 15, "signal strength")?;
+            let value = if value.is_empty() { None } else { Some(parse_rinex_float(value)?) };
+            observations.push(RinexObservationValue {
+                value,
+                loss_of_lock_indicator,
+                signal_strength_indicator,
+            });
             field_index += OBSERVATION_FIELD_WIDTH;
         }
     }
 
     while observations.len() < observation_count {
-        observations.push(None);
+        observations.push(RinexObservationValue::empty());
     }
 
     Ok(observations)
+}
+
+fn parse_observation_flag(
+    field: &str,
+    index: usize,
+    label: &str,
+) -> Result<Option<u8>, ParseError> {
+    let marker = field.get(index..index + 1).unwrap_or_default().trim();
+    if marker.is_empty() {
+        return Ok(None);
+    }
+    let value = marker.parse::<u8>().map_err(|err| ParseError {
+        message: format!("invalid RINEX OBS {label} flag '{marker}': {err}"),
+    })?;
+    if value <= 9 {
+        Ok(Some(value))
+    } else {
+        Err(ParseError { message: format!("invalid RINEX OBS {label} flag {value}") })
+    }
 }
 
 fn observation_record_line_count(observation_count: usize) -> usize {
@@ -1455,8 +1501,9 @@ mod tests {
     };
 
     use super::{
-        parse_rinex_beidou_observation_dataset, parse_rinex_galileo_observation_dataset,
-        parse_rinex_gps_observation_dataset, parse_rinex_observation_header, RinexCodeBiasState,
+        parse_observation_cells, parse_rinex_beidou_observation_dataset,
+        parse_rinex_galileo_observation_dataset, parse_rinex_gps_observation_dataset,
+        parse_rinex_observation_header, RinexCodeBiasState,
     };
 
     fn fixture(name: &str) -> String {
@@ -1504,6 +1551,23 @@ mod tests {
             header.gps_observation_types().expect("GPS observation types"),
             ["C1C", "L1C", "D1C", "S1C", "C5Q"]
         );
+    }
+
+    #[test]
+    fn observation_cells_preserve_loss_of_lock_and_signal_strength_flags() {
+        let line =
+            format!("{:>14}{}{}{:16}{:>14}{}{}", 20_345_678.123, 1, 9, "", 123_456.250, " ", 7);
+        let cells = parse_observation_cells(&[&line], 3, 0).expect("observation cells");
+
+        assert_eq!(cells[0].value, Some(20_345_678.123));
+        assert_eq!(cells[0].loss_of_lock_indicator, Some(1));
+        assert_eq!(cells[0].signal_strength_indicator, Some(9));
+        assert_eq!(cells[1].value, None);
+        assert_eq!(cells[1].loss_of_lock_indicator, None);
+        assert_eq!(cells[1].signal_strength_indicator, None);
+        assert_eq!(cells[2].value, Some(123_456.250));
+        assert_eq!(cells[2].loss_of_lock_indicator, None);
+        assert_eq!(cells[2].signal_strength_indicator, Some(7));
     }
 
     #[test]
