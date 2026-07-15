@@ -613,7 +613,9 @@ pub fn format_rinex_observation_dataset(
         }
     }
     for (system, source) in &dataset.code_bias_status_by_system {
-        push_header_line(&mut output, &format!("{system} {source}"), "SYS / DCBS APPLIED");
+        let content =
+            if source.starts_with(*system) { source.clone() } else { format!("{system} {source}") };
+        push_header_line(&mut output, &content, "SYS / DCBS APPLIED");
     }
     push_header_line(&mut output, "", "TIME OF FIRST OBS");
     push_header_line(&mut output, "", "END OF HEADER");
@@ -780,7 +782,7 @@ fn push_rinex_3_epoch_record(
         epoch.satellites.len()
     ));
     if let Some(receiver_clock_offset_s) = epoch.receiver_clock_offset_s {
-        output.push_str(&format!(" {receiver_clock_offset_s:>14.9}"));
+        output.push_str(&format!(" {receiver_clock_offset_s:>16.12}"));
     }
     output.push('\n');
 
@@ -2396,6 +2398,30 @@ mod tests {
         let encoded = format_rinex_observation_dataset(&dataset).expect("format RINEX 4 dataset");
         let reparsed =
             parse_rinex_observation_dataset(&encoded).expect("reparse formatted RINEX 4 dataset");
+
+        assert_eq!(reparsed, dataset);
+    }
+
+    #[test]
+    fn public_rinex_2_raw_dataset_round_trips_supported_records() {
+        let data = fixture("georinex_14601736_20180622.obs");
+        let dataset = parse_rinex_observation_dataset(&data).expect("parse public RINEX 2 data");
+
+        let encoded = format_rinex_observation_dataset(&dataset).expect("format public RINEX 2");
+        let reparsed =
+            parse_rinex_observation_dataset(&encoded).expect("reparse formatted RINEX 2 data");
+
+        assert_eq!(reparsed, dataset);
+    }
+
+    #[test]
+    fn public_rinex_3_raw_dataset_round_trips_supported_records() {
+        let data = fixture("glab_gage_20100305.obs");
+        let dataset = parse_rinex_observation_dataset(&data).expect("parse public RINEX 3 data");
+
+        let encoded = format_rinex_observation_dataset(&dataset).expect("format public RINEX 3");
+        let reparsed =
+            parse_rinex_observation_dataset(&encoded).expect("reparse formatted RINEX 3 data");
 
         assert_eq!(reparsed, dataset);
     }
