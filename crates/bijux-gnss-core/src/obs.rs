@@ -978,6 +978,51 @@ pub struct LockFlags {
     pub cycle_slip: bool,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+pub struct CodeCarrierDivergence {
+    pub raw_m: f64,
+    pub jump_m: f64,
+    pub expected_ionosphere_m: f64,
+    pub receiver_clock_m: f64,
+    pub oscillator_m: f64,
+    pub smoothing_transient_m: f64,
+    pub multipath_m: f64,
+    pub unexplained_m: f64,
+}
+
+impl CodeCarrierDivergence {
+    pub fn from_terms(
+        raw_m: f64,
+        jump_m: f64,
+        expected_ionosphere_m: f64,
+        receiver_clock_m: f64,
+        oscillator_m: f64,
+        smoothing_transient_m: f64,
+        multipath_m: f64,
+    ) -> Self {
+        let explained_m = expected_ionosphere_m
+            + receiver_clock_m
+            + oscillator_m
+            + smoothing_transient_m
+            + multipath_m;
+        let unexplained_m = jump_m - explained_m;
+        Self {
+            raw_m,
+            jump_m,
+            expected_ionosphere_m,
+            receiver_clock_m,
+            oscillator_m,
+            smoothing_transient_m,
+            multipath_m,
+            unexplained_m,
+        }
+    }
+
+    pub fn unexplained_abs_m(self) -> f64 {
+        self.unexplained_m.abs()
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ObsMetadata {
     pub tracking_mode: String,
@@ -1053,6 +1098,8 @@ pub struct ObsMetadata {
     pub receiver_clock_source: String,
     #[serde(default)]
     pub tracking_uncertainty: Option<TrackingUncertainty>,
+    #[serde(default)]
+    pub code_carrier_divergence: Option<CodeCarrierDivergence>,
 }
 
 impl Default for ObsMetadata {
@@ -1104,6 +1151,7 @@ impl Default for ObsMetadata {
             receiver_clock_bias_sigma_s: Seconds(0.0),
             receiver_clock_source: String::new(),
             tracking_uncertainty: None,
+            code_carrier_divergence: None,
         }
     }
 }
@@ -1604,9 +1652,10 @@ pub(crate) fn melbourne_wubbena_m(
 #[cfg(test)]
 mod tests {
     use super::{
-        acq_result_stability_key, obs_epoch_stability_key, MeasurementErrorModel, ObsEpoch,
-        ObsMetadata, ObsSatellite, ObservationCovarianceStatus, SignalDelayAlignment,
-        TrackingUncertainty, OBSERVATION_DOPPLER_MODEL_TRACKED_CARRIER_IF_OFFSET,
+        acq_result_stability_key, obs_epoch_stability_key, CodeCarrierDivergence,
+        MeasurementErrorModel, ObsEpoch, ObsMetadata, ObsSatellite, ObservationCovarianceStatus,
+        SignalDelayAlignment, TrackingUncertainty,
+        OBSERVATION_DOPPLER_MODEL_TRACKED_CARRIER_IF_OFFSET,
     };
     use crate::api::{
         trackable_acq_tracking_seeds, AcqCodePhaseRefinement, AcqComponentCombinationMode,
@@ -2004,6 +2053,28 @@ mod tests {
         assert_eq!(metadata.receiver_clock_frequency_bias_hz, 0.0);
         assert_eq!(metadata.receiver_clock_bias_sigma_s, crate::api::Seconds(0.0));
         assert_eq!(metadata.receiver_clock_source, "");
+    }
+
+    #[test]
+    fn code_carrier_divergence_residual_tracks_unexplained_component() {
+        let divergence = CodeCarrierDivergence::from_terms(130.0, 12.5, 7.0, 1.5, -0.25, 0.75, 2.0);
+
+        assert_eq!(divergence.raw_m, 130.0);
+        assert_eq!(divergence.jump_m, 12.5);
+        assert_eq!(divergence.expected_ionosphere_m, 7.0);
+        assert_eq!(divergence.receiver_clock_m, 1.5);
+        assert_eq!(divergence.oscillator_m, -0.25);
+        assert_eq!(divergence.smoothing_transient_m, 0.75);
+        assert_eq!(divergence.multipath_m, 2.0);
+        assert_eq!(divergence.unexplained_m, 1.5);
+        assert_eq!(divergence.unexplained_abs_m(), 1.5);
+    }
+
+    #[test]
+    fn obs_metadata_defaults_do_not_invent_code_carrier_divergence() {
+        let metadata = ObsMetadata::default();
+
+        assert_eq!(metadata.code_carrier_divergence, None);
     }
 
     #[test]
