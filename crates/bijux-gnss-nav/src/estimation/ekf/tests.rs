@@ -1,7 +1,7 @@
 #![allow(missing_docs)]
 
 use crate::estimation::ekf::models::PseudorangeMeasurement;
-use crate::estimation::ekf::state::{Ekf, EkfConfig};
+use crate::estimation::ekf::state::{Ekf, EkfCheckpoint, EkfConfig};
 use crate::estimation::ekf::statistics::InnovationConsistencyConfig;
 use crate::linalg::Matrix;
 use bijux_gnss_core::api::{Constellation, SatId, SigId, SignalBand, SignalCode};
@@ -53,6 +53,60 @@ fn ekf_update_runs() {
         isb_index: None,
     };
     assert!(ekf.update(&meas));
+}
+
+#[test]
+fn ekf_add_state_keeps_labels_aligned_with_state_indices() {
+    let mut ekf = Ekf::new(
+        vec![1.0, 2.0],
+        Matrix::identity(2),
+        EkfConfig {
+            gating_chi2_code: None,
+            gating_chi2_phase: None,
+            gating_chi2_doppler: None,
+            innovation_consistency: Some(InnovationConsistencyConfig::default()),
+            huber_k: None,
+            square_root: false,
+            covariance_epsilon: 1e-9,
+            divergence_max_variance: 1e12,
+        },
+    );
+
+    ekf.add_state("clock_bias", 3.0, 4.0);
+
+    assert_eq!(ekf.labels.len(), ekf.x.len());
+    assert_eq!(ekf.labels[0], "");
+    assert_eq!(ekf.labels[1], "");
+    assert_eq!(ekf.labels[2], "clock_bias");
+}
+
+#[test]
+fn ekf_restore_expands_legacy_sparse_labels() {
+    let config = EkfConfig {
+        gating_chi2_code: None,
+        gating_chi2_phase: None,
+        gating_chi2_doppler: None,
+        innovation_consistency: Some(InnovationConsistencyConfig::default()),
+        huber_k: None,
+        square_root: false,
+        covariance_epsilon: 1e-9,
+        divergence_max_variance: 1e12,
+    };
+    let restored = Ekf::restore(
+        EkfCheckpoint {
+            x: vec![1.0, 2.0, 3.0],
+            rows: 3,
+            cols: 3,
+            data: Matrix::identity(3).data().to_vec(),
+            labels: vec!["legacy_dynamic_label".into()],
+        },
+        config,
+    );
+
+    assert_eq!(restored.labels.len(), restored.x.len());
+    assert_eq!(restored.labels[0], "legacy_dynamic_label");
+    assert_eq!(restored.labels[1], "");
+    assert_eq!(restored.labels[2], "");
 }
 
 #[test]

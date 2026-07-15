@@ -8,6 +8,7 @@ use bijux_gnss_core::api::NavHealthEvent;
 
 impl Ekf {
     pub fn new(x: Vec<f64>, p: Matrix, config: EkfConfig) -> Self {
+        let labels = vec![String::new(); x.len()];
         Self {
             x,
             p,
@@ -31,7 +32,7 @@ impl Ekf {
                 innovation_consistency_upper_bound: None,
                 events: Vec::new(),
             },
-            labels: Vec::new(),
+            labels,
         }
     }
 
@@ -46,6 +47,8 @@ impl Ekf {
     }
 
     pub fn restore(checkpoint: EkfCheckpoint, config: EkfConfig) -> Self {
+        let mut labels = checkpoint.labels;
+        labels.resize(checkpoint.x.len(), String::new());
         Self {
             x: checkpoint.x,
             p: Matrix::from_parts(checkpoint.rows, checkpoint.cols, checkpoint.data),
@@ -69,7 +72,7 @@ impl Ekf {
                 innovation_consistency_upper_bound: None,
                 events: Vec::new(),
             },
-            labels: checkpoint.labels,
+            labels,
         }
     }
 
@@ -91,6 +94,7 @@ impl Ekf {
 
     pub fn add_state(&mut self, label: &str, value: f64, variance: f64) {
         let n = self.x.len();
+        self.labels.resize(n, String::new());
         self.x.push(value);
         let mut p_new = Matrix::new(n + 1, n + 1, 0.0);
         for r in 0..n {
