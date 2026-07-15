@@ -22,7 +22,8 @@ use crate::estimation::ekf::state::{Ekf, EkfConfig};
 use crate::estimation::ekf::statistics::InnovationConsistencyConfig;
 use crate::estimation::position::solver::{ecef_to_geodetic, elevation_azimuth_deg};
 use crate::estimation::ppp::config::{
-    PppConvergenceEvidence, PppConvergenceState, PppHealth, PppSolutionEpoch, PppStochasticEvidence,
+    PppConvergenceEvidence, PppConvergenceState, PppHealth, PppLifecycleEvent,
+    PppLifecycleEventKind, PppSolutionEpoch, PppStochasticEvidence,
 };
 use crate::formats::precise_products::{ProductDiagnostics, ProductsProvider};
 use crate::linalg::Matrix;
@@ -180,8 +181,15 @@ impl PppFilter {
             correction_context.add_earth_tide_m(ocean_tide_loading_m);
         }
 
+        let phase_discontinuities = ppp_phase_discontinuities(obs);
+        self.reset_phase_continuity(
+            obs.epoch_idx,
+            &phase_discontinuities.signals,
+            &phase_discontinuities.satellites,
+            "carrier_phase_discontinuity",
+        );
         let sats = ppp_measurement_observations(obs, self.config.use_iono_free);
-        self.ensure_states(&sats);
+        self.ensure_states(&sats, &phase_discontinuities);
         self.update_wide_lane(obs, &sats);
         let fixed_wl = self.try_fix_wide_lane(obs, &sats);
         let corr = compute_corrections(&correction_context);
@@ -309,39 +317,41 @@ impl PppFilter {
                     {
                         used += 1;
                     }
-                    let phase = PppIonoFreePhaseMeasurement {
-                        z_cycles: iono_free.phase_cycles - phase_bias_cycles,
-                        sat_pos_m,
-                        sat_clock_s: clock_bias_s,
-                        antenna_range_correction_m: iono_free_antenna_range_correction_m(
-                            self.config.satellite_antenna_calibrations.as_ref(),
-                            self.config.receiver_antenna_type.as_deref(),
-                            self.config.receiver_antenna_calibrations.as_ref(),
-                            sat.signal_id.sat,
-                            iono_free.band_1,
-                            iono_free.f1_hz,
-                            iono_free.band_2,
-                            iono_free.f2_hz,
-                            obs.gps_time(),
+                    if !phase_discontinuities.satellites.contains(&sat.signal_id.sat) {
+                        let phase = PppIonoFreePhaseMeasurement {
+                            z_cycles: iono_free.phase_cycles - phase_bias_cycles,
                             sat_pos_m,
-                            receiver_pos_m,
-                            el,
-                            Some(az),
-                        ),
-                        sigma_cycles: ppp_iono_free_phase_sigma_cycles(
-                            iono_free.phase_sigma_cycles,
-                            iono_free.phase_wavelength_m,
-                            common_range_sigma_m,
-                            &self.config,
-                        ),
-                        troposphere_mapping,
-                        ztd_index: Some(self.indices.ztd),
-                        isb_index,
-                        ambiguity_index: amb_index,
-                        wavelength_m: iono_free.phase_wavelength_m,
-                        corr: phase_corr.clone(),
-                    };
-                    let _ = self.ekf.update(&phase);
+                            sat_clock_s: clock_bias_s,
+                            antenna_range_correction_m: iono_free_antenna_range_correction_m(
+                                self.config.satellite_antenna_calibrations.as_ref(),
+                                self.config.receiver_antenna_type.as_deref(),
+                                self.config.receiver_antenna_calibrations.as_ref(),
+                                sat.signal_id.sat,
+                                iono_free.band_1,
+                                iono_free.f1_hz,
+                                iono_free.band_2,
+                                iono_free.f2_hz,
+                                obs.gps_time(),
+                                sat_pos_m,
+                                receiver_pos_m,
+                                el,
+                                Some(az),
+                            ),
+                            sigma_cycles: ppp_iono_free_phase_sigma_cycles(
+                                iono_free.phase_sigma_cycles,
+                                iono_free.phase_wavelength_m,
+                                common_range_sigma_m,
+                                &self.config,
+                            ),
+                            troposphere_mapping,
+                            ztd_index: Some(self.indices.ztd),
+                            isb_index,
+                            ambiguity_index: amb_index,
+                            wavelength_m: iono_free.phase_wavelength_m,
+                            corr: phase_corr.clone(),
+                        };
+                        let _ = self.ekf.update(&phase);
+                    }
                 }
             } else {
                 let code = PppCodeMeasurement {
@@ -373,38 +383,40 @@ impl PppFilter {
                 {
                     used += 1;
                 }
-                let phase = PppPhaseMeasurement {
-                    z_cycles: sat.carrier_phase_cycles.0 - phase_bias_cycles,
-                    sat_pos_m,
-                    sat_clock_s: clock_bias_s,
-                    antenna_range_correction_m: single_frequency_antenna_range_correction_m(
-                        self.config.satellite_antenna_calibrations.as_ref(),
-                        self.config.receiver_antenna_type.as_deref(),
-                        self.config.receiver_antenna_calibrations.as_ref(),
-                        sat.signal_id.sat,
-                        sat.signal_id.band,
-                        obs.gps_time(),
+                if carrier_phase_usable(sat) {
+                    let phase = PppPhaseMeasurement {
+                        z_cycles: sat.carrier_phase_cycles.0 - phase_bias_cycles,
                         sat_pos_m,
-                        receiver_pos_m,
-                        el,
-                        Some(az),
-                    ),
-                    sigma_cycles: ppp_phase_sigma_cycles(
-                        sat,
-                        signal_wavelength_m(sat.metadata.signal).0,
-                        common_range_sigma_m,
-                        &self.config,
-                    ),
-                    troposphere_mapping,
-                    ionosphere_scale,
-                    iono_index,
-                    ztd_index: Some(self.indices.ztd),
-                    isb_index,
-                    ambiguity_index: amb_index,
-                    corr: phase_corr.clone(),
-                    wavelength_m: signal_wavelength_m(sat.metadata.signal).0,
-                };
-                let _ = self.ekf.update(&phase);
+                        sat_clock_s: clock_bias_s,
+                        antenna_range_correction_m: single_frequency_antenna_range_correction_m(
+                            self.config.satellite_antenna_calibrations.as_ref(),
+                            self.config.receiver_antenna_type.as_deref(),
+                            self.config.receiver_antenna_calibrations.as_ref(),
+                            sat.signal_id.sat,
+                            sat.signal_id.band,
+                            obs.gps_time(),
+                            sat_pos_m,
+                            receiver_pos_m,
+                            el,
+                            Some(az),
+                        ),
+                        sigma_cycles: ppp_phase_sigma_cycles(
+                            sat,
+                            signal_wavelength_m(sat.metadata.signal).0,
+                            common_range_sigma_m,
+                            &self.config,
+                        ),
+                        troposphere_mapping,
+                        ionosphere_scale,
+                        iono_index,
+                        ztd_index: Some(self.indices.ztd),
+                        isb_index,
+                        ambiguity_index: amb_index,
+                        corr: phase_corr.clone(),
+                        wavelength_m: signal_wavelength_m(sat.metadata.signal).0,
+                    };
+                    let _ = self.ekf.update(&phase);
+                }
             }
 
             residuals.push((sat.signal_id, self.ekf.health.innovation_rms));
@@ -564,7 +576,7 @@ impl PppFilter {
         Some((state, clock_correction.bias_s, fallback))
     }
 
-    fn ensure_states(&mut self, sats: &[&ObsSatellite]) {
+    fn ensure_states(&mut self, sats: &[&ObsSatellite], phase_discontinuities: &PppPhaseBreaks) {
         let mut new_isb: BTreeSet<Constellation> = BTreeSet::new();
         let mut new_iono: BTreeSet<SatId> = BTreeSet::new();
         let mut new_amb: BTreeSet<SigId> = BTreeSet::new();
@@ -576,7 +588,10 @@ impl PppFilter {
             {
                 new_iono.insert(sat.signal_id.sat);
             }
-            if !self.indices.ambiguity.contains_key(&sat.signal_id) {
+            if carrier_phase_usable(sat)
+                && !phase_discontinuities.satellites.contains(&sat.signal_id.sat)
+                && !self.indices.ambiguity.contains_key(&sat.signal_id)
+            {
                 new_amb.insert(sat.signal_id);
             }
         }
@@ -602,6 +617,51 @@ impl PppFilter {
             self.indices.ambiguity.insert(sig, idx);
         }
         self.validate_state_layout("state_creation");
+    }
+
+    fn reset_phase_continuity(
+        &mut self,
+        epoch_idx: u64,
+        discontinuity_signals: &BTreeSet<SigId>,
+        discontinuity_satellites: &BTreeSet<SatId>,
+        reason: &str,
+    ) -> usize {
+        if discontinuity_signals.is_empty() && discontinuity_satellites.is_empty() {
+            return 0;
+        }
+        let affected_signals = self
+            .indices
+            .ambiguity
+            .keys()
+            .copied()
+            .filter(|signal| {
+                discontinuity_signals.contains(signal)
+                    || discontinuity_satellites.contains(&signal.sat)
+            })
+            .collect::<Vec<_>>();
+        let mut removed_state_identities = BTreeSet::new();
+        for signal in &affected_signals {
+            self.indices.ambiguity.remove(signal);
+            self.last_seen_amb.remove(signal);
+            removed_state_identities.insert(PppStateIdentity::CarrierAmbiguity(*signal));
+        }
+        for sat in discontinuity_satellites {
+            self.phase_windup.remove(sat);
+            self.wl_state.remove(sat);
+        }
+        let removed_states = removed_state_identities.iter().copied().collect::<Vec<_>>();
+        let removed_count = self.remove_state_identities(&removed_state_identities);
+        for signal in discontinuity_signals {
+            self.health.lifecycle_events.push(PppLifecycleEvent {
+                kind: PppLifecycleEventKind::CarrierDiscontinuity,
+                epoch_idx: Some(epoch_idx),
+                sat: Some(signal.sat),
+                signal: Some(*signal),
+                removed_states: removed_states.clone(),
+                reason: reason.to_string(),
+            });
+        }
+        removed_count
     }
 
     fn predict(&mut self, dt_s: f64) {
@@ -798,6 +858,27 @@ fn ppp_measurement_observations(obs: &ObsEpoch, use_iono_free: bool) -> Vec<&Obs
     } else {
         sats
     }
+}
+
+#[derive(Debug, Clone, Default)]
+struct PppPhaseBreaks {
+    signals: BTreeSet<SigId>,
+    satellites: BTreeSet<SatId>,
+}
+
+fn carrier_phase_usable(sat: &ObsSatellite) -> bool {
+    sat.lock_flags.carrier_lock && !sat.lock_flags.cycle_slip
+}
+
+fn ppp_phase_discontinuities(obs: &ObsEpoch) -> PppPhaseBreaks {
+    let mut breaks = PppPhaseBreaks::default();
+    for sat in &obs.sats {
+        if !carrier_phase_usable(sat) {
+            breaks.signals.insert(sat.signal_id);
+            breaks.satellites.insert(sat.signal_id.sat);
+        }
+    }
+    breaks
 }
 
 fn product_reference_time_s(obs: &ObsEpoch) -> f64 {
@@ -1307,7 +1388,7 @@ mod tests {
         phase_windup_cycles_for_satellite, ppp_code_sigma_m, ppp_common_range_sigma_m,
         ppp_phase_sigma_cycles, ppp_stochastic_evidence_from_config, resolved_code_bias_m,
         resolved_iono_free_code_bias_m, single_frequency_antenna_range_correction_m, PppFilter,
-        SPEED_OF_LIGHT_MPS,
+        PppPhaseBreaks, SPEED_OF_LIGHT_MPS,
     };
     use crate::api::{
         ecef_to_geodetic, elevation_azimuth_deg, geodetic_to_ecef, BroadcastProductsProvider,
@@ -1318,7 +1399,8 @@ mod tests {
         SolidEarthTideModel,
     };
     use crate::corrections::biases::{CodeBias, CodeBiasProvider, SignalCodeBiases};
-    use crate::estimation::ppp::config::PppMeasurementNoise;
+    use crate::corrections::phase_windup::PhaseWindupState;
+    use crate::estimation::ppp::config::{PppLifecycleEventKind, PppMeasurementNoise, WlAmbiguity};
     use crate::estimation::ppp::measurements::iono_free_code_observation_from_obs;
     use crate::models::antenna::{
         AntennaPhaseCenterVariation, ReceiverAntennaCalibration, ReceiverAntennaCalibrations,
@@ -1596,7 +1678,7 @@ mod tests {
         let mut filter =
             PppFilter::new(PppConfig { enable_iono_state: true, ..PppConfig::default() });
 
-        filter.ensure_states(&[&gps, &galileo]);
+        filter.ensure_states(&[&gps, &galileo], &PppPhaseBreaks::default());
 
         assert_eq!(filter.ekf.x.len(), filter.state_identities.len());
         assert_eq!(filter.ekf.labels.len(), filter.state_identities.len());
@@ -1721,7 +1803,7 @@ mod tests {
             ..PppConfig::default()
         });
 
-        filter.ensure_states(&[&l1, &l2]);
+        filter.ensure_states(&[&l1, &l2], &PppPhaseBreaks::default());
 
         assert_eq!(filter.indices.iono.len(), 1);
         assert!(filter.indices.iono.contains_key(&sat));
@@ -1752,7 +1834,7 @@ mod tests {
             enable_iono_state: true,
             ..PppConfig::default()
         });
-        filter.ensure_states(&[&l1, &l2]);
+        filter.ensure_states(&[&l1, &l2], &PppPhaseBreaks::default());
 
         let solution = filter.solution_epoch(
             5,
@@ -1776,7 +1858,7 @@ mod tests {
         let retained = ppp_test_satellite(SatId { constellation: Constellation::Gps, prn: 11 });
         let mut filter =
             PppFilter::new(PppConfig { enable_iono_state: true, ..PppConfig::default() });
-        filter.ensure_states(&[&stale, &retained]);
+        filter.ensure_states(&[&stale, &retained], &PppPhaseBreaks::default());
         let retained_ambiguity_index = filter.indices.ambiguity[&retained.signal_id];
         let retained_iono_index = filter.indices.iono[&retained.signal_id.sat];
         filter.ekf.x[retained_ambiguity_index] = 42.0;
@@ -1806,6 +1888,53 @@ mod tests {
             super::PppStateIdentity::CarrierAmbiguity(retained.signal_id)
         );
         assert_eq!(filter.ekf.labels.len(), filter.ekf.x.len());
+    }
+
+    #[test]
+    fn ppp_filter_does_not_create_ambiguity_for_slipped_phase() {
+        let mut slipped = ppp_test_satellite(SatId { constellation: Constellation::Gps, prn: 17 });
+        slipped.lock_flags.cycle_slip = true;
+        let mut phase_breaks = PppPhaseBreaks::default();
+        phase_breaks.signals.insert(slipped.signal_id);
+        phase_breaks.satellites.insert(slipped.signal_id.sat);
+        let mut filter = PppFilter::new(PppConfig::default());
+
+        filter.ensure_states(&[&slipped], &phase_breaks);
+
+        assert!(!filter.indices.ambiguity.contains_key(&slipped.signal_id));
+        assert!(!filter.state_identities.iter().any(|identity| {
+            *identity == super::PppStateIdentity::CarrierAmbiguity(slipped.signal_id)
+        }));
+    }
+
+    #[test]
+    fn ppp_filter_resets_phase_state_on_carrier_discontinuity() {
+        let observation = ppp_test_satellite(SatId { constellation: Constellation::Gps, prn: 18 });
+        let sig = observation.signal_id;
+        let mut filter = PppFilter::new(PppConfig::default());
+        filter.ensure_states(&[&observation], &PppPhaseBreaks::default());
+        filter.phase_windup.insert(sig.sat, PhaseWindupState { previous_cycles: Some(0.25) });
+        filter.wl_state.insert(
+            sig.sat,
+            WlAmbiguity { float_cycles: 8.0, variance: 0.2, fixed: true, last_update_epoch: 2 },
+        );
+        let mut signals = BTreeSet::new();
+        signals.insert(sig);
+        let mut satellites = BTreeSet::new();
+        satellites.insert(sig.sat);
+
+        let removed = filter.reset_phase_continuity(9, &signals, &satellites, "cycle_slip");
+
+        assert_eq!(removed, 1);
+        assert!(!filter.indices.ambiguity.contains_key(&sig));
+        assert!(!filter.phase_windup.contains_key(&sig.sat));
+        assert!(!filter.wl_state.contains_key(&sig.sat));
+        assert!(filter.health.lifecycle_events.iter().any(|event| {
+            event.kind == PppLifecycleEventKind::CarrierDiscontinuity
+                && event.epoch_idx == Some(9)
+                && event.signal == Some(sig)
+                && event.removed_states == vec![super::PppStateIdentity::CarrierAmbiguity(sig)]
+        }));
     }
 
     #[test]
