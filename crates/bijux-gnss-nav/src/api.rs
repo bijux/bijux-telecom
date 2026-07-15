@@ -299,11 +299,11 @@ pub use crate::time::{
     beidou_to_gps_with_offset, format_utc_civil_time, galileo_to_gps_with_offset,
     glonass_to_gps_with_offset, glonass_to_utc_with_offset, gps_time_from_utc,
     gps_to_beidou_with_offset, gps_to_galileo_with_offset, gps_to_glonass_with_offset,
-    gps_to_utc_with_offset, gps_week_rollover, normalize_tow, parse_utc_civil_time,
-    tai_to_utc_with_offset, utc_to_glonass_with_offset, utc_to_gps_with_offset,
-    utc_to_tai_with_offset, BeidouTime, GalileoGpsTimeOffset, GalileoTime, GlonassTime,
-    GlonassUtcOffset, GnssTimeSystem, TimeConversion, TimeOffsetEvidence, TimeOffsetSource,
-    UtcCivilTime, UtcCivilTimeError,
+    gps_to_utc_civil_with_offset, gps_to_utc_with_offset, gps_week_rollover, normalize_tow,
+    parse_utc_civil_time, tai_to_utc_with_offset, utc_civil_to_gps_with_offset,
+    utc_to_glonass_with_offset, utc_to_gps_with_offset, utc_to_tai_with_offset, BeidouTime,
+    GalileoGpsTimeOffset, GalileoTime, GlonassTime, GlonassUtcOffset, GnssTimeSystem,
+    TimeConversion, TimeOffsetEvidence, TimeOffsetSource, UtcCivilTime, UtcCivilTimeError,
 };
 
 /// Navigation engine trait boundary.

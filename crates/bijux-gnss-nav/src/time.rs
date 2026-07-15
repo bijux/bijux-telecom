@@ -4,6 +4,7 @@ use bijux_gnss_core::api::{gps_to_utc, utc_to_gps, GpsTime, LeapSeconds, TaiTime
 use serde::{Deserialize, Serialize};
 
 const UTC_TAI_EPOCH_OFFSET_S: f64 = 19.0;
+const GPS_UNIX_EPOCH_OFFSET_S: f64 = 315_964_800.0;
 const WEEK_SECONDS: f64 = 604_800.0;
 const BEIDOU_EPOCH_GPS_SECONDS: f64 = 1_356.0 * WEEK_SECONDS + 14.0;
 const BEIDOU_GPS_OFFSET_S: f64 = 14.0;
@@ -324,6 +325,68 @@ pub fn gps_to_utc_with_offset(gps: GpsTime, leap: &LeapSeconds) -> TimeConversio
     }
 }
 
+pub fn utc_civil_to_gps_with_offset(
+    civil: UtcCivilTime,
+    leap: &LeapSeconds,
+) -> Result<TimeConversion<GpsTime>, UtcCivilTimeError> {
+    if civil.second != 60 {
+        return Ok(utc_to_gps_with_offset(civil.to_utc_time()?, leap));
+    }
+
+    civil.validate_leap_second(leap)?;
+    let leap_boundary_unix_s = leap_boundary_unix_seconds(civil);
+    let entry = leap
+        .entries
+        .iter()
+        .find(|entry| entry.utc_unix_s == leap_boundary_unix_s)
+        .ok_or(UtcCivilTimeError::LeapSecondNotDeclared)?;
+    let offset_s = entry.offset_s - 1;
+    let gps_seconds = leap_boundary_unix_s as f64 - GPS_UNIX_EPOCH_OFFSET_S
+        + offset_s as f64
+        + civil.nanosecond as f64 / 1_000_000_000.0;
+
+    Ok(TimeConversion {
+        time: GpsTime::from_seconds(gps_seconds),
+        offset: TimeOffsetEvidence {
+            from: GnssTimeSystem::Utc,
+            to: GnssTimeSystem::Gpst,
+            offset_s: offset_s as f64,
+            source: TimeOffsetSource::LeapSecondTable,
+            source_detail: "GPS-UTC across declared inserted UTC second".to_string(),
+        },
+    })
+}
+
+pub fn gps_to_utc_civil_with_offset(
+    gps: GpsTime,
+    leap: &LeapSeconds,
+) -> TimeConversion<UtcCivilTime> {
+    let gps_unix_like_s = gps.to_seconds() + GPS_UNIX_EPOCH_OFFSET_S;
+    for entry in &leap.entries {
+        let previous_offset_s = entry.offset_s - 1;
+        let inserted_start_s = entry.utc_unix_s as f64 + previous_offset_s as f64;
+        let inserted_end_s = entry.utc_unix_s as f64 + entry.offset_s as f64;
+        if gps_unix_like_s >= inserted_start_s && gps_unix_like_s < inserted_end_s {
+            let (year, month, day, hour, minute, _) = civil_from_unix_seconds(entry.utc_unix_s - 1);
+            let nanosecond =
+                ((gps_unix_like_s - inserted_start_s) * 1_000_000_000.0).round() as u32;
+            return TimeConversion {
+                time: UtcCivilTime { year, month, day, hour, minute, second: 60, nanosecond },
+                offset: TimeOffsetEvidence {
+                    from: GnssTimeSystem::Gpst,
+                    to: GnssTimeSystem::Utc,
+                    offset_s: -(previous_offset_s as f64),
+                    source: TimeOffsetSource::LeapSecondTable,
+                    source_detail: "UTC-GPS across declared inserted UTC second".to_string(),
+                },
+            };
+        }
+    }
+
+    let conversion = gps_to_utc_with_offset(gps, leap);
+    TimeConversion { time: UtcCivilTime::from_utc_time(conversion.time), offset: conversion.offset }
+}
+
 pub fn utc_to_tai_with_offset(utc: UtcTime, leap: &LeapSeconds) -> TimeConversion<TaiTime> {
     let offset_s = UTC_TAI_EPOCH_OFFSET_S + leap.offset_at_utc(utc.unix_s) as f64;
     TimeConversion {
@@ -531,6 +594,10 @@ fn parse_nanosecond(value: &str) -> Result<u32, UtcCivilTimeError> {
     padded.parse().map_err(|_| UtcCivilTimeError::InvalidFormat)
 }
 
+fn leap_boundary_unix_seconds(civil: UtcCivilTime) -> i64 {
+    unix_seconds_from_civil(civil.year, civil.month, civil.day, civil.hour, civil.minute, 59) + 1
+}
+
 fn valid_date(year: i32, month: u8, day: u8) -> bool {
     if !(1..=12).contains(&month) {
         return false;
@@ -600,10 +667,11 @@ mod tests {
     use super::{
         beidou_to_gps_with_offset, galileo_to_gps_with_offset, glonass_to_gps_with_offset,
         glonass_to_utc_with_offset, gps_to_beidou_with_offset, gps_to_galileo_with_offset,
-        gps_to_glonass_with_offset, gps_to_utc_with_offset, gps_week_rollover,
-        tai_to_utc_with_offset, utc_to_glonass_with_offset, utc_to_gps_with_offset,
-        utc_to_tai_with_offset, BeidouTime, GalileoGpsTimeOffset, GalileoTime, GlonassTime,
-        GlonassUtcOffset, GnssTimeSystem, TimeOffsetSource, UtcCivilTime, UtcCivilTimeError,
+        gps_to_glonass_with_offset, gps_to_utc_civil_with_offset, gps_to_utc_with_offset,
+        gps_week_rollover, tai_to_utc_with_offset, utc_civil_to_gps_with_offset,
+        utc_to_glonass_with_offset, utc_to_gps_with_offset, utc_to_tai_with_offset, BeidouTime,
+        GalileoGpsTimeOffset, GalileoTime, GlonassTime, GlonassUtcOffset, GnssTimeSystem,
+        TimeOffsetSource, UtcCivilTime, UtcCivilTimeError,
     };
     use bijux_gnss_core::api::{GpsTime, LeapSeconds, TaiTime, UtcTime};
 
@@ -816,5 +884,45 @@ mod tests {
 
         assert_eq!(civil.nanosecond, 125_000_000);
         assert_eq!(formatted, "2026-07-15T12:34:56.125Z");
+    }
+
+    #[test]
+    fn utc_civil_leap_second_maps_to_unique_gps_second() {
+        let leap = LeapSeconds::default_table();
+        let before = utc_civil_to_gps_with_offset(
+            UtcCivilTime::parse("2016-12-31T23:59:59Z").expect("before"),
+            &leap,
+        )
+        .expect("before gps");
+        let inserted = utc_civil_to_gps_with_offset(
+            UtcCivilTime::parse("2016-12-31T23:59:60Z").expect("inserted"),
+            &leap,
+        )
+        .expect("inserted gps");
+        let after = utc_civil_to_gps_with_offset(
+            UtcCivilTime::parse("2017-01-01T00:00:00Z").expect("after"),
+            &leap,
+        )
+        .expect("after gps");
+
+        assert_eq!(inserted.offset.offset_s, 17.0);
+        assert!((inserted.time.to_seconds() - before.time.to_seconds() - 1.0).abs() < 1.0e-9);
+        assert!((after.time.to_seconds() - inserted.time.to_seconds() - 1.0).abs() < 1.0e-9);
+    }
+
+    #[test]
+    fn gps_time_inside_leap_second_formats_as_inserted_utc_second() {
+        let leap = LeapSeconds::default_table();
+        let inserted = utc_civil_to_gps_with_offset(
+            UtcCivilTime::parse("2016-12-31T23:59:60.5Z").expect("inserted"),
+            &leap,
+        )
+        .expect("inserted gps");
+        let round_trip = gps_to_utc_civil_with_offset(inserted.time, &leap);
+        let after = gps_to_utc_civil_with_offset(GpsTime { week: 1930, tow_s: 18.0 }, &leap);
+
+        assert_eq!(round_trip.time.format_utc(), "2016-12-31T23:59:60.5Z");
+        assert_eq!(round_trip.offset.offset_s, -17.0);
+        assert_eq!(after.time.format_utc(), "2017-01-01T00:00:00Z");
     }
 }
