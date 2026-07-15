@@ -181,11 +181,7 @@ impl PppFilter {
             correction_context.add_earth_tide_m(ocean_tide_loading_m);
         }
 
-        let mut sats: Vec<&ObsSatellite> = obs.sats.iter().collect();
-        sats.sort_by_key(|s| s.signal_id);
-        if self.config.use_iono_free {
-            sats = iono_free_satellite_representatives(&sats);
-        }
+        let sats = ppp_measurement_observations(obs, self.config.use_iono_free);
         self.ensure_states(&sats);
         self.update_wide_lane(obs, &sats);
         let fixed_wl = self.try_fix_wide_lane(obs, &sats);
@@ -764,6 +760,16 @@ fn iono_free_satellite_representatives<'a>(sats: &[&'a ObsSatellite]) -> Vec<&'a
         }
     }
     representatives
+}
+
+fn ppp_measurement_observations(obs: &ObsEpoch, use_iono_free: bool) -> Vec<&ObsSatellite> {
+    let mut sats: Vec<&ObsSatellite> = obs.sats.iter().collect();
+    sats.sort_by_key(|s| s.signal_id);
+    if use_iono_free {
+        iono_free_satellite_representatives(&sats)
+    } else {
+        sats
+    }
 }
 
 fn product_reference_time_s(obs: &ObsEpoch) -> f64 {
@@ -1421,6 +1427,24 @@ mod tests {
         observation
     }
 
+    fn ppp_test_epoch(sats: Vec<ObsSatellite>) -> ObsEpoch {
+        ObsEpoch {
+            t_rx_s: Seconds(0.0),
+            source_time: ReceiverSampleTrace::from_sample_index(0, 1_000.0),
+            gps_week: Some(2200),
+            tow_s: Some(Seconds(0.0)),
+            epoch_idx: 0,
+            discontinuity: false,
+            valid: true,
+            processing_ms: None,
+            role: ReceiverRole::Rover,
+            sats,
+            decision: ObservationEpochDecision::Accepted,
+            decision_reason: Some("accepted_observables_present".to_string()),
+            manifest: None,
+        }
+    }
+
     #[test]
     fn ppp_filter_aligns_dynamic_state_identities_with_indices() {
         let gps = ppp_test_satellite(SatId { constellation: Constellation::Gps, prn: 7 });
@@ -1454,6 +1478,23 @@ mod tests {
                 super::PppStateIdentity::CarrierAmbiguity(*sig)
             );
         }
+    }
+
+    #[test]
+    fn ppp_measurement_observations_keep_direct_signals_for_uncombined_mode() {
+        let sat = SatId { constellation: Constellation::Gps, prn: 7 };
+        let l1 = ppp_test_signal_satellite(sat, SignalBand::L1, SignalCode::Ca);
+        let l2 = ppp_test_signal_satellite(sat, SignalBand::L2, SignalCode::Py);
+        let obs = ppp_test_epoch(vec![l2.clone(), l1.clone()]);
+
+        let direct = super::ppp_measurement_observations(&obs, false);
+        let iono_free = super::ppp_measurement_observations(&obs, true);
+
+        assert_eq!(direct.len(), 2);
+        assert_eq!(direct[0].signal_id, l1.signal_id);
+        assert_eq!(direct[1].signal_id, l2.signal_id);
+        assert_eq!(iono_free.len(), 1);
+        assert_eq!(iono_free[0].signal_id.sat, sat);
     }
 
     #[test]
