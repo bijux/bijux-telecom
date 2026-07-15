@@ -816,6 +816,23 @@ pub fn observation_artifacts_from_tracking_results_with_gps_anchor(
                 let raw_pseudorange_m = sat.pseudorange_m.0;
                 raw_snapshots
                     .insert(snapshot_key, raw_observation_snapshot(&sat, raw_pseudorange_m));
+                let Some(carrier_phase_arc_id) = sat
+                    .metadata
+                    .carrier_phase_arc
+                    .as_ref()
+                    .filter(|arc| arc.valid_for_smoothing)
+                    .map(|arc| arc.id.clone())
+                else {
+                    state.clear_arc();
+                    sat.metadata.smoothing_window = hatch_window;
+                    sat.metadata.smoothing_age = 0;
+                    sat.metadata.smoothing_resets = state.reset_count();
+                    sat.error_model = observation_error_model(&sat, 0.0);
+                    apply_pseudorange_physics_rejection(&mut sat);
+                    entry.sats.push(sat);
+                    continue;
+                };
+                state.align_carrier_phase_arc(&carrier_phase_arc_id);
                 let raw_divergence_m = raw_pseudorange_m
                     - signal_cycles_to_meters(sat.carrier_phase_cycles, sat.metadata.signal).0;
                 let threshold_m = slip_threshold_m(sat.cn0_dbhz, sat.elevation_deg);
@@ -838,6 +855,7 @@ pub fn observation_artifacts_from_tracking_results_with_gps_anchor(
                 apply_cycle_slip_surface(&mut sat, smoothing_cycle_slip_reason);
                 if sat.lock_flags.cycle_slip {
                     state.clear_arc();
+                    state.align_carrier_phase_arc(&carrier_phase_arc_id);
                 }
                 let smoothing = state.observe(
                     raw_pseudorange_m,
@@ -4259,6 +4277,65 @@ mod tests {
         );
         assert!((slipped.pseudorange_m.0 - expected_raw).abs() <= f64::EPSILON);
         assert_eq!(post_slip.metadata.smoothing_age, 2);
+    }
+
+    #[test]
+    fn observations_refuse_hatch_smoothing_across_invalid_carrier_phase_arc() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 1_023_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 1023,
+            ..ReceiverPipelineConfig::default()
+        };
+        let carrier_hz = crate::pipeline::doppler::carrier_hz_from_doppler_hz(0.0, 125.0);
+        let carrier_invalid = TrackEpoch {
+            pll_lock: false,
+            lock_state: "degraded".to_string(),
+            lock_state_reason: Some("carrier_loop_unstable".to_string()),
+            ..make_tracking_epoch_with_alignment(21, &config, 71, carrier_hz, 10.125, 68, 0.01)
+        };
+        let track = TrackingResult {
+            sat: SatId { constellation: Constellation::Gps, prn: 21 },
+            carrier_hz,
+            code_phase_samples: 0.0,
+            acquisition_hypothesis: "accepted".to_string(),
+            acquisition_score: 1.0,
+            acquisition_code_phase_samples: 0,
+            acquisition_carrier_hz: carrier_hz,
+            acq_to_track_state: "accepted".to_string(),
+            epochs: vec![
+                make_tracking_epoch_with_alignment(21, &config, 70, carrier_hz, 10.0, 68, 0.0),
+                carrier_invalid,
+                make_tracking_epoch_with_alignment(21, &config, 72, carrier_hz, 0.5, 68, 0.02),
+            ],
+            transitions: Vec::new(),
+        };
+
+        let report = observations_from_tracking_results(&config, &[track], 10);
+        let sats = report.output.iter().map(|epoch| &epoch.sats[0]).collect::<Vec<_>>();
+        let first_arc =
+            sats[0].metadata.carrier_phase_arc.as_ref().expect("first carrier-phase arc");
+        let invalid_arc =
+            sats[1].metadata.carrier_phase_arc.as_ref().expect("invalid carrier-phase boundary");
+        let reset_arc =
+            sats[2].metadata.carrier_phase_arc.as_ref().expect("reset carrier-phase arc");
+
+        assert_eq!(
+            sats.iter().map(|sat| sat.metadata.smoothing_age).collect::<Vec<_>>(),
+            vec![1, 0, 1]
+        );
+        assert_eq!(
+            sats.iter().map(|sat| sat.metadata.smoothing_resets).collect::<Vec<_>>(),
+            vec![0, 1, 1]
+        );
+        assert_eq!(sats[1].metadata.carrier_phase_continuity, "unusable");
+        assert_eq!(invalid_arc.start_reason, "loss_of_lock");
+        assert!(!invalid_arc.valid_for_smoothing);
+        assert_ne!(first_arc.id, invalid_arc.id);
+        assert_eq!(sats[2].metadata.carrier_phase_continuity, "reset_after_unlock");
+        assert!(reset_arc.valid_for_smoothing);
+        assert_ne!(invalid_arc.id, reset_arc.id);
     }
 
     #[test]

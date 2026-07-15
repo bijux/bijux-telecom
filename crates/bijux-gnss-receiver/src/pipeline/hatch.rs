@@ -15,6 +15,7 @@ pub(crate) struct HatchFilterState {
     last_divergence_m: f64,
     smoothing_age_epochs: u32,
     reset_count: u32,
+    carrier_phase_arc_id: Option<String>,
     initialized: bool,
 }
 
@@ -30,6 +31,14 @@ impl HatchFilterState {
         self.initialized = false;
         self.observation_count = 0;
         self.smoothing_age_epochs = 0;
+        self.carrier_phase_arc_id = None;
+    }
+
+    pub(crate) fn align_carrier_phase_arc(&mut self, arc_id: &str) {
+        if self.carrier_phase_arc_id.as_deref() != Some(arc_id) {
+            self.clear_arc();
+            self.carrier_phase_arc_id = Some(arc_id.to_string());
+        }
     }
 
     pub(crate) fn divergence_delta_m(&self, raw_divergence_m: f64) -> Option<f64> {
@@ -71,5 +80,43 @@ impl HatchFilterState {
             smoothing_age_epochs: self.smoothing_age_epochs,
             reset_count: self.reset_count,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::HatchFilterState;
+
+    #[test]
+    fn hatch_filter_resets_when_carrier_phase_arc_changes() {
+        let mut state = HatchFilterState::default();
+
+        state.align_carrier_phase_arc("gps-06-l1-ca-e0000000070-s000000286440");
+        let first = state.observe(20_000_000.0, 10.0, 0.0, 0.19, 10);
+        let second = state.observe(20_000_001.0, 10.5, 0.0, 0.19, 10);
+
+        assert_eq!(first.smoothing_age_epochs, 1);
+        assert_eq!(second.smoothing_age_epochs, 2);
+        assert_eq!(second.reset_count, 0);
+
+        state.align_carrier_phase_arc("gps-06-l1-ca-e0000000072-s000000294624");
+        let reset = state.observe(20_000_010.0, 1.0, 0.0, 0.19, 10);
+
+        assert_eq!(reset.smoothing_age_epochs, 1);
+        assert_eq!(reset.reset_count, 1);
+    }
+
+    #[test]
+    fn hatch_filter_keeps_state_for_same_carrier_phase_arc() {
+        let mut state = HatchFilterState::default();
+
+        state.align_carrier_phase_arc("gps-06-l1-ca-e0000000070-s000000286440");
+        let first = state.observe(20_000_000.0, 10.0, 0.0, 0.19, 10);
+        state.align_carrier_phase_arc("gps-06-l1-ca-e0000000070-s000000286440");
+        let second = state.observe(20_000_001.0, 10.5, 0.0, 0.19, 10);
+
+        assert_eq!(first.smoothing_age_epochs, 1);
+        assert_eq!(second.smoothing_age_epochs, 2);
+        assert_eq!(second.reset_count, 0);
     }
 }
