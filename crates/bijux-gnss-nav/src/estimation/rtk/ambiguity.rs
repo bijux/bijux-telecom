@@ -376,21 +376,19 @@ pub fn rtk_transform_fixed_ambiguity_reference(
     if fixed_ids.len() != fixed_integers.len() || fixed_ids.is_empty() {
         return None;
     }
-    let float = RtkFloatAmbiguityState {
-        ids: fixed_ids.to_vec(),
-        float_cycles: fixed_integers.iter().map(|value| *value as f64).collect(),
-        covariance_cycles2: identity_rows(fixed_ids.len()),
-    };
-    let transformed = rtk_transform_float_ambiguity_reference(&float, new_ref_sig)?;
-    let mut integers = Vec::with_capacity(transformed.float_cycles.len());
-    for value in transformed.float_cycles {
+    let transform = reference_switch_transform_from_ids(fixed_ids, new_ref_sig)?;
+    let fixed_vector =
+        column_matrix(&fixed_integers.iter().map(|value| *value as f64).collect::<Vec<_>>());
+    let transformed = transform.coefficients.mul(&fixed_vector);
+    let mut integers = Vec::with_capacity(transform.ids.len());
+    for value in matrix_column_values(&transformed) {
         let integer = value.round();
         if (value - integer).abs() > 1.0e-9 {
             return None;
         }
         integers.push(integer as i64);
     }
-    Some((transformed.ids, integers))
+    Some((transform.ids, integers))
 }
 
 pub fn rtk_float_ambiguity_state_from_filter_state(
@@ -492,26 +490,33 @@ fn reference_switch_transform(
     if !float.validate_payload().is_empty() {
         return None;
     }
-    let old_ref_sig = common_reference_signal(&float.ids)?;
+    reference_switch_transform_from_ids(&float.ids, new_ref_sig)
+}
+
+fn reference_switch_transform_from_ids(
+    ids: &[RtkDoubleDifferenceAmbiguityId],
+    new_ref_sig: SigId,
+) -> Option<ReferenceSwitchTransform> {
+    let old_ref_sig = common_reference_signal(ids)?;
     if new_ref_sig == old_ref_sig {
         return Some(ReferenceSwitchTransform {
-            ids: float.ids.clone(),
-            coefficients: Matrix::identity(float.ids.len()),
+            ids: ids.to_vec(),
+            coefficients: Matrix::identity(ids.len()),
         });
     }
     let old_index_by_sig =
-        float.ids.iter().enumerate().map(|(index, id)| (id.sig, index)).collect::<BTreeMap<_, _>>();
+        ids.iter().enumerate().map(|(index, id)| (id.sig, index)).collect::<BTreeMap<_, _>>();
     let Some(&new_ref_old_index) = old_index_by_sig.get(&new_ref_sig) else {
         return None;
     };
 
-    let mut output_signals = float.ids.iter().map(|id| id.sig).collect::<Vec<_>>();
+    let mut output_signals = ids.iter().map(|id| id.sig).collect::<Vec<_>>();
     output_signals.push(old_ref_sig);
     output_signals.retain(|sig| *sig != new_ref_sig);
     output_signals.sort();
     output_signals.dedup();
 
-    let mut coefficients = Matrix::new(output_signals.len(), float.ids.len(), 0.0);
+    let mut coefficients = Matrix::new(output_signals.len(), ids.len(), 0.0);
     let mut ids = Vec::with_capacity(output_signals.len());
     for (row, sig) in output_signals.iter().copied().enumerate() {
         ids.push(RtkDoubleDifferenceAmbiguityId { sig, ref_sig: new_ref_sig });
@@ -730,10 +735,6 @@ fn matrix_rows(matrix: &Matrix) -> Vec<Vec<f64>> {
     (0..matrix.rows())
         .map(|row| (0..matrix.cols()).map(|col| matrix[(row, col)]).collect())
         .collect()
-}
-
-fn identity_rows(size: usize) -> Vec<Vec<f64>> {
-    (0..size).map(|row| (0..size).map(|col| if row == col { 1.0 } else { 0.0 }).collect()).collect()
 }
 
 fn matrix_from_covariance_3x3(covariance: [[f64; 3]; 3]) -> Matrix {
