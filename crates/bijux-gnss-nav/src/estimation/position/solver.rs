@@ -17,7 +17,7 @@ use super::navigation::{
 };
 use super::raim::{
     formal_protection_levels, PositionProtectionLevels, RaimFaultDetection, RaimFaultExclusion,
-    RaimSolutionSeparationCheck, RaimSolutionSeparationSubset,
+    RaimFaultHypothesis, RaimSolutionSeparationCheck, RaimSolutionSeparationSubset,
 };
 use crate::models::atmosphere::{
     IonosphereModel, KlobucharCoefficients, KlobucharModel, SaastamoinenModel, TroposphereModel,
@@ -103,6 +103,7 @@ pub struct PositionSolution {
     pub rejected: Vec<(SatId, bijux_gnss_core::api::MeasurementRejectReason)>,
     pub raim_fault_detection: Option<RaimFaultDetection>,
     pub raim_fault_exclusion: Option<RaimFaultExclusion>,
+    pub raim_fault_exclusions: Vec<RaimFaultExclusion>,
     pub raim_solution_separation: Option<RaimSolutionSeparationCheck>,
     pub impossible_geometry: Option<ImpossibleGeometryEvidence>,
     pub replay_timing_anomaly: Option<ReplayTimingAnomalyEvidence>,
@@ -796,6 +797,7 @@ impl PositionSolver {
         let mut estimate = initial_estimate;
         let mut raim_fault_detection = None;
         let mut raim_fault_exclusion = None;
+        let mut raim_fault_exclusions = Vec::new();
         let mut pre_fit_residual_rms_m = None;
         let mut pre_fit_constellation_residuals = None;
         let working_set = loop {
@@ -851,13 +853,19 @@ impl PositionSolver {
                         self.separation_gate_m,
                     ));
                 }
+                let exclusion = RaimFaultExclusion {
+                    excluded_sat: exclusion_candidate.excluded_sat,
+                    pre_exclusion_rms_m: exclusion_candidate.pre_exclusion_rms_m,
+                    post_exclusion_rms_m: exclusion_candidate.post_exclusion_rms_m,
+                    solution_shift_m: exclusion_candidate.solution_shift_m,
+                };
                 if raim_fault_exclusion.is_none() {
-                    raim_fault_exclusion = Some(RaimFaultExclusion {
-                        excluded_sat: exclusion_candidate.excluded_sat,
-                        pre_exclusion_rms_m: exclusion_candidate.pre_exclusion_rms_m,
-                        post_exclusion_rms_m: exclusion_candidate.post_exclusion_rms_m,
-                        solution_shift_m: exclusion_candidate.solution_shift_m,
-                    });
+                    raim_fault_exclusion = Some(exclusion);
+                }
+                if !raim_fault_exclusions.iter().any(|existing: &RaimFaultExclusion| {
+                    existing.excluded_sat == exclusion.excluded_sat
+                }) {
+                    raim_fault_exclusions.push(exclusion);
                 }
                 push_unique_rejection(
                     &mut rejected,
@@ -1084,6 +1092,7 @@ impl PositionSolver {
             rejected,
             raim_fault_detection,
             raim_fault_exclusion,
+            raim_fault_exclusions,
             raim_solution_separation,
             impossible_geometry,
             replay_timing_anomaly,
@@ -2965,6 +2974,9 @@ impl PositionSolver {
         }
 
         let mut compared_subsets = Vec::with_capacity(inputs.len());
+        let reference_rms_m = working_set_rms_m(
+            &self.solve_working_set(inputs, reference_estimate.clone(), klobuchar)?.residuals,
+        );
         for excluded_index in 0..inputs.len() {
             let candidate_inputs = inputs
                 .iter()
@@ -2989,12 +3001,65 @@ impl PositionSolver {
                 ),
             });
         }
+        let compared_multi_fault_hypotheses =
+            self.multi_fault_solution_separation_hypotheses(inputs, reference_estimate, klobuchar);
 
-        (!compared_subsets.is_empty()).then_some(RaimSolutionSeparationCheck {
-            reference_sat_count: inputs.len(),
-            compared_subsets,
-            compared_multi_fault_hypotheses: Vec::new(),
-        })
+        (!compared_subsets.is_empty() || !compared_multi_fault_hypotheses.is_empty()).then_some(
+            RaimSolutionSeparationCheck {
+                reference_sat_count: inputs.len(),
+                compared_subsets,
+                compared_multi_fault_hypotheses: compared_multi_fault_hypotheses
+                    .into_iter()
+                    .filter(|hypothesis| hypothesis.post_exclusion_rms_m <= reference_rms_m)
+                    .collect(),
+            },
+        )
+    }
+
+    fn multi_fault_solution_separation_hypotheses(
+        &self,
+        inputs: &[PositionSolveInput],
+        reference_estimate: &PositionEstimate,
+        klobuchar: Option<&KlobucharCoefficients>,
+    ) -> Vec<RaimFaultHypothesis> {
+        if inputs.len() < 6 {
+            return Vec::new();
+        }
+
+        let mut hypotheses = Vec::new();
+        for first_index in 0..inputs.len() {
+            for second_index in (first_index + 1)..inputs.len() {
+                let candidate_inputs = inputs
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(index, input)| {
+                        (index != first_index && index != second_index).then_some(input.clone())
+                    })
+                    .collect::<Vec<_>>();
+                if candidate_inputs.len() < 4 {
+                    continue;
+                }
+                let Some(candidate_solution) = self.solve_working_set(
+                    &candidate_inputs,
+                    reference_estimate.clone(),
+                    klobuchar,
+                ) else {
+                    continue;
+                };
+                hypotheses.push(RaimFaultHypothesis {
+                    excluded_sats: vec![
+                        inputs[first_index].observation.sat,
+                        inputs[second_index].observation.sat,
+                    ],
+                    separation_m: solution_separation_m(
+                        reference_estimate,
+                        &candidate_solution.estimate,
+                    ),
+                    post_exclusion_rms_m: working_set_rms_m(&candidate_solution.residuals),
+                });
+            }
+        }
+        hypotheses
     }
 }
 

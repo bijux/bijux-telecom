@@ -560,6 +560,7 @@ mod tests {
             rejected: Vec::new(),
             raim_fault_detection: None,
             raim_fault_exclusion: None,
+            raim_fault_exclusions: Vec::new(),
             raim_solution_separation: None,
             impossible_geometry: None,
             replay_timing_anomaly: None,
