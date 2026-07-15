@@ -364,8 +364,18 @@ mod convergence_tests {
 mod tests {
     use super::*;
     use crate::corrections::phase_windup::PhaseWindupState;
-    use crate::estimation::ppp::config::PppConfig;
-    use bijux_gnss_core::api::{Constellation, SatId};
+    use crate::estimation::ppp::config::{PppConfig, PppStateIdentity};
+    use crate::estimation::ppp::filter::{
+        base_ppp_state_identities, ppp_indices_from_state_identities, ppp_state_label,
+    };
+    use bijux_gnss_core::api::{Constellation, SatId, SigId, SignalBand, SignalCode};
+
+    fn append_ppp_state(filter: &mut PppFilter, identity: PppStateIdentity, value: f64) {
+        filter.ekf.add_state(&ppp_state_label(&identity), value, 9.0);
+        filter.state_identities.push(identity);
+        filter.indices =
+            ppp_indices_from_state_identities(&filter.state_identities).expect("PPP state layout");
+    }
 
     #[test]
     fn ppp_consistency_uses_ekf_nis_bounds_for_high_warning() {
@@ -414,6 +424,69 @@ mod tests {
     }
 
     #[test]
+    fn checkpoint_preserves_ppp_state_identity_layout() {
+        let sig = SigId {
+            sat: SatId { constellation: Constellation::Gps, prn: 7 },
+            band: SignalBand::L1,
+            code: SignalCode::Ca,
+        };
+        let mut filter = PppFilter::new(PppConfig::default());
+        append_ppp_state(
+            &mut filter,
+            PppStateIdentity::InterSystemBias(Constellation::Galileo),
+            1.0e-8,
+        );
+        append_ppp_state(&mut filter, PppStateIdentity::SlantIonosphere(sig.sat), 4.5);
+        append_ppp_state(&mut filter, PppStateIdentity::CarrierAmbiguity(sig), 18.25);
+
+        let checkpoint = filter.checkpoint();
+        let mut restored = PppFilter::new(PppConfig::default());
+        restored.restore_from_checkpoint(checkpoint);
+
+        assert_eq!(restored.state_identities, filter.state_identities);
+        assert_eq!(restored.ekf.labels.len(), restored.ekf.x.len());
+        assert_eq!(
+            restored.indices.isb[&Constellation::Galileo],
+            filter.indices.isb[&Constellation::Galileo]
+        );
+        assert_eq!(restored.ekf.x[restored.indices.ambiguity[&sig]], 18.25);
+        assert_eq!(
+            restored.state_identities[restored.indices.iono[&sig.sat]],
+            PppStateIdentity::SlantIonosphere(sig.sat)
+        );
+    }
+
+    #[test]
+    fn checkpoint_restore_rebuilds_state_identities_from_saved_indices() {
+        let sig = SigId {
+            sat: SatId { constellation: Constellation::Gps, prn: 9 },
+            band: SignalBand::L1,
+            code: SignalCode::Ca,
+        };
+        let mut filter = PppFilter::new(PppConfig::default());
+        append_ppp_state(&mut filter, PppStateIdentity::SlantIonosphere(sig.sat), 2.0);
+        append_ppp_state(&mut filter, PppStateIdentity::CarrierAmbiguity(sig), 12.0);
+        let mut checkpoint = filter.checkpoint();
+        checkpoint.state_identities.clear();
+
+        let mut restored = PppFilter::new(PppConfig::default());
+        restored.restore_from_checkpoint(checkpoint);
+
+        assert_eq!(
+            restored.state_identities[restored.indices.iono[&sig.sat]],
+            PppStateIdentity::SlantIonosphere(sig.sat)
+        );
+        assert_eq!(
+            restored.state_identities[restored.indices.ambiguity[&sig]],
+            PppStateIdentity::CarrierAmbiguity(sig)
+        );
+        assert_eq!(
+            restored.ekf.labels[restored.indices.ambiguity[&sig]],
+            ppp_state_label(&PppStateIdentity::CarrierAmbiguity(sig))
+        );
+    }
+
+    #[test]
     fn reset_clears_phase_windup_continuity_state() {
         let sat = SatId { constellation: Constellation::Gps, prn: 7 };
         let mut filter = PppFilter::new(PppConfig::default());
@@ -422,5 +495,27 @@ mod tests {
         filter.reset("receiver_discontinuity");
 
         assert!(filter.phase_windup.is_empty());
+    }
+
+    #[test]
+    fn reset_restores_base_ppp_state_identity_layout() {
+        let sig = SigId {
+            sat: SatId { constellation: Constellation::Gps, prn: 12 },
+            band: SignalBand::L1,
+            code: SignalCode::Ca,
+        };
+        let mut filter = PppFilter::new(PppConfig::default());
+        append_ppp_state(&mut filter, PppStateIdentity::CarrierAmbiguity(sig), 8.0);
+
+        filter.reset("receiver_discontinuity");
+
+        assert_eq!(filter.state_identities, base_ppp_state_identities());
+        assert_eq!(filter.ekf.x.len(), base_ppp_state_identities().len());
+        assert_eq!(filter.ekf.labels.len(), filter.ekf.x.len());
+        assert!(filter.indices.ambiguity.is_empty());
+        assert_eq!(
+            filter.ekf.labels[filter.indices.clock_bias],
+            ppp_state_label(&PppStateIdentity::ReceiverClockBias)
+        );
     }
 }
