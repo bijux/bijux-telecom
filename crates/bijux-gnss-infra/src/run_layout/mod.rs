@@ -4,6 +4,7 @@ mod context;
 mod identity;
 mod layout;
 mod provenance;
+mod report;
 mod run_records;
 
 /// Run directory layout.
@@ -16,7 +17,7 @@ pub type RunContextArgs<'a> = context::RunContextArgs<'a>;
 pub type RunManifest = run_records::RunManifest;
 
 /// Run report persisted for each execution.
-pub type RunReport = run_records::RunReport;
+pub type RunReport = report::RunReport;
 
 /// Replay scope persisted in run manifests and reports.
 pub type ReplayScope = provenance::ReplayScope;
@@ -67,7 +68,7 @@ pub fn artifact_header(
 
 /// Load run report schema version.
 pub fn run_report_schema_version() -> u32 {
-    run_records::run_report_schema_version()
+    report::run_report_schema_version()
 }
 
 /// Write a run report to disk.
@@ -77,7 +78,7 @@ pub fn write_run_report(
     profile: &bijux_gnss_receiver::api::ReceiverConfig,
     dataset: Option<&crate::datasets::DatasetEntry>,
 ) -> Result<RunReport, bijux_gnss_receiver::api::core::InputError> {
-    run_records::write_run_report(args, command, profile, dataset)
+    report::write_run_report(args, command, profile, dataset)
 }
 
 /// Write a run manifest to disk.
