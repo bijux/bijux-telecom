@@ -9,7 +9,7 @@ use serde::Serialize;
 use crate::datasets::DatasetEntry;
 use crate::hash::{cpu_features, git_dirty, git_hash, hash_config};
 
-use super::directory_resolution::{resolve_run_context, RunContextArgs};
+use super::context::{resolve_run_context, RunContextArgs};
 use super::provenance::{enabled_features, front_end_provenance, replay_scope};
 use super::run_identity::{
     dataset_hash, now_unix_ms, run_id, RUN_LAYOUT_SCHEMA_VERSION, RUN_REPORT_SCHEMA_VERSION,

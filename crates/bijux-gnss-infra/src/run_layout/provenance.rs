@@ -5,7 +5,7 @@ use bijux_gnss_receiver::api::ReceiverConfig;
 
 use crate::datasets::{resolve_raw_iq_metadata, DatasetEntry};
 
-use super::directory_resolution::RunContextArgs;
+use super::context::RunContextArgs;
 
 /// Replay scope persisted in run manifests and reports.
 #[derive(Debug, serde::Serialize, Clone)]

@@ -1,6 +1,6 @@
 //! Run directory layout and manifest utilities.
 
-mod directory_resolution;
+mod context;
 mod layout;
 mod provenance;
 mod run_identity;
@@ -10,7 +10,7 @@ mod run_records;
 pub type RunDirLayout = layout::RunDirLayout;
 
 /// Run context arguments.
-pub type RunContextArgs<'a> = directory_resolution::RunContextArgs<'a>;
+pub type RunContextArgs<'a> = context::RunContextArgs<'a>;
 
 /// Run manifest persisted for each execution.
 pub type RunManifest = run_records::RunManifest;
@@ -33,7 +33,7 @@ pub fn run_dir(
     command: &str,
     dataset: Option<&crate::datasets::DatasetEntry>,
 ) -> Result<std::path::PathBuf, bijux_gnss_receiver::api::core::InputError> {
-    directory_resolution::run_dir(args, command, dataset)
+    context::run_dir(args, command, dataset)
 }
 
 /// Resolve artifacts directory path.
@@ -42,7 +42,7 @@ pub fn artifacts_dir(
     command: &str,
     dataset: Option<&crate::datasets::DatasetEntry>,
 ) -> Result<std::path::PathBuf, bijux_gnss_receiver::api::core::InputError> {
-    directory_resolution::artifacts_dir(args, command, dataset)
+    context::artifacts_dir(args, command, dataset)
 }
 
 /// Append a run index entry.
