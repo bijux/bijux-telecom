@@ -52,6 +52,7 @@ include!("synthetic/pvt_profiles_motion_clock.rs");
 include!("synthetic/pvt_profiles_time_accuracy.rs");
 include!("synthetic/pvt_truth.rs");
 include!("synthetic/acquisition_validation_types.rs");
+include!("synthetic/acquisition_detection_types.rs");
 include!("synthetic/acquisition_noise_refinement_types.rs");
 include!("synthetic/tracking_validation_types.rs");
 include!("synthetic/tracking_sensitivity_types.rs");
