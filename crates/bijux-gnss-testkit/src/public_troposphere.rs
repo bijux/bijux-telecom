@@ -9,7 +9,7 @@ use bijux_gnss_nav::api::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::public_station::PublicStationTruth;
+use crate::public_station_truth::PublicStationTruth;
 use crate::reference_math::coordinates::elevation_azimuth_deg;
 use crate::reference_math::gps_broadcast::satellite_state_from_observation;
 

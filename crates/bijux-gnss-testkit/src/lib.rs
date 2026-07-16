@@ -10,7 +10,7 @@ pub mod fixture_loading;
 pub mod front_end;
 pub mod position_truth;
 pub mod public_ppp;
-pub mod public_station;
+pub mod public_station_truth;
 pub mod public_troposphere;
 pub mod rtk_baseline;
 pub mod trusted_reference_coordinate;

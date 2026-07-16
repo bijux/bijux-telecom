@@ -26,7 +26,7 @@ fn truth_fixtures_do_not_call_nav_geometry_or_differencing_helpers() {
     for relative_path in [
         "src/acquisition_truth.rs",
         "src/position_truth.rs",
-        "src/public_station.rs",
+        "src/public_station_truth.rs",
         "src/public_troposphere.rs",
         "src/antenna_validation.rs",
         "src/rtk_baseline.rs",

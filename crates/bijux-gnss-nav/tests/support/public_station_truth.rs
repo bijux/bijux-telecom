@@ -4,12 +4,14 @@
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
-use bijux_gnss_testkit::public_station::{
+use bijux_gnss_testkit::public_station_truth::{
     load_public_station_truths,
     public_station_truth_by_fixture as find_public_station_truth_by_fixture,
 };
 #[allow(unused_imports)]
-pub use bijux_gnss_testkit::public_station::{station_enu_error_m, EnuError, PublicStationTruth};
+pub use bijux_gnss_testkit::public_station_truth::{
+    station_enu_error_m, EnuError, PublicStationTruth,
+};
 
 pub const PUBLIC_STATION_HORIZONTAL_TOLERANCE_M: f64 = 1.0;
 pub const PUBLIC_STATION_VERTICAL_TOLERANCE_M: f64 = 2.0;

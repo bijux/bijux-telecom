@@ -1,4 +1,4 @@
-//! Public-station fixture helpers for navigation regression tests.
+//! Public station truth helpers for navigation regression tests.
 
 use std::fs;
 use std::path::Path;
