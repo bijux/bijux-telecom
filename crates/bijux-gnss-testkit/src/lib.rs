@@ -1,7 +1,7 @@
 //! Test helpers for bijux GNSS.
 #![forbid(unsafe_code)]
 
-mod reference_math;
+mod independent_models;
 
 pub mod acquisition_truth;
 pub mod antenna_validation;

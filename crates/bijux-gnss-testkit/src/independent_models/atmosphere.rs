@@ -1,4 +1,4 @@
-//! Independent broadcast atmosphere models for synthetic truth generation.
+//! Independent atmospheric models for synthetic truth generation.
 
 use bijux_gnss_core::api::{Llh, Seconds};
 use bijux_gnss_nav::api::KlobucharCoefficients;

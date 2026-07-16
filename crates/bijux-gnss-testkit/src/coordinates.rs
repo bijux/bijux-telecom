@@ -1,6 +1,6 @@
 //! Independent coordinate transforms exposed for test truth and support fixtures.
 
-use crate::reference_math::coordinates::{
+use crate::independent_models::coordinates::{
     ecef_to_enu_m as reference_ecef_to_enu_m,
     ecef_to_geodetic_point as reference_ecef_to_geodetic_point,
     elevation_azimuth_deg as reference_elevation_azimuth_deg,

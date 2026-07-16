@@ -1,4 +1,4 @@
-//! Independent antenna reference modeling for test scenarios.
+//! Independent antenna models for test scenarios.
 
 use bijux_gnss_core::api::{gps_to_utc, GpsTime, LeapSeconds, SatId, SignalBand};
 use bijux_gnss_nav::api::{
@@ -6,7 +6,7 @@ use bijux_gnss_nav::api::{
     SatellitePhaseCenterOffset,
 };
 
-use crate::reference_math::coordinates::{
+use crate::independent_models::coordinates::{
     cross3, dot3, ecef_to_geodetic_point, normalize3, subtract3,
 };
 

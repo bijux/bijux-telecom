@@ -1,4 +1,4 @@
-//! Independent WGS-84 geometry utilities for scientific test expectations.
+//! Independent WGS-84 coordinate utilities for scientific test expectations.
 
 const WGS84_SEMI_MAJOR_AXIS_M: f64 = 6_378_137.0;
 const WGS84_FLATTENING: f64 = 1.0 / 298.257_223_563;

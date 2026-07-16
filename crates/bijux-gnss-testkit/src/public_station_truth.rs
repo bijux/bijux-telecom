@@ -5,7 +5,7 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
-use crate::reference_math::coordinates::{ecef_to_enu_m, geodetic_to_ecef_m, GeodeticPoint};
+use crate::independent_models::coordinates::{ecef_to_enu_m, geodetic_to_ecef_m, GeodeticPoint};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PublicStationTruth {

@@ -5,9 +5,9 @@ use bijux_gnss_core::api::{
 };
 use bijux_gnss_nav::api::{GpsEphemeris, KlobucharCoefficients, PositionObservation};
 
-use crate::reference_math::atmosphere::{klobuchar_delay_m, saastamoinen_delay_m};
-use crate::reference_math::coordinates::elevation_azimuth_deg;
-use crate::reference_math::gps_broadcast::{
+use crate::independent_models::atmosphere::{klobuchar_delay_m, saastamoinen_delay_m};
+use crate::independent_models::coordinates::elevation_azimuth_deg;
+use crate::independent_models::gps_broadcast::{
     pseudorange_from_truth as broadcast_pseudorange_from_truth, sat_state_gps_l1ca,
     satellite_state_from_observation,
 };

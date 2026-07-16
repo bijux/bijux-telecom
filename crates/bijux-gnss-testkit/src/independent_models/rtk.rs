@@ -1,4 +1,4 @@
-//! Independent RTK observation differencing for synthetic truth scenarios.
+//! Independent RTK differencing for synthetic truth scenarios.
 
 use std::collections::BTreeMap;
 

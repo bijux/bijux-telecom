@@ -1,4 +1,4 @@
-//! Independent GPS broadcast orbit and clock propagation for validation truth.
+//! Independent GPS broadcast state propagation for validation truth.
 
 use bijux_gnss_core::api::ObsSignalTiming;
 use bijux_gnss_nav::api::GpsEphemeris;

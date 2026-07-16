@@ -3,7 +3,7 @@
 
 use bijux_gnss_core::api::Llh;
 
-use crate::reference_math::coordinates::{
+use crate::independent_models::coordinates::{
     ecef_to_geodetic_point, geodetic_to_ecef_m, GeodeticPoint,
 };
 

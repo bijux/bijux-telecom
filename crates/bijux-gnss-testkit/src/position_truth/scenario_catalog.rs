@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use bijux_gnss_core::api::{Constellation, SatId};
 use bijux_gnss_nav::api::{GpsEphemeris, KlobucharCoefficients, PositionObservation};
 
-use crate::reference_math::coordinates::GeodeticPoint;
+use crate::independent_models::coordinates::GeodeticPoint;
 
 use super::{geodetic_point_to_tuple, timed_position_observation_from_truth};
 
