@@ -1,4 +1,4 @@
-//! Public troposphere-validation reporting helpers.
+//! Public troposphere elevation reporting helpers.
 
 use std::collections::BTreeMap;
 
