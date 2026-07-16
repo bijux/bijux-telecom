@@ -1,13 +1,13 @@
 //! Run directory layout and manifest utilities.
 
-mod directories;
 mod directory_resolution;
+mod layout;
 mod provenance;
 mod run_identity;
 mod run_records;
 
 /// Run directory layout.
-pub type RunDirLayout = directories::RunDirLayout;
+pub type RunDirLayout = layout::RunDirLayout;
 
 /// Run context arguments.
 pub type RunContextArgs<'a> = directory_resolution::RunContextArgs<'a>;

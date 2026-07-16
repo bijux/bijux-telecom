@@ -8,7 +8,7 @@ use bijux_gnss_receiver::api::ReceiverConfig;
 use crate::datasets::DatasetEntry;
 use crate::hash::hash_config;
 
-use super::directories::RunDirLayout;
+use super::layout::RunDirLayout;
 use super::run_identity::{dataset_hash, now_unix_ms, run_id};
 
 /// Run context arguments.
