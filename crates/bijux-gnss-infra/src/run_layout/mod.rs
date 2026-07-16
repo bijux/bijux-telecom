@@ -1,5 +1,6 @@
 //! Run directory layout and manifest utilities.
 
+mod artifact_header;
 mod context;
 mod identity;
 mod index;
@@ -7,7 +8,6 @@ mod layout;
 mod manifest;
 mod provenance;
 mod report;
-mod run_records;
 
 /// Run directory layout.
 pub type RunDirLayout = layout::RunDirLayout;
@@ -65,7 +65,7 @@ pub fn artifact_header(
     bijux_gnss_receiver::api::core::ArtifactHeaderV1,
     bijux_gnss_receiver::api::core::InputError,
 > {
-    run_records::artifact_header(args, profile, dataset)
+    artifact_header::artifact_header(args, profile, dataset)
 }
 
 /// Load run report schema version.
