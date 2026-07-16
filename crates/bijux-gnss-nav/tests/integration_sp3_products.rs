@@ -94,6 +94,6 @@ PG01  313.000000  64.000000  21.000000  0.000000
     let state = products.sat_state(eph.sat, 2_700.0, &mut diag).expect("broadcast fallback state");
 
     assert!(!diag.fallbacks.is_empty());
-    assert!(diag.fallbacks.iter().any(|message| message.contains("SP3 unusable")));
+    assert!(diag.fallbacks.iter().any(|message| message.contains("SP3 orbit_gap")));
     assert!(state.x_m.is_finite());
 }
