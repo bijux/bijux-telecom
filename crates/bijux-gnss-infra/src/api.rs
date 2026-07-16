@@ -1,7 +1,7 @@
 //! Public API for bijux-gnss-infra.
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
-pub use crate::artifact_tools::{
+pub use crate::artifact_inspection::{
     artifact_explain, artifact_validate, ArtifactExplainResult, ArtifactValidationResult,
 };
 pub use crate::commands::prepare_run;
