@@ -23,10 +23,6 @@ pub(crate) fn hash_config(
     Ok(hex::encode(hasher.finalize()))
 }
 
-fn map_err(err: impl std::fmt::Display) -> InputError {
-    InputError { message: err.to_string() }
-}
-
 /// Return current git hash if available.
 pub(crate) fn git_hash() -> Option<String> {
     let output = ProcessCommand::new("git").args(["rev-parse", "HEAD"]).output().ok()?;
@@ -67,4 +63,23 @@ pub(crate) fn cpu_features() -> Vec<String> {
         }
     }
     features
+}
+
+fn map_err(err: impl std::fmt::Display) -> InputError {
+    InputError { message: err.to_string() }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::hash_config;
+    use bijux_gnss_receiver::api::ReceiverConfig;
+
+    #[test]
+    fn hash_config_uses_profile_snapshot_without_a_config_path() {
+        let profile = ReceiverConfig::default();
+        let first = hash_config(None, &profile).expect("hash profile");
+        let second = hash_config(None, &profile).expect("rehash profile");
+        assert_eq!(first, second);
+        assert_eq!(first.len(), 64);
+    }
 }
