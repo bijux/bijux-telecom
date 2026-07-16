@@ -4,7 +4,49 @@ use bijux_gnss_core::api::{
     ArtifactPayloadValidate, Constellation, GpsTime, ObsSignalTiming, SatId, Seconds, SigId,
     SignalBand,
 };
-use bijux_gnss_receiver::api::{DdObservation, SdObservation};
+use bijux_gnss_receiver::api::{
+    DdObservation, RtkDoubleDifferenceCovarianceEvidence, RtkEpochAlignmentEvidence,
+    RtkGlonassInterFrequencyBiasEvidence, RtkSingleDifferenceCovarianceEvidence,
+    RtkSourceObservationVariance, SdObservation,
+};
+
+fn sample_epoch_alignment() -> RtkEpochAlignmentEvidence {
+    RtkEpochAlignmentEvidence {
+        base_receive_time_s: 345_600.123_000,
+        rover_receive_time_s: 345_600.123_000,
+        delta_s: 0.0,
+        tolerance_s: 0.000_500,
+    }
+}
+
+fn sample_source_variance() -> RtkSourceObservationVariance {
+    RtkSourceObservationVariance {
+        code_m2: 2.0,
+        phase_cycles2: 0.005,
+        doppler_hz2: 0.5,
+        shared_clock_code_m2: 0.0,
+    }
+}
+
+fn sample_single_difference_covariance() -> RtkSingleDifferenceCovarianceEvidence {
+    RtkSingleDifferenceCovarianceEvidence {
+        rover: sample_source_variance(),
+        base: sample_source_variance(),
+        rover_base_code_covariance_m2: 0.0,
+        rover_base_phase_covariance_cycles2: 0.0,
+        rover_base_doppler_covariance_hz2: 0.0,
+        shared_code_covariance_m2: 0.0,
+        shared_phase_covariance_cycles2: 0.0,
+        shared_doppler_covariance_hz2: 0.0,
+    }
+}
+
+fn sample_double_difference_covariance() -> RtkDoubleDifferenceCovarianceEvidence {
+    RtkDoubleDifferenceCovarianceEvidence {
+        signal: sample_single_difference_covariance(),
+        reference: sample_single_difference_covariance(),
+    }
+}
 
 fn sample_sd_observation() -> SdObservation {
     SdObservation {
@@ -25,6 +67,8 @@ fn sample_sd_observation() -> SdObservation {
             signal_travel_time_s: Seconds(0.066_998),
             transmit_gps_time: GpsTime { week: 2200, tow_s: 345_600.123_003 },
         }),
+        epoch_alignment: sample_epoch_alignment(),
+        covariance_evidence: sample_single_difference_covariance(),
         code_m: 150.0,
         phase_cycles: 0.5,
         doppler_hz: -5.0,
@@ -46,6 +90,7 @@ fn sample_sd_observation() -> SdObservation {
             },
             signal: "L1".to_string(),
         },
+        glonass_frequency_channel: None,
     }
 }
 
@@ -83,6 +128,9 @@ fn sample_dd_observation() -> DdObservation {
             signal_travel_time_s: Seconds(0.067_098),
             transmit_gps_time: GpsTime { week: 2200, tow_s: 345_600.122_903 },
         }),
+        epoch_alignment: sample_epoch_alignment(),
+        covariance_evidence: sample_double_difference_covariance(),
+        glonass_inter_frequency_bias: RtkGlonassInterFrequencyBiasEvidence::default(),
         code_m: 20.0,
         phase_cycles: 0.25,
         doppler_hz: -2.0,
