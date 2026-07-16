@@ -25,6 +25,7 @@ fn navigation_accuracy_artifact_summarizes_acquisition_and_tracking_stages() {
         tracking: &fixture.tracking_accuracy,
         observation: &fixture.observation_accuracy,
         pvt: &fixture.pvt_accuracy,
+        closure: fixture.closure.clone(),
     });
 
     assert_eq!(artifact.scenario_id, fixture.profile.scenario.id);
@@ -171,6 +172,7 @@ fn navigation_accuracy_artifact_preserves_signal_specific_acquisition_thresholds
         tracking: &fixture.tracking_accuracy,
         observation: &fixture.observation_accuracy,
         pvt: &fixture.pvt_accuracy,
+        closure: fixture.closure.clone(),
     });
 
     assert_eq!(artifact.acquisition.summary.threshold_max_doppler_error_hz, 500.0);
@@ -195,6 +197,7 @@ fn navigation_accuracy_artifact_summarizes_observation_pvt_and_overall_status() 
         tracking: &fixture.tracking_accuracy,
         observation: &fixture.observation_accuracy,
         pvt: &fixture.pvt_accuracy,
+        closure: fixture.closure.clone(),
     });
 
     assert_eq!(artifact.observation.summary.pass, fixture.observation_accuracy.pass);
@@ -306,7 +309,10 @@ fn navigation_accuracy_artifact_summarizes_observation_pvt_and_overall_status() 
             && fixture.tracking_accuracy.pass
             && fixture.observation_accuracy.pass
             && fixture.pvt_accuracy.pass
+            && fixture.closure.pass
     );
+    assert_eq!(artifact.closure_ready, fixture.closure.pass);
+    assert_eq!(artifact.closure, fixture.closure);
     assert_eq!(
         artifact.truth_coverage_ready,
         fixture.acquisition_accuracy.truth_coverage_ready
@@ -340,6 +346,8 @@ fn navigation_accuracy_artifact_writes_single_json_file() {
     assert_eq!(parsed.scenario_id, artifact.scenario_id);
     assert_eq!(parsed.pass, artifact.pass);
     assert_eq!(parsed.truth_coverage_ready, artifact.truth_coverage_ready);
+    assert_eq!(parsed.closure_ready, artifact.closure_ready);
+    assert_eq!(parsed.closure, artifact.closure);
     assert_eq!(parsed.data_source, artifact.data_source);
     assert_eq!(parsed.reference_truth, artifact.reference_truth);
     assert_eq!(parsed.acquisition.summary, artifact.acquisition.summary);

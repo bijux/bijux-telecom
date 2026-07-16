@@ -14,7 +14,8 @@ use bijux_gnss_receiver::api::{
         validate_tracking_accuracy_budget, validate_truth_guided_acquisition_table,
         validate_truth_guided_observations, validate_truth_guided_pvt_table,
         validate_truth_guided_tracking_table, SyntheticAcquisitionAccuracyReport,
-        SyntheticGnssAccuracyArtifact, SyntheticGnssAccuracyArtifactCase,
+        SyntheticClosureStageEvidence, SyntheticClosureStageKind, SyntheticClosureStageStatus,
+        SyntheticClosureSummary, SyntheticGnssAccuracyArtifact, SyntheticGnssAccuracyArtifactCase,
         SyntheticGnssAccuracyDataSource, SyntheticGnssAccuracyReferenceTruth,
         SyntheticIqTruthBundle, SyntheticObservationAccuracyReport,
         SyntheticObservationTruthReference, SyntheticPvtAccuracyReport,
@@ -47,6 +48,7 @@ pub struct NavigationAccuracyArtifactFixture {
     pub tracking_accuracy: SyntheticTrackingAccuracyReport,
     pub observation_accuracy: SyntheticObservationAccuracyReport,
     pub pvt_accuracy: SyntheticPvtAccuracyReport,
+    pub closure: SyntheticClosureSummary,
     pub data_source: SyntheticGnssAccuracyDataSource,
     pub reference_truth: SyntheticGnssAccuracyReferenceTruth,
 }
@@ -156,6 +158,12 @@ pub fn build_navigation_accuracy_artifact_fixture() -> NavigationAccuracyArtifac
         satellite_count: profile.ephemerides.len(),
         reference_epoch_count: pvt_reference.len(),
     };
+    let closure = accuracy_fixture_closure_summary(
+        acquisition_accuracy.satellite_count,
+        tracking_accuracy.satellite_count,
+        observation_accuracy.satellite_count,
+        pvt_accuracy.epoch_count,
+    );
 
     NavigationAccuracyArtifactFixture {
         config,
@@ -169,6 +177,7 @@ pub fn build_navigation_accuracy_artifact_fixture() -> NavigationAccuracyArtifac
         tracking_accuracy,
         observation_accuracy,
         pvt_accuracy,
+        closure,
         data_source,
         reference_truth,
     }
@@ -185,7 +194,61 @@ pub fn build_navigation_accuracy_artifact() -> SyntheticGnssAccuracyArtifact {
         tracking: &fixture.tracking_accuracy,
         observation: &fixture.observation_accuracy,
         pvt: &fixture.pvt_accuracy,
+        closure: fixture.closure,
     })
+}
+
+fn accuracy_fixture_closure_summary(
+    acquisition_count: usize,
+    tracking_count: usize,
+    observation_count: usize,
+    pvt_epoch_count: usize,
+) -> SyntheticClosureSummary {
+    let stages = vec![
+        accuracy_fixture_closure_stage(
+            SyntheticClosureStageKind::Acquisition,
+            acquisition_count,
+            "acquisition_truth_table_validated",
+        ),
+        accuracy_fixture_closure_stage(
+            SyntheticClosureStageKind::Tracking,
+            tracking_count,
+            "tracking_truth_table_validated",
+        ),
+        accuracy_fixture_closure_stage(
+            SyntheticClosureStageKind::Observations,
+            observation_count,
+            "observation_truth_table_validated",
+        ),
+        accuracy_fixture_closure_stage(
+            SyntheticClosureStageKind::Estimator,
+            pvt_epoch_count,
+            "pvt_truth_table_validated",
+        ),
+    ];
+
+    SyntheticClosureSummary {
+        pass: true,
+        applicable_stage_count: stages.len(),
+        passed_stage_count: stages.len(),
+        not_applicable_stage_count: 0,
+        stages,
+    }
+}
+
+fn accuracy_fixture_closure_stage(
+    stage: SyntheticClosureStageKind,
+    evidence_count: usize,
+    reason: impl Into<String>,
+) -> SyntheticClosureStageEvidence {
+    SyntheticClosureStageEvidence {
+        stage,
+        status: SyntheticClosureStageStatus::Passed,
+        executed: true,
+        truth_backed: true,
+        evidence_count,
+        reason: reason.into(),
+    }
 }
 
 fn build_iq_truth_bundle(
