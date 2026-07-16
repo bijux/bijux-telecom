@@ -56,6 +56,7 @@ include!("synthetic/acquisition_detection_types.rs");
 include!("synthetic/acquisition_noise_refinement_types.rs");
 include!("synthetic/acquisition_operating_envelope_types.rs");
 include!("synthetic/acquisition_interference_types.rs");
+include!("synthetic/acquisition_uncertainty_types.rs");
 include!("synthetic/tracking_validation_types.rs");
 include!("synthetic/tracking_sensitivity_types.rs");
 include!("synthetic/tracking_noise_characterization.rs");
