@@ -1,4 +1,4 @@
-//! Shared guardrail checks across crates.
+//! Shared guardrail policy enforcement across crates.
 //! See docs/GLOSSARY.md for acronym definitions.
 
 #![deny(missing_docs)]

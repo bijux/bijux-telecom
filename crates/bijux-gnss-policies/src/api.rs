@@ -1,10 +1,10 @@
 //! Public API for bijux-gnss-policies.
 
 /// Run guardrail checks for a crate root.
-pub use crate::internal::check;
+pub use crate::guardrails::check;
 /// Guardrail configuration structure.
-pub use crate::internal::GuardrailConfig;
+pub use crate::guardrails::GuardrailConfig;
 /// Guardrail error type.
-pub use crate::internal::GuardrailError;
+pub use crate::guardrails::GuardrailError;
 /// Guardrail result type.
-pub use crate::internal::Result;
+pub use crate::guardrails::Result;
