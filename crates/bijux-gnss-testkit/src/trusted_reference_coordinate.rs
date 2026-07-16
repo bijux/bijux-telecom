@@ -1,4 +1,4 @@
-//! Trusted reference-coordinate fixtures for public and surveyed validation cases.
+//! Trusted coordinate catalogs for public and surveyed validation cases.
 
 use std::error::Error;
 use std::fmt;

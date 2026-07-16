@@ -10,7 +10,7 @@ use bijux_gnss_nav::api::{
     parse_rinex_broadcast_navigation, parse_rinex_gps_observation_dataset,
     position_observations_from_epoch, PositionObservation, PositionSolver,
 };
-use bijux_gnss_testkit::reference_coordinate::TrustedReferenceCoordinateError;
+use bijux_gnss_testkit::trusted_reference_coordinate::TrustedReferenceCoordinateError;
 use support::public_station_truth::{
     PUBLIC_STATION_HORIZONTAL_TOLERANCE_M, PUBLIC_STATION_VERTICAL_TOLERANCE_M,
 };
