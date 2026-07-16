@@ -4,7 +4,7 @@
 //! Module map:
 //! - `ids`: constellation, satellite, and signal identity types
 //! - `time`: GPS/UTC/receiver time definitions and leap seconds
-//! - `obs`: samples, acquisition, tracking, and observation contracts
+//! - `observation`: samples, acquisition, tracking, and observation contracts
 //! - Start here: `ObsEpoch` and `SamplesFrame`
 #![deny(clippy::unwrap_used)]
 #![deny(missing_docs)]
@@ -18,7 +18,7 @@ mod error;
 mod geo;
 mod ids;
 mod nav_solution;
-mod obs;
+mod observation;
 mod observation_quality;
 mod stats;
 mod support_matrix;

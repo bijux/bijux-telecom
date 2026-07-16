@@ -1,7 +1,7 @@
 #![allow(missing_docs)]
 
 use crate::ids::{Constellation, SigId, SignalBand, SignalCode, SignalSpec, GPS_L1_CA_CARRIER_HZ};
-use crate::obs::{
+use crate::observation::{
     ObservationStatus, TrackingUncertainty, OBSERVATION_DOPPLER_MODEL_TRACKED_CARRIER_IF_OFFSET,
 };
 use crate::time::GpsTime;

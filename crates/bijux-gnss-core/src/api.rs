@@ -51,7 +51,7 @@ pub use crate::nav_solution::{
     InterSystemBias, NavConstellationResidualRms, NavResidual, NavSolutionEpoch,
 };
 /// Observation and tracking contracts.
-pub use crate::obs::{
+pub use crate::observation::{
     acq_result_stability_key, obs_epoch_stability_key, stable_acq_result_keys,
     trackable_acq_tracking_seeds, AcqAssistanceBounds, AcqAssumptions, AcqCodePhaseRefinement,
     AcqComponentCombinationMode, AcqComponentProvenance, AcqComponentStatistic,
