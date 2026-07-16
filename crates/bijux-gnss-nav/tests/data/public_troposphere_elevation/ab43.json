@@ -4,44 +4,44 @@
   "compared_epoch_count": 8,
   "compared_sample_count": 53,
   "low_elevation_sample_count": 21,
-  "overall_mean_abs_improvement_m": 0.5214916540766662,
-  "overall_rms_improvement_m": 0.6617459311647323,
+  "overall_mean_abs_improvement_m": 0.5214916538658007,
+  "overall_rms_improvement_m": 0.6617459312000511,
   "buckets": [
     {
       "bucket_name": "low",
       "min_elevation_deg": 0.0,
       "max_elevation_deg": 20.0,
       "sample_count": 21,
-      "corrected_mean_abs_residual_m": 0.6252814284747555,
-      "uncorrected_mean_abs_residual_m": 1.2218129586960589,
-      "corrected_rms_residual_m": 0.7810751413629,
-      "uncorrected_rms_residual_m": 1.5231734246004291,
-      "mean_abs_improvement_m": 0.5965315302213033,
-      "rms_improvement_m": 0.7420982832375291
+      "corrected_mean_abs_residual_m": 0.6252814293617294,
+      "uncorrected_mean_abs_residual_m": 1.2218129572769005,
+      "corrected_rms_residual_m": 0.7810751425770437,
+      "uncorrected_rms_residual_m": 1.5231734237101322,
+      "mean_abs_improvement_m": 0.5965315279151712,
+      "rms_improvement_m": 0.7420982811330885
     },
     {
       "bucket_name": "mid",
       "min_elevation_deg": 20.0,
       "max_elevation_deg": 45.0,
       "sample_count": 17,
-      "corrected_mean_abs_residual_m": 0.8147939123651561,
-      "uncorrected_mean_abs_residual_m": 1.3086284769370276,
-      "corrected_rms_residual_m": 0.9240606334356783,
-      "uncorrected_rms_residual_m": 1.7056676211590525,
-      "mean_abs_improvement_m": 0.49383456457187147,
-      "rms_improvement_m": 0.7816069877233741
+      "corrected_mean_abs_residual_m": 0.8147939110503477,
+      "uncorrected_mean_abs_residual_m": 1.3086284784709705,
+      "corrected_rms_residual_m": 0.924060632044855,
+      "uncorrected_rms_residual_m": 1.7056676225123428,
+      "mean_abs_improvement_m": 0.4938345674206228,
+      "rms_improvement_m": 0.7816069904674878
     },
     {
       "bucket_name": "high",
       "min_elevation_deg": 45.0,
       "max_elevation_deg": null,
       "sample_count": 15,
-      "corrected_mean_abs_residual_m": 0.4004696155587832,
-      "uncorrected_mean_abs_residual_m": 0.8482501444717249,
-      "corrected_rms_residual_m": 0.690325574277859,
-      "uncorrected_rms_residual_m": 1.035369143246553,
-      "mean_abs_improvement_m": 0.4477805289129417,
-      "rms_improvement_m": 0.34504356896869404
+      "corrected_mean_abs_residual_m": 0.4004696158071359,
+      "uncorrected_mean_abs_residual_m": 0.8482501439750194,
+      "corrected_rms_residual_m": 0.6903255743937938,
+      "uncorrected_rms_residual_m": 1.0353691426446003,
+      "mean_abs_improvement_m": 0.4477805281678835,
+      "rms_improvement_m": 0.3450435682508065
     }
   ],
   "epochs": [
@@ -52,7 +52,7 @@
       },
       "compared_satellite_count": 4,
       "low_elevation_satellite_count": 1,
-      "low_elevation_mean_abs_improvement_m": -1.3285402916371822
+      "low_elevation_mean_abs_improvement_m": -1.3285402953624725
     },
     {
       "gps_time": {
@@ -61,7 +61,7 @@
       },
       "compared_satellite_count": 6,
       "low_elevation_satellite_count": 3,
-      "low_elevation_mean_abs_improvement_m": 0.298990370084842
+      "low_elevation_mean_abs_improvement_m": 0.2989903676013152
     },
     {
       "gps_time": {
@@ -70,7 +70,7 @@
       },
       "compared_satellite_count": 7,
       "low_elevation_satellite_count": 3,
-      "low_elevation_mean_abs_improvement_m": 0.7030615024268626
+      "low_elevation_mean_abs_improvement_m": 0.7030615011850994
     },
     {
       "gps_time": {
@@ -79,7 +79,7 @@
       },
       "compared_satellite_count": 7,
       "low_elevation_satellite_count": 3,
-      "low_elevation_mean_abs_improvement_m": 0.8680044499536355
+      "low_elevation_mean_abs_improvement_m": 0.8680044474701087
     },
     {
       "gps_time": {
@@ -88,7 +88,7 @@
       },
       "compared_satellite_count": 7,
       "low_elevation_satellite_count": 3,
-      "low_elevation_mean_abs_improvement_m": 0.6432458957036337
+      "low_elevation_mean_abs_improvement_m": 0.6432458919783433
     },
     {
       "gps_time": {
@@ -97,7 +97,7 @@
       },
       "compared_satellite_count": 8,
       "low_elevation_satellite_count": 2,
-      "low_elevation_mean_abs_improvement_m": 1.0046545416116714
+      "low_elevation_mean_abs_improvement_m": 1.0046545341610909
     },
     {
       "gps_time": {
@@ -106,7 +106,7 @@
       },
       "compared_satellite_count": 7,
       "low_elevation_satellite_count": 3,
-      "low_elevation_mean_abs_improvement_m": 0.7647640444338322
+      "low_elevation_mean_abs_improvement_m": 0.764764046917359
     },
     {
       "gps_time": {
@@ -115,7 +115,7 @@
       },
       "compared_satellite_count": 7,
       "low_elevation_satellite_count": 3,
-      "low_elevation_mean_abs_improvement_m": 0.6707315184175968
+      "low_elevation_mean_abs_improvement_m": 0.6707315159340699
     }
   ]
 }
