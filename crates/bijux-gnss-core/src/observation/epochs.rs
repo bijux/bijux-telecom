@@ -1,9 +1,9 @@
-use crate::api::{ReceiverSampleTrace, SampleTime, SatId, Seconds};
+use crate::api::{Hertz, ReceiverSampleTrace, SampleTime, SatId, Seconds};
 use crate::observation_quality::ObsSatellite;
 use num_complex::Complex;
 use serde::{Deserialize, Serialize};
 
-use super::{Hertz, OBSERVATION_DOWNSTREAM_PROFILE_VERSION};
+use super::OBSERVATION_DOWNSTREAM_PROFILE_VERSION;
 
 fn default_observation_downstream_profile_version() -> u32 {
     OBSERVATION_DOWNSTREAM_PROFILE_VERSION

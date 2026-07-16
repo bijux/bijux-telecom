@@ -58,6 +58,9 @@ pub use crate::observation::acquisition::{
     AcqExplainCandidate, AcqHypothesis, AcqRequest, AcqResult, AcqSearchSummary,
     AcqThresholdProvenance, AcqTrackingSeed, AcqUncertainty, AcqUncertaintyCovariance,
 };
+pub use crate::observation::differencing::{
+    AmbiguityId, AmbiguityState, AmbiguityStatus, DoubleDifference, SingleDifference,
+};
 pub use crate::observation::epochs::{
     obs_epoch_stability_key, ObsDecisionArtifact, ObsEpoch, ObsEpochManifest,
     ObservationEpochDecision, ObservationStatus, ObservationSupportClass,
@@ -73,8 +76,7 @@ pub use crate::observation::tracking::{
     TrackingUncertainty,
 };
 pub use crate::observation::{
-    AmbiguityId, AmbiguityState, AmbiguityStatus, DoubleDifference, SignalDelayAlignment,
-    SingleDifference, OBSERVATION_DOPPLER_MODEL_TRACKED_CARRIER_IF_OFFSET,
+    SignalDelayAlignment, OBSERVATION_DOPPLER_MODEL_TRACKED_CARRIER_IF_OFFSET,
     OBSERVATION_DOWNSTREAM_PROFILE_VERSION, OBSERVATION_MODEL_VERSION,
     TRACKING_STATE_MODEL_VERSION,
 };
