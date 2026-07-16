@@ -7,7 +7,7 @@ use std::path::Path;
 mod support;
 
 use bijux_gnss_nav::api::{BroadcastProductsProvider, PppConfig, PppFilter, PppTroposphereSource};
-use bijux_gnss_testkit::public_ppp::{
+use bijux_gnss_testkit::public_ppp_convergence::{
     build_public_ppp_convergence_report, PublicPppConvergenceReport,
 };
 use support::public_spp_case::ab43_public_spp_case;
@@ -187,7 +187,7 @@ fn fixture_path(fixture_file: &str) -> std::path::PathBuf {
 }
 
 fn format_diagnostics(
-    diagnostics: &[bijux_gnss_testkit::public_ppp::PublicPppConvergenceEpoch],
+    diagnostics: &[bijux_gnss_testkit::public_ppp_convergence::PublicPppConvergenceEpoch],
 ) -> String {
     diagnostics
         .iter()

@@ -1,4 +1,4 @@
-//! Public PPP convergence regression helpers.
+//! Public PPP convergence reporting helpers.
 
 use bijux_gnss_core::api::{GpsTime, ObsEpoch, SatId, SignalBand};
 use bijux_gnss_nav::api::{
