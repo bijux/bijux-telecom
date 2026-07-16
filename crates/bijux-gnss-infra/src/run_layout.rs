@@ -1,6 +1,6 @@
 //! Run directory layout and manifest utilities.
 
-use crate::dataset::{resolve_raw_iq_metadata, DatasetEntry};
+use crate::datasets::{resolve_raw_iq_metadata, DatasetEntry};
 use crate::hash::core::{cpu_features, git_dirty, git_hash, hash_config};
 use bijux_gnss_receiver::api::core::{ArtifactHeaderV1, ArtifactReadPolicy, InputError};
 use bijux_gnss_receiver::api::ReceiverConfig;

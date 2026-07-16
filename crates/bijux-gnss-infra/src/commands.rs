@@ -1,6 +1,6 @@
 //! Command helpers for standardized runs.
 
-use crate::dataset::DatasetEntry;
+use crate::datasets::DatasetEntry;
 use crate::run_layout::{artifact_header, run_dir, write_run_report, RunContextArgs, RunDirLayout};
 use bijux_gnss_receiver::api::core::ArtifactHeaderV1;
 use bijux_gnss_receiver::api::core::InputError;

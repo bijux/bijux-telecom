@@ -4,7 +4,6 @@
 
 mod artifact_tools;
 mod commands;
-mod dataset;
 mod datasets;
 mod experiments;
 mod hash;
