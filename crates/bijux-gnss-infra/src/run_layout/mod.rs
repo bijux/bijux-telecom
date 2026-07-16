@@ -2,6 +2,7 @@
 
 mod context;
 mod identity;
+mod index;
 mod layout;
 mod manifest;
 mod provenance;
@@ -27,7 +28,7 @@ pub type ReplayScope = provenance::ReplayScope;
 pub type FrontEndProvenance = provenance::FrontEndProvenance;
 
 /// Run index entry appended to `artifacts/runs/index.jsonl`.
-pub type RunIndexEntry = run_records::RunIndexEntry;
+pub type RunIndexEntry = index::RunIndexEntry;
 
 /// Resolve run directory path.
 pub fn run_dir(
@@ -52,7 +53,7 @@ pub fn append_run_index(
     run_dir: &std::path::Path,
     manifest: &RunManifest,
 ) -> Result<(), bijux_gnss_receiver::api::core::InputError> {
-    run_records::append_run_index(run_dir, manifest)
+    index::append_run_index(run_dir, manifest)
 }
 
 /// Build an artifact header for outputs.
