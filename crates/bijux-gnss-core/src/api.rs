@@ -58,15 +58,18 @@ pub use crate::observation::acquisition::{
     AcqExplainCandidate, AcqHypothesis, AcqRequest, AcqResult, AcqSearchSummary,
     AcqThresholdProvenance, AcqTrackingSeed, AcqUncertainty, AcqUncertaintyCovariance,
 };
+pub use crate::observation::tracking::{
+    TrackEpoch, TrackTransition, TrackingAssumptions, TrackingLifecycleState, TrackingTransmitTime,
+    TrackingUncertainty,
+};
 pub use crate::observation::{
     obs_epoch_stability_key, AmbiguityId, AmbiguityState, AmbiguityStatus, DoubleDifference,
     MeasurementRejectReason, NavAssumptions, NavHealthEvent, NavLifecycleState, NavProvenance,
     NavQualityFlag, NavRefusalClass, NavUncertaintyClass, ObsDecisionArtifact, ObsEpoch,
     ObsEpochManifest, ObservationEpochDecision, ObservationStatus, ObservationSupportClass,
     ObservationUncertaintyClass, ReceiverRole, Sample, SamplesFrame, SatObservationDecision,
-    SignalDelayAlignment, SingleDifference, SolutionStatus, SolutionValidity, TrackEpoch,
-    TrackTransition, TrackingAssumptions, TrackingLifecycleState, TrackingTransmitTime,
-    TrackingUncertainty, NAV_OUTPUT_STABILITY_SIGNATURE_VERSION, NAV_SOLUTION_MODEL_VERSION,
+    SignalDelayAlignment, SingleDifference, SolutionStatus, SolutionValidity,
+    NAV_OUTPUT_STABILITY_SIGNATURE_VERSION, NAV_SOLUTION_MODEL_VERSION,
     OBSERVATION_DOPPLER_MODEL_TRACKED_CARRIER_IF_OFFSET, OBSERVATION_DOWNSTREAM_PROFILE_VERSION,
     OBSERVATION_MODEL_VERSION, TRACKING_STATE_MODEL_VERSION,
 };
