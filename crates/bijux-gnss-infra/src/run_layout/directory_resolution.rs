@@ -9,7 +9,7 @@ use crate::datasets::DatasetEntry;
 use crate::hash::hash_config;
 
 use super::directories::RunDirLayout;
-use super::identity::{dataset_hash, now_unix_ms, run_id};
+use super::run_identity::{dataset_hash, now_unix_ms, run_id};
 
 /// Run context arguments.
 #[derive(Debug, Clone)]
