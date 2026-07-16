@@ -57,6 +57,8 @@ fn sample_solution() -> NavSolutionEpoch {
         normalized_innovation_max: Some(0.7),
         ekf_innovation_rms: Some(0.5),
         ekf_condition_number: Some(10.0),
+        wls_solver_rank: None,
+        wls_condition_number: None,
         ekf_whiteness_ratio: Some(1.0),
         ekf_predicted_variance: Some(1.0),
         ekf_observed_variance: Some(1.1),

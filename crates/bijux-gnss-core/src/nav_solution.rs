@@ -1,7 +1,7 @@
 #![allow(missing_docs)]
 
 use crate::ids::{Constellation, SatId, SignalBand};
-use crate::observation::{
+use crate::observation::navigation::{
     MeasurementRejectReason, NavAssumptions, NavHealthEvent, NavLifecycleState, NavProvenance,
     NavQualityFlag, NavRefusalClass, NavUncertaintyClass, SolutionStatus, SolutionValidity,
     NAV_OUTPUT_STABILITY_SIGNATURE_VERSION, NAV_SOLUTION_MODEL_VERSION,
