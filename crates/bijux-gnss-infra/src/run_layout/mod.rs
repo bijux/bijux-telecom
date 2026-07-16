@@ -3,6 +3,7 @@
 mod context;
 mod identity;
 mod layout;
+mod manifest;
 mod provenance;
 mod report;
 mod run_records;
@@ -14,7 +15,7 @@ pub type RunDirLayout = layout::RunDirLayout;
 pub type RunContextArgs<'a> = context::RunContextArgs<'a>;
 
 /// Run manifest persisted for each execution.
-pub type RunManifest = run_records::RunManifest;
+pub type RunManifest = manifest::RunManifest;
 
 /// Run report persisted for each execution.
 pub type RunReport = report::RunReport;
@@ -89,5 +90,5 @@ pub fn write_manifest(
     dataset: Option<&crate::datasets::DatasetEntry>,
     summary: &serde_json::Value,
 ) -> Result<RunManifest, bijux_gnss_receiver::api::core::InputError> {
-    run_records::write_manifest(args, command, profile, dataset, summary)
+    manifest::write_manifest(args, command, profile, dataset, summary)
 }
