@@ -145,6 +145,10 @@ impl TrackingComponentLocalCodeModel {
     fn secondary_code_period(&self) -> Option<usize> {
         match self {
             Self::Local(LocalCodeModel::GpsL5Q { .. }) => Some(GPS_L5_Q_PRIMARY_EPOCHS_PER_SYMBOL),
+            Self::Local(LocalCodeModel::BeidouB1I { .. })
+            | Self::Local(LocalCodeModel::BeidouB2I { .. }) => {
+                Some(bijux_gnss_signal::api::BEIDOU_D1_SECONDARY_CODE_CHIPS)
+            }
             Self::GalileoE5aQ { .. } => Some(GALILEO_E5A_Q_SECONDARY_CODE_CHIPS),
             Self::GalileoE5bQ { .. } => Some(GALILEO_E5B_Q_SECONDARY_CODE_CHIPS),
             Self::Local(_) | Self::GpsL2cCl { .. } => None,
@@ -156,6 +160,10 @@ impl TrackingComponentLocalCodeModel {
             Self::Local(LocalCodeModel::GpsL5Q { .. }) => {
                 Some(gps_l5_q_epoch_symbol(primary_code_period_index))
             }
+            Self::Local(LocalCodeModel::BeidouB1I { .. })
+            | Self::Local(LocalCodeModel::BeidouB2I { .. }) => Some(
+                bijux_gnss_signal::api::beidou_d1_nh_chip(primary_code_period_index),
+            ),
             Self::GalileoE5aQ { secondary_code, .. } => {
                 Some(galileo_e5a_q_epoch_symbol(secondary_code, primary_code_period_index))
             }

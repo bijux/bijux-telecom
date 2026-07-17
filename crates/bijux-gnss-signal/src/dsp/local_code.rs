@@ -2,6 +2,7 @@
 
 use crate::codes::beidou_b1i::{generate_beidou_b1i_code, BEIDOU_B1I_CODE_RATE_HZ};
 use crate::codes::beidou_b2i::{generate_beidou_b2i_code, BEIDOU_B2I_CODE_RATE_HZ};
+use crate::codes::beidou_d1::beidou_d1_epoch_symbol;
 use crate::codes::ca_code::{generate_ca_code, Prn};
 use crate::codes::galileo_e1::{
     boc_subcarrier_value, generate_galileo_e1b_code, sample_boc_code, GALILEO_E1_CODE_RATE_HZ,
@@ -255,6 +256,11 @@ impl LocalCodeModel {
                     * galileo_e5b_i_epoch_symbol(&[1], primary_code_period_index)? as f32
                     * std::f32::consts::FRAC_1_SQRT_2)
             }
+            Self::BeidouB1I { code } | Self::BeidouB2I { code } => {
+                Ok(interpolated_bpsk_code_value_at_phase(code, chip_phase)?
+                    * beidou_d1_epoch_symbol(&[1], primary_code_period_index)? as f32
+                    * std::f32::consts::FRAC_1_SQRT_2)
+            }
             _ => self.sample_value(chip_phase),
         }
     }
@@ -435,6 +441,7 @@ fn default_signal_code_for_band(
 #[cfg(test)]
 mod tests {
     use super::LocalCodeModel;
+    use crate::codes::beidou_d1::BEIDOU_D1_PRIMARY_EPOCHS_PER_SYMBOL;
     use crate::dsp::sample_timing::code_sample_position_at_index;
 
     #[test]
@@ -479,5 +486,22 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert_eq!(block_samples, iterated);
+    }
+
+    #[test]
+    fn beidou_tracking_samples_follow_d1_neumann_hoffman_overlay() {
+        let model = LocalCodeModel::beidou_b1i(11).expect("valid BeiDou B1I PRN");
+        let epoch_zero = model
+            .sample_tracking_value(0.25, 0)
+            .expect("valid BeiDou B1I epoch-zero sample");
+        let epoch_five = model
+            .sample_tracking_value(0.25, 5)
+            .expect("valid BeiDou B1I NH-flipped sample");
+        let epoch_twenty = model
+            .sample_tracking_value(0.25, BEIDOU_D1_PRIMARY_EPOCHS_PER_SYMBOL)
+            .expect("valid BeiDou B1I repeated NH sample");
+
+        assert!((epoch_zero + epoch_five).abs() <= 1.0e-6);
+        assert!((epoch_zero - epoch_twenty).abs() <= 1.0e-6);
     }
 }

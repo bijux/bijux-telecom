@@ -674,6 +674,32 @@ fn tracking_signal_model_uses_registry_metadata_for_beidou_b1i() {
 }
 
 #[test]
+fn tracking_signal_model_exposes_beidou_d1_secondary_code_epochs() {
+    let config = crate::engine::receiver_config::ReceiverPipelineConfig {
+        code_freq_basis_hz: 2_046_000.0,
+        code_length: 2046,
+        ..crate::engine::receiver_config::ReceiverPipelineConfig::default()
+    };
+    let sat = SatId { constellation: Constellation::Beidou, prn: 11 };
+
+    let signal_model = super::TrackingSignalModel::for_sat_signal_band(
+        &config,
+        sat,
+        SignalBand::B1,
+        SignalCode::B1I,
+        None,
+    );
+    let carrier_component = signal_model.carrier_component();
+
+    assert_eq!(
+        carrier_component.secondary_code_period(),
+        Some(bijux_gnss_signal::api::BEIDOU_D1_SECONDARY_CODE_CHIPS)
+    );
+    assert_eq!(carrier_component.secondary_code_symbol(0), Some(1));
+    assert_eq!(carrier_component.secondary_code_symbol(5), Some(-1));
+}
+
+#[test]
 fn signal_tracking_params_use_narrow_spacing_for_gps_l1_ca_defaults() {
     let config = crate::engine::receiver_config::ReceiverPipelineConfig::default();
     let sat = SatId { constellation: Constellation::Gps, prn: 3 };
