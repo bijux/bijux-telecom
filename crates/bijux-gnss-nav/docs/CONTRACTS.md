@@ -42,3 +42,5 @@ The orbit/model layer owns:
 - time-system rollover handling specific to navigation formats
 
 The orbit-specific ownership surface is detailed in [ORBITS.md](ORBITS.md).
+The supporting model and time-interpretation surfaces are detailed in [MODELS.md](MODELS.md) and
+[TIME.md](TIME.md).
