@@ -1,4 +1,4 @@
-use bijux_gnss_core::api::{AcqHypothesis, AcqRequest, AcqResult, SamplesFrame, SatId};
+use bijux_gnss_core::api::{AcqHypothesis, AcqRequest, AcqResult, SamplesFrame};
 use bijux_gnss_signal::api::AcquisitionSignalModel;
 
 use crate::engine::receiver_config::ReceiverPipelineConfig;
@@ -36,6 +36,18 @@ pub(super) struct SearchWindowDiagnostic {
     pub(super) interior_axis_value: f64,
     pub(super) best_peak_mean_ratio: f32,
     pub(super) interior_peak_mean_ratio: f32,
+}
+
+pub(super) struct AssistedCodePhaseWindowDiagnosticRequest<'a> {
+    pub(super) config: &'a ReceiverPipelineConfig,
+    pub(super) signal_model: &'a AcquisitionSignalModel,
+    pub(super) frame: &'a SamplesFrame,
+    pub(super) carrier_hz: f64,
+    pub(super) doppler_rate_hz_per_s: f64,
+    pub(super) coherent_ms: u32,
+    pub(super) noncoherent: u32,
+    pub(super) resolved_bounds: &'a ResolvedAcquisitionSearchBounds,
+    pub(super) peak_mean_threshold: f32,
 }
 
 fn candidate_is_trackable(candidate: &AcqResult) -> bool {
@@ -237,17 +249,19 @@ pub(super) fn signal_outside_search_range(
 }
 
 pub(super) fn assisted_code_phase_search_window_diagnostic(
-    config: &ReceiverPipelineConfig,
-    signal_model: &AcquisitionSignalModel,
-    frame: &SamplesFrame,
-    _sat: SatId,
-    carrier_hz: f64,
-    doppler_rate_hz_per_s: f64,
-    coherent_ms: u32,
-    noncoherent: u32,
-    resolved_bounds: &ResolvedAcquisitionSearchBounds,
-    peak_mean_threshold: f32,
+    request: AssistedCodePhaseWindowDiagnosticRequest<'_>,
 ) -> Option<SearchWindowDiagnostic> {
+    let AssistedCodePhaseWindowDiagnosticRequest {
+        config,
+        signal_model,
+        frame,
+        carrier_hz,
+        doppler_rate_hz_per_s,
+        coherent_ms,
+        noncoherent,
+        resolved_bounds,
+        peak_mean_threshold,
+    } = request;
     if resolved_bounds.code_phase_search_bins == 0
         || resolved_bounds.code_phase_search_mode == "full_code"
     {

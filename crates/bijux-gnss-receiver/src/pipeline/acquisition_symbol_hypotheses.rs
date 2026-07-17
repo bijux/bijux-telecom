@@ -25,9 +25,9 @@ pub(crate) fn coherent_data_sign_hypotheses(
 
         for variant in 0..sign_variants {
             let mut symbol_signs = vec![1_i8; symbol_count];
-            for symbol_index in 1..symbol_count {
+            for (symbol_index, symbol_sign) in symbol_signs.iter_mut().enumerate().skip(1) {
                 if ((variant >> (symbol_index - 1)) & 1) == 1 {
-                    symbol_signs[symbol_index] = -1;
+                    *symbol_sign = -1;
                 }
             }
             unique.insert(

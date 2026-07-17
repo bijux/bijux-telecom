@@ -127,20 +127,21 @@ fn estimate_acquisition_uncertainty_skips_ambiguous_candidate() {
         signal_model.samples_per_code(config.sampling_freq_hz),
         0xA11CE,
     );
-    let uncertainty = estimate_acquisition_uncertainty(
-        &config,
-        &frame,
-        &signal_model,
-        &AcqResult {
-            hypothesis: AcqHypothesis::Ambiguous,
-            ..candidate_for_search_window_test(sat, 0.0, 4.0)
-        },
-        1,
-        1,
-        250,
-        0,
-        250,
-    );
+    let ambiguity_candidate = AcqResult {
+        hypothesis: AcqHypothesis::Ambiguous,
+        ..candidate_for_search_window_test(sat, 0.0, 4.0)
+    };
+    let uncertainty = estimate_acquisition_uncertainty(AcquisitionUncertaintyRequest {
+        config: &config,
+        frame: &frame,
+        signal_model: &signal_model,
+        candidate: &ambiguity_candidate,
+        coherent_ms: 1,
+        noncoherent: 1,
+        doppler_step_hz: 250,
+        doppler_rate_search_hz_per_s: 0,
+        doppler_rate_step_hz_per_s: 250,
+    });
 
     assert!(uncertainty.is_none());
 }

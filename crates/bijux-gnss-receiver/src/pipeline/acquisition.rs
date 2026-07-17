@@ -57,7 +57,7 @@ use code_phase_profile::{
 };
 use code_phase_profile::{measure_code_phase_profile, CodePhaseProfileRequest};
 use correlation_accumulation::{
-    accumulate_component_correlations, combine_component_accumulations,
+    accumulate_component_correlations, combine_component_accumulations, ComponentCorrelationRequest,
 };
 #[cfg(test)]
 use correlation_accumulation::{
@@ -89,6 +89,7 @@ use search_window::{
     append_assisted_search_fallback_reason, assisted_code_phase_search_window_diagnostic,
     assisted_search_fallback_reason, search_window_candidate_reason, should_retry_assisted_search,
     signal_outside_doppler_rate_search_range, signal_outside_search_range,
+    AssistedCodePhaseWindowDiagnosticRequest,
 };
 #[cfg(test)]
 use search_window::{SearchWindowDimension, SearchWindowEdge};
@@ -107,7 +108,7 @@ use strategy_components::{
 use threshold_resolution::{
     threshold_provenance_for_request, ResolvedAcquisitionThresholds, ThresholdResolutionCache,
 };
-use uncertainty::estimate_acquisition_uncertainty;
+use uncertainty::{estimate_acquisition_uncertainty, AcquisitionUncertaintyRequest};
 use wrong_prn_suppression::{suppress_wrong_prn_correlations, AcquisitionSatEvaluation};
 
 mod cache;
@@ -549,19 +550,20 @@ impl Acquisition {
                     for (component, code_fft) in
                         strategy_components.iter().zip(component_ffts.iter())
                     {
-                        let accumulation = accumulate_component_correlations(
-                            frame,
-                            component,
-                            code_fft,
-                            carrier,
-                            absolute_doppler_rate_hz_per_s,
-                            self.config.sampling_freq_hz,
-                            samples_per_code,
-                            coherent_periods,
-                            request.noncoherent,
-                            fft.as_ref(),
-                            ifft.as_ref(),
-                        );
+                        let accumulation =
+                            accumulate_component_correlations(ComponentCorrelationRequest {
+                                frame,
+                                component,
+                                code_fft,
+                                carrier_hz: carrier,
+                                doppler_rate_hz_per_s: absolute_doppler_rate_hz_per_s,
+                                sample_rate_hz: self.config.sampling_freq_hz,
+                                samples_per_code,
+                                coherent_periods,
+                                noncoherent: request.noncoherent,
+                                fft: fft.as_ref(),
+                                ifft: ifft.as_ref(),
+                            });
                         component_accumulations.push(accumulation);
                     }
 
@@ -736,16 +738,17 @@ impl Acquisition {
                         .clone()
                         .or_else(|| {
                             assisted_code_phase_search_window_diagnostic(
-                                &self.config,
-                                &signal_model,
-                                frame,
-                                sat,
-                                candidate.carrier_hz.0,
-                                candidate.doppler_rate_hz_per_s,
-                                request.coherent_ms,
-                                request.noncoherent,
-                                &resolved_bounds,
-                                resolved_thresholds.peak_mean_threshold,
+                                AssistedCodePhaseWindowDiagnosticRequest {
+                                    config: &self.config,
+                                    signal_model: &signal_model,
+                                    frame,
+                                    carrier_hz: candidate.carrier_hz.0,
+                                    doppler_rate_hz_per_s: candidate.doppler_rate_hz_per_s,
+                                    coherent_ms: request.coherent_ms,
+                                    noncoherent: request.noncoherent,
+                                    resolved_bounds: &resolved_bounds,
+                                    peak_mean_threshold: resolved_thresholds.peak_mean_threshold,
+                                },
                             )
                         })
                         .or_else(|| {
@@ -783,22 +786,21 @@ impl Acquisition {
                         ) {
                             None
                         } else {
-                            classify_delayed_secondary_peak(
-                                &self.config,
+                            classify_delayed_secondary_peak(DelayedSecondaryPeakRequest {
+                                config: &self.config,
                                 frame,
-                                &signal_model,
-                                sat,
-                                candidate.carrier_hz.0,
-                                candidate.doppler_rate_hz_per_s,
-                                candidate.code_phase_samples,
+                                signal_model: &signal_model,
+                                carrier_hz: candidate.carrier_hz.0,
+                                doppler_rate_hz_per_s: candidate.doppler_rate_hz_per_s,
+                                code_phase_samples: candidate.code_phase_samples,
                                 samples_per_code,
-                                request.coherent_ms,
-                                request.noncoherent,
-                                candidate.peak_mean_ratio,
-                                candidate.peak_second_ratio,
+                                coherent_ms: request.coherent_ms,
+                                noncoherent: request.noncoherent,
+                                peak_mean_ratio: candidate.peak_mean_ratio,
+                                peak_second_ratio: candidate.peak_second_ratio,
                                 competing_peak_ratio,
-                                &resolved_thresholds,
-                            )
+                                thresholds: &resolved_thresholds,
+                            })
                         };
                         let decision =
                             multipath_diagnostic.as_ref().map_or(decision, |diagnostic| {
@@ -830,17 +832,22 @@ impl Acquisition {
                                     &resolved_thresholds,
                                 ),
                             });
-                        candidate.uncertainty = estimate_acquisition_uncertainty(
-                            &self.config,
-                            frame,
-                            &signal_model,
-                            candidate,
-                            request.coherent_ms,
-                            request.noncoherent,
-                            request.doppler_step_hz.max(1),
-                            request.doppler_rate_search_hz_per_s.max(0),
-                            request.doppler_rate_step_hz_per_s.max(1),
-                        );
+                        candidate.uncertainty =
+                            estimate_acquisition_uncertainty(AcquisitionUncertaintyRequest {
+                                config: &self.config,
+                                frame,
+                                signal_model: &signal_model,
+                                candidate,
+                                coherent_ms: request.coherent_ms,
+                                noncoherent: request.noncoherent,
+                                doppler_step_hz: request.doppler_step_hz.max(1),
+                                doppler_rate_search_hz_per_s: request
+                                    .doppler_rate_search_hz_per_s
+                                    .max(0),
+                                doppler_rate_step_hz_per_s: request
+                                    .doppler_rate_step_hz_per_s
+                                    .max(1),
+                            });
                     }
                 }
             }
@@ -900,11 +907,10 @@ fn doppler_bin_count(search_hz: i32, step_hz: i32) -> u64 {
     (search / step).saturating_mul(2).saturating_add(1)
 }
 
-fn classify_delayed_secondary_peak(
-    config: &ReceiverPipelineConfig,
-    frame: &SamplesFrame,
-    signal_model: &AcquisitionSignalModel,
-    _sat: SatId,
+struct DelayedSecondaryPeakRequest<'a> {
+    config: &'a ReceiverPipelineConfig,
+    frame: &'a SamplesFrame,
+    signal_model: &'a AcquisitionSignalModel,
     carrier_hz: f64,
     doppler_rate_hz_per_s: f64,
     code_phase_samples: usize,
@@ -914,8 +920,27 @@ fn classify_delayed_secondary_peak(
     peak_mean_ratio: f32,
     peak_second_ratio: f32,
     competing_peak_ratio: f32,
-    thresholds: &ResolvedAcquisitionThresholds,
+    thresholds: &'a ResolvedAcquisitionThresholds,
+}
+
+fn classify_delayed_secondary_peak(
+    request: DelayedSecondaryPeakRequest<'_>,
 ) -> Option<DelayedSecondaryPeakDiagnostic> {
+    let DelayedSecondaryPeakRequest {
+        config,
+        frame,
+        signal_model,
+        carrier_hz,
+        doppler_rate_hz_per_s,
+        code_phase_samples,
+        samples_per_code,
+        coherent_ms,
+        noncoherent,
+        peak_mean_ratio,
+        peak_second_ratio,
+        competing_peak_ratio,
+        thresholds,
+    } = request;
     if peak_mean_ratio < thresholds.peak_mean_threshold
         || peak_second_ratio >= thresholds.peak_second_threshold
         || competing_peak_ratio < thresholds.peak_second_threshold

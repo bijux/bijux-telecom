@@ -12,17 +12,32 @@ use super::likelihood_measurement::{
     AcquisitionLikelihoodSurfaceRequest, AcquisitionLikelihoodVolumeRequest,
 };
 
+pub(super) struct AcquisitionUncertaintyRequest<'a> {
+    pub(super) config: &'a ReceiverPipelineConfig,
+    pub(super) frame: &'a SamplesFrame,
+    pub(super) signal_model: &'a AcquisitionSignalModel,
+    pub(super) candidate: &'a AcqResult,
+    pub(super) coherent_ms: u32,
+    pub(super) noncoherent: u32,
+    pub(super) doppler_step_hz: i32,
+    pub(super) doppler_rate_search_hz_per_s: i32,
+    pub(super) doppler_rate_step_hz_per_s: i32,
+}
+
 pub(super) fn estimate_acquisition_uncertainty(
-    config: &ReceiverPipelineConfig,
-    frame: &SamplesFrame,
-    signal_model: &AcquisitionSignalModel,
-    candidate: &AcqResult,
-    coherent_ms: u32,
-    noncoherent: u32,
-    doppler_step_hz: i32,
-    doppler_rate_search_hz_per_s: i32,
-    doppler_rate_step_hz_per_s: i32,
+    request: AcquisitionUncertaintyRequest<'_>,
 ) -> Option<AcqUncertainty> {
+    let AcquisitionUncertaintyRequest {
+        config,
+        frame,
+        signal_model,
+        candidate,
+        coherent_ms,
+        noncoherent,
+        doppler_step_hz,
+        doppler_rate_search_hz_per_s,
+        doppler_rate_step_hz_per_s,
+    } = request;
     if !matches!(candidate.hypothesis, AcqHypothesis::Accepted) {
         return None;
     }

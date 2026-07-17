@@ -42,7 +42,7 @@ impl HatchFilterState {
     }
 
     pub(crate) fn divergence_delta_m(&self, raw_divergence_m: f64) -> Option<f64> {
-        self.initialized.then(|| raw_divergence_m - self.last_divergence_m)
+        self.initialized.then_some(raw_divergence_m - self.last_divergence_m)
     }
 
     pub(crate) fn observe(

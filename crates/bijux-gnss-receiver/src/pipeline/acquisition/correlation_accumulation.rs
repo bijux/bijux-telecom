@@ -16,6 +16,20 @@ pub(super) struct ComponentCorrelationAccumulation {
     pub(super) secondary_code_phase_periods: Option<u32>,
 }
 
+pub(super) struct ComponentCorrelationRequest<'a> {
+    pub(super) frame: &'a SamplesFrame,
+    pub(super) component: &'a AcquisitionComponentPlan,
+    pub(super) code_fft: &'a [Complex<f32>],
+    pub(super) carrier_hz: f64,
+    pub(super) doppler_rate_hz_per_s: f64,
+    pub(super) sample_rate_hz: f64,
+    pub(super) samples_per_code: usize,
+    pub(super) coherent_periods: u32,
+    pub(super) noncoherent: u32,
+    pub(super) fft: &'a dyn rustfft::Fft<f32>,
+    pub(super) ifft: &'a dyn rustfft::Fft<f32>,
+}
+
 pub(super) fn combine_component_accumulations(
     combination_mode: AcqComponentCombinationMode,
     component_indexes: &[usize],
@@ -42,13 +56,13 @@ pub(super) fn combine_component_accumulations(
         AcqComponentCombinationMode::CoherentComponentSum => {
             let mut combined = vec![0.0f32; samples_per_code];
             for nc in 0..noncoherent as usize {
-                for sample_index in 0..samples_per_code {
+                for (sample_index, combined_value) in combined.iter_mut().enumerate() {
                     let mut coherent_sum: Complex<f32> = Complex::zero();
                     for &component_index in component_indexes {
                         coherent_sum += component_accumulations[component_index].per_noncoherent
                             [nc][sample_index];
                     }
-                    combined[sample_index] += coherent_sum.norm();
+                    *combined_value += coherent_sum.norm();
                 }
             }
             combined
@@ -57,18 +71,21 @@ pub(super) fn combine_component_accumulations(
 }
 
 pub(super) fn accumulate_component_correlations(
-    frame: &SamplesFrame,
-    component: &AcquisitionComponentPlan,
-    code_fft: &[Complex<f32>],
-    carrier_hz: f64,
-    doppler_rate_hz_per_s: f64,
-    sample_rate_hz: f64,
-    samples_per_code: usize,
-    coherent_periods: u32,
-    noncoherent: u32,
-    fft: &dyn rustfft::Fft<f32>,
-    ifft: &dyn rustfft::Fft<f32>,
+    request: ComponentCorrelationRequest<'_>,
 ) -> ComponentCorrelationAccumulation {
+    let ComponentCorrelationRequest {
+        frame,
+        component,
+        code_fft,
+        carrier_hz,
+        doppler_rate_hz_per_s,
+        sample_rate_hz,
+        samples_per_code,
+        coherent_periods,
+        noncoherent,
+        fft,
+        ifft,
+    } = request;
     let total_periods = coherent_periods as usize * noncoherent as usize;
     let mut per_period = Vec::with_capacity(total_periods);
     for offset_period in 0..total_periods {
