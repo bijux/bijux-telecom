@@ -1,7 +1,7 @@
 ---
 title: Fixture and Artifact Care
 audience: mixed
-type: explanation
+type: operations
 status: canonical
 owner: bijux-gnss-infra-docs
 last_reviewed: 2026-07-17

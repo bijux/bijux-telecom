@@ -1,7 +1,7 @@
 ---
 title: Integration Seams
 audience: mixed
-type: explanation
+type: architecture
 status: canonical
 owner: bijux-gnss-infra-docs
 last_reviewed: 2026-07-17

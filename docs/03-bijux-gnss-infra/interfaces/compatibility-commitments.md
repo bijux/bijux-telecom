@@ -1,7 +1,7 @@
 ---
 title: Compatibility Commitments
 audience: mixed
-type: explanation
+type: interfaces
 status: canonical
 owner: bijux-gnss-infra-docs
 last_reviewed: 2026-07-17
@@ -31,3 +31,5 @@ meaning.
 
 - `crates/bijux-gnss-infra/docs/CONTRACTS.md`
 - `crates/bijux-gnss-infra/docs/RUN_LAYOUT.md`
+- `crates/bijux-gnss-infra/docs/OVERRIDES.md`
+- `crates/bijux-gnss-infra/docs/HASHING.md`

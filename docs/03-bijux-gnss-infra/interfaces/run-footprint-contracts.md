@@ -1,7 +1,7 @@
 ---
 title: Run Footprint Contracts
 audience: mixed
-type: explanation
+type: interfaces
 status: canonical
 owner: bijux-gnss-infra-docs
 last_reviewed: 2026-07-17
@@ -18,9 +18,9 @@ Run footprint contracts define the durable repository record of an execution.
 - `RunManifest`
 - `RunReport`
 - `RunHistoryEntry`
-- `run_dir`, `artifacts_dir`
+- `run_dir`, `artifacts_dir`, `artifact_header`
 - `write_manifest`, `write_run_report`, `append_run_history_entry`
-- infrastructure-side artifact header construction
+- `run_report_schema_version`
 
 ## Why They Matter
 
@@ -36,4 +36,6 @@ nav code performs before persistence.
 ## Protecting Proof
 
 - `crates/bijux-gnss-infra/docs/RUN_LAYOUT.md`
-- `crates/bijux-gnss-infra/src/run_layout/`
+- `crates/bijux-gnss-infra/src/run_layout.rs`
+- `crates/bijux-gnss-infra/src/run_layout/records.rs`
+- `crates/bijux-gnss-infra/src/run_layout/persistence.rs`

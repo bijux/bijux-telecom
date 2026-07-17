@@ -1,7 +1,7 @@
 ---
 title: Ownership Boundary
 audience: mixed
-type: explanation
+type: foundation
 status: canonical
 owner: bijux-gnss-infra-docs
 last_reviewed: 2026-07-17

@@ -1,7 +1,7 @@
 ---
 title: Dependency Direction
 audience: mixed
-type: explanation
+type: architecture
 status: canonical
 owner: bijux-gnss-infra-docs
 last_reviewed: 2026-07-17
@@ -42,5 +42,7 @@ honest.
 
 ## First Proof Check
 
+- `crates/bijux-gnss-infra/Cargo.toml`
+- `crates/bijux-gnss-infra/src/api.rs`
 - `crates/bijux-gnss-infra/docs/BOUNDARY.md`
 - `crates/bijux-gnss-infra/tests/integration_guardrails.rs`

@@ -1,7 +1,7 @@
 ---
 title: Validation Adapters
 audience: mixed
-type: explanation
+type: interfaces
 status: canonical
 owner: bijux-gnss-infra-docs
 last_reviewed: 2026-07-17
@@ -15,7 +15,8 @@ artifacts and validation/reference comparison flows.
 ## Main Owned Entry Points
 
 - `validate_reference`
-- selected re-exports of lower-level validation helpers through the infra API
+- selected re-exports of lower-level validation helpers through the curated
+  infra API
 
 ## Why They Matter
 
@@ -32,4 +33,5 @@ runtime stage behavior, the stronger owner is receiver.
 ## Protecting Proof
 
 - `crates/bijux-gnss-infra/src/validate_reference.rs`
+- `crates/bijux-gnss-infra/src/api.rs`
 - `crates/bijux-gnss-infra/docs/VALIDATION.md`

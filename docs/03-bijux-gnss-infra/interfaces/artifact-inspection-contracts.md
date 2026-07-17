@@ -1,7 +1,7 @@
 ---
 title: Artifact Inspection Contracts
 audience: mixed
-type: explanation
+type: interfaces
 status: canonical
 owner: bijux-gnss-infra-docs
 last_reviewed: 2026-07-17
@@ -31,5 +31,7 @@ artifacts. It does not own the original production of those artifacts.
 
 ## Protecting Proof
 
-- `crates/bijux-gnss-infra/src/artifact_inspection/`
+- `crates/bijux-gnss-infra/src/artifact_inspection/summary.rs`
+- `crates/bijux-gnss-infra/src/artifact_inspection/validation.rs`
+- `crates/bijux-gnss-infra/src/artifact_inspection/tests.rs`
 - `crates/bijux-gnss-infra/docs/VALIDATION.md`

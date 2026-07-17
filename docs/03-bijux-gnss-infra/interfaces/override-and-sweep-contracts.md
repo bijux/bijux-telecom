@@ -1,7 +1,7 @@
 ---
 title: Override and Sweep Contracts
 audience: mixed
-type: explanation
+type: interfaces
 status: canonical
 owner: bijux-gnss-infra-docs
 last_reviewed: 2026-07-17
@@ -37,4 +37,8 @@ scientific meaning of the underlying receiver parameters.
 
 - `crates/bijux-gnss-infra/docs/OVERRIDES.md`
 - `crates/bijux-gnss-infra/docs/EXPERIMENTS.md`
+- `crates/bijux-gnss-infra/src/overrides/receiver_profile.rs`
+- `crates/bijux-gnss-infra/src/overrides/sweep_parameters.rs`
+- `crates/bijux-gnss-infra/src/experiments.rs`
+- `crates/bijux-gnss-infra/src/sweep.rs`
 - `crates/bijux-gnss-infra/tests/integration_overrides.rs`

@@ -1,7 +1,7 @@
 ---
 title: Dataset Contracts
 audience: mixed
-type: explanation
+type: interfaces
 status: canonical
 owner: bijux-gnss-infra-docs
 last_reviewed: 2026-07-17
@@ -35,4 +35,6 @@ signal-layer sample semantics or receiver execution over those datasets.
 ## Protecting Proof
 
 - `crates/bijux-gnss-infra/docs/DATASETS.md`
-- `crates/bijux-gnss-infra/src/datasets/`
+- `crates/bijux-gnss-infra/src/datasets/registry.rs`
+- `crates/bijux-gnss-infra/src/datasets/raw_iq_metadata.rs`
+- `crates/bijux-gnss-infra/src/parse/coordinates.rs`

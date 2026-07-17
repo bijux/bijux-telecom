@@ -1,7 +1,7 @@
 ---
 title: Known Limitations
 audience: mixed
-type: explanation
+type: quality
 status: canonical
 owner: bijux-gnss-infra-docs
 last_reviewed: 2026-07-17

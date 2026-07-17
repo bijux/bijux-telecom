@@ -1,7 +1,7 @@
 ---
 title: State and Persistence
 audience: mixed
-type: explanation
+type: architecture
 status: canonical
 owner: bijux-gnss-infra-docs
 last_reviewed: 2026-07-17
@@ -14,7 +14,7 @@ State is the reason this crate exists.
 ## Main Persisted Families
 
 - dataset registry entries and sidecar-derived metadata
-- run identity and directory layout
+- run identity, directory layout, and front-end provenance
 - manifests, reports, history entries, and artifact headers
 - provenance hashes and environment evidence
 
@@ -33,5 +33,9 @@ have.
 ## First Proof Check
 
 - `crates/bijux-gnss-infra/docs/RUN_LAYOUT.md`
-- `crates/bijux-gnss-infra/src/run_layout/`
-- `crates/bijux-gnss-infra/src/hash/`
+- `crates/bijux-gnss-infra/src/datasets/registry.rs`
+- `crates/bijux-gnss-infra/src/run_layout.rs`
+- `crates/bijux-gnss-infra/src/run_layout/records.rs`
+- `crates/bijux-gnss-infra/src/run_layout/persistence.rs`
+- `crates/bijux-gnss-infra/src/run_layout/provenance/front_end.rs`
+- `crates/bijux-gnss-infra/src/hash/provenance.rs`

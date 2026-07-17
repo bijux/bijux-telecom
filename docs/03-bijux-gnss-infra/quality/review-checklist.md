@@ -1,7 +1,7 @@
 ---
 title: Review Checklist
 audience: mixed
-type: checklist
+type: quality
 status: canonical
 owner: bijux-gnss-infra-docs
 last_reviewed: 2026-07-17

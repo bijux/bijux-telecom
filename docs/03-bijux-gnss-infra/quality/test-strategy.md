@@ -9,15 +9,24 @@ last_reviewed: 2026-07-17
 
 # Test Strategy
 
-The test strategy in `bijux-gnss-infra` is currently strongest around typed
-override behavior and boundary guardrails, with the rest of the trust story
-carried partly by documentation and explicit module ownership.
+The test strategy in `bijux-gnss-infra` is strongest around typed override
+behavior and boundary guardrails, but it also includes focused module tests for
+dataset parsing, raw-IQ metadata resolution, provenance hashing, artifact
+inspection, and run-layout provenance helpers.
 
 ## Main Test Families
 
 - override application tests in `tests/integration_overrides.rs`
 - workspace guardrail and boundary tests in
   `tests/integration_guardrails.rs`
+- dataset registry and raw-IQ metadata module tests in
+  `src/datasets/registry.rs` and `src/datasets/raw_iq_metadata.rs`
+- coordinate parsing tests in `src/parse/coordinates.rs`
+- artifact inspection tests in `src/artifact_inspection/tests.rs`
+- provenance hashing and front-end provenance tests in
+  `src/hash/provenance.rs` and `src/run_layout/provenance/front_end.rs`
+- override parameter module tests in `src/overrides/receiver_profile.rs` and
+  `src/overrides/sweep_parameters.rs`
 
 ## Strategy Rule
 
@@ -27,11 +36,12 @@ product owners.
 
 ## Current Truth
 
-The crate has narrower automated coverage than the full breadth of its
-repository contract surface. That is not something to hide. It means dataset,
-run-layout, and validation-adapter changes need disciplined documentation and
-review, not just a green narrow test. The strongest current proof is therefore
-mixed: narrow automated tests plus explicit checked-in contract docs.
+Automated coverage is real but uneven. Dataset parsing, override mechanics,
+artifact inspection, and provenance helpers have direct tests today. Run-layout
+persistence semantics and validation-adapter composition still depend more
+heavily on checked-in contract docs and reviewer discipline than on dedicated
+integration coverage. The honest proof story is therefore mixed: meaningful
+automated tests plus explicit contract surfaces for the gaps.
 
 ## Protecting Proof
 

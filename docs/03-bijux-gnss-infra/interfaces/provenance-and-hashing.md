@@ -1,7 +1,7 @@
 ---
 title: Provenance and Hashing
 audience: mixed
-type: explanation
+type: interfaces
 status: canonical
 owner: bijux-gnss-infra-docs
 last_reviewed: 2026-07-17
@@ -17,6 +17,7 @@ Hashing in infra is about repository evidence, not about scientific identity.
 - `git_hash`
 - `git_dirty`
 - `cpu_features`
+- front-end provenance capture persisted alongside run footprints
 
 ## Why They Matter
 
@@ -32,4 +33,5 @@ semantics.
 ## Protecting Proof
 
 - `crates/bijux-gnss-infra/docs/HASHING.md`
-- `crates/bijux-gnss-infra/src/hash/`
+- `crates/bijux-gnss-infra/src/hash/provenance.rs`
+- `crates/bijux-gnss-infra/src/run_layout/provenance/front_end.rs`
