@@ -25,3 +25,9 @@ areas are still lighter than the surface breadth it owns.
 
 Repository-facing crates become dangerous when they imply that typed file and
 artifact handling is equivalent to complete workflow correctness.
+
+## First Proof Check
+
+- `crates/bijux-gnss-infra/docs/TESTS.md`
+- `crates/bijux-gnss-infra/tests/integration_guardrails.rs`
+- `crates/bijux-gnss-infra/tests/integration_overrides.rs`

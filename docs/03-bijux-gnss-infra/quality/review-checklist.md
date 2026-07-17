@@ -16,3 +16,9 @@ last_reviewed: 2026-07-17
 - Did override or sweep behavior become more implicit?
 - Are docs aligned with the new repository contract?
 - If automated coverage is narrow here, did the change state that honestly?
+
+## Protecting Proof
+
+- `crates/bijux-gnss-infra/docs/TESTS.md`
+- `crates/bijux-gnss-infra/docs/CONTRACTS.md`
+- `docs/03-bijux-gnss-infra/this-package-does-not-own.md`

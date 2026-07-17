@@ -38,3 +38,11 @@ becoming an excuse to absorb neighboring product ownership.
 If the proposal sounds like product behavior with a file nearby, infra is
 probably the wrong owner. Update this ledger when the same boundary mistake
 shows up repeatedly in review.
+
+## First Neighbor Proof Check
+
+- `../05-bijux-gnss-receiver/index.md`
+- `../06-bijux-gnss-signal/index.md`
+- `../04-bijux-gnss-nav/index.md`
+- `../01-bijux-gnss/index.md`
+- `../02-bijux-gnss-core/index.md`

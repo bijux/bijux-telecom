@@ -20,3 +20,10 @@ Use this sequence for any substantive `bijux-gnss-infra` change.
 
 Skipping the first step is the most expensive mistake. A stronger owner is
 often a cleaner fix than a permanent new infra contract.
+
+## First Proof Check
+
+- `crates/bijux-gnss-infra/docs/DATASETS.md`
+- `crates/bijux-gnss-infra/docs/RUN_LAYOUT.md`
+- `crates/bijux-gnss-infra/docs/TESTS.md`
+- `docs/03-bijux-gnss-infra/operations/verification-commands.md`

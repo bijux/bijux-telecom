@@ -25,3 +25,9 @@ or interpreted. That makes artifact care part of ordinary change discipline.
 Repository artifacts are often read long after the command and process that
 created them are gone. A sloppy infra change can make old evidence harder to
 trust without any compiler error.
+
+## First Proof Check
+
+- `crates/bijux-gnss-infra/docs/RUN_LAYOUT.md`
+- `crates/bijux-gnss-infra/docs/VALIDATION.md`
+- `crates/bijux-gnss-infra/src/run_layout/persistence.rs`

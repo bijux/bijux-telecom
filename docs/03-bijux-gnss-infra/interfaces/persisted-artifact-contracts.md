@@ -24,3 +24,9 @@ actually defines on-disk GNSS evidence layout and interpretation.
 `bijux-gnss-infra` owns persisted artifact shape and interpretation. Product
 crates may emit in-memory artifacts or records, but this crate owns how those
 records are represented once the repository persists them.
+
+## Protecting Proof
+
+- `crates/bijux-gnss-infra/docs/CONTRACTS.md`
+- `crates/bijux-gnss-infra/docs/RUN_LAYOUT.md`
+- `crates/bijux-gnss-infra/src/run_layout/records.rs`
