@@ -69,14 +69,16 @@ fn tracking_lock_rate_reports_cn0_refusal_sensitivity() {
 fn tracking_refuses_stable_lock_below_cn0_floor() {
     let weak_case = tracking_lock_rate_case(24.0);
     let report = measure_truth_guided_tracking_lock_probability(
-        &low_cn0_tracking_profile(),
-        weak_case.signal,
-        weak_case.duration_s,
-        &trial_seeds(0x2407_19A2, TRACKING_LOCK_RATE_TRIAL_COUNT),
-        "tracking_low_cn0_refusal",
-        weak_case.seeded_doppler_error_hz,
-        weak_case.seeded_code_phase_error_samples,
-        weak_case.min_locked_epochs,
+        bijux_gnss_receiver::api::sim::SyntheticTrackingLockProbabilityRequest {
+            config: &low_cn0_tracking_profile(),
+            signal: weak_case.signal,
+            duration_s: weak_case.duration_s,
+            trial_seeds: &trial_seeds(0x2407_19A2, TRACKING_LOCK_RATE_TRIAL_COUNT),
+            scenario_id_prefix: "tracking_low_cn0_refusal",
+            seeded_doppler_error_hz: weak_case.seeded_doppler_error_hz,
+            seeded_code_phase_error_samples: weak_case.seeded_code_phase_error_samples,
+            min_locked_epochs: weak_case.min_locked_epochs,
+        },
     );
 
     assert_eq!(report.trial_count, TRACKING_LOCK_RATE_TRIAL_COUNT);

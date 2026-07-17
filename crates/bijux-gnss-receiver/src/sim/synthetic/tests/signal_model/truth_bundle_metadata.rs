@@ -246,7 +246,7 @@ fn truth_bundle_records_separate_receiver_oscillator_effect_series() {
     let frame =
         generate_l1_ca_multi_with_receiver_oscillator(&config, &scenario, &receiver_oscillator);
     let bundle = build_quantized_capture_bundle_with_receiver_oscillator(
-        super::super::SyntheticQuantizedCaptureRequest {
+        crate::api::sim::SyntheticQuantizedCaptureRequest {
             scenario_id: &scenario.id,
             scenario: &scenario,
             frame: &frame,

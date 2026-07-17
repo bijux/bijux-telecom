@@ -306,17 +306,20 @@ pub fn validate_truth_guided_cn0(
             let doppler_hz = synthetic_truth_measured_doppler_hz(truth, sat_truth);
             let tracks = tracking.track_from_acquisition(
                 &isolated_frame,
-                &[seeded_tracking_acquisition(
-                    sat_truth.sat,
-                    sat_truth.signal_band,
-                    sat_truth.signal_code,
-                    sat_truth.glonass_frequency_channel,
+                &[seeded_tracking_acquisition(SyntheticTrackingAcquisitionSeed {
+                    sat: sat_truth.sat,
+                    signal_band: sat_truth.signal_band,
+                    signal_code: sat_truth.signal_code,
+                    glonass_frequency_channel: sat_truth.glonass_frequency_channel,
                     doppler_hz,
-                    config.intermediate_freq_hz,
-                    seeded_code_phase_samples,
-                    sat_truth.cn0_db_hz,
-                    format!("truth_guided_cn0_tracking_seed_{}", sat_truth.sat.prn),
-                )],
+                    intermediate_freq_hz: config.intermediate_freq_hz,
+                    code_phase_samples: seeded_code_phase_samples,
+                    cn0_db_hz: sat_truth.cn0_db_hz,
+                    explain_selection_reason: format!(
+                        "truth_guided_cn0_tracking_seed_{}",
+                        sat_truth.sat.prn
+                    ),
+                })],
             );
             let cn0_values = tracks
                 .first()
@@ -706,16 +709,23 @@ pub fn validate_truth_guided_tracking_table(
             let tracks = tracking.track_from_acquisition(
                 &isolated_frame,
                 &[seeded_tracking_acquisition_with_refined_code_phase(
-                    sat_truth.sat,
-                    sat_truth.signal_band,
-                    sat_truth.signal_code,
-                    sat_truth.glonass_frequency_channel,
-                    expected_measured_doppler_hz,
-                    config.intermediate_freq_hz,
-                    seeded_code_phase_samples,
-                    refined_code_phase_samples,
-                    sat_truth.cn0_db_hz,
-                    format!("truth_guided_tracking_seed_{}", sat_truth.sat.prn),
+                    SyntheticRefinedTrackingAcquisitionSeed {
+                        acquisition_seed: SyntheticTrackingAcquisitionSeed {
+                            sat: sat_truth.sat,
+                            signal_band: sat_truth.signal_band,
+                            signal_code: sat_truth.signal_code,
+                            glonass_frequency_channel: sat_truth.glonass_frequency_channel,
+                            doppler_hz: expected_measured_doppler_hz,
+                            intermediate_freq_hz: config.intermediate_freq_hz,
+                            code_phase_samples: seeded_code_phase_samples,
+                            cn0_db_hz: sat_truth.cn0_db_hz,
+                            explain_selection_reason: format!(
+                                "truth_guided_tracking_seed_{}",
+                                sat_truth.sat.prn
+                            ),
+                        },
+                        refined_code_phase_samples,
+                    },
                 )],
             );
             let epochs = tracks.first().map(|track| track.epochs.clone()).unwrap_or_default();

@@ -3,16 +3,30 @@ const TRACKING_LOCK_DETECTOR_UNLOCKED_DLL_HALF_WIDTH: f64 = 1.0;
 const TRACKING_LOCK_DETECTOR_UNLOCKED_PLL_HALF_WIDTH_RAD: f64 = std::f64::consts::PI;
 
 /// Measure stable tracking lock probability for one synthetic signal profile.
+pub struct SyntheticTrackingLockProbabilityRequest<'a> {
+    pub config: &'a ReceiverPipelineConfig,
+    pub signal: SyntheticSignalParams,
+    pub duration_s: f64,
+    pub trial_seeds: &'a [u64],
+    pub scenario_id_prefix: &'a str,
+    pub seeded_doppler_error_hz: f64,
+    pub seeded_code_phase_error_samples: isize,
+    pub min_locked_epochs: usize,
+}
+
 pub fn measure_truth_guided_tracking_lock_probability(
-    config: &ReceiverPipelineConfig,
-    signal: SyntheticSignalParams,
-    duration_s: f64,
-    trial_seeds: &[u64],
-    scenario_id_prefix: &str,
-    seeded_doppler_error_hz: f64,
-    seeded_code_phase_error_samples: isize,
-    min_locked_epochs: usize,
+    request: SyntheticTrackingLockProbabilityRequest<'_>,
 ) -> SyntheticTrackingSensitivityReport {
+    let SyntheticTrackingLockProbabilityRequest {
+        config,
+        signal,
+        duration_s,
+        trial_seeds,
+        scenario_id_prefix,
+        seeded_doppler_error_hz,
+        seeded_code_phase_error_samples,
+        min_locked_epochs,
+    } = request;
     let period_samples =
         samples_per_code(config.sampling_freq_hz, config.code_freq_basis_hz, config.code_length);
 
@@ -44,20 +58,20 @@ pub fn measure_truth_guided_tracking_lock_probability(
             );
             let tracks = tracking.track_from_acquisition(
                 &frame,
-                &[seeded_tracking_acquisition(
-                    signal.sat,
-                    signal.signal_band,
-                    signal.signal_code,
-                    signal.glonass_frequency_channel,
-                    signal.doppler_hz + seeded_doppler_error_hz,
-                    config.intermediate_freq_hz,
-                    seeded_code_phase_samples,
-                    signal.cn0_db_hz,
-                    format!(
+                &[seeded_tracking_acquisition(SyntheticTrackingAcquisitionSeed {
+                    sat: signal.sat,
+                    signal_band: signal.signal_band,
+                    signal_code: signal.signal_code,
+                    glonass_frequency_channel: signal.glonass_frequency_channel,
+                    doppler_hz: signal.doppler_hz + seeded_doppler_error_hz,
+                    intermediate_freq_hz: config.intermediate_freq_hz,
+                    code_phase_samples: seeded_code_phase_samples,
+                    cn0_db_hz: signal.cn0_db_hz,
+                    explain_selection_reason: format!(
                         "synthetic_tracking_seed_doppler_error_{:+.3}_code_phase_error_{}",
                         seeded_doppler_error_hz, seeded_code_phase_error_samples
                     ),
-                )],
+                })],
             );
             let epochs = &tracks.first().expect("track").epochs;
             let stable_window =
@@ -83,16 +97,16 @@ pub fn measure_truth_guided_tracking_lock_probability(
         })
         .collect::<Vec<_>>();
 
-    synthetic_tracking_sensitivity_report(
+    synthetic_tracking_sensitivity_report(SyntheticTrackingSensitivityReportRequest {
         scenario_id_prefix,
-        signal.sat,
-        signal.cn0_db_hz,
+        sat: signal.sat,
+        cn0_db_hz: signal.cn0_db_hz,
         duration_s,
         seeded_doppler_error_hz,
         seeded_code_phase_error_samples,
         min_locked_epochs,
         trials,
-    )
+    })
 }
 
 /// Measure tracking lock rate across multiple C/N0 points.
@@ -106,14 +120,16 @@ pub fn measure_truth_guided_tracking_lock_rate(
         .iter()
         .map(|case| {
             let sensitivity = measure_truth_guided_tracking_lock_probability(
-                config,
-                case.signal.clone(),
-                case.duration_s,
-                trial_seeds,
-                &tracking_lock_rate_case_id(scenario_id_prefix, case),
-                case.seeded_doppler_error_hz,
-                case.seeded_code_phase_error_samples,
-                case.min_locked_epochs,
+                SyntheticTrackingLockProbabilityRequest {
+                    config,
+                    signal: case.signal.clone(),
+                    duration_s: case.duration_s,
+                    trial_seeds,
+                    scenario_id_prefix: &tracking_lock_rate_case_id(scenario_id_prefix, case),
+                    seeded_doppler_error_hz: case.seeded_doppler_error_hz,
+                    seeded_code_phase_error_samples: case.seeded_code_phase_error_samples,
+                    min_locked_epochs: case.min_locked_epochs,
+                },
             );
 
             SyntheticTrackingLockRatePoint {
@@ -336,8 +352,8 @@ pub fn measure_noise_only_acquisition_false_alarm_rates(
     }
 }
 
-fn synthetic_acquisition_sensitivity_report(
-    scenario_id_prefix: &str,
+struct SyntheticAcquisitionSensitivityReportRequest<'a> {
+    scenario_id_prefix: &'a str,
     sat: SatId,
     cn0_db_hz: Option<f32>,
     coherent_ms: u32,
@@ -346,7 +362,22 @@ fn synthetic_acquisition_sensitivity_report(
     doppler_tolerance_bins: usize,
     doppler_step_hz: i32,
     trials: Vec<SyntheticAcquisitionSensitivityTrial>,
+}
+
+fn synthetic_acquisition_sensitivity_report(
+    request: SyntheticAcquisitionSensitivityReportRequest<'_>,
 ) -> SyntheticAcquisitionSensitivityReport {
+    let SyntheticAcquisitionSensitivityReportRequest {
+        scenario_id_prefix,
+        sat,
+        cn0_db_hz,
+        coherent_ms,
+        noncoherent,
+        code_phase_tolerance_samples,
+        doppler_tolerance_bins,
+        doppler_step_hz,
+        trials,
+    } = request;
     let trial_count = trials.len();
     let accepted_count = trials.iter().filter(|trial| trial.accepted).count();
     let detected_count = trials.iter().filter(|trial| trial.detected).count();
@@ -383,8 +414,8 @@ fn synthetic_acquisition_sensitivity_report(
     }
 }
 
-fn synthetic_tracking_sensitivity_report(
-    scenario_id_prefix: &str,
+pub struct SyntheticTrackingSensitivityReportRequest<'a> {
+    scenario_id_prefix: &'a str,
     sat: SatId,
     cn0_db_hz: f32,
     duration_s: f64,
@@ -392,7 +423,21 @@ fn synthetic_tracking_sensitivity_report(
     seeded_code_phase_error_samples: isize,
     min_locked_epochs: usize,
     trials: Vec<SyntheticTrackingSensitivityTrial>,
+}
+
+fn synthetic_tracking_sensitivity_report(
+    request: SyntheticTrackingSensitivityReportRequest<'_>,
 ) -> SyntheticTrackingSensitivityReport {
+    let SyntheticTrackingSensitivityReportRequest {
+        scenario_id_prefix,
+        sat,
+        cn0_db_hz,
+        duration_s,
+        seeded_doppler_error_hz,
+        seeded_code_phase_error_samples,
+        min_locked_epochs,
+        trials,
+    } = request;
     let trial_count = trials.len();
     let stable_lock_count = trials.iter().filter(|trial| trial.stable_lock).count();
     let refused_lock_count = trials.iter().filter(|trial| trial.refused_lock).count();
@@ -461,7 +506,7 @@ fn false_alarm_rate_case_id(
     )
 }
 
-fn seeded_tracking_acquisition(
+struct SyntheticTrackingAcquisitionSeed {
     sat: SatId,
     signal_band: SignalBand,
     signal_code: SignalCode,
@@ -471,7 +516,20 @@ fn seeded_tracking_acquisition(
     code_phase_samples: usize,
     cn0_db_hz: f32,
     explain_selection_reason: String,
-) -> AcqResult {
+}
+
+fn seeded_tracking_acquisition(request: SyntheticTrackingAcquisitionSeed) -> AcqResult {
+    let SyntheticTrackingAcquisitionSeed {
+        sat,
+        signal_band,
+        signal_code,
+        glonass_frequency_channel,
+        doppler_hz,
+        intermediate_freq_hz,
+        code_phase_samples,
+        cn0_db_hz,
+        explain_selection_reason,
+    } = request;
     AcqResult {
         sat,
         signal_band,
@@ -517,29 +575,18 @@ fn seeded_tracking_acquisition(
     }
 }
 
-fn seeded_tracking_acquisition_with_refined_code_phase(
-    sat: SatId,
-    signal_band: SignalBand,
-    signal_code: SignalCode,
-    glonass_frequency_channel: Option<GlonassFrequencyChannel>,
-    doppler_hz: f64,
-    intermediate_freq_hz: f64,
-    code_phase_samples: usize,
+struct SyntheticRefinedTrackingAcquisitionSeed {
+    acquisition_seed: SyntheticTrackingAcquisitionSeed,
     refined_code_phase_samples: f64,
-    cn0_db_hz: f32,
-    explain_selection_reason: String,
+}
+
+fn seeded_tracking_acquisition_with_refined_code_phase(
+    request: SyntheticRefinedTrackingAcquisitionSeed,
 ) -> AcqResult {
-    let mut result = seeded_tracking_acquisition(
-        sat,
-        signal_band,
-        signal_code,
-        glonass_frequency_channel,
-        doppler_hz,
-        intermediate_freq_hz,
-        code_phase_samples,
-        cn0_db_hz,
-        explain_selection_reason,
-    );
+    let SyntheticRefinedTrackingAcquisitionSeed { acquisition_seed, refined_code_phase_samples } =
+        request;
+    let code_phase_samples = acquisition_seed.code_phase_samples;
+    let mut result = seeded_tracking_acquisition(acquisition_seed);
     result.code_phase_refinement = Some(bijux_gnss_core::api::AcqCodePhaseRefinement {
         method: "truth_guided_tracking_seed".to_string(),
         offset_samples: refined_code_phase_samples - code_phase_samples as f64,

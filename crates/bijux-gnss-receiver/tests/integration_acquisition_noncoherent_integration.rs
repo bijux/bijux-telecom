@@ -29,24 +29,28 @@ fn noncoherent_integration_improves_low_cn0_detection_probability() {
     };
 
     let coherent_only = measure_truth_guided_acquisition_detection_probability(
-        &config,
-        signal.clone(),
-        1,
-        1,
-        &seeds,
-        "acquisition_low_cn0_coherent_only",
-        2,
-        1,
+        bijux_gnss_receiver::api::sim::SyntheticAcquisitionDetectionProbabilityRequest {
+            config: &config,
+            signal: signal.clone(),
+            coherent_ms: 1,
+            noncoherent: 1,
+            trial_seeds: &seeds,
+            scenario_id_prefix: "acquisition_low_cn0_coherent_only",
+            code_phase_tolerance_samples: 2,
+            doppler_tolerance_bins: 1,
+        },
     );
     let noncoherent = measure_truth_guided_acquisition_detection_probability(
-        &config,
-        signal,
-        1,
-        4,
-        &seeds,
-        "acquisition_low_cn0_noncoherent",
-        2,
-        1,
+        bijux_gnss_receiver::api::sim::SyntheticAcquisitionDetectionProbabilityRequest {
+            config: &config,
+            signal,
+            coherent_ms: 1,
+            noncoherent: 4,
+            trial_seeds: &seeds,
+            scenario_id_prefix: "acquisition_low_cn0_noncoherent",
+            code_phase_tolerance_samples: 2,
+            doppler_tolerance_bins: 1,
+        },
     );
 
     assert!(

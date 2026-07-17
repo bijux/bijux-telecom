@@ -60,16 +60,30 @@ pub fn validate_truth_guided_acquisition_coherent_integration(
 }
 
 /// Measure low-C/N0 detection probability for an acquisition integration profile.
+pub struct SyntheticAcquisitionDetectionProbabilityRequest<'a> {
+    pub config: &'a ReceiverPipelineConfig,
+    pub signal: SyntheticSignalParams,
+    pub coherent_ms: u32,
+    pub noncoherent: u32,
+    pub trial_seeds: &'a [u64],
+    pub scenario_id_prefix: &'a str,
+    pub code_phase_tolerance_samples: usize,
+    pub doppler_tolerance_bins: usize,
+}
+
 pub fn measure_truth_guided_acquisition_detection_probability(
-    config: &ReceiverPipelineConfig,
-    signal: SyntheticSignalParams,
-    coherent_ms: u32,
-    noncoherent: u32,
-    trial_seeds: &[u64],
-    scenario_id_prefix: &str,
-    code_phase_tolerance_samples: usize,
-    doppler_tolerance_bins: usize,
+    request: SyntheticAcquisitionDetectionProbabilityRequest<'_>,
 ) -> SyntheticAcquisitionSensitivityReport {
+    let SyntheticAcquisitionDetectionProbabilityRequest {
+        config,
+        signal,
+        coherent_ms,
+        noncoherent,
+        trial_seeds,
+        scenario_id_prefix,
+        code_phase_tolerance_samples,
+        doppler_tolerance_bins,
+    } = request;
     let mut profile_config = config.clone();
     profile_config.acquisition_integration_ms = coherent_ms;
     profile_config.acquisition_noncoherent = noncoherent;
@@ -84,17 +98,17 @@ pub fn measure_truth_guided_acquisition_detection_probability(
         doppler_tolerance_bins,
     );
 
-    synthetic_acquisition_sensitivity_report(
+    synthetic_acquisition_sensitivity_report(SyntheticAcquisitionSensitivityReportRequest {
         scenario_id_prefix,
-        signal.sat,
-        Some(signal.cn0_db_hz),
+        sat: signal.sat,
+        cn0_db_hz: Some(signal.cn0_db_hz),
         coherent_ms,
         noncoherent,
         code_phase_tolerance_samples,
         doppler_tolerance_bins,
         doppler_step_hz,
         trials,
-    )
+    })
 }
 
 /// Measure acquisition detection rate across multiple C/N0, Doppler, and integration settings.
@@ -111,14 +125,16 @@ pub fn measure_truth_guided_acquisition_detection_rate(
         .iter()
         .map(|case| {
             let sensitivity = measure_truth_guided_acquisition_detection_probability(
-                config,
-                case.signal.clone(),
-                case.coherent_ms,
-                case.noncoherent,
-                trial_seeds,
-                &detection_rate_case_id(scenario_id_prefix, case),
-                code_phase_tolerance_samples,
-                doppler_tolerance_bins,
+                SyntheticAcquisitionDetectionProbabilityRequest {
+                    config,
+                    signal: case.signal.clone(),
+                    coherent_ms: case.coherent_ms,
+                    noncoherent: case.noncoherent,
+                    trial_seeds,
+                    scenario_id_prefix: &detection_rate_case_id(scenario_id_prefix, case),
+                    code_phase_tolerance_samples,
+                    doppler_tolerance_bins,
+                },
             );
 
             SyntheticAcquisitionDetectionRatePoint {

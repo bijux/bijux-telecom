@@ -121,15 +121,17 @@ fn measure_truth_guided_acquisition_operating_envelope_signal(
                 doppler_tolerance_bins,
             );
             let sensitivity = synthetic_acquisition_sensitivity_report(
-                scenario_id_prefix,
-                variant.signal.sat,
-                Some(variant.signal.cn0_db_hz),
-                variant.coherent_ms,
-                variant.noncoherent,
-                code_phase_tolerance_samples,
-                doppler_tolerance_bins,
-                profile_config.acquisition_doppler_step_hz.max(1),
-                trials,
+                SyntheticAcquisitionSensitivityReportRequest {
+                    scenario_id_prefix,
+                    sat: variant.signal.sat,
+                    cn0_db_hz: Some(variant.signal.cn0_db_hz),
+                    coherent_ms: variant.coherent_ms,
+                    noncoherent: variant.noncoherent,
+                    code_phase_tolerance_samples,
+                    doppler_tolerance_bins,
+                    doppler_step_hz: profile_config.acquisition_doppler_step_hz.max(1),
+                    trials,
+                },
             );
             let false_alarm = false_alarm_cache
                 .get(&(variant.coherent_ms, variant.noncoherent))
