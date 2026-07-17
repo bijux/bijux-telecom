@@ -21,11 +21,17 @@ that owns them.
 ## Command Shape
 
 - `src/cli/command_catalog/` owns stable command families and argument shapes
+- `src/cli/command_catalog/artifact_commands.rs`,
+  `configuration_commands.rs`, `diagnostics_commands.rs`, and
+  `navigation_commands.rs` split those stable families by durable command
+  surface rather than by incidental delivery order
 - `src/cli/command_line.rs` owns the command-line assembly and parsing layer
 
 ## Command Execution
 
-- `src/cli/commands/` owns the top-level operator workflows
+- `src/cli/commands/` owns the top-level operator workflows through
+  `analyze.rs`, `artifact.rs`, `ingest.rs`, `run_pipeline.rs`, `synthetic.rs`,
+  and the `validate/` and `diagnostics/` families
 - `src/cli/commands/diagnostics/` owns diagnostics-facing workflows and report
   publication helpers
 - `src/cli/commands/validate/` owns validation-specific command flows
@@ -34,8 +40,9 @@ that owns them.
 
 ## Runtime Setup And Support
 
-- `src/cli/command_runtime/` owns runtime-environment setup, dataset
-  inspection, and reporting support needed during command execution
+- `src/cli/command_runtime.rs` plus `src/cli/command_runtime/` own
+  runtime-environment setup, dataset inspection, acquisition reporting, and
+  synthetic-reporting support needed during command execution
 - `src/cli/command_support/` owns workflow-facing adapters for artifacts,
   capture windows, receiver artifacts, navigation outputs, and raw-IQ quality
 - `src/cli/execution_support.rs` provides shared execution scaffolding
@@ -49,4 +56,6 @@ that owns them.
 - `crates/bijux-gnss/src/main.rs`
 - `crates/bijux-gnss/src/cli/command_catalog/`
 - `crates/bijux-gnss/src/cli/commands/`
+- `crates/bijux-gnss/src/cli/command_runtime.rs`
 - `crates/bijux-gnss/src/cli/command_runtime/`
+- `crates/bijux-gnss/src/cli/command_support/`

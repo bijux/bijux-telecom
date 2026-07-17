@@ -15,11 +15,11 @@ file.
 ## Start From The Question
 
 - "How is this command or flag defined?":
-  `src/cli/command_catalog/` and `command_line.rs`
+  `src/cli/command_catalog/` and `src/cli/command_line.rs`
 - "Which workflow handles this command?":
   `src/cli/commands/`
 - "How does the command prepare inputs or environment?":
-  `src/cli/command_runtime/`
+  `src/cli/command_runtime.rs` and `src/cli/command_runtime/`
 - "How does this command load or reshape lower-owner outputs?":
   `src/cli/command_support/`
 - "How is the output rendered?":
@@ -36,8 +36,10 @@ file.
 ## Start From A Test Failure
 
 - command and workflow failures usually map to the matching
-  `tests/integration_*` file
+  `crates/bijux-gnss/tests/integration_*.rs` family, especially
+  `integration_validate_*`, `integration_nav_decode.rs`, and
+  `integration_export_synthetic_iq.rs`
 - command-support regressions often map to
-  `src/cli/command_support/tests/`
+  `crates/bijux-gnss/src/cli/command_support/tests/`
 - pipeline-command composition regressions often map to
-  `src/cli/commands/run_pipeline_tests/`
+  `crates/bijux-gnss/src/cli/commands/run_pipeline_tests/`

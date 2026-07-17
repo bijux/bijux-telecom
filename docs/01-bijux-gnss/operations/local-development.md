@@ -14,8 +14,9 @@ lower crate that the command eventually invokes.
 
 ## Good Local Loop
 
-- find the owning family in `command_catalog`, `commands`, `command_runtime`,
-  `command_support`, `report`, or the facade
+- find the owning family in `src/cli/command_catalog/`, `src/cli/commands/`,
+  `src/cli/command_runtime.rs`, `src/cli/command_runtime/`,
+  `src/cli/command_support/`, `src/cli/report.rs`, or the facade
 - update the crate-local docs if command meaning moves
 - run targeted command tests before touching wider suites
 - inspect `src/lib.rs` if the change affects the Rust facade

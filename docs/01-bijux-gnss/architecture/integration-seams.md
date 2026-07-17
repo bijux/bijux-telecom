@@ -25,10 +25,11 @@ convenience.
 
 ## Runtime And Repository Seams
 
-- `command_runtime/` integrates runtime setup and repository-facing inspection
-  helpers needed during command execution
-- `command_support/` integrates lower-owner outputs into command workflows
-  without transferring ownership
+- `src/cli/command_runtime.rs` plus `src/cli/command_runtime/` integrate
+  runtime setup and repository-facing inspection helpers needed during command
+  execution
+- `src/cli/command_support/` integrates lower-owner outputs into command
+  workflows without transferring ownership
 
 ## Boundary Rule
 
