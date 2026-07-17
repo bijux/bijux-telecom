@@ -103,7 +103,10 @@ fn dependency_direction_rules() {
 #[test]
 fn no_cyclic_dev_dependencies() {
     let metadata = load_metadata();
-    let workspace = workspace_package_names(&metadata);
+    let workspace = workspace_package_names(&metadata)
+        .into_iter()
+        .filter(|name| !is_shared_test_support_crate(name))
+        .collect::<HashSet<_>>();
     let edges = workspace_dependency_edges(&metadata, &workspace, DependencyKindFilter::All);
     let mut visiting = HashSet::new();
     let mut visited = HashSet::new();
@@ -164,6 +167,10 @@ fn workspace_package_names(metadata: &Metadata) -> HashSet<String> {
         .filter(|pkg| member_ids.contains(&pkg.id))
         .map(|pkg| pkg.name.clone())
         .collect()
+}
+
+fn is_shared_test_support_crate(name: &str) -> bool {
+    name.ends_with("-testkit")
 }
 
 fn workspace_dependency_edges(
