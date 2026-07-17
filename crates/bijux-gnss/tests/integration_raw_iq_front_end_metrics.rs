@@ -310,6 +310,7 @@ fn write_synthetic_cf32_capture_with_signal_if(
     path: &Path,
     sample_rate_hz: f64,
     signal_intermediate_freq_hz: f64,
+    duration_s: f64,
 ) {
     let profile = ReceiverConfig {
         sample_rate_hz,
@@ -331,7 +332,7 @@ fn write_synthetic_cf32_capture_with_signal_if(
             navigation_data: false.into(),
         },
         4_277_009_102,
-        1_023.0 / 1_023_000.0,
+        duration_s,
     );
     let mut file = fs::File::create(path).expect("create cf32 capture");
     for sample in frame.iq {
@@ -981,9 +982,14 @@ fn acquire_reports_signal_outside_search_range_for_wrong_if_capture() {
     fs::create_dir_all(&temp).expect("create temp dir");
 
     let iq_path = temp.join("wrong-if.cf32");
-    write_synthetic_cf32_capture_with_signal_if(&iq_path, 5_000_000.0, 1_750.0);
+    write_synthetic_cf32_capture_with_signal_if(&iq_path, 4_092_000.0, 1_252_000.0, 0.010);
     let sidecar_path = temp.join("wrong-if.sidecar.toml");
-    write_raw_iq_sidecar_with_format_sample_rate_and_if(&sidecar_path, "cf32_le", 5_000_000.0, 0.0);
+    write_raw_iq_sidecar_with_format_sample_rate_and_if(
+        &sidecar_path,
+        "cf32_le",
+        4_092_000.0,
+        1_250_000.0,
+    );
 
     let out_dir = temp.join("acquire-out");
     let output = run_bijux(
@@ -1034,9 +1040,14 @@ fn acquire_table_reports_search_range_rejection_for_wrong_if_capture() {
     fs::create_dir_all(&temp).expect("create temp dir");
 
     let iq_path = temp.join("wrong-if.cf32");
-    write_synthetic_cf32_capture_with_signal_if(&iq_path, 5_000_000.0, 1_750.0);
+    write_synthetic_cf32_capture_with_signal_if(&iq_path, 4_092_000.0, 1_252_000.0, 0.010);
     let sidecar_path = temp.join("wrong-if.sidecar.toml");
-    write_raw_iq_sidecar_with_format_sample_rate_and_if(&sidecar_path, "cf32_le", 5_000_000.0, 0.0);
+    write_raw_iq_sidecar_with_format_sample_rate_and_if(
+        &sidecar_path,
+        "cf32_le",
+        4_092_000.0,
+        1_250_000.0,
+    );
 
     let output = run_bijux(
         &[

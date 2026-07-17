@@ -4,7 +4,7 @@ mod support;
 
 use bijux_gnss_core::api::{
     AcqCodePhaseRefinement, AcqHypothesis, AcqResult, Constellation, Hertz, ReceiverSampleTrace,
-    SampleTime, SamplesFrame, SatId, Seconds, SignalBand, BEIDOU_B1_CARRIER_HZ,
+    SampleTime, SamplesFrame, SatId, Seconds, SignalBand, SignalCode, BEIDOU_B1_CARRIER_HZ,
     GPS_L1_CA_CARRIER_HZ,
 };
 use bijux_gnss_receiver::api::{
@@ -168,6 +168,8 @@ fn beidou_tracking_config() -> ReceiverPipelineConfig {
 fn synthetic_frame_with_code_phase(
     config: &ReceiverPipelineConfig,
     sat: SatId,
+    signal_band: SignalBand,
+    signal_code: SignalCode,
     code_phase_chips: f64,
     duration_s: f64,
 ) -> bijux_gnss_core::api::SamplesFrame {
@@ -176,8 +178,8 @@ fn synthetic_frame_with_code_phase(
         SyntheticSignalParams {
             sat,
             glonass_frequency_channel: None,
-            signal_band: bijux_gnss_core::api::SignalBand::L1,
-            signal_code: bijux_gnss_core::api::SignalCode::Unknown,
+            signal_band,
+            signal_code,
             doppler_hz: 0.0,
             code_phase_chips,
             carrier_phase_rad: 0.0,
@@ -192,15 +194,24 @@ fn synthetic_frame_with_code_phase(
 fn track_clean_code_case(
     config: &ReceiverPipelineConfig,
     sat: SatId,
+    signal_band: SignalBand,
+    signal_code: SignalCode,
     code_phase_chips: f64,
     duration_s: f64,
     seeded_code_phase_samples: usize,
 ) -> Vec<bijux_gnss_core::api::TrackEpoch> {
-    let frame = synthetic_frame_with_code_phase(config, sat, code_phase_chips, duration_s);
+    let frame = synthetic_frame_with_code_phase(
+        config,
+        sat,
+        signal_band,
+        signal_code,
+        code_phase_chips,
+        duration_s,
+    );
     let tracking = TrackingEngine::new(config.clone(), ReceiverRuntime::default());
     let tracks = tracking.track_from_acquisition(
         &frame,
-        &[accepted_acquisition(sat, 0.0, seeded_code_phase_samples)],
+        &[accepted_acquisition_with_signal_band(sat, signal_band, 0.0, seeded_code_phase_samples)],
     );
 
     tracks.first().expect("track").epochs.clone()
@@ -212,7 +223,15 @@ fn tracking_reduces_seeded_code_phase_error_from_acquisition_scale_offsets() {
     let sat = SatId { constellation: Constellation::Gps, prn: 11 };
 
     for seeded_code_phase_samples in [1_usize, 1_022_usize] {
-        let epochs = track_clean_code_case(&config, sat, 0.0, 0.012, seeded_code_phase_samples);
+        let epochs = track_clean_code_case(
+            &config,
+            sat,
+            SignalBand::L1,
+            SignalCode::Ca,
+            0.0,
+            0.012,
+            seeded_code_phase_samples,
+        );
         let epochs = &epochs;
         assert!(epochs.len() >= 4, "epochs={epochs:?}");
 
@@ -320,13 +339,27 @@ fn tracking_holds_clean_code_lock_for_fractional_phase_seed() {
     };
     let sat = SatId { constellation: Constellation::Gps, prn: 14 };
     let code_phase_chips = 144.375;
-    let frame = synthetic_frame_with_code_phase(&config, sat, code_phase_chips, 0.012);
+    let frame = synthetic_frame_with_code_phase(
+        &config,
+        sat,
+        SignalBand::L1,
+        SignalCode::Ca,
+        code_phase_chips,
+        0.012,
+    );
     let expected_code_phase_samples =
         expected_acquisition_code_phase_samples_f64(&config, &frame, code_phase_chips);
     let seeded_code_phase_samples =
         expected_acquisition_code_phase_samples(&config, &frame, code_phase_chips);
-    let epochs =
-        track_clean_code_case(&config, sat, code_phase_chips, 0.012, seeded_code_phase_samples);
+    let epochs = track_clean_code_case(
+        &config,
+        sat,
+        SignalBand::L1,
+        SignalCode::Ca,
+        code_phase_chips,
+        0.012,
+        seeded_code_phase_samples,
+    );
 
     assert!(epochs.len() >= CLEAN_SIGNAL_MIN_LOCKED_CODE_EPOCHS, "epochs={epochs:?}");
     assert_clean_signal_code_lock(&config, &epochs, expected_code_phase_samples);
@@ -340,6 +373,8 @@ fn tracking_holds_galileo_e1_lock_on_clean_synthetic_signal() {
     let frame = synthetic_frame_with_code_phase(
         &config,
         sat,
+        SignalBand::E1,
+        SignalCode::E1B,
         code_phase_chips,
         GALILEO_E1_LOCK_VALIDATION_DURATION_S,
     );
@@ -399,6 +434,8 @@ fn galileo_e1_side_peak_seed_does_not_report_biased_code_lock() {
     let frame = synthetic_frame_with_code_phase(
         &config,
         sat,
+        SignalBand::E1,
+        SignalCode::E1B,
         code_phase_chips,
         GALILEO_E1_LOCK_VALIDATION_DURATION_S,
     );
@@ -450,7 +487,14 @@ fn tracking_holds_beidou_b1i_lock_on_clean_synthetic_signal() {
     let config = beidou_tracking_config();
     let sat = SatId { constellation: Constellation::Beidou, prn: 11 };
     let code_phase_chips = 321.375;
-    let frame = synthetic_frame_with_code_phase(&config, sat, code_phase_chips, 0.020);
+    let frame = synthetic_frame_with_code_phase(
+        &config,
+        sat,
+        SignalBand::B1,
+        SignalCode::Unknown,
+        code_phase_chips,
+        0.020,
+    );
     let expected_code_phase_samples =
         expected_acquisition_code_phase_samples_f64(&config, &frame, code_phase_chips);
     let seeded_code_phase_samples =
