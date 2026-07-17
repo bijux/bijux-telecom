@@ -11,7 +11,7 @@ use bijux_gnss_receiver::api::{
     sim::{SyntheticScenario, SyntheticSignalParams},
     ReceiverPipelineConfig,
 };
-use bijux_gnss_testkit::acquisition_truth::{
+use bijux_gnss_testkit::signal::acquisition::{
     gps_l1ca_expected_acquisition_code_phase_samples,
     gps_l1ca_expected_acquisition_code_phase_samples_f64,
 };

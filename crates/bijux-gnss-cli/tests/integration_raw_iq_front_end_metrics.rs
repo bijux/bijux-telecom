@@ -5,7 +5,7 @@ use bijux_gnss_infra::api::receiver::{
     sim::{generate_l1_ca, SyntheticSignalParams},
     ReceiverConfig,
 };
-use bijux_gnss_testkit::front_end::{
+use bijux_gnss_testkit::signal::synthesis::{
     generate_clipped_iq16_le_bytes, generate_clipped_iq8_bytes, generate_quadrature_skew_carrier,
 };
 use serde_json::Value;

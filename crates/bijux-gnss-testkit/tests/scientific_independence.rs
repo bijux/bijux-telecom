@@ -24,7 +24,7 @@ fn truth_fixtures_do_not_call_nav_geometry_or_differencing_helpers() {
     ];
 
     for relative_path in [
-        "src/acquisition_truth.rs",
+        "src/signal/acquisition.rs",
         "src/position_truth/mod.rs",
         "src/position_truth/observation_synthesis.rs",
         "src/position_truth/residual_model.rs",
@@ -33,6 +33,7 @@ fn truth_fixtures_do_not_call_nav_geometry_or_differencing_helpers() {
         "src/reference_data/troposphere_elevation.rs",
         "src/antenna_validation.rs",
         "src/reference_data/rtk_baseline.rs",
+        "src/signal/synthesis.rs",
     ] {
         let source = fixture_source(relative_path);
         for forbidden in forbidden_fragments {
