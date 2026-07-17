@@ -7,50 +7,9 @@ use std::path::PathBuf;
 use super::config::GuardrailConfig;
 use super::error::{GuardrailError, Result};
 
-pub(crate) fn check_api_purity(files: &[PathBuf]) -> Result<()> {
-    let impl_re = Regex::new(r"^\s*impl\b")?;
-    let pub_mod_re = Regex::new(r"^\s*pub\s+mod\b")?;
-    let pub_export_re = Regex::new(r"^\s*pub\s+(use|mod)\b")?;
-    let pipeline_glob_re = Regex::new(r"^\s*pub\s+use\s+crate::pipeline::.*\*")?;
-    for path in files {
-        let is_api = path.file_name().and_then(|s| s.to_str()) == Some("api.rs");
-        if !is_api {
-            continue;
-        }
-        let content = fs::read_to_string(path)?;
-        for (idx, line) in content.lines().enumerate() {
-            if impl_re.is_match(line) {
-                return Err(GuardrailError::Violation(format!(
-                    "impl block not allowed in api.rs at {}:{}",
-                    path.display(),
-                    idx + 1
-                )));
-            }
-            if pub_mod_re.is_match(line) {
-                return Err(GuardrailError::Violation(format!(
-                    "pub mod not allowed in api.rs at {}:{}",
-                    path.display(),
-                    idx + 1
-                )));
-            }
-            if pub_export_re.is_match(line) && line.contains("_internal") {
-                return Err(GuardrailError::Violation(format!(
-                    "public export of _internal not allowed in api.rs at {}:{}",
-                    path.display(),
-                    idx + 1
-                )));
-            }
-            if pipeline_glob_re.is_match(line) {
-                return Err(GuardrailError::Violation(format!(
-                    "wildcard re-export of pipeline not allowed in api.rs at {}:{}",
-                    path.display(),
-                    idx + 1
-                )));
-            }
-        }
-    }
-    Ok(())
-}
+mod api_contract;
+
+pub(crate) use api_contract::check_api_purity;
 
 pub(crate) fn check_pub_items(files: &[PathBuf], config: &GuardrailConfig) -> Result<()> {
     let pub_re =
