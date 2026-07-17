@@ -34,6 +34,17 @@ flowchart LR
     infra --> core
 ```
 
+## Read These First
+
+- open [Foundation](foundation/) when the question is why infrastructure owns
+  this repository-facing behavior at all
+- open [Interfaces](interfaces/) when the dispute is already about datasets,
+  manifests, reports, overrides, or validation-facing contracts
+- open [Architecture](architecture/) when the question is structural: where
+  datasets, run layout, artifact inspection, and hashing live in code
+- open [Quality](quality/) when ownership is clear and the question becomes
+  whether the proofs and limits are honest enough
+
 ## Why This Package Exists
 
 - repository runs need a durable owner for datasets, manifests, reports, and
@@ -77,6 +88,21 @@ flowchart LR
 - proof tests:
   [`crates/bijux-gnss-infra/tests`](../../crates/bijux-gnss-infra/tests)
 
+## Sections In This Handbook
+
+- [Foundation](foundation/) for role, scope, ownership, repository fit, and
+  infrastructure vocabulary
+- [Architecture](architecture/) for datasets, run layout, artifact inspection,
+  overrides, hashing, and dependency direction
+- [Interfaces](interfaces/) for public API, dataset contracts, run footprint
+  contracts, override and sweep contracts, and validation adapters
+- [Operations](operations/) for safe change sequence, verification, fixture
+  care, and review scope
+- [Quality](quality/) for trust boundaries, invariants, limitations, risk, and
+  change validation
+- [This Package Does Not Own](this-package-does-not-own.md) for the explicit
+  refusal ledger
+
 ## Start Here When
 
 - the question is about registered datasets, sidecars, or raw-IQ metadata
@@ -113,3 +139,9 @@ flowchart LR
 - `crates/bijux-gnss-infra/src/overrides/`
 - `crates/bijux-gnss-infra/src/sweep.rs`
 - `crates/bijux-gnss-infra/docs/RUN_LAYOUT.md`
+
+## Design Pressure
+
+If `bijux-gnss-infra` starts carrying receiver scheduling, navigation policy,
+or command UX because those surfaces need repository context nearby, the
+infrastructure boundary becomes a catch-all instead of a durable owner.
