@@ -55,3 +55,8 @@ decision here instead of letting the boundary blur.
 - `../04-bijux-gnss-nav/index.md`
 - `../01-bijux-gnss/index.md`
 - `../02-bijux-gnss-core/index.md`
+
+When the pressure sounds reasonable because the implementation touches samples,
+correlations, or observations, inspect the neighbor handbook first anyway.
+That is how this crate avoids becoming a hiding place for runtime, persistence,
+navigation, or command policy.

@@ -23,3 +23,11 @@ Use this checklist when reviewing a `bijux-gnss-signal` change.
   behavior honestly
 - if reference data changed, is the reason technically credible
 - do the handbook pages still match the changed behavior
+
+## First Proof Check
+
+Inspect `crates/bijux-gnss-signal/docs/PUBLIC_API.md`,
+`crates/bijux-gnss-signal/docs/BOUNDARY.md`, and
+`crates/bijux-gnss-signal/docs/TESTS.md` first. Then read the changed module
+and its specific proof family so the checklist is answered with source-backed
+evidence rather than with generic confidence.

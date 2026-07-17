@@ -22,3 +22,12 @@ last_reviewed: 2026-07-17
 Choose the workflow based on the owning surface. A code-family change is not
 reviewed the same way as a metadata-contract change, even if both are in the
 same crate.
+
+## First Proof Check
+
+Use `crates/bijux-gnss-signal/docs/CODE_FAMILIES.md`,
+`crates/bijux-gnss-signal/docs/DSP.md`,
+`crates/bijux-gnss-signal/docs/RAW_IQ.md`, and
+`crates/bijux-gnss-signal/docs/VALIDATION.md` as the workflow map. Then choose
+the matching proof family in `crates/bijux-gnss-signal/tests/` before deciding
+whether the work is really one change family or several independent ones.

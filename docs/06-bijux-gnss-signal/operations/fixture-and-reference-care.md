@@ -32,3 +32,13 @@ test clutter.
 Reference generators may live in test support, but production truth still
 belongs in the crate modules. Test data should verify canonical behavior, not
 replace it.
+
+## First Proof Check
+
+Inspect `crates/bijux-gnss-signal/docs/TESTS.md`,
+`crates/bijux-gnss-signal/tests/data/`,
+`crates/bijux-gnss-signal/tests/support/`, and the family-specific reference
+tests such as `integration_ca_code_reference.rs` and
+`integration_galileo_e5_reference.rs`. Those surfaces show whether a fixture
+change is defending canonical truth or merely teaching the tests to accept
+drift.

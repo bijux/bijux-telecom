@@ -29,3 +29,10 @@ Choose the smallest honest proof set that exercises the changed owner.
 - running only one unrelated integration test because it is convenient
 - relying on a receiver-level test to prove signal truth
 - updating reference data without proving why the canonical behavior changed
+
+## First Proof Check
+
+Use `crates/bijux-gnss-signal/docs/TESTS.md` as the validation map. Then
+inspect the matching reference, continuity, spectrum, metadata, or property
+tests under `crates/bijux-gnss-signal/tests/` before declaring the proof set
+complete.

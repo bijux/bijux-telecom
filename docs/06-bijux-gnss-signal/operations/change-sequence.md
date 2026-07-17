@@ -25,3 +25,12 @@ Use this sequence when modifying `bijux-gnss-signal`.
 The wrong order usually causes one of two failures: a supposedly local change
 quietly breaks a downstream contract, or a broad test passes while the relevant
 signal owner was never actually exercised.
+
+## First Proof Check
+
+Read `crates/bijux-gnss-signal/docs/TESTS.md`,
+`crates/bijux-gnss-signal/docs/PUBLIC_API.md`, and
+`crates/bijux-gnss-signal/docs/BOUNDARY.md` before editing. Then inspect the
+owning module under `crates/bijux-gnss-signal/src/` and the matching proof
+family under `crates/bijux-gnss-signal/tests/` so the change sequence starts
+from actual contracts instead of from convenient local edits.

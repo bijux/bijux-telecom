@@ -31,3 +31,11 @@ Reviewers should align their depth to the changed owner.
 
 If the diff touches `src/api.rs`, treat the change as public-boundary review
 even when the implementation edit looks small.
+
+## First Proof Check
+
+Use `crates/bijux-gnss-signal/docs/PUBLIC_API.md`,
+`crates/bijux-gnss-signal/docs/TESTS.md`, and
+`crates/bijux-gnss-signal/docs/BOUNDARY.md` as the review map. Then inspect
+the changed module and the exact matching integration or property tests so
+review depth follows owned signal risk rather than diff size.

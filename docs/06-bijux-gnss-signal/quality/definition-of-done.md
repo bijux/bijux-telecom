@@ -19,3 +19,11 @@ reviewable, and honestly proven.
 - the narrowest honest verification has been run
 - any public contract drift is reflected in docs and review scope
 - the commit boundary matches one durable signal intent
+
+## First Proof Check
+
+Inspect `crates/bijux-gnss-signal/docs/BOUNDARY.md`,
+`crates/bijux-gnss-signal/docs/PUBLIC_API.md`, and
+`crates/bijux-gnss-signal/docs/TESTS.md`. A change is not done until the
+owning source module and matching proof family both defend the same boundary
+and behavior claim.
