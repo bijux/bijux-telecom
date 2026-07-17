@@ -1,11 +1,14 @@
 #![allow(missing_docs)]
 
+#[path = "precise_products/antex.rs"]
 pub mod antex;
 #[path = "beidou_navigation/beidou_b1i_navigation_decode.rs"]
 pub mod beidou_b1i_navigation_decode;
 #[path = "beidou_navigation/beidou_d2_navigation_decode.rs"]
 pub mod beidou_d2_navigation_decode;
+#[path = "precise_products/bias_sinex.rs"]
 pub mod bias_sinex;
+#[path = "precise_products/clk.rs"]
 pub mod clk;
 #[path = "gps_navigation/cnav_decode.rs"]
 pub mod cnav_decode;
@@ -22,4 +25,5 @@ pub mod lnav_decode;
 pub mod precise_products;
 pub mod rinex;
 pub mod rinex_obs;
+#[path = "precise_products/sp3.rs"]
 pub mod sp3;
