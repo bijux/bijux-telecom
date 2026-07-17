@@ -53,6 +53,10 @@ flowchart LR
 - top-level workflow wiring across lower-level GNSS crates
 - operator-facing reporting and package-level convenience re-exports
 
+The durable command families today are artifact, ingest, synthetic, validate,
+analyze, and diagnostics workflows, plus the pipeline-command harnesses that
+prove those routes stay coherent.
+
 ## What It Refuses
 
 - reusable GNSS meaning that belongs in `bijux-gnss-core`
@@ -136,6 +140,7 @@ flowchart LR
 ## First Proof Check
 
 - `crates/bijux-gnss/src/main.rs`
+- `crates/bijux-gnss/src/cli/command_catalog/mod.rs`
 - `crates/bijux-gnss/src/cli/command_line.rs`
 - `crates/bijux-gnss/src/cli/command_runtime.rs`
 - `crates/bijux-gnss/src/cli/report.rs`

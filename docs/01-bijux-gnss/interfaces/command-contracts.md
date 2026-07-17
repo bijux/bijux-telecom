@@ -13,7 +13,8 @@ These contracts define the stable operator-facing command shape.
 
 ## Owned Command Surfaces
 
-- command families and subcommands
+- command families and subcommands, especially artifact, ingest, synthetic,
+  validate, analyze, and diagnostics routes
 - stable argument and flag shape
 - operator-facing success and failure routing
 - top-level workflow selection across lower-level crates
@@ -30,4 +31,5 @@ These contracts define the stable operator-facing command shape.
 
 - `crates/bijux-gnss/src/cli/command_catalog/`
 - `crates/bijux-gnss/src/cli/command_line.rs`
+- `crates/bijux-gnss/src/cli/commands/`
 - `crates/bijux-gnss/docs/COMMANDS.md`

@@ -26,6 +26,8 @@ cargo test -p bijux-gnss --test integration_validate_synthetic_navigation
 cargo test -p bijux-gnss --test integration_rinex
 cargo test -p bijux-gnss --test integration_validate_capture
 cargo test -p bijux-gnss --test integration_export_synthetic_iq
+cargo test -p bijux-gnss --test integration_raw_iq_metadata
+cargo test -p bijux-gnss --test integration_raw_iq_front_end_metrics
 ```
 
 ## Command Choice Rule
@@ -33,4 +35,6 @@ cargo test -p bijux-gnss --test integration_export_synthetic_iq
 - use config and guardrail tests for command-shape changes
 - use the narrowest workflow integration tests for one command family
 - use validation-focused tests directly when validation command behavior moves
+- use artifact or raw-IQ reporting tests when output wording or summary shape
+  changed
 - use facade-adjacent tests only when the Rust surface truly changed
