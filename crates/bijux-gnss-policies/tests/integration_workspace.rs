@@ -80,3 +80,22 @@ fn workspace_uses_crate_local_fuzz_packages() {
         top_level_fuzz_crates
     );
 }
+
+#[test]
+fn workspace_bijux_binary_belongs_to_bijux_gnss_package() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap().parent().unwrap();
+    let split_command_package_manifest = root.join("crates").join("bijux-gnss-cli").join("Cargo.toml");
+    assert!(
+        !split_command_package_manifest.exists(),
+        "split command package should not exist: {}",
+        split_command_package_manifest.display()
+    );
+
+    let manifest_path = root.join("crates").join("bijux-gnss").join("Cargo.toml");
+    let manifest = std::fs::read_to_string(&manifest_path).expect("read bijux-gnss manifest");
+    assert!(
+        manifest.contains("[[bin]]") && manifest.contains("name = \"bijux\""),
+        "bijux-gnss must own the bijux binary target in {}",
+        manifest_path.display()
+    );
+}
