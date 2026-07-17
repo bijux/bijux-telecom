@@ -32,6 +32,9 @@ reviewed source instead of from duplicated CI configuration.
 
 When `--strict` is enabled, regression findings become a failing maintenance gate.
 
+The governed benchmark evidence files and change discipline are documented in
+[BENCHMARKS.md](BENCHMARKS.md).
+
 ## Output discipline
 
 This crate is allowed to read repository files and write repository-scoped evidence, but those
