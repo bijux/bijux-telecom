@@ -5,6 +5,7 @@ mod doctor;
 mod filesystem_support;
 mod navigation_decode;
 mod operator_guidance;
+mod replay_dispatch;
 mod replay_evidence;
 mod report_dispatch;
 mod report_publishing;

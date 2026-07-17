@@ -11,76 +11,19 @@ pub(crate) fn handle_diagnostics(command: GnssCommand) -> Result<()> {
         }
         DiagnosticsCommand::Workflow { common } => workflow_dispatch::handle_workflow(common)?,
         DiagnosticsCommand::Summarize { common, run_dir, top } => {
-            let events = summarize_run_diagnostics(&run_dir)?;
-            let summary = bijux_gnss_infra::api::core::aggregate_diagnostics(&events);
-            let mut entries = summary.entries.clone();
-            entries.sort_by(|a, b| b.count.cmp(&a.count));
-            let report = serde_json::json!({
-                "schema_version": 1,
-                "run_dir": run_dir.display().to_string(),
-                "total": summary.total,
-                "top": top,
-                "entries": entries,
-                "layered": layered_report(
-                    summarize_critical_entries(&summary.entries),
-                    serde_json::json!({
-                        "top_entries": summary.entries,
-                        "total": summary.total
-                    })
-                ),
-            });
-            report_publishing::publish_diagnostics_report(
-                &common,
-                "diagnostics_summarize",
-                &report,
-                "diagnostics_summary_report.schema.json",
-                |report| {
-                    print_diagnostics_summary_table(
-                        report.get("entries").and_then(|value| value.as_array()),
-                        top,
-                    )
-                },
-            )?;
+            replay_dispatch::handle_summarize(common, run_dir, top)?
         }
         DiagnosticsCommand::Explain { common, run_dir } => {
-            let summary = explain_run_scope(&run_dir)?;
-            report_publishing::publish_diagnostics_report(
-                &common,
-                "diagnostics_explain",
-                &summary,
-                "diagnostics_explain_report.schema.json",
-                print_diagnostics_explain_table,
-            )?;
+            replay_dispatch::handle_explain(common, run_dir)?
         }
         DiagnosticsCommand::VerifyRepro { common, run_dir } => {
-            let report = verify_repro_bundle(&run_dir)?;
-            report_publishing::publish_diagnostics_report(
-                &common,
-                "diagnostics_verify_repro",
-                &report,
-                "diagnostics_verify_repro_report.schema.json",
-                print_verify_repro_table,
-            )?;
+            replay_dispatch::handle_verify_repro(common, run_dir)?
         }
         DiagnosticsCommand::Compare { common, baseline_run_dir, candidate_run_dir } => {
-            let report = compare_run_evidence(&baseline_run_dir, &candidate_run_dir)?;
-            report_publishing::publish_diagnostics_report(
-                &common,
-                "diagnostics_compare",
-                &report,
-                "diagnostics_compare_report.schema.json",
-                print_compare_report_table,
-            )?;
+            replay_dispatch::handle_compare(common, baseline_run_dir, candidate_run_dir)?
         }
         DiagnosticsCommand::ReplayAudit { common, baseline_run_dir, candidate_run_dir } => {
-            let report = replay_audit_report(&baseline_run_dir, &candidate_run_dir)?;
-            report_publishing::publish_diagnostics_report(
-                &common,
-                "diagnostics_replay_audit",
-                &report,
-                "diagnostics_replay_audit_report.schema.json",
-                print_replay_audit_table,
-            )?;
+            replay_dispatch::handle_replay_audit(common, baseline_run_dir, candidate_run_dir)?
         }
         DiagnosticsCommand::AdvancedGate { common, run_dir, mode, strict } => {
             let _ = runtime_config_from_env(&common, None);
