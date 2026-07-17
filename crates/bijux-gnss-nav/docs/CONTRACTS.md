@@ -19,6 +19,8 @@ The correction layer owns:
 
 These are reusable domain computations, not receiver orchestration steps.
 
+The correction families and their boundary are detailed in [CORRECTIONS.md](CORRECTIONS.md).
+
 ## Estimation contracts
 
 The estimation layer owns:
@@ -38,3 +40,5 @@ The orbit/model layer owns:
 - ephemeris and satellite-state records
 - physical supporting models needed by correction and estimation flows
 - time-system rollover handling specific to navigation formats
+
+The orbit-specific ownership surface is detailed in [ORBITS.md](ORBITS.md).
