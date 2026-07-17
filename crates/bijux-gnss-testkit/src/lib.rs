@@ -11,4 +11,3 @@ pub mod front_end;
 pub mod position_truth;
 pub mod reference_data;
 pub mod rtk_baseline;
-pub mod trusted_reference_coordinate;

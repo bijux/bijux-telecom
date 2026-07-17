@@ -6,8 +6,7 @@ use std::fs;
 use std::path::Path;
 
 /// Stable CSV header for trusted reference-coordinate catalogs.
-pub const TRUSTED_REFERENCE_COORDINATE_HEADER: &str =
-    "marker_name,fixture_name,lat_deg,lon_deg,alt_m,source";
+pub const TRUSTED_REFERENCE_COORDINATE_HEADER: &str = super::REFERENCE_COORDINATE_CSV_HEADER;
 
 /// Trusted survey or published reference coordinate for one validation fixture.
 #[derive(Debug, Clone, PartialEq)]
