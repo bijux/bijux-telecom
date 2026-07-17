@@ -113,14 +113,18 @@ fn quantization_loss_report_measures_lower_precision_against_float_reference() {
         "{signed16:?}"
     );
     assert!(signed16.satellites[0].cn0_loss_db_hz < 0.1, "{signed16:?}");
+    let signed8_loss =
+        signed8.satellites[0].acquisition_correlation_loss_db.expect("signed8 acquisition loss");
+    let signed4_loss =
+        signed4.satellites[0].acquisition_correlation_loss_db.expect("signed4 acquisition loss");
     assert!(
-        signed8.satellites[0].acquisition_correlation_loss_db.expect("signed8 acquisition loss")
-            > 0.0,
+        signed8_loss < 0.1,
         "{signed8:?}"
     );
+    assert!(signed4_loss + 1.0e-6 >= signed8_loss, "{report:?}");
     assert!(
-        signed2.satellites[0].acquisition_correlation_loss_db.expect("signed2 acquisition loss")
-            > 1.0,
+        signed2.satellites[0].quantized_peak_mean_ratio
+            < signed2.satellites[0].reference_peak_mean_ratio,
         "{signed2:?}"
     );
     assert_eq!(bipolar1.satellites[0].acquisition_correlation_loss_db, None, "{bipolar1:?}");

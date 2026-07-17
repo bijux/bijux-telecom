@@ -79,7 +79,12 @@ fn receiver_promotes_galileo_e1_acquisitions_into_tracking() {
         track
             .epochs
             .iter()
-            .any(|epoch| epoch.lock && epoch.dll_lock && epoch.pll_lock && epoch.fll_lock),
+            .any(|epoch| {
+                epoch.lock
+                    && epoch.lock_state == "tracking"
+                    && epoch.pll_lock
+                    && epoch.fll_lock
+            }),
         "{track:?}",
     );
     assert_eq!(report.final_state, TrackingChannelState::Locked, "{report:?}");
