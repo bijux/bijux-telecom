@@ -39,3 +39,5 @@ repository-facing validation contract owned by `infra`.
 
 The execution-time source, sink, and clock seams that support this boundary are detailed in
 [PORTS.md](PORTS.md).
+The runtime-side reference-comparison and simulation surfaces are detailed in
+[REFERENCE_VALIDATION.md](REFERENCE_VALIDATION.md) and [SIMULATION.md](SIMULATION.md).

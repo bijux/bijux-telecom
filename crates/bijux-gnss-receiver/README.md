@@ -41,7 +41,9 @@ The crate root intentionally contains only this README. Durable crate documentat
 - [docs/PIPELINE.md](docs/PIPELINE.md)
 - [docs/PORTS.md](docs/PORTS.md)
 - [docs/PUBLIC_API.md](docs/PUBLIC_API.md)
+- [docs/REFERENCE_VALIDATION.md](docs/REFERENCE_VALIDATION.md)
 - [docs/RUNTIME.md](docs/RUNTIME.md)
+- [docs/SIMULATION.md](docs/SIMULATION.md)
 - [docs/TESTS.md](docs/TESTS.md)
 
 ## Verification
