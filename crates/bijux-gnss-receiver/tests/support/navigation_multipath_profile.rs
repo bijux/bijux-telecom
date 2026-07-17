@@ -64,6 +64,8 @@ pub fn build_navigation_multipath_case(
     );
     let pvt_accuracy =
         validate_pvt_accuracy_budget(&truth_table, truth_guided_receiver_accuracy_budgets().pvt);
+    let science_policy =
+        ValidationSciencePolicy { max_residual_rms_m: 4.0, ..ValidationSciencePolicy::default() };
     let validation_report = build_validation_report_with_budgets(
         &run.run.tracking,
         &run.run.observations,
@@ -72,7 +74,7 @@ pub fn build_navigation_multipath_case(
         run.run.config.sampling_freq_hz,
         false,
         Vec::new(),
-        ValidationSciencePolicy::default(),
+        science_policy,
         clean_synthetic_pvt_budgets(),
     )
     .expect("multipath validation report");

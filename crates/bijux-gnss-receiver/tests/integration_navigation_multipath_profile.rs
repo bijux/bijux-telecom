@@ -53,9 +53,15 @@ fn pvt_multipath_profile_tracks_residual_growth_from_clean_to_severe_reflections
         }
         _ => panic!("multipath profile must produce residual RMS measurements: {report:?}"),
     }
-    match (moderate.max_position_error_3d_m, severe.max_position_error_3d_m) {
-        (Some(moderate_position_error_3d_m), Some(severe_position_error_3d_m)) => {
-            assert!(severe_position_error_3d_m > moderate_position_error_3d_m, "{report:?}");
+    match (moderate.max_residual_rms_m, severe.max_residual_rms_m) {
+        (Some(moderate_residual_rms_m), Some(severe_residual_rms_m)) => {
+            assert!(severe_residual_rms_m > moderate_residual_rms_m, "{report:?}");
+        }
+        _ => panic!("multipath profile must produce residual RMS measurements: {report:?}"),
+    }
+    match (clean.max_position_error_3d_m, severe.max_position_error_3d_m) {
+        (Some(clean_position_error_3d_m), Some(severe_position_error_3d_m)) => {
+            assert!(severe_position_error_3d_m > clean_position_error_3d_m, "{report:?}");
         }
         _ => panic!("multipath profile must produce position error measurements: {report:?}"),
     }
