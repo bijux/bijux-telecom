@@ -1,8 +1,8 @@
 #![allow(missing_docs)]
 
 use bijux_gnss_core::api::{
-    AcqComponentCombinationMode, AcqHypothesis, Constellation, SatId, SignalBand, SignalCode,
-    SignalComponentRole,
+    AcqComponentCombinationMode, AcqHypothesis, AcqRequest, Constellation, SatId, SignalBand,
+    SignalCode, SignalComponentRole,
 };
 use bijux_gnss_receiver::api::{
     sim::{SyntheticScenario, SyntheticSignalParams, SyntheticSignalSource},
@@ -168,8 +168,25 @@ fn receiver_acquisition_reports_shifted_gps_l5q_secondary_code_phase() {
     };
     let mut source = render_shifted_memory_samples(&config, &scenario, 7, 20);
     let receiver = Receiver::new(config, ReceiverRuntime::default());
+    let request = AcqRequest {
+        sat,
+        glonass_frequency_channel: None,
+        signal_band: SignalBand::L5,
+        signal_code: SignalCode::L5Q,
+        doppler_center_hz: 0.0,
+        doppler_rate_center_hz_per_s: 0.0,
+        expected_line_of_sight_doppler_hz: None,
+        assistance_bounds: None,
+        doppler_search_hz: 0,
+        doppler_step_hz: 250,
+        doppler_rate_search_hz_per_s: 0,
+        doppler_rate_step_hz_per_s: 0,
+        coherent_ms: 20,
+        noncoherent: 1,
+    };
 
-    let artifacts = receiver.run(&mut source).expect("receiver run");
+    let artifacts =
+        receiver.run_with_acquisition_requests(&mut source, &[request]).expect("receiver run");
     let acquisition = artifacts
         .acquisitions
         .iter()
