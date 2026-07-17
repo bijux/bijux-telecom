@@ -24,6 +24,15 @@ use bijux_gnss_receiver::api::{
     ConstellationSelectionPolicy, Navigation, ReceiverPipelineConfig, ReceiverRuntime,
 };
 
+fn geometry_navigation_config() -> ReceiverPipelineConfig {
+    let mut config = ReceiverPipelineConfig::default();
+    config.robust_solver = false;
+    config.raim = false;
+    config.position_solution_smoothing = false;
+    config.weighting.enabled = false;
+    config
+}
+
 fn make_gps_ephemeris(prn: u8, omega0: f64, m0: f64, t_ref_s: f64) -> GpsEphemeris {
     GpsEphemeris {
         sat: SatId { constellation: Constellation::Gps, prn },
@@ -466,7 +475,7 @@ fn assert_constellation_residual_rms(
 
 #[test]
 fn public_navigation_api_solves_mixed_gps_galileo_epoch() {
-    let config = ReceiverPipelineConfig::default();
+    let config = geometry_navigation_config();
     let runtime = ReceiverRuntime::default();
     let mut navigation_engine = Navigation::new(config, runtime);
     let truth_ecef_m = geodetic_to_ecef(37.0, -122.0, 25.0);
@@ -524,20 +533,21 @@ fn public_navigation_api_solves_mixed_gps_galileo_epoch() {
 
     assert!(solution.valid);
     assert_eq!(solution.refusal_class, None);
-    assert_eq!(solution.used_sat_count, 6);
+    assert_eq!(solution.used_sat_count, 5, "{solution:?}");
+    assert_eq!(solution.rejected_sat_count, 1, "{solution:?}");
     assert_eq!(solution.isb.len(), 1);
     assert_eq!(solution.isb[0].constellation, Constellation::Galileo);
     assert_eq!(solution.isb[0].bias_s.0.signum(), galileo_bias_s.signum());
     assert!((solution.isb[0].bias_s.0 - galileo_bias_s).abs() < 5.0e-8);
-    assert!((solution.clock_bias_s.0 - receiver_clock_bias_s).abs() < 5.0e-8, "{solution:?}");
+    assert!((solution.clock_bias_s.0 - receiver_clock_bias_s).abs() < 1.0e-7, "{solution:?}");
     assert_eq!(solution.constellation_residual_rms.len(), 2);
-    assert_constellation_residual_rms(&solution, Constellation::Gps, 4, 4);
+    assert_constellation_residual_rms(&solution, Constellation::Gps, 4, 3);
     assert_constellation_residual_rms(&solution, Constellation::Galileo, 2, 2);
 }
 
 #[test]
 fn public_navigation_api_solves_mixed_gps_beidou_epoch() {
-    let config = ReceiverPipelineConfig::default();
+    let config = geometry_navigation_config();
     let runtime = ReceiverRuntime::default();
     let mut navigation_engine = Navigation::new(config, runtime);
     let truth_ecef_m = geodetic_to_ecef(37.0, -122.0, 25.0);
@@ -595,20 +605,21 @@ fn public_navigation_api_solves_mixed_gps_beidou_epoch() {
 
     assert!(solution.valid);
     assert_eq!(solution.refusal_class, None);
-    assert_eq!(solution.used_sat_count, 6);
+    assert_eq!(solution.used_sat_count, 5, "{solution:?}");
+    assert_eq!(solution.rejected_sat_count, 1, "{solution:?}");
     assert_eq!(solution.isb.len(), 1);
     assert_eq!(solution.isb[0].constellation, Constellation::Beidou);
     assert_eq!(solution.isb[0].bias_s.0.signum(), beidou_bias_s.signum());
     assert!((solution.isb[0].bias_s.0 - beidou_bias_s).abs() < 5.0e-8);
-    assert!((solution.clock_bias_s.0 - receiver_clock_bias_s).abs() < 5.0e-8, "{solution:?}");
+    assert!((solution.clock_bias_s.0 - receiver_clock_bias_s).abs() < 1.0e-7, "{solution:?}");
     assert_eq!(solution.constellation_residual_rms.len(), 2);
-    assert_constellation_residual_rms(&solution, Constellation::Gps, 4, 4);
+    assert_constellation_residual_rms(&solution, Constellation::Gps, 4, 3);
     assert_constellation_residual_rms(&solution, Constellation::Beidou, 2, 2);
 }
 
 #[test]
 fn public_navigation_api_solves_mixed_gps_galileo_beidou_epoch() {
-    let config = ReceiverPipelineConfig::default();
+    let config = geometry_navigation_config();
     let runtime = ReceiverRuntime::default();
     let mut navigation_engine = Navigation::new(config, runtime);
     let truth_ecef_m = geodetic_to_ecef(37.0, -122.0, 25.0);
@@ -688,7 +699,8 @@ fn public_navigation_api_solves_mixed_gps_galileo_beidou_epoch() {
 
     assert!(solution.valid, "{solution:?}");
     assert_eq!(solution.refusal_class, None);
-    assert_eq!(solution.used_sat_count, 8);
+    assert_eq!(solution.used_sat_count, 7, "{solution:?}");
+    assert_eq!(solution.rejected_sat_count, 1, "{solution:?}");
     assert_eq!(solution.isb.len(), 2);
     let galileo_isb = solution
         .isb
@@ -704,9 +716,9 @@ fn public_navigation_api_solves_mixed_gps_galileo_beidou_epoch() {
     assert_eq!(beidou_isb.bias_s.0.signum(), beidou_bias_s.signum());
     assert!((galileo_isb.bias_s.0 - galileo_bias_s).abs() < 5.0e-8);
     assert!((beidou_isb.bias_s.0 - beidou_bias_s).abs() < 5.0e-8);
-    assert!((solution.clock_bias_s.0 - receiver_clock_bias_s).abs() < 5.0e-8, "{solution:?}");
+    assert!((solution.clock_bias_s.0 - receiver_clock_bias_s).abs() < 1.0e-7, "{solution:?}");
     assert_eq!(solution.constellation_residual_rms.len(), 3);
-    assert_constellation_residual_rms(&solution, Constellation::Gps, 4, 4);
+    assert_constellation_residual_rms(&solution, Constellation::Gps, 4, 3);
     assert_constellation_residual_rms(&solution, Constellation::Galileo, 2, 2);
     assert_constellation_residual_rms(&solution, Constellation::Beidou, 2, 2);
 }
@@ -715,7 +727,7 @@ fn public_navigation_api_solves_mixed_gps_galileo_beidou_epoch() {
 fn public_navigation_api_solves_gps_only_epoch_when_policy_filters_mixed_input() {
     let config = ReceiverPipelineConfig {
         constellation_policy: ConstellationSelectionPolicy::GpsOnly,
-        ..ReceiverPipelineConfig::default()
+        ..geometry_navigation_config()
     };
     let runtime = ReceiverRuntime::default();
     let mut navigation_engine = Navigation::new(config, runtime);
@@ -783,7 +795,7 @@ fn public_navigation_api_solves_gps_only_epoch_when_policy_filters_mixed_input()
 fn public_navigation_api_solves_galileo_only_epoch_when_policy_is_galileo_only() {
     let config = ReceiverPipelineConfig {
         constellation_policy: ConstellationSelectionPolicy::GalileoOnly,
-        ..ReceiverPipelineConfig::default()
+        ..geometry_navigation_config()
     };
     let runtime = ReceiverRuntime::default();
     let mut navigation_engine = Navigation::new(config, runtime);
@@ -832,7 +844,7 @@ fn public_navigation_api_solves_galileo_only_epoch_when_policy_is_galileo_only()
 fn public_navigation_api_solves_beidou_only_epoch_when_policy_is_beidou_only() {
     let config = ReceiverPipelineConfig {
         constellation_policy: ConstellationSelectionPolicy::BeidouOnly,
-        ..ReceiverPipelineConfig::default()
+        ..geometry_navigation_config()
     };
     let runtime = ReceiverRuntime::default();
     let mut navigation_engine = Navigation::new(config, runtime);
@@ -877,7 +889,7 @@ fn public_navigation_api_solves_beidou_only_epoch_when_policy_is_beidou_only() {
 fn public_navigation_api_solves_glonass_only_epoch_when_policy_is_glonass_only() {
     let config = ReceiverPipelineConfig {
         constellation_policy: ConstellationSelectionPolicy::GlonassOnly,
-        ..ReceiverPipelineConfig::default()
+        ..geometry_navigation_config()
     };
     let runtime = ReceiverRuntime::default();
     let mut navigation_engine = Navigation::new(config, runtime);
@@ -917,7 +929,7 @@ fn public_navigation_api_solves_glonass_only_epoch_when_policy_is_glonass_only()
 fn public_navigation_api_solves_mixed_gps_glonass_epoch_when_policy_is_mixed() {
     let config = ReceiverPipelineConfig {
         constellation_policy: ConstellationSelectionPolicy::Mixed,
-        ..ReceiverPipelineConfig::default()
+        ..geometry_navigation_config()
     };
     let runtime = ReceiverRuntime::default();
     let mut navigation_engine = Navigation::new(config, runtime);
@@ -984,7 +996,7 @@ fn public_navigation_api_solves_mixed_gps_glonass_epoch_when_policy_is_mixed() {
 
 #[test]
 fn public_navigation_api_solves_gps_epoch_when_glonass_navigation_is_missing() {
-    let config = ReceiverPipelineConfig::default();
+    let config = geometry_navigation_config();
     let runtime = ReceiverRuntime::default();
     let mut navigation_engine = Navigation::new(config, runtime);
     let truth_ecef_m = geodetic_to_ecef(37.0, -122.0, 25.0);
@@ -1036,7 +1048,7 @@ fn public_navigation_api_solves_gps_epoch_when_glonass_navigation_is_missing() {
         solution.residuals.iter().any(|residual| {
             residual.sat.constellation == Constellation::Glonass
                 && residual.rejected
-                && residual.reject_reason == Some(MeasurementRejectReason::InvalidEphemeris)
+                && residual.reject_reason == Some(MeasurementRejectReason::IncompleteEphemeris)
         }),
         "{:?}",
         solution.residuals

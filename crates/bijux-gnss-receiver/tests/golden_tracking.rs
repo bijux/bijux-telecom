@@ -8,9 +8,7 @@ use bijux_gnss_receiver::api::{
     ReceiverPipelineConfig, ReceiverRuntime, TrackingEngine,
 };
 use support::navigation_truth::truth_seeded_acquisition_results;
-use support::tracking_truth::{mean_tracking_cn0_dbhz, stable_tracking_window};
-
-const MIN_STABLE_TRACKING_EPOCHS: usize = 2;
+use support::tracking_truth::epoch_indices_with_lock_state;
 
 #[test]
 fn golden_tracking_from_scenario() {
@@ -34,19 +32,25 @@ fn golden_tracking_from_scenario() {
 
     for track in &tracks {
         assert!(!track.epochs.is_empty());
-        let stable_window = stable_tracking_window(&track.epochs, MIN_STABLE_TRACKING_EPOCHS);
         assert!(
-            !stable_window.is_empty(),
-            "no sustained tracking window for {:?}-{}: epochs={:?}",
+            track.epochs.iter().all(|epoch| epoch.lock),
+            "tracking dropped lock for {:?}-{}: epochs={:?}",
             track.sat.constellation,
             track.sat.prn,
             track.epochs
         );
-        let mean_cn0 = mean_tracking_cn0_dbhz(&track.epochs, MIN_STABLE_TRACKING_EPOCHS)
-            .expect("stable tracking mean cn0");
+        assert!(
+            epoch_indices_with_lock_state(&track.epochs, "lost").is_empty(),
+            "tracking entered lost state for {:?}-{}: epochs={:?}",
+            track.sat.constellation,
+            track.sat.prn,
+            track.epochs
+        );
+        let mean_cn0 = track.epochs.iter().map(|epoch| epoch.cn0_dbhz).sum::<f64>()
+            / track.epochs.len() as f64;
         assert!(
             mean_cn0.is_finite() && mean_cn0 >= 20.0,
-            "steady tracking CN0 too low for {:?}-{}: {mean_cn0}",
+            "tracking CN0 too low for {:?}-{}: {mean_cn0}",
             track.sat.constellation,
             track.sat.prn
         );
