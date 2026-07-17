@@ -24,6 +24,7 @@ maintainer-only claims honestly enough.
 ## Pages In This Section
 
 - [Test Strategy](test-strategy.md)
+- [Repository Test Policy](repository-test-policy.md)
 - [Invariants](invariants.md)
 - [Change Validation](change-validation.md)
 - [Review Checklist](review-checklist.md)

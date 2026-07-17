@@ -27,6 +27,7 @@ how its scope fits inside the GNSS workspace.
 - [Package Overview](package-overview.md)
 - [Scope And Non-Goals](scope-and-non-goals.md)
 - [Ownership Boundary](ownership-boundary.md)
+- [Durable Naming](durable-naming.md)
 - [Repository Fit](repository-fit.md)
 - [Domain Language](domain-language.md)
 - [Dependencies And Adjacencies](dependencies-and-adjacencies.md)

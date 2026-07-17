@@ -26,6 +26,7 @@ without weakening repository governance or evidence discipline.
 - [Common Workflows](common-workflows.md)
 - [Local Development](local-development.md)
 - [Change Sequence](change-sequence.md)
+- [Contribution Guide](contribution-guide.md)
 - [Verification Commands](verification-commands.md)
 - [Governed Input And Evidence Care](governed-input-and-evidence-care.md)
 - [Review Scope](review-scope.md)

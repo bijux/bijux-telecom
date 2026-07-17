@@ -26,6 +26,7 @@ to maintainers and repository automation.
 - [Command Surface](command-surface.md)
 - [Governed Input Contracts](governed-input-contracts.md)
 - [Output Contracts](output-contracts.md)
+- [Stability Commitments](stability-commitments.md)
 - [Binary Boundary](binary-boundary.md)
 - [Command Entry Contracts](command-entry-contracts.md)
 - [Workflow Contracts](workflow-contracts.md)

@@ -25,6 +25,7 @@ binary command surface and repository-scoped effects in code.
 
 - [Module Map](module-map.md)
 - [Dependency Direction](dependency-direction.md)
+- [Repository Boundary Rules](repository-boundary-rules.md)
 - [Execution Model](execution-model.md)
 - [State And Persistence](state-and-persistence.md)
 - [Integration Seams](integration-seams.md)
