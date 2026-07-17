@@ -38,6 +38,7 @@ Welcome to the `bijux-gnss` documentation. Start with **Getting Started**, then 
 - `docs/NAMING.md`
 - `docs/GLOSSARY.md`
 - `docs/NUMERICS.md`
+- `docs/GPS_L1_CA.md`
 - `docs/EXTENDING_NAV.md`
 - `docs/EXTENDING_RECEIVER.md`
 - `docs/EXTENDING_SIGNAL.md`
