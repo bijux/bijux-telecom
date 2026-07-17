@@ -10,21 +10,22 @@ last_reviewed: 2026-07-17
 # bijux-gnss-dev
 
 `bijux-gnss-dev` owns maintainer-only repository workflows for
-`bijux-telecom`. This crate is not product behavior. It exists so governance
-checks, audit policy enforcement, reviewed deviation handling, and benchmark
-comparison workflows have a real owner instead of being scattered across shell
-snippets and ad hoc scripts.
+`bijux-telecom`. This crate is not product runtime, GNSS science, or operator
+workflow. It exists so governance checks, audit exception discipline,
+nextest-roster guardrails, and benchmark-comparison workflows have a typed,
+reviewable owner instead of living as shell folklore.
 
 That boundary matters because maintainer tooling can quietly become a second
 product if it is not constrained. This crate should protect repository health
-without pretending to be reusable GNSS science or operator-facing behavior.
+without leaking product behavior into governance commands or turning repository
+exceptions into unowned technical debt.
 
 ```mermaid
 flowchart LR
     dev["bijux-gnss-dev<br/>maintainer workflows"]
-    repo["repository governance<br/>allowlists and configs"]
-    artifacts["artifacts/<br/>benchmark evidence"]
-    gnss["bijux-gnss<br/>product command boundary"]
+    repo["repository governance<br/>reviewed inputs"]
+    artifacts["artifacts and benchmarks<br/>maintenance evidence"]
+    gnss["bijux-gnss<br/>operator commands"]
     receiver["bijux-gnss-receiver<br/>product runtime"]
 
     dev --> repo
@@ -33,68 +34,99 @@ flowchart LR
     dev -. does not own .-> receiver
 ```
 
+## Read These First
+
+- open [Foundation](foundation/) when the question is why this crate should own
+  a maintainer capability at all
+- open [Interfaces](interfaces/) when the issue is already about commands,
+  governed input files, or output locations
+- open [Architecture](architecture/) when the question is how the binary
+  organizes commands and repository effects in code
+- open [Quality](quality/) when ownership is clear and the next question is
+  whether the proof and review bar is strong enough
+
 ## Why This Package Exists
 
-- reviewed audit and deny-policy exceptions should be validated by typed code,
-  not by fragile command snippets
-- benchmark comparison workflows need a repository-owned maintainer surface
-- governance checks should stay separate from the public product command crate
+- reviewed security and policy exceptions should be validated by typed code,
+  not by fragile shell snippets
+- repository-scoped benchmark comparison needs an explicit maintainer owner
+- nextest-roster and governance-file guardrails should stay out of product
+  command crates
+- maintainer workflows should emit evidence into governed locations rather than
+  scattering incidental output across the repository
 
 ## What It Owns
 
 - validation for `audit-allowlist.toml`
-- validation for reviewed dependency-policy deviation files
-- derived maintainer commands that turn reviewed allowlists into exact tool
-  arguments
-- benchmark execution and comparison workflows that produce repository evidence
+- validation for `configs/rust/deny.deviations.toml`
+- derived `cargo audit --ignore ...` arguments from the reviewed allowlist
+- benchmark execution, snapshot normalization, and baseline comparison for the
+  curated maintainer benchmark set
+- guardrail tests that defend repository-owned maintainer workflow boundaries
 
 ## What It Refuses
 
 - public GNSS commands owned by `bijux-gnss`
-- receiver execution owned by `bijux-gnss-receiver`
+- receiver execution and runtime artifacts owned by `bijux-gnss-receiver`
 - signal science, navigation science, or shared GNSS contracts owned by the
   product crates
-- general shell convenience with no durable repository-owner reason to exist
+- generic shell convenience that has no durable repository-owner reason to
+  exist
 
 ## Strongest Proof Surfaces
 
 - crate README:
   [`crates/bijux-gnss-dev/README.md`](../../crates/bijux-gnss-dev/README.md)
-- package docs:
+- crate-local docs:
   [`crates/bijux-gnss-dev/docs/COMMANDS.md`](../../crates/bijux-gnss-dev/docs/COMMANDS.md),
   [`crates/bijux-gnss-dev/docs/AUDIT_POLICY.md`](../../crates/bijux-gnss-dev/docs/AUDIT_POLICY.md),
   [`crates/bijux-gnss-dev/docs/BENCHMARKS.md`](../../crates/bijux-gnss-dev/docs/BENCHMARKS.md),
-  [`crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md`](../../crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md)
+  [`crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md`](../../crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md),
+  [`crates/bijux-gnss-dev/docs/WORKFLOWS.md`](../../crates/bijux-gnss-dev/docs/WORKFLOWS.md)
 - source root:
   [`crates/bijux-gnss-dev/src/main.rs`](../../crates/bijux-gnss-dev/src/main.rs)
 - proof tests:
-  [`crates/bijux-gnss-dev/tests`](../../crates/bijux-gnss-dev/tests)
+  [`crates/bijux-gnss-dev/tests/`](../../crates/bijux-gnss-dev/tests)
+
+## Sections In This Handbook
+
+- [Foundation](foundation/) for role, scope, ownership, repository fit, and
+  maintainer vocabulary
+- [Architecture](architecture/) for command layout, effect model, dependency
+  direction, and integration seams
+- [Interfaces](interfaces/) for the binary command surface, governed files,
+  output contracts, and compatibility expectations
+- [Operations](operations/) for safe change sequence, local verification,
+  evidence care, and review scope
+- [Quality](quality/) for invariants, proof strategy, limitations, risk, and
+  change validation
+- [This Package Does Not Own](this-package-does-not-own.md) for the explicit
+  refusal ledger
 
 ## Start Here When
 
-- the question is whether a maintainer workflow belongs in code rather than in
-  shell or CI YAML
+- the question is whether a repository-maintenance workflow belongs in code
+  rather than CI YAML or shell
 - the issue is audit allowlists, deny-policy deviations, or benchmark evidence
-- the reader needs to know why a repository-only command exists and who should
-  review it
-- the concern is repository safety rather than runtime product behavior
+- the reader needs to know why a maintainer-only command exists and what it is
+  allowed to read or write
+- the concern is repository safety rather than product behavior
 
 ## Reader Questions This Package Can Answer
 
-- which governance files are treated as reviewed inputs
+- which governance files are treated as reviewed maintainer inputs
 - how maintainer commands derive exact audit or policy-check behavior
-- where benchmark comparison evidence is produced and why it belongs to
-  maintainers rather than operators
-- how the repository separates product surfaces from repository health tooling
+- where benchmark evidence is emitted and why it belongs to a maintainer crate
+- how the repository separates product surfaces from repository-health tooling
 
 ## Leave This Handbook When
 
-- the question becomes about operator-facing commands:
+- the question becomes about operator-facing GNSS commands:
   [01-bijux-gnss](../01-bijux-gnss/)
 - the question becomes about runtime execution or receiver artifacts:
   [05-bijux-gnss-receiver](../05-bijux-gnss-receiver/)
-- the question becomes about datasets, run layout, or persisted experiment
-  outputs:
+- the question becomes about persisted datasets, run layouts, or experiment
+  evidence:
   [03-bijux-gnss-infra](../03-bijux-gnss-infra/)
 
 ## First Proof Check
@@ -104,3 +136,10 @@ flowchart LR
 - `crates/bijux-gnss-dev/docs/AUDIT_POLICY.md`
 - `crates/bijux-gnss-dev/docs/BENCHMARKS.md`
 - `crates/bijux-gnss-dev/tests/integration_guardrails.rs`
+- `crates/bijux-gnss-dev/tests/integration_nextest_suite_selection.rs`
+
+## Design Pressure
+
+If `bijux-gnss-dev` starts carrying product behavior, general scripting, or
+repository effects that nobody is willing to document as a reviewed boundary,
+it stops being honest maintainer tooling and becomes a hiding place for debt.
