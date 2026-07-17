@@ -1,4 +1,5 @@
 use super::*;
+use bijux_gnss_core::api::ObsEpoch as ObservationEpoch;
 
 #[test]
 fn code_carrier_divergence_decomposition_exempts_expected_ionosphere_from_multipath() {
@@ -225,19 +226,16 @@ fn divergence_epoch(
     l1_divergence_jump_m: f64,
     l2_ionosphere_delay_m: f64,
     l2_divergence_jump_m: f64,
-) -> ObsEpoch {
+) -> ObservationEpoch {
     let base_range_m = 20_200_000.0;
-    ObsEpoch {
-        t_rx_s: Seconds(70.0),
-        source_time: ReceiverSampleTrace::from_sample_index(286_440, 4_092_000.0),
-        gps_week: None,
-        tow_s: None,
-        epoch_idx: 70,
-        discontinuity: false,
-        valid: true,
-        processing_ms: None,
-        role: ReceiverRole::Rover,
-        sats: vec![
+    accepted_rover_observation_epoch(
+        Seconds(70.0),
+        ReceiverSampleTrace::from_sample_index(286_440, 4_092_000.0),
+        None,
+        None,
+        70,
+        false,
+        vec![
             divergence_satellite(
                 signal_spec_gps_l1_ca(),
                 l1_ionosphere_delay_m,
@@ -253,10 +251,9 @@ fn divergence_epoch(
                 base_range_m,
             ),
         ],
-        decision: ObservationEpochDecision::Accepted,
-        decision_reason: None,
-        manifest: None,
-    }
+        None,
+        None,
+    )
 }
 
 fn divergence_satellite(

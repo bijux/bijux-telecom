@@ -133,9 +133,9 @@ mod tests {
         ecef_to_geodetic, lla_to_ecef, Constellation, Cycles, Epoch, FreqHz,
         GlonassFrequencyChannel, Hertz, LockFlags, Meters, NavLifecycleState, NavQualityFlag,
         NavSolutionEpoch, NavUncertaintyClass, ObsEpoch, ObsMetadata, ObsSatellite,
-        ObservationEpochDecision, ObservationStatus, ReceiverRole, ReceiverSampleTrace, SampleTime,
-        SamplesFrame, SatId, Seconds, SigId, SignalBand, SignalCode, SignalSpec, SolutionStatus,
-        SolutionValidity, NAV_OUTPUT_STABILITY_SIGNATURE_VERSION, NAV_SOLUTION_MODEL_VERSION,
+        ObservationStatus, ReceiverSampleTrace, SampleTime, SamplesFrame, SatId, Seconds, SigId,
+        SignalBand, SignalCode, SignalSpec, SolutionStatus, SolutionValidity,
+        NAV_OUTPUT_STABILITY_SIGNATURE_VERSION, NAV_SOLUTION_MODEL_VERSION,
     };
     use bijux_gnss_nav::api::GpsEphemeris;
     use bijux_gnss_signal::api::{
@@ -145,6 +145,7 @@ mod tests {
     use num_complex::Complex;
 
     const RECEIVER_PHASE_TOLERANCE_SAMPLES: f64 = 1e-6;
+    type ObservationEpoch = ObsEpoch;
 
     include!("synthetic/tests/foundation.rs");
     include!("synthetic/tests/pvt_profiles_signal_conditions.rs");

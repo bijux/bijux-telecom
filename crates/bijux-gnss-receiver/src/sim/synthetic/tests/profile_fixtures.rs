@@ -95,18 +95,18 @@
         }
     }
 
-    fn clock_profile_obs_epoch(epoch_idx: u64, doppler_hz_values: &[f64]) -> ObsEpoch {
-        ObsEpoch {
-            t_rx_s: Seconds(100_000.0 + epoch_idx as f64),
-            source_time: ReceiverSampleTrace::from_sample_index(epoch_idx, 1.0),
-            gps_week: Some(0),
-            tow_s: Some(Seconds(100_000.0 + epoch_idx as f64)),
+    fn clock_profile_obs_epoch(
+        epoch_idx: u64,
+        doppler_hz_values: &[f64],
+    ) -> ObservationEpoch {
+        crate::pipeline::observations::accepted_rover_observation_epoch(
+            Seconds(100_000.0 + epoch_idx as f64),
+            ReceiverSampleTrace::from_sample_index(epoch_idx, 1.0),
+            Some(0),
+            Some(Seconds(100_000.0 + epoch_idx as f64)),
             epoch_idx,
-            discontinuity: false,
-            valid: true,
-            processing_ms: None,
-            role: ReceiverRole::Rover,
-            sats: doppler_hz_values
+            false,
+            doppler_hz_values
                 .iter()
                 .enumerate()
                 .map(|(offset, doppler_hz)| ObsSatellite {
@@ -148,24 +148,20 @@
                     },
                 })
                 .collect(),
-            decision: ObservationEpochDecision::Accepted,
-            decision_reason: Some("clock_profile_test".to_string()),
-            manifest: None,
-        }
+            Some("clock_profile_test".to_string()),
+            None,
+        )
     }
 
-    fn sample_obs_epoch(epoch_idx: u64, cn0_values_dbhz: &[f64]) -> ObsEpoch {
-        ObsEpoch {
-            t_rx_s: Seconds(epoch_idx as f64),
-            source_time: ReceiverSampleTrace::from_sample_index(epoch_idx, 1.0),
-            gps_week: Some(0),
-            tow_s: Some(Seconds(epoch_idx as f64)),
+    fn sample_obs_epoch(epoch_idx: u64, cn0_values_dbhz: &[f64]) -> ObservationEpoch {
+        crate::pipeline::observations::accepted_rover_observation_epoch(
+            Seconds(epoch_idx as f64),
+            ReceiverSampleTrace::from_sample_index(epoch_idx, 1.0),
+            Some(0),
+            Some(Seconds(epoch_idx as f64)),
             epoch_idx,
-            discontinuity: false,
-            valid: true,
-            processing_ms: None,
-            role: ReceiverRole::Rover,
-            sats: cn0_values_dbhz
+            false,
+            cn0_values_dbhz
                 .iter()
                 .enumerate()
                 .map(|(offset, cn0_dbhz)| ObsSatellite {
@@ -207,10 +203,9 @@
                     },
                 })
                 .collect(),
-            decision: ObservationEpochDecision::Accepted,
-            decision_reason: Some("synthetic_cn0_profile".to_string()),
-            manifest: None,
-        }
+            Some("synthetic_cn0_profile".to_string()),
+            None,
+        )
     }
 
     fn collect_frames(source: &mut SyntheticSignalSource, frame_len: usize) -> SamplesFrame {

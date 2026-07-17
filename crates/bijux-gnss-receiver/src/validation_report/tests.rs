@@ -1,9 +1,9 @@
 use super::*;
 use crate::api::TrackingResult;
 use bijux_gnss_core::api::{
-    Chips, Constellation, Cycles, Epoch, Hertz, LockFlags, Meters, NavAssumptions, ObsMetadata,
-    ObsSatellite, ObservationEpochDecision, ObservationStatus, ReceiverRole, ReceiverSampleTrace,
-    SatId, SigId, SignalCode, TrackEpoch,
+    Chips, Constellation, Cycles, Epoch, Hertz, LockFlags, Meters, NavAssumptions,
+    ObsEpoch as ObservationEpoch, ObsMetadata, ObsSatellite, ObservationStatus,
+    ReceiverSampleTrace, SatId, SigId, SignalCode, TrackEpoch,
 };
 use bijux_gnss_signal::api::{carrier_wavelength_m, signal_registry};
 use serde::Deserialize;
@@ -120,22 +120,18 @@ fn with_integrity_support(mut solution: NavSolutionEpoch) -> NavSolutionEpoch {
     solution
 }
 
-fn dual_frequency_epoch(epoch_idx: u64, sats: Vec<ObsSatellite>) -> ObsEpoch {
-    ObsEpoch {
-        t_rx_s: bijux_gnss_core::api::Seconds(epoch_idx as f64),
-        source_time: ReceiverSampleTrace::from_sample_index(epoch_idx, 1.0),
-        gps_week: None,
-        tow_s: None,
+fn dual_frequency_epoch(epoch_idx: u64, sats: Vec<ObsSatellite>) -> ObservationEpoch {
+    crate::pipeline::observations::accepted_rover_observation_epoch(
+        bijux_gnss_core::api::Seconds(epoch_idx as f64),
+        ReceiverSampleTrace::from_sample_index(epoch_idx, 1.0),
+        None,
+        None,
         epoch_idx,
-        discontinuity: false,
-        valid: true,
-        processing_ms: None,
-        role: ReceiverRole::Rover,
+        false,
         sats,
-        decision: ObservationEpochDecision::Accepted,
-        decision_reason: Some("accepted_observables_present".to_string()),
-        manifest: None,
-    }
+        Some("accepted_observables_present".to_string()),
+        None,
+    )
 }
 
 fn dual_frequency_satellite(

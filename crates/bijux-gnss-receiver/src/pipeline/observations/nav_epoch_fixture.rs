@@ -1,14 +1,15 @@
 use bijux_gnss_core::api::{
-    Constellation, Cycles, GpsTime, Hertz, LockFlags, Meters, ObsEpoch, ObsEpochManifest,
-    ObsMetadata, ObsSatellite, ObsSignalTiming, ObservationEpochDecision, ObservationStatus,
-    ReceiverRole, ReceiverSampleTrace, SatId, Seconds, SigId, SignalBand, SignalCode,
+    Constellation, Cycles, GpsTime, Hertz, LockFlags, Meters, ObsEpoch as ObservationEpoch,
+    ObsEpochManifest, ObsMetadata, ObsSatellite, ObsSignalTiming, ObservationEpochDecision,
+    ObservationStatus, ReceiverSampleTrace, SatId, Seconds, SigId, SignalBand, SignalCode,
 };
 use bijux_gnss_signal::api::signal_spec_gps_l1_ca;
 
+use super::accepted_rover_observation_epoch;
 use super::timing::observation_epoch_id;
 use super::SPEED_OF_LIGHT_MPS;
 
-pub(crate) fn nav_observation_epoch_fixture(epoch_idx: u64) -> ObsEpoch {
+pub(crate) fn nav_observation_epoch_fixture(epoch_idx: u64) -> ObservationEpoch {
     let receive_tow_s = epoch_idx as f64 * 0.001;
     let sats = (1..=4)
         .map(|prn| ObsSatellite {
@@ -60,20 +61,16 @@ pub(crate) fn nav_observation_epoch_fixture(epoch_idx: u64) -> ObsEpoch {
             },
         })
         .collect();
-    ObsEpoch {
-        t_rx_s: Seconds(receive_tow_s),
-        source_time: ReceiverSampleTrace::from_sample_index(epoch_idx, 1_000.0),
-        gps_week: None,
-        tow_s: None,
+    accepted_rover_observation_epoch(
+        Seconds(receive_tow_s),
+        ReceiverSampleTrace::from_sample_index(epoch_idx, 1_000.0),
+        None,
+        None,
         epoch_idx,
-        discontinuity: false,
-        valid: true,
-        processing_ms: None,
-        role: ReceiverRole::Rover,
+        false,
         sats,
-        decision: ObservationEpochDecision::Accepted,
-        decision_reason: Some("accepted_observables_present".to_string()),
-        manifest: Some(ObsEpochManifest {
+        Some("accepted_observables_present".to_string()),
+        Some(ObsEpochManifest {
             version: bijux_gnss_core::api::OBSERVATION_MODEL_VERSION,
             artifact_id: format!("obs-epoch-{epoch_idx:010}"),
             epoch_id: observation_epoch_id(epoch_idx, epoch_idx),
@@ -84,5 +81,5 @@ pub(crate) fn nav_observation_epoch_fixture(epoch_idx: u64) -> ObsEpoch {
             downstream_profile_version:
                 bijux_gnss_core::api::OBSERVATION_DOWNSTREAM_PROFILE_VERSION,
         }),
-    }
+    )
 }

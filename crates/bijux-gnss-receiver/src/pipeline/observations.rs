@@ -69,7 +69,7 @@ use serde::{Deserialize, Serialize};
 #[cfg(test)]
 use bijux_gnss_core::api::{
     CodeCarrierDivergence, Constellation, CycleSlipDetector, Cycles, GlonassFrequencyChannel,
-    ObservationStatus, ReceiverSampleTrace, SignalBand, SignalCode, SignalSpec,
+    ObsEpochManifest, ObservationStatus, ReceiverSampleTrace, SignalBand, SignalCode, SignalSpec,
     GPS_L1_CA_CARRIER_HZ,
 };
 #[cfg(test)]
@@ -141,6 +141,35 @@ pub struct ObservationPipelineArtifacts {
     pub epochs: Vec<ObsEpoch>,
     pub residuals: Vec<ObservationResidualEpochReport>,
     pub measurement_quality: Vec<ObservationMeasurementQualityEpochReport>,
+}
+
+#[cfg(test)]
+pub(crate) fn accepted_rover_observation_epoch(
+    t_rx_s: Seconds,
+    source_time: ReceiverSampleTrace,
+    gps_week: Option<u32>,
+    tow_s: Option<Seconds>,
+    epoch_idx: u64,
+    discontinuity: bool,
+    sats: Vec<ObsSatellite>,
+    decision_reason: Option<String>,
+    manifest: Option<ObsEpochManifest>,
+) -> ObsEpoch {
+    ObsEpoch {
+        t_rx_s,
+        source_time,
+        gps_week,
+        tow_s,
+        epoch_idx,
+        discontinuity,
+        valid: true,
+        processing_ms: None,
+        role: ReceiverRole::Rover,
+        sats,
+        decision: ObservationEpochDecision::Accepted,
+        decision_reason,
+        manifest,
+    }
 }
 
 pub fn observations_from_tracking(
