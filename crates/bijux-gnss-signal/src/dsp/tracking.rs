@@ -22,6 +22,15 @@ const TRACKING_UNCERTAINTY_MIN_CODE_PHASE_SAMPLES: f64 = 0.01;
 const TRACKING_UNCERTAINTY_MIN_CARRIER_PHASE_CYCLES: f64 = 0.001;
 const TRACKING_UNCERTAINTY_MIN_DOPPLER_HZ: f64 = 0.01;
 const TRACKING_UNCERTAINTY_MIN_CN0_DBHZ: f64 = 0.05;
+// Residual windows on quiet synthetic channels can remain numerically small even
+// when weak C/N0 materially reduces estimator confidence. Weight observed
+// residual windows in the C/N0 power domain so weaker signals do not appear
+// spuriously more certain than stronger ones under comparable dynamics.
+const TRACKING_UNCERTAINTY_WINDOW_CN0_SCALE_EXPONENT: f64 = 2.0;
+// Code-phase confidence is more sensitive to weak prompt energy than the
+// carrier and Doppler windows, so bias the DLL residual window more strongly
+// toward weaker-signal uncertainty.
+const TRACKING_UNCERTAINTY_CODE_WINDOW_CN0_SCALE_EXPONENT: f64 = 2.5;
 const LOOP_FILTER_BANDWIDTH_SOLVER_ITERATIONS: usize = 80;
 const LOOP_FILTER_IMPULSE_RESPONSE_EPOCHS: usize = 16_384;
 const LOOP_FILTER_IMPULSE_RESPONSE_EPSILON: f64 = 1.0e-15;
@@ -1476,6 +1485,9 @@ pub fn estimate_tracking_uncertainty(
     } else {
         4.0
     };
+    let observed_window_cn0_scale = cn0_scale.powf(TRACKING_UNCERTAINTY_WINDOW_CN0_SCALE_EXPONENT);
+    let observed_code_window_cn0_scale =
+        cn0_scale.powf(TRACKING_UNCERTAINTY_CODE_WINDOW_CN0_SCALE_EXPONENT);
     let code_fallback = ((input.dll_err.abs() as f64) * input.samples_per_chip)
         .max(TRACKING_UNCERTAINTY_MIN_CODE_PHASE_SAMPLES * cn0_scale * coherent_integration_scale);
     let carrier_fallback = ((input.pll_err_rad.abs()) / std::f64::consts::TAU)
@@ -1486,14 +1498,17 @@ pub fn estimate_tracking_uncertainty(
 
     TrackingUncertainty {
         code_phase_samples: rms_window(code_error_window_samples)
+            .map(|value| value * observed_code_window_cn0_scale)
             .unwrap_or(code_fallback)
             .max(code_fallback)
             * state_scale,
         carrier_phase_cycles: rms_window(carrier_phase_error_window_cycles)
+            .map(|value| value * observed_window_cn0_scale)
             .unwrap_or(carrier_fallback)
             .max(carrier_fallback)
             * state_scale,
         doppler_hz: rms_window(doppler_error_window_hz)
+            .map(|value| value * observed_window_cn0_scale)
             .unwrap_or(doppler_fallback)
             .max(doppler_fallback)
             * state_scale,
