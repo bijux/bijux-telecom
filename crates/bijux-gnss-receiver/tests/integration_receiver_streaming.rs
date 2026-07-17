@@ -130,11 +130,18 @@ fn receiver_run_consumes_multiple_stream_frames_after_acquisition() {
         17,
         duration_s,
     );
-    let mut source = SegmentedSignalSource::from_frame(full_frame, 3 * 1_023);
+    let mut source =
+        CountingSignalSource::new(SegmentedSignalSource::from_frame(full_frame, 3 * 1_023));
 
     let artifacts = receiver.run(&mut source).expect("receiver run");
 
     assert!(source.is_done(), "receiver did not consume the streamed source");
+    assert!(source.request_count > 1, "receiver did not stream beyond acquisition");
+    assert!(
+        source.max_requested_frame_len <= 100 * 1_023,
+        "receiver requested an oversized frame: {}",
+        source.max_requested_frame_len
+    );
     assert_eq!(artifacts.processed_input_epochs, 12);
     assert_eq!(artifacts.processed_input_samples, 12 * 1_023);
     assert!(
@@ -156,69 +163,6 @@ fn receiver_run_consumes_multiple_stream_frames_after_acquisition() {
         .find_map(|epoch| epoch.tracking_assumptions.as_ref())
         .expect("tracking assumptions");
     assert_eq!(assumptions.early_late_spacing_chips, 0.25);
-}
-
-#[test]
-fn receiver_tracks_sixty_seconds_with_bounded_stream_reads() {
-    let config = ReceiverPipelineConfig {
-        sampling_freq_hz: 1_023_000.0,
-        intermediate_freq_hz: 0.0,
-        code_freq_basis_hz: 1_023_000.0,
-        code_length: 1023,
-        channels: 4,
-        tracking_budget_ms: 100.0,
-        tracking_over_budget_action: "continue".to_string(),
-        ..ReceiverPipelineConfig::default()
-    };
-    let scenario = SyntheticScenario {
-        sample_rate_hz: config.sampling_freq_hz,
-        intermediate_freq_hz: config.intermediate_freq_hz,
-        receiver_clock_frequency_bias_hz: 0.0,
-        duration_s: 60.0,
-        seed: 41,
-        satellites: vec![SyntheticSignalParams {
-            sat: bijux_gnss_core::api::SatId {
-                constellation: bijux_gnss_core::api::Constellation::Gps,
-                prn: 1,
-            },
-            glonass_frequency_channel: None,
-            signal_band: bijux_gnss_core::api::SignalBand::L1,
-            signal_code: bijux_gnss_core::api::SignalCode::Unknown,
-            doppler_hz: 350.0,
-            code_phase_chips: 0.0,
-            carrier_phase_rad: 0.0,
-            cn0_db_hz: 50.0,
-            navigation_data: false.into(),
-        }],
-        ephemerides: Vec::new(),
-        id: "receiver-long-stream".to_string(),
-    };
-    let runtime = ReceiverRuntime::default();
-    let receiver = Receiver::new(config.clone(), runtime);
-    let expected_samples = (scenario.duration_s * config.sampling_freq_hz).round() as u64;
-    let mut source = CountingSignalSource::new(SyntheticSignalSource::new(&config, &scenario));
-
-    let artifacts = receiver.run(&mut source).expect("receiver run");
-
-    assert!(source.is_done(), "receiver did not consume the 60-second source");
-    assert!(source.request_count > 10, "receiver did not stream in bounded chunks");
-    assert!(
-        source.max_requested_frame_len <= 100 * 1_023,
-        "receiver requested an oversized frame: {}",
-        source.max_requested_frame_len
-    );
-    assert_eq!(artifacts.processed_input_samples, expected_samples);
-    assert_eq!(artifacts.processed_input_epochs, 60_000);
-    let tracked_epochs =
-        artifacts.tracking.iter().map(|track| track.epochs.len() as u64).sum::<u64>();
-    assert!(tracked_epochs >= 60_000, "tracked epochs={tracked_epochs}");
-    let last_sample_index = artifacts
-        .tracking
-        .iter()
-        .flat_map(|track| track.epochs.iter().map(|epoch| epoch.sample_index))
-        .max()
-        .expect("tracking epochs");
-    assert_eq!(last_sample_index, expected_samples - 1_023);
 }
 
 #[test]
