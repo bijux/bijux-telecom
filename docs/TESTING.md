@@ -19,6 +19,13 @@ This repository uses a test taxonomy to keep the suite navigable and determinist
 - Property tests (default): `cargo test prop_`
 - Nextest: `cargo nextest run --config-file configs/rust/nextest.toml`
 
+## Fuzzing
+
+- Crate-local fuzz packages live under `crates/<owner>/fuzz/` rather than as peer crates in `crates/`.
+- Build a fuzz package test surface with `cargo test --manifest-path crates/<owner>/fuzz/Cargo.toml --no-run`.
+- Run a harness with `cargo fuzz run <target>` from the corresponding `crates/<owner>/fuzz/` directory when `cargo-fuzz` is installed.
+- Keep fuzz targets adjacent to the crate that owns the parsed format, protocol, or configuration surface.
+
 ## Determinism Rules
 
 - All randomized tests must accept a seed from configuration.

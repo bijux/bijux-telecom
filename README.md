@@ -121,3 +121,9 @@ Minimum supported Rust version: `1.78.0`.
 - `docs/README.md`
 - `docs/GETTING_STARTED.md`
 - `docs/CLI.md`
+
+## Workspace Layout
+- Domain crates such as `bijux-gnss-infra`, `bijux-gnss-nav`, and `bijux-gnss-receiver` own their production code and any crate-specific fuzzing surfaces.
+- Fuzz harnesses live under `crates/<owner>/fuzz/` so parser and config fuzzing stays attached to the crate that owns the surface being exercised.
+- `bijux-gnss-policies` remains a standalone crate because it is shared governance code consumed across the workspace.
+- `bijux-gnss-testkit` remains a standalone crate because it provides reusable scientific reference models, fixtures, and truth data used by multiple GNSS crates.
