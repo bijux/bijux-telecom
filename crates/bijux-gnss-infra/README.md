@@ -1,36 +1,55 @@
 # bijux-gnss-infra
 
-## What this crate does
-`bijux-gnss-infra` owns repository-facing infrastructure for the GNSS workspace. It handles run
-layout and manifests, dataset registry and raw-IQ metadata loading, artifact inspection,
-configuration overrides and sweep expansion, validation-reference adapters, and a curated
-infrastructure-friendly API over `receiver`, `core`, `signal`, and optional `nav` surfaces.
+`bijux-gnss-infra` owns repository-facing GNSS infrastructure.
 
-## Why this crate exists
-The workspace needs one place for filesystem-facing and repository-facing mechanics that do not
-belong in `receiver`, `nav`, or the CLI. This crate keeps that boundary explicit.
+## Scope
 
-## Public entrypoint
-The curated downstream surface is `bijux_gnss_infra::api`.
+This crate owns:
 
-## Ownership boundary
-This crate owns infrastructure concerns and repository layout mechanics. It must not absorb signal
-processing, navigation estimation, or command-line UX policy. The boundary is documented in
-[docs/BOUNDARY.md](docs/BOUNDARY.md).
+- dataset registry records and raw-IQ metadata resolution
+- run directory identity, reports, manifests, and history appends
+- artifact inspection and validation over persisted outputs
+- experiment sweep expansion, profile overrides, and provenance hashing
+- infrastructure-friendly API composition over lower-level crates
 
-## Source layout
+This crate does not own DSP implementation, navigation estimation strategy, receiver stage
+execution, or operator command policy.
 
-- `artifact_inspection/` validates and explains persisted artifacts
-- `datasets/` resolves dataset registry entries and raw-IQ metadata
-- `run_layout/` owns run directories, manifests, and reports
-- `overrides/`, `experiments.rs`, and `sweep.rs` own experiment-parameter mutation and expansion
-- `validate_reference.rs` and selected API re-exports expose comparison and validation helpers
+## Public surface
 
-The architecture and test layout are documented in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+`bijux_gnss_infra::api` is the deliberate downstream surface. It mixes infrastructure-owned helpers
+with selected re-exports from lower layers so repository-facing callers can work through one
+boundary without transferring product ownership into this crate.
 
-## Documentation map
-This crate keeps one root README and crate-specific docs under `docs/`:
+## Source map
+
+- `src/artifact_inspection/` owns post-run artifact explanation and validation.
+- `src/datasets/` owns dataset registry parsing, coordinate parsing, and metadata resolution.
+- `src/run_layout/` owns run identity, directories, manifests, reports, and history persistence.
+- `src/overrides/`, `src/experiments.rs`, and `src/sweep.rs` own typed configuration mutation.
+- `src/hash/` owns provenance-oriented hashing helpers.
+- `src/validate_reference.rs` owns infrastructure-side validation adapters.
+
+## Documentation
+
+The crate root intentionally contains only this README. Durable crate documentation lives under
+`docs/`:
+
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - [docs/BOUNDARY.md](docs/BOUNDARY.md)
+- [docs/CONTRACTS.md](docs/CONTRACTS.md)
+- [docs/DATASETS.md](docs/DATASETS.md)
+- [docs/PUBLIC_API.md](docs/PUBLIC_API.md)
+- [docs/RUN_LAYOUT.md](docs/RUN_LAYOUT.md)
+- [docs/TESTS.md](docs/TESTS.md)
 
-Repository work is governed by [../../README.md](../../README.md).
+## Verification
+
+Run from the repository root when changing this crate:
+
+```sh
+cargo test -p bijux-gnss-infra --test integration_overrides
+cargo test -p bijux-gnss-infra --test integration_guardrails
+```
+
+Repository-wide expectations are documented in [../../README.md](../../README.md).

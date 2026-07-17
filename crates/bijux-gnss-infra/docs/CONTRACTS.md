@@ -9,6 +9,8 @@ The dataset layer owns:
 - raw-IQ metadata resolution
 - coordinate parsing and recorded-capture provenance helpers
 
+The dataset-owned surface and its dependency boundary are described in [DATASETS.md](DATASETS.md).
+
 ## Run-layout contract
 
 The run-layout layer owns:
@@ -18,6 +20,8 @@ The run-layout layer owns:
 - run history entry shape and append semantics
 
 This is the repository’s durable execution footprint contract.
+
+The run-footprint details and change discipline are described in [RUN_LAYOUT.md](RUN_LAYOUT.md).
 
 ## Artifact inspection contract
 

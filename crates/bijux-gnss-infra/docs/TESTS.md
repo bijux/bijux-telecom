@@ -9,6 +9,8 @@
 
 - repository-facing configuration mutation remains typed and predictable
 - the crate stays within its infrastructure boundary instead of growing product logic
+- dataset resolution and run-layout behavior remain documented as infrastructure contracts even when
+  current narrow tests focus on overrides and guardrails
 
 ## Verification
 
