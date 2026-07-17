@@ -3,6 +3,8 @@
 `bijux-gnss-core` owns the stable records that higher-level crates exchange. Those records are not
 incidental data bags; they are the shared workspace contract layer.
 
+The module-to-contract ownership map is recorded in [CONTRACT_MAP.md](CONTRACT_MAP.md).
+
 ## Artifact contracts
 
 The artifact layer owns:

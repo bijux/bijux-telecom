@@ -58,3 +58,5 @@ Use these records to exchange pipeline state across crates without coupling to i
 3. Prefer extending an existing API family over creating a new public namespace.
 4. If a new public export changes serialized meaning or downstream expectations, update
    [CONTRACTS.md](CONTRACTS.md) and [INVARIANTS.md](INVARIANTS.md) in the same change set.
+5. If a new public export changes the contract-family boundary, update [CONTRACT_MAP.md](CONTRACT_MAP.md)
+   so module ownership stays explicit.
