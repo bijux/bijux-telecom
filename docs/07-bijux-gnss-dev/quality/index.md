@@ -12,6 +12,23 @@ last_reviewed: 2026-07-17
 Open this section when the question is whether `bijux-gnss-dev` is proving its
 maintainer-only claims honestly enough.
 
+## Trust Model
+
+```mermaid
+flowchart LR
+    tests["test strategy"]
+    invariants["invariants"]
+    validation["change validation"]
+    limits["limitations and risks"]
+    trust["trust decision"]
+
+    tests --> invariants --> validation --> limits --> trust
+```
+
+Quality matters here because weak maintainer tooling can silently widen the
+repository's effective rules. A green product build is not enough proof if the
+governance surface is drifting.
+
 ## Read These First
 
 - open [Test Strategy](test-strategy.md) first when the question is how proof
@@ -37,6 +54,7 @@ maintainer-only claims honestly enough.
 - `crates/bijux-gnss-dev/tests/`
 - `crates/bijux-gnss-dev/docs/TESTS.md`
 - `crates/bijux-gnss-dev/docs/WORKFLOWS.md`
+- `crates/bijux-gnss-policies/`
 
 ## Leave This Section When
 
@@ -44,3 +62,5 @@ maintainer-only claims honestly enough.
   next question is execution sequence
 - leave for [Foundation](../foundation/) when the doubt is still about whether
   the crate should own the workflow at all
+- leave for [Interfaces](../interfaces/) when the question is what the
+  maintainer contract promises rather than how well it is defended
