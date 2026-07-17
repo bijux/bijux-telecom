@@ -1,9 +1,10 @@
 use super::*;
 
 pub(crate) fn handle_validate_reference(command: GnssCommand) -> Result<()> {
-    let GnssCommand::ValidateReference { common, run_dir, reference, align } = command else {
+    let GnssCommand::ValidateReference { args } = command else {
         bail!("invalid command for handler");
     };
+    let ValidateReferenceArgs { common, run_dir, reference, align } = args;
 
     let _ = runtime_config_from_env(&common, None);
     let artifacts = run_dir.join("artifacts");

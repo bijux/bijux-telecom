@@ -1,9 +1,10 @@
 use super::*;
 
 pub(crate) fn handle_validate_artifacts(command: GnssCommand) -> Result<()> {
-    let GnssCommand::ValidateArtifacts { common, obs, eph, strict } = command else {
+    let GnssCommand::ValidateArtifacts { args } = command else {
         bail!("invalid command for handler");
     };
+    let ValidateArtifactsArgs { common, obs, eph, strict } = args;
 
     let _ = runtime_config_from_env(&common, None);
     if obs.is_none() && eph.is_none() {

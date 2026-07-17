@@ -1,11 +1,20 @@
 use super::*;
 
 pub(crate) fn handle_validate(command: GnssCommand) -> Result<()> {
-    let GnssCommand::Validate { common, file, eph, reference, prn, sp3, clk, bias_sinex } =
-        command
-    else {
+    let GnssCommand::Validate { args } = command else {
         bail!("invalid command for handler");
     };
+    let ObservationValidationArgs {
+        common,
+        input,
+        eph,
+        reference,
+        prn,
+        sp3,
+        clk,
+        bias_sinex,
+    } = args;
+    let RawCaptureInputArgs { file } = input;
 
     let runtime = runtime_config_from_env(&common, None);
     let file = file.context("--file is required for validation")?;

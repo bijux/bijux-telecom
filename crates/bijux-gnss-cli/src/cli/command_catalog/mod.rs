@@ -3,6 +3,7 @@ mod artifact_commands;
 mod navigation_commands;
 mod configuration_commands;
 mod capture_arguments;
+mod validation_arguments;
 
 pub(crate) use artifact_commands::{ArtifactCommand, DiagnosticFailOn};
 pub(crate) use capture_arguments::{
@@ -15,6 +16,9 @@ pub(crate) use configuration_commands::{
 };
 pub(crate) use diagnostics_commands::{AdvancedGateMode, DiagnosticsCommand, RouteTopic, WorkflowProfile};
 pub(crate) use navigation_commands::{NavCommand, ReferenceAlign};
+pub(crate) use validation_arguments::{
+    ObservationValidationArgs, ValidateArtifactsArgs, ValidateReferenceArgs, ValidateSidecarArgs,
+};
 
 #[derive(Subcommand)]
 pub(crate) enum GnssCommand {
@@ -276,19 +280,7 @@ pub(crate) enum GnssCommand {
     /// Validate observation or ephemeris artifacts against schemas
     ValidateArtifacts {
         #[command(flatten)]
-        common: CommonArgs,
-
-        /// ObsEpoch JSONL file
-        #[arg(long, value_name = "FILE")]
-        obs: Option<PathBuf>,
-
-        /// Ephemeris JSON file
-        #[arg(long, value_name = "FILE")]
-        eph: Option<PathBuf>,
-
-        /// Require non-empty files
-        #[arg(long)]
-        strict: bool,
+        args: ValidateArtifactsArgs,
     },
 
     /// Diagnostics and audit workflows for receiver evidence
@@ -300,10 +292,7 @@ pub(crate) enum GnssCommand {
     /// Validate sidecar file against schema
     ValidateSidecar {
         #[command(flatten)]
-        common: CommonArgs,
-
-        #[arg(long = "sidecar-file", value_name = "FILE")]
-        sidecar_file: PathBuf,
+        args: ValidateSidecarArgs,
     },
 
     /// Analyze a GNSS run directory and emit evidence-oriented summaries
@@ -387,50 +376,13 @@ pub(crate) enum GnssCommand {
     /// Run a full validation pipeline and emit validation_report.json
     Validate {
         #[command(flatten)]
-        common: CommonArgs,
-        #[arg(long, alias = "path", value_name = "FILE")]
-        file: Option<PathBuf>,
-        /// Ephemeris JSON file (required for PVT)
-        #[arg(long, value_name = "FILE")]
-        eph: PathBuf,
-        /// Reference solution JSONL for comparison
-        #[arg(long, value_name = "FILE")]
-        reference: PathBuf,
-        /// PRN list for acquisition/tracking
-        #[arg(
-            long,
-            value_delimiter = ',',
-            default_value = "1,2,3,4,5",
-            value_parser = clap::value_parser!(u8).range(1..=32)
-        )]
-        prn: Vec<u8>,
-        /// Precise ephemeris SP3 file (optional)
-        #[arg(long, value_name = "FILE")]
-        sp3: Option<PathBuf>,
-        /// Precise clock CLK file (optional)
-        #[arg(long, value_name = "FILE")]
-        clk: Option<PathBuf>,
-        /// Bias-SINEX code bias file for dual-frequency code corrections (optional)
-        #[arg(long = "bias-sinex", alias = "dcb", value_name = "FILE")]
-        bias_sinex: Option<PathBuf>,
+        args: ObservationValidationArgs,
     },
 
     /// Validate a run directory against a reference trajectory
     ValidateReference {
         #[command(flatten)]
-        common: CommonArgs,
-
-        /// Run directory containing artifacts/
-        #[arg(long, value_name = "DIR")]
-        run_dir: PathBuf,
-
-        /// Reference trajectory file (JSONL or CSV)
-        #[arg(long, value_name = "FILE")]
-        reference: PathBuf,
-
-        /// Alignment policy for reference (nearest or linear)
-        #[arg(long, value_enum, default_value_t = ReferenceAlign::Nearest)]
-        align: ReferenceAlign,
+        args: ValidateReferenceArgs,
     },
 
     /// Validate a raw capture end to end from acquisition through navigation attempts

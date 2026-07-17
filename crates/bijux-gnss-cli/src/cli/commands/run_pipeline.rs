@@ -312,9 +312,10 @@ pub(crate) fn handle_experiment(command: GnssCommand) -> Result<()> {
 }
 
 pub(crate) fn handle_validate_sidecar(command: GnssCommand) -> Result<()> {
-    let GnssCommand::ValidateSidecar { common, sidecar_file } = command else {
+    let GnssCommand::ValidateSidecar { args } = command else {
         bail!("invalid command for handler");
     };
+    let ValidateSidecarArgs { common, sidecar_file } = args;
 
     let _ = runtime_config_from_env(&common, None);
     let spec = bijux_gnss_infra::api::load_raw_iq_metadata(&sidecar_file)?;
