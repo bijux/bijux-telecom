@@ -23,6 +23,15 @@ The API exposes:
 
 These families are also owned directly by `bijux-gnss-infra`.
 
+### Provenance and validation helpers
+
+The API exposes:
+- provenance hashing helpers such as `hash_config`, `git_hash`, `git_dirty`, and `cpu_features`
+- `validate_reference`
+
+These helpers are infrastructure-owned because they describe or inspect repository-facing run
+state.
+
 ## Re-export families
 
 The API also re-exports selected `receiver`, `core`, `signal`, and optional `nav` surfaces for

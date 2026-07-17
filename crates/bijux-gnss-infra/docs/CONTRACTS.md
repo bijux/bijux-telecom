@@ -42,3 +42,5 @@ building ad hoc string manipulation.
 
 `validate_reference` and related API re-exports own the infrastructure-facing bridge between
 persisted artifacts and validation/reference comparison flows.
+
+The repository-side validation boundary is detailed in [VALIDATION.md](VALIDATION.md).
