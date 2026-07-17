@@ -35,6 +35,18 @@ flowchart LR
     core --> gnss
 ```
 
+## Read These First
+
+- open [Foundation](foundation/) when the question is why the crate exists,
+  what it owns, and where it should refuse more work
+- open [Interfaces](interfaces/) when the dispute is already about public
+  imports, artifact envelopes, observation records, or configuration-facing
+  contracts
+- open [Architecture](architecture/) when the question is structural: which
+  module owns which contract family and how the crate stays dependency-light
+- open [Quality](quality/) when the boundary is clear and the question becomes
+  whether the proofs are strong enough
+
 ## Why This Package Exists
 
 - cross-package GNSS meaning must be defined once before signal, navigation,
@@ -81,6 +93,21 @@ flowchart LR
 - proof tests:
   [`crates/bijux-gnss-core/tests`](../../crates/bijux-gnss-core/tests)
 
+## Sections In This Handbook
+
+- [Foundation](foundation/) for role, scope, ownership, repository fit, and
+  contract-language discipline
+- [Architecture](architecture/) for module layout, dependency direction,
+  extensibility, and code navigation
+- [Interfaces](interfaces/) for public imports, artifact envelopes,
+  observation contracts, navigation-solution records, and examples
+- [Operations](operations/) for safe change sequence, local verification, and
+  maintenance workflows around the crate
+- [Quality](quality/) for invariants, trust boundaries, validation commands,
+  and known risks
+- [This Package Does Not Own](this-package-does-not-own.md) for the shortest
+  explicit refusal ledger
+
 ## Start Here When
 
 - the question is about the shape or semantics of data shared across crates
@@ -119,3 +146,9 @@ flowchart LR
 - `crates/bijux-gnss-core/src/observation/`
 - `crates/bijux-gnss-core/src/artifact/`
 - `crates/bijux-gnss-core/docs/CONTRACT_MAP.md`
+
+## Design Pressure
+
+If `bijux-gnss-core` starts carrying runtime policy, repository persistence, or
+crate-local convenience helpers that one downstream owner could define for
+itself, the shared contract layer becomes weaker rather than stronger.
