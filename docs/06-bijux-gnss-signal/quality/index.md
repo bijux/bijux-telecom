@@ -55,6 +55,14 @@ amplified coupling elsewhere.
 - `crates/bijux-gnss-signal/docs/VALIDATION.md`
 - `crates/bijux-gnss-testkit/`
 
+## First Proof Check
+
+Inspect `crates/bijux-gnss-signal/docs/TESTS.md`,
+`crates/bijux-gnss-signal/docs/VALIDATION.md`,
+`crates/bijux-gnss-signal/docs/PUBLIC_API.md`, and the proof surfaces above.
+That route shows whether quality claims are still backed by the right signal
+test layers instead of by broad crate confidence.
+
 ## Leave This Section When
 
 - leave for [Operations](../operations/) when the quality bar is clear and the

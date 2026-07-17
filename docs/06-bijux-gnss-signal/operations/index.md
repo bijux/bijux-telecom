@@ -56,6 +56,14 @@ flowchart LR
 - `crates/bijux-gnss-signal/docs/TESTS.md`
 - `crates/bijux-gnss-testkit/`
 
+## First Proof Check
+
+Inspect `crates/bijux-gnss-signal/docs/TESTS.md`,
+`crates/bijux-gnss-signal/docs/PUBLIC_API.md`,
+`crates/bijux-gnss-signal/docs/BOUNDARY.md`, and the operational surfaces
+above. That route shows whether a proposed change has been mapped to the right
+signal owner and the right proof family before execution starts.
+
 ## Leave This Section When
 
 - leave for [Quality](../quality/) when the workflow is clear and the next

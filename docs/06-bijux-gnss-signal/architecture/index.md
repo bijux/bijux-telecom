@@ -63,6 +63,14 @@ flowchart LR
 - `crates/bijux-gnss-signal/src/obs_validation.rs`
 - `crates/bijux-gnss-signal/src/error.rs`
 
+## First Proof Check
+
+Inspect `crates/bijux-gnss-signal/docs/ARCHITECTURE.md`,
+`crates/bijux-gnss-signal/docs/PUBLIC_API.md`, and
+`crates/bijux-gnss-signal/docs/TESTS.md` first. Then move through the code
+roots above and the matching integration tests so architectural claims stay
+anchored to the real signal boundary and proof families.
+
 ## Leave This Section When
 
 - leave for [Foundation](../foundation/) when the real issue is still package

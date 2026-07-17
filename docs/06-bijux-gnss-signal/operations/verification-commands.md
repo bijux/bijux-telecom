@@ -50,3 +50,12 @@ command when multiple proof families moved together.
 Do not rely on one unrelated green test just because it exercises the crate.
 This package has many proof families, and the changed owner should be obvious
 from the verification set.
+
+## First Proof Check
+
+Use `crates/bijux-gnss-signal/docs/TESTS.md`,
+`crates/bijux-gnss-signal/docs/CODE_FAMILIES.md`,
+`crates/bijux-gnss-signal/docs/DSP.md`, and
+`crates/bijux-gnss-signal/docs/VALIDATION.md` as the verification map. Then
+inspect the changed source family so the command choice stays tied to the real
+signal owner instead of to convenience.
