@@ -1,7 +1,7 @@
 ---
 title: Invariants
 audience: mixed
-type: explanation
+type: quality
 status: canonical
 owner: bijux-gnss-core-docs
 last_reviewed: 2026-07-17
@@ -23,6 +23,8 @@ quietly depend on every day.
 - artifact payload validators enforce semantic coherence, not just parse shape
 - non-finite or internally inconsistent persisted values are rejected rather
   than normalized silently
+- support-matrix and navigation payloads remain versioned records rather than
+  ad hoc downstream serialization
 
 ## Time Invariants
 
@@ -38,4 +40,7 @@ quietly depend on every day.
 ## Protecting Proof
 
 - `crates/bijux-gnss-core/docs/INVARIANTS.md`
-- `crates/bijux-gnss-core/tests/`
+- `crates/bijux-gnss-core/tests/public_api_guardrail.rs`
+- `crates/bijux-gnss-core/tests/nav_artifact_validation.rs`
+- `crates/bijux-gnss-core/tests/tracking_artifact_validation.rs`
+- `crates/bijux-gnss-core/tests/prop_timekeeping.rs`

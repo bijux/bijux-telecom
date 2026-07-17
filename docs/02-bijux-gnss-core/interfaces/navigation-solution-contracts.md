@@ -1,7 +1,7 @@
 ---
 title: Navigation Solution Contracts
 audience: mixed
-type: explanation
+type: interfaces
 status: canonical
 owner: bijux-gnss-core-docs
 last_reviewed: 2026-07-17
@@ -31,3 +31,4 @@ the shared contract language for everyone else.
 - `crates/bijux-gnss-core/src/nav_solution.rs`
 - `crates/bijux-gnss-core/src/observation/navigation.rs`
 - `crates/bijux-gnss-core/docs/CONTRACTS.md`
+- `crates/bijux-gnss-core/docs/INVARIANTS.md`

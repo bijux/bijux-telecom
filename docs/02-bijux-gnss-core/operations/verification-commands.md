@@ -1,7 +1,7 @@
 ---
 title: Verification Commands
 audience: mixed
-type: explanation
+type: operations
 status: canonical
 owner: bijux-gnss-core-docs
 last_reviewed: 2026-07-17
@@ -27,3 +27,5 @@ cargo test -p bijux-gnss-core --test integration_guardrails
 - run `prop_timekeeping` when time conversion or sample-trace behavior changes
 - run `integration_guardrails` when dependency direction or workspace boundary
   pressure is involved
+- treat `crates/bijux-gnss-core/docs/TESTS.md` as the reference map when a
+  contract family change needs a narrower proof route than this page lists

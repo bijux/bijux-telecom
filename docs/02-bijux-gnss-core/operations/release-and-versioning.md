@@ -1,7 +1,7 @@
 ---
 title: Release and Versioning
 audience: mixed
-type: explanation
+type: operations
 status: canonical
 owner: bijux-gnss-core-docs
 last_reviewed: 2026-07-17

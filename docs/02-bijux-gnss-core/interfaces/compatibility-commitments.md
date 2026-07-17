@@ -1,7 +1,7 @@
 ---
 title: Compatibility Commitments
 audience: mixed
-type: explanation
+type: interfaces
 status: canonical
 owner: bijux-gnss-core-docs
 last_reviewed: 2026-07-17

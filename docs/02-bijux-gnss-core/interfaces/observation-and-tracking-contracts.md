@@ -1,7 +1,7 @@
 ---
 title: Observation and Tracking Contracts
 audience: mixed
-type: explanation
+type: interfaces
 status: canonical
 owner: bijux-gnss-core-docs
 last_reviewed: 2026-07-17
@@ -32,3 +32,4 @@ persistence-specific, the rest of the repository loses a stable seam.
 - `crates/bijux-gnss-core/src/observation/`
 - `crates/bijux-gnss-core/src/observation_quality.rs`
 - `crates/bijux-gnss-core/docs/CONTRACTS.md`
+- `crates/bijux-gnss-core/tests/tracking_artifact_validation.rs`

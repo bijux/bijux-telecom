@@ -1,7 +1,7 @@
 ---
 title: Artifact Contracts
 audience: mixed
-type: explanation
+type: interfaces
 status: canonical
 owner: bijux-gnss-core-docs
 last_reviewed: 2026-07-17
@@ -20,6 +20,7 @@ Artifact contracts are the most obvious persistence-facing surface in
 - versioned acquisition, observation, tracking, navigation, and support-matrix
   payload families
 - payload validation through `ArtifactPayloadValidate` and `ArtifactValidate`
+- read-policy and payload-conversion helpers exposed through the curated API
 
 ## Why They Matter
 
@@ -33,6 +34,8 @@ names, directory names, or repository storage layout.
 
 ## Protecting Proof
 
+- `crates/bijux-gnss-core/src/artifact.rs`
+- `crates/bijux-gnss-core/src/artifact/v1.rs`
 - `crates/bijux-gnss-core/docs/CONTRACTS.md`
 - `crates/bijux-gnss-core/docs/SERIALIZATION.md`
 - `crates/bijux-gnss-core/tests/nav_artifact_validation.rs`
