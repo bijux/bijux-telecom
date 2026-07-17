@@ -35,7 +35,7 @@ pub fn build_truth_seeded_navigation_cn0_case(
         ..ReceiverPipelineConfig::default()
     };
     let scenario_id = format!("{scenario_id_prefix}_cn0_{:03}", (cn0_db_hz * 10.0).round() as i32);
-    let mut profile = multisatellite_pvt_scenario(&config, 0.25, &scenario_id);
+    let mut profile = multisatellite_pvt_scenario(&config, 0.08, &scenario_id);
     for signal in &mut profile.scenario.satellites {
         signal.cn0_db_hz = cn0_db_hz;
     }

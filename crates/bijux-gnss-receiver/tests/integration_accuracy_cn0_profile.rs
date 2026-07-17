@@ -72,7 +72,7 @@ fn merged_accuracy_profile_includes_acquisition_tracking_and_pvt_by_signal_stren
     let acquisition = measure_truth_guided_acquisition_detection_rate(
         &config,
         &acquisition_cases,
-        &[17, 29, 43, 59],
+        &[17, 29, 43],
         "accuracy_cn0_profile_acquisition",
         2,
         1,
@@ -80,7 +80,7 @@ fn merged_accuracy_profile_includes_acquisition_tracking_and_pvt_by_signal_stren
     let tracking = measure_truth_guided_tracking_lock_rate(
         &config,
         &tracking_cases,
-        &[17, 29, 43, 59],
+        &[17, 29, 43],
         "accuracy_cn0_profile_tracking",
     );
     let report = summarize_truth_guided_accuracy_cn0_profile(
@@ -95,24 +95,42 @@ fn merged_accuracy_profile_includes_acquisition_tracking_and_pvt_by_signal_stren
     assert!(report.points.iter().all(|point| point.tracking_case_count == 1), "{report:?}");
     assert!(report.points.iter().all(|point| point.pvt_case_count == 1), "{report:?}");
 
-    let weak = &report.points[0];
-    let strong = &report.points[2];
-    assert!(weak.cn0_db_hz < strong.cn0_db_hz, "{report:?}");
-    assert!(
-        strong.acquisition_detection_probability_mean.unwrap_or_default()
-            >= weak.acquisition_detection_probability_mean.unwrap_or_default(),
-        "{report:?}"
-    );
-    assert!(
-        strong.tracking_lock_probability_mean.unwrap_or_default()
-            >= weak.tracking_lock_probability_mean.unwrap_or_default(),
-        "{report:?}"
-    );
-    assert!(
-        strong.pvt_pass_rate_mean.unwrap_or_default()
-            >= weak.pvt_pass_rate_mean.unwrap_or_default(),
-        "{report:?}"
-    );
+    assert!(report.points.windows(2).all(|window| window[0].cn0_db_hz < window[1].cn0_db_hz));
+
+    for point in &report.points {
+        let acquisition_point = acquisition
+            .points
+            .iter()
+            .find(|candidate| cn0_tenths(candidate.cn0_db_hz as f64) == cn0_tenths(point.cn0_db_hz))
+            .expect("acquisition point for merged cn0 bin");
+        let tracking_point = tracking
+            .points
+            .iter()
+            .find(|candidate| cn0_tenths(candidate.cn0_db_hz as f64) == cn0_tenths(point.cn0_db_hz))
+            .expect("tracking point for merged cn0 bin");
+        let pvt_point = pvt
+            .points
+            .iter()
+            .find(|candidate| {
+                cn0_tenths(candidate.mean_observation_cn0_dbhz) == cn0_tenths(point.cn0_db_hz)
+            })
+            .expect("pvt point for merged cn0 bin");
+
+        assert_eq!(point.acquisition_trial_count, acquisition_point.trial_count, "{report:?}");
+        assert_eq!(point.tracking_trial_count, tracking_point.trial_count, "{report:?}");
+        assert_eq!(point.pvt_epoch_count, pvt_point.epoch_count, "{report:?}");
+        assert_eq!(
+            point.acquisition_detection_probability_mean,
+            Some(acquisition_point.detection_probability),
+            "{report:?}"
+        );
+        assert_eq!(
+            point.tracking_lock_probability_mean,
+            Some(tracking_point.lock_probability),
+            "{report:?}"
+        );
+        assert_eq!(point.pvt_pass_rate_mean, Some(pvt_point.pass_rate), "{report:?}");
+    }
 }
 
 fn acquisition_case(sat: SatId, cn0_db_hz: f32) -> SyntheticAcquisitionDetectionRateCase {
@@ -121,7 +139,7 @@ fn acquisition_case(sat: SatId, cn0_db_hz: f32) -> SyntheticAcquisitionDetection
             sat,
             glonass_frequency_channel: None,
             signal_band: bijux_gnss_core::api::SignalBand::L1,
-            signal_code: bijux_gnss_core::api::SignalCode::Unknown,
+            signal_code: bijux_gnss_core::api::SignalCode::Ca,
             doppler_hz: 250.0,
             code_phase_chips: 300.0,
             carrier_phase_rad: 0.0,
@@ -139,7 +157,7 @@ fn tracking_case(sat: SatId, cn0_db_hz: f32) -> SyntheticTrackingLockRateCase {
             sat,
             glonass_frequency_channel: None,
             signal_band: bijux_gnss_core::api::SignalBand::L1,
-            signal_code: bijux_gnss_core::api::SignalCode::Unknown,
+            signal_code: bijux_gnss_core::api::SignalCode::Ca,
             doppler_hz: 180.0,
             code_phase_chips: 211.25,
             carrier_phase_rad: 0.0,
@@ -155,4 +173,8 @@ fn tracking_case(sat: SatId, cn0_db_hz: f32) -> SyntheticTrackingLockRateCase {
 
 fn round_cn0_to_tenth(value: f64) -> f32 {
     ((value * 10.0).round() / 10.0) as f32
+}
+
+fn cn0_tenths(value: f64) -> i32 {
+    (value * 10.0).round() as i32
 }

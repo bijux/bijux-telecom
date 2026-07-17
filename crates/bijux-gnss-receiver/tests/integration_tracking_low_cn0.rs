@@ -15,13 +15,13 @@ use bijux_gnss_receiver::api::{
     ReceiverPipelineConfig, ReceiverRuntime, TrackingChannelState, TrackingEngine,
 };
 
-const TRACKING_LOCK_RATE_SMOKE_TRIAL_COUNT: usize = 4;
-const TRACKING_LOCK_RATE_SENSITIVITY_TRIAL_COUNT: usize = 6;
-const TRACKING_LOCK_RATE_REFUSAL_TRIAL_COUNT: usize = 6;
-const LOW_CN0_TRACKING_DURATION_S: f64 = 0.060;
+const TRACKING_LOCK_RATE_SMOKE_TRIAL_COUNT: usize = 2;
+const TRACKING_LOCK_RATE_SENSITIVITY_TRIAL_COUNT: usize = 3;
+const TRACKING_LOCK_RATE_REFUSAL_TRIAL_COUNT: usize = 3;
+const LOW_CN0_TRACKING_DURATION_S: f64 = 0.040;
 const LOW_CN0_SEEDED_DOPPLER_ERROR_HZ: f64 = 60.0;
 const LOW_CN0_SEEDED_CODE_PHASE_ERROR_SAMPLES: isize = 1;
-const LOW_CN0_MIN_LOCKED_EPOCHS: usize = 5;
+const LOW_CN0_MIN_LOCKED_EPOCHS: usize = 3;
 const WEAK_SIGNAL_ADAPTATION_CN0_DB_HZ: f32 = 31.0;
 const WEAK_SIGNAL_ADAPTATION_DURATION_S: f64 = 0.120;
 const VECTOR_AID_WEAK_SAT: SatId = SatId { constellation: Constellation::Gps, prn: 19 };

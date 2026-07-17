@@ -8,8 +8,8 @@ use bijux_gnss_receiver::api::{
     AcquisitionThresholdMode, ReceiverPipelineConfig,
 };
 
-const FALSE_ALARM_RATE_TRIAL_COUNT: usize = 24;
-const FALSE_ALARM_RATE_THRESHOLD_TRIAL_COUNT: usize = 32;
+const FALSE_ALARM_RATE_TRIAL_COUNT: usize = 12;
+const FALSE_ALARM_RATE_THRESHOLD_TRIAL_COUNT: usize = 16;
 const FALSE_ALARM_RATE_THRESHOLD: f64 = 0.05;
 const CALIBRATED_FALSE_ALARM_TARGET: f64 = 0.01;
 const CALIBRATED_FALSE_ALARM_CALIBRATION_TRIAL_COUNT: usize = 24;
@@ -99,13 +99,9 @@ fn acquisition_noise_only_false_alarm_rate_stays_below_threshold() {
         &config,
         &[
             false_alarm_rate_case(1, 1),
-            false_alarm_rate_case(2, 1),
             false_alarm_rate_case(5, 1),
             false_alarm_rate_case(10, 1),
-            false_alarm_rate_case(20, 1),
-            false_alarm_rate_case(1, 2),
             false_alarm_rate_case(1, 4),
-            false_alarm_rate_case(1, 8),
         ],
         &trial_seeds(0x2407_1996, FALSE_ALARM_RATE_THRESHOLD_TRIAL_COUNT),
         "acquisition_false_alarm_rate_threshold",

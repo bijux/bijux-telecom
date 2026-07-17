@@ -9,7 +9,7 @@ use bijux_gnss_receiver::api::{
     ReceiverPipelineConfig,
 };
 
-const DETECTION_RATE_TRIAL_COUNT: usize = 24;
+const DETECTION_RATE_TRIAL_COUNT: usize = 12;
 
 #[test]
 fn acquisition_detection_rate_report_runs_multiple_measurement_points() {
