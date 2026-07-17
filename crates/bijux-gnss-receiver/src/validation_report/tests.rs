@@ -122,15 +122,17 @@ fn with_integrity_support(mut solution: NavSolutionEpoch) -> NavSolutionEpoch {
 
 fn dual_frequency_epoch(epoch_idx: u64, sats: Vec<ObsSatellite>) -> ObservationEpoch {
     crate::pipeline::observations::accepted_rover_observation_epoch(
-        bijux_gnss_core::api::Seconds(epoch_idx as f64),
-        ReceiverSampleTrace::from_sample_index(epoch_idx, 1.0),
-        None,
-        None,
-        epoch_idx,
-        false,
-        sats,
-        Some("accepted_observables_present".to_string()),
-        None,
+        crate::pipeline::observations::AcceptedRoverObservationEpochRequest {
+            t_rx_s: bijux_gnss_core::api::Seconds(epoch_idx as f64),
+            source_time: ReceiverSampleTrace::from_sample_index(epoch_idx, 1.0),
+            gps_week: None,
+            tow_s: None,
+            epoch_idx,
+            discontinuity: false,
+            sats,
+            decision_reason: Some("accepted_observables_present".to_string()),
+            manifest: None,
+        },
     )
 }
 

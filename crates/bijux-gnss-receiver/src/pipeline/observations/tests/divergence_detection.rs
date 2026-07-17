@@ -228,14 +228,14 @@ fn divergence_epoch(
     l2_divergence_jump_m: f64,
 ) -> ObservationEpoch {
     let base_range_m = 20_200_000.0;
-    accepted_rover_observation_epoch(
-        Seconds(70.0),
-        ReceiverSampleTrace::from_sample_index(286_440, 4_092_000.0),
-        None,
-        None,
-        70,
-        false,
-        vec![
+    accepted_rover_observation_epoch(AcceptedRoverObservationEpochRequest {
+        t_rx_s: Seconds(70.0),
+        source_time: ReceiverSampleTrace::from_sample_index(286_440, 4_092_000.0),
+        gps_week: None,
+        tow_s: None,
+        epoch_idx: 70,
+        discontinuity: false,
+        sats: vec![
             divergence_satellite(
                 signal_spec_gps_l1_ca(),
                 l1_ionosphere_delay_m,
@@ -251,9 +251,9 @@ fn divergence_epoch(
                 base_range_m,
             ),
         ],
-        None,
-        None,
-    )
+        decision_reason: None,
+        manifest: None,
+    })
 }
 
 fn divergence_satellite(

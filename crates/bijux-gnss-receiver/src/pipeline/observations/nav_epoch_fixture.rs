@@ -5,9 +5,9 @@ use bijux_gnss_core::api::{
 };
 use bijux_gnss_signal::api::signal_spec_gps_l1_ca;
 
-use super::accepted_rover_observation_epoch;
 use super::timing::observation_epoch_id;
 use super::SPEED_OF_LIGHT_MPS;
+use super::{accepted_rover_observation_epoch, AcceptedRoverObservationEpochRequest};
 
 pub(crate) fn nav_observation_epoch_fixture(epoch_idx: u64) -> ObservationEpoch {
     let receive_tow_s = epoch_idx as f64 * 0.001;
@@ -61,16 +61,16 @@ pub(crate) fn nav_observation_epoch_fixture(epoch_idx: u64) -> ObservationEpoch 
             },
         })
         .collect();
-    accepted_rover_observation_epoch(
-        Seconds(receive_tow_s),
-        ReceiverSampleTrace::from_sample_index(epoch_idx, 1_000.0),
-        None,
-        None,
+    accepted_rover_observation_epoch(AcceptedRoverObservationEpochRequest {
+        t_rx_s: Seconds(receive_tow_s),
+        source_time: ReceiverSampleTrace::from_sample_index(epoch_idx, 1_000.0),
+        gps_week: None,
+        tow_s: None,
         epoch_idx,
-        false,
+        discontinuity: false,
         sats,
-        Some("accepted_observables_present".to_string()),
-        Some(ObsEpochManifest {
+        decision_reason: Some("accepted_observables_present".to_string()),
+        manifest: Some(ObsEpochManifest {
             version: bijux_gnss_core::api::OBSERVATION_MODEL_VERSION,
             artifact_id: format!("obs-epoch-{epoch_idx:010}"),
             epoch_id: observation_epoch_id(epoch_idx, epoch_idx),
@@ -81,5 +81,5 @@ pub(crate) fn nav_observation_epoch_fixture(epoch_idx: u64) -> ObservationEpoch 
             downstream_profile_version:
                 bijux_gnss_core::api::OBSERVATION_DOWNSTREAM_PROFILE_VERSION,
         }),
-    )
+    })
 }

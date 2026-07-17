@@ -144,17 +144,33 @@ pub struct ObservationPipelineArtifacts {
 }
 
 #[cfg(test)]
+pub(crate) struct AcceptedRoverObservationEpochRequest {
+    pub t_rx_s: Seconds,
+    pub source_time: ReceiverSampleTrace,
+    pub gps_week: Option<u32>,
+    pub tow_s: Option<Seconds>,
+    pub epoch_idx: u64,
+    pub discontinuity: bool,
+    pub sats: Vec<ObsSatellite>,
+    pub decision_reason: Option<String>,
+    pub manifest: Option<ObsEpochManifest>,
+}
+
+#[cfg(test)]
 pub(crate) fn accepted_rover_observation_epoch(
-    t_rx_s: Seconds,
-    source_time: ReceiverSampleTrace,
-    gps_week: Option<u32>,
-    tow_s: Option<Seconds>,
-    epoch_idx: u64,
-    discontinuity: bool,
-    sats: Vec<ObsSatellite>,
-    decision_reason: Option<String>,
-    manifest: Option<ObsEpochManifest>,
+    request: AcceptedRoverObservationEpochRequest,
 ) -> ObsEpoch {
+    let AcceptedRoverObservationEpochRequest {
+        t_rx_s,
+        source_time,
+        gps_week,
+        tow_s,
+        epoch_idx,
+        discontinuity,
+        sats,
+        decision_reason,
+        manifest,
+    } = request;
     ObsEpoch {
         t_rx_s,
         source_time,

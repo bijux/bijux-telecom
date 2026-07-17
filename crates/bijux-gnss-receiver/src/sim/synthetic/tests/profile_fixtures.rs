@@ -100,111 +100,115 @@
         doppler_hz_values: &[f64],
     ) -> ObservationEpoch {
         crate::pipeline::observations::accepted_rover_observation_epoch(
-            Seconds(100_000.0 + epoch_idx as f64),
-            ReceiverSampleTrace::from_sample_index(epoch_idx, 1.0),
-            Some(0),
-            Some(Seconds(100_000.0 + epoch_idx as f64)),
-            epoch_idx,
-            false,
-            doppler_hz_values
-                .iter()
-                .enumerate()
-                .map(|(offset, doppler_hz)| ObsSatellite {
-                    signal_id: SigId {
-                        sat: SatId { constellation: Constellation::Gps, prn: 7 + offset as u8 },
-                        band: SignalBand::L1,
-                        code: SignalCode::Ca,
-                    },
-                    pseudorange_m: Meters(20_000_000.0 + offset as f64),
-                    pseudorange_var_m2: 1.0,
-                    carrier_phase_cycles: Cycles(1000.0 + offset as f64),
-                    carrier_phase_var_cycles2: 1.0,
-                    doppler_hz: Hertz(*doppler_hz),
-                    doppler_var_hz2: 1.0,
-                    cn0_dbhz: 45.0,
-                    lock_flags: LockFlags {
-                        code_lock: true,
-                        carrier_lock: true,
-                        bit_lock: true,
-                        cycle_slip: false,
-                    },
-                    multipath_suspect: false,
-                    observation_status: ObservationStatus::Accepted,
-                    observation_reject_reasons: Vec::new(),
-                    elevation_deg: Some(45.0),
-                    azimuth_deg: Some(90.0),
-                    weight: Some(1.0),
-                    timing: None,
-                    error_model: None,
-                    metadata: ObsMetadata {
-                        signal: SignalSpec {
-                            constellation: Constellation::Gps,
+            crate::pipeline::observations::AcceptedRoverObservationEpochRequest {
+                t_rx_s: Seconds(100_000.0 + epoch_idx as f64),
+                source_time: ReceiverSampleTrace::from_sample_index(epoch_idx, 1.0),
+                gps_week: Some(0),
+                tow_s: Some(Seconds(100_000.0 + epoch_idx as f64)),
+                epoch_idx,
+                discontinuity: false,
+                sats: doppler_hz_values
+                    .iter()
+                    .enumerate()
+                    .map(|(offset, doppler_hz)| ObsSatellite {
+                        signal_id: SigId {
+                            sat: SatId { constellation: Constellation::Gps, prn: 7 + offset as u8 },
                             band: SignalBand::L1,
                             code: SignalCode::Ca,
-                            code_rate_hz: 1_023_000.0,
-                            carrier_hz: FreqHz(1_575_420_000.0),
                         },
-                        ..ObsMetadata::default()
-                    },
-                })
-                .collect(),
-            Some("clock_profile_test".to_string()),
-            None,
+                        pseudorange_m: Meters(20_000_000.0 + offset as f64),
+                        pseudorange_var_m2: 1.0,
+                        carrier_phase_cycles: Cycles(1000.0 + offset as f64),
+                        carrier_phase_var_cycles2: 1.0,
+                        doppler_hz: Hertz(*doppler_hz),
+                        doppler_var_hz2: 1.0,
+                        cn0_dbhz: 45.0,
+                        lock_flags: LockFlags {
+                            code_lock: true,
+                            carrier_lock: true,
+                            bit_lock: true,
+                            cycle_slip: false,
+                        },
+                        multipath_suspect: false,
+                        observation_status: ObservationStatus::Accepted,
+                        observation_reject_reasons: Vec::new(),
+                        elevation_deg: Some(45.0),
+                        azimuth_deg: Some(90.0),
+                        weight: Some(1.0),
+                        timing: None,
+                        error_model: None,
+                        metadata: ObsMetadata {
+                            signal: SignalSpec {
+                                constellation: Constellation::Gps,
+                                band: SignalBand::L1,
+                                code: SignalCode::Ca,
+                                code_rate_hz: 1_023_000.0,
+                                carrier_hz: FreqHz(1_575_420_000.0),
+                            },
+                            ..ObsMetadata::default()
+                        },
+                    })
+                    .collect(),
+                decision_reason: Some("clock_profile_test".to_string()),
+                manifest: None,
+            },
         )
     }
 
     fn sample_obs_epoch(epoch_idx: u64, cn0_values_dbhz: &[f64]) -> ObservationEpoch {
         crate::pipeline::observations::accepted_rover_observation_epoch(
-            Seconds(epoch_idx as f64),
-            ReceiverSampleTrace::from_sample_index(epoch_idx, 1.0),
-            Some(0),
-            Some(Seconds(epoch_idx as f64)),
-            epoch_idx,
-            false,
-            cn0_values_dbhz
-                .iter()
-                .enumerate()
-                .map(|(offset, cn0_dbhz)| ObsSatellite {
-                    signal_id: SigId {
-                        sat: SatId { constellation: Constellation::Gps, prn: 7 + offset as u8 },
-                        band: SignalBand::L1,
-                        code: SignalCode::Ca,
-                    },
-                    pseudorange_m: Meters(20_000_000.0 + offset as f64),
-                    pseudorange_var_m2: 1.0,
-                    carrier_phase_cycles: Cycles(1000.0 + offset as f64),
-                    carrier_phase_var_cycles2: 1.0,
-                    doppler_hz: Hertz(-500.0 + offset as f64),
-                    doppler_var_hz2: 1.0,
-                    cn0_dbhz: *cn0_dbhz,
-                    lock_flags: LockFlags {
-                        code_lock: true,
-                        carrier_lock: true,
-                        bit_lock: true,
-                        cycle_slip: false,
-                    },
-                    multipath_suspect: false,
-                    observation_status: ObservationStatus::Accepted,
-                    observation_reject_reasons: Vec::new(),
-                    elevation_deg: Some(45.0),
-                    azimuth_deg: Some(90.0),
-                    weight: Some(1.0),
-                    timing: None,
-                    error_model: None,
-                    metadata: ObsMetadata {
-                        signal: SignalSpec {
-                            constellation: Constellation::Gps,
+            crate::pipeline::observations::AcceptedRoverObservationEpochRequest {
+                t_rx_s: Seconds(epoch_idx as f64),
+                source_time: ReceiverSampleTrace::from_sample_index(epoch_idx, 1.0),
+                gps_week: Some(0),
+                tow_s: Some(Seconds(epoch_idx as f64)),
+                epoch_idx,
+                discontinuity: false,
+                sats: cn0_values_dbhz
+                    .iter()
+                    .enumerate()
+                    .map(|(offset, cn0_dbhz)| ObsSatellite {
+                        signal_id: SigId {
+                            sat: SatId { constellation: Constellation::Gps, prn: 7 + offset as u8 },
                             band: SignalBand::L1,
                             code: SignalCode::Ca,
-                            code_rate_hz: 1_023_000.0,
-                            carrier_hz: FreqHz(1_575_420_000.0),
                         },
-                        ..ObsMetadata::default()
-                    },
-                })
-                .collect(),
-            Some("synthetic_cn0_profile".to_string()),
-            None,
+                        pseudorange_m: Meters(20_000_000.0 + offset as f64),
+                        pseudorange_var_m2: 1.0,
+                        carrier_phase_cycles: Cycles(1000.0 + offset as f64),
+                        carrier_phase_var_cycles2: 1.0,
+                        doppler_hz: Hertz(-500.0 + offset as f64),
+                        doppler_var_hz2: 1.0,
+                        cn0_dbhz: *cn0_dbhz,
+                        lock_flags: LockFlags {
+                            code_lock: true,
+                            carrier_lock: true,
+                            bit_lock: true,
+                            cycle_slip: false,
+                        },
+                        multipath_suspect: false,
+                        observation_status: ObservationStatus::Accepted,
+                        observation_reject_reasons: Vec::new(),
+                        elevation_deg: Some(45.0),
+                        azimuth_deg: Some(90.0),
+                        weight: Some(1.0),
+                        timing: None,
+                        error_model: None,
+                        metadata: ObsMetadata {
+                            signal: SignalSpec {
+                                constellation: Constellation::Gps,
+                                band: SignalBand::L1,
+                                code: SignalCode::Ca,
+                                code_rate_hz: 1_023_000.0,
+                                carrier_hz: FreqHz(1_575_420_000.0),
+                            },
+                            ..ObsMetadata::default()
+                        },
+                    })
+                    .collect(),
+                decision_reason: Some("synthetic_cn0_profile".to_string()),
+                manifest: None,
+            },
         )
     }
 

@@ -25,12 +25,18 @@ use bijux_gnss_receiver::api::{
 };
 
 fn geometry_navigation_config() -> ReceiverPipelineConfig {
-    let mut config = ReceiverPipelineConfig::default();
-    config.robust_solver = false;
-    config.raim = false;
-    config.position_solution_smoothing = false;
-    config.weighting.enabled = false;
-    config
+    let default = ReceiverPipelineConfig::default();
+    ReceiverPipelineConfig {
+        robust_solver: false,
+        raim: false,
+        position_solution_smoothing: false,
+        weighting: {
+            let mut weighting = default.weighting.clone();
+            weighting.enabled = false;
+            weighting
+        },
+        ..default
+    }
 }
 
 fn make_gps_ephemeris(prn: u8, omega0: f64, m0: f64, t_ref_s: f64) -> GpsEphemeris {
