@@ -16,4 +16,4 @@ pub(crate) use navigation_outputs::*;
 pub(crate) use raw_iq_quality::*;
 pub(crate) use receiver_artifacts::*;
 
-include!("tests.rs");
+include!("tests/mod.rs");
