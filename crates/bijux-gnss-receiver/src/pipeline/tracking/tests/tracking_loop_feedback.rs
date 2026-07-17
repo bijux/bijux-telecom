@@ -255,7 +255,7 @@ fn correlate_epoch_uses_tracked_carrier_phase_for_phase_offset_signal() {
             cn0_db_hz: 70.0,
             navigation_data: false.into(),
         },
-        0xC0A5_1E,
+        0x00C0_A51E,
         0.001,
     );
 
@@ -323,7 +323,7 @@ fn correlate_epoch_keeps_carrier_phase_aligned_across_nonzero_epoch_starts() {
             cn0_db_hz: 90.0,
             navigation_data: false.into(),
         },
-        0xC0A5_1E,
+        0x00C0_A51E,
         0.002,
     );
     let second_epoch = super::frame_slice(&frame, epoch_len_samples, epoch_len_samples * 2);

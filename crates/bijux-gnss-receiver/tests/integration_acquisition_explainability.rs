@@ -155,7 +155,7 @@ fn frame_from_fixture(config: &ReceiverPipelineConfig, fixture: &AcqFixture) -> 
             generate_l1_ca(
                 &signal_config,
                 SyntheticSignalParams {
-                    sat: signal_sat(&fixture),
+                    sat: signal_sat(fixture),
                     glonass_frequency_channel: None,
                     signal_band: bijux_gnss_core::api::SignalBand::L1,
                     signal_code: bijux_gnss_core::api::SignalCode::Unknown,
@@ -241,20 +241,20 @@ impl AcqFixture {
     }
 }
 
-fn result_for_sat<'a>(
-    results: &'a [Vec<bijux_gnss_core::api::AcqResult>],
+fn result_for_sat(
+    results: &[Vec<bijux_gnss_core::api::AcqResult>],
     sat: SatId,
-) -> &'a Vec<bijux_gnss_core::api::AcqResult> {
+) -> &Vec<bijux_gnss_core::api::AcqResult> {
     results
         .iter()
         .find(|candidates| candidates.first().is_some_and(|candidate| candidate.sat == sat))
         .expect("result for requested satellite")
 }
 
-fn explain_for_sat<'a>(
-    explains: &'a [bijux_gnss_core::api::AcqExplain],
+fn explain_for_sat(
+    explains: &[bijux_gnss_core::api::AcqExplain],
     sat: SatId,
-) -> Option<&'a bijux_gnss_core::api::AcqExplain> {
+) -> Option<&bijux_gnss_core::api::AcqExplain> {
     explains.iter().find(|explain| explain.sat == sat)
 }
 

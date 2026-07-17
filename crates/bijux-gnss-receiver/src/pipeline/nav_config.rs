@@ -91,9 +91,11 @@ mod tests {
 
     #[test]
     fn navigation_filter_config_tracks_receiver_science_thresholds() {
-        let mut config = ReceiverPipelineConfig::default();
-        config.tropo_enable = false;
-        config.tropo_ztd_m = 1.75;
+        let mut config = ReceiverPipelineConfig {
+            tropo_enable: false,
+            tropo_ztd_m: 1.75,
+            ..ReceiverPipelineConfig::default()
+        };
         config.science_thresholds.max_pdop = 5.5;
         config.science_thresholds.max_gdop = 7.5;
         config.science_thresholds.min_used_satellites = 6;
@@ -109,8 +111,10 @@ mod tests {
 
     #[test]
     fn position_runtime_config_preserves_receiver_navigation_policy() {
-        let mut config = ReceiverPipelineConfig::default();
-        config.position_solution_motion_class = NavigationMotionClass::Pedestrian;
+        let mut config = ReceiverPipelineConfig {
+            position_solution_motion_class: NavigationMotionClass::Pedestrian,
+            ..ReceiverPipelineConfig::default()
+        };
         config.weighting.mode = NavigationWeightingMode::ElevationCn0;
         config.constellation_policy = ConstellationSelectionPolicy::GalileoOnly;
         config.science_thresholds.min_lock_ratio = 0.85;

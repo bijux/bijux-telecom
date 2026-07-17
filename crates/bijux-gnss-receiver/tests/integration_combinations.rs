@@ -198,19 +198,22 @@ fn make_l1_l5_epoch(p1: f64, p5: f64, phi1: f64, phi5: f64) -> ObsEpoch {
     }
 }
 
-fn make_dual_signal_epoch_from_phase_meters(
+struct SignalObservationMeters {
+    signal: SignalSpec,
+    band: SignalBand,
+    code: SignalCode,
+    pseudorange_m: f64,
+    carrier_phase_m: f64,
+}
+
+struct DualSignalObsEpochRequest {
     sat: SatId,
-    first_signal: SignalSpec,
-    first_band: SignalBand,
-    first_code: SignalCode,
-    second_signal: SignalSpec,
-    second_band: SignalBand,
-    second_code: SignalCode,
-    p1_m: f64,
-    p2_m: f64,
-    phi1_m: f64,
-    phi2_m: f64,
-) -> ObsEpoch {
+    reference_observation: SignalObservationMeters,
+    comparison_observation: SignalObservationMeters,
+}
+
+fn make_dual_signal_epoch_from_phase_meters(request: DualSignalObsEpochRequest) -> ObsEpoch {
+    let DualSignalObsEpochRequest { sat, reference_observation, comparison_observation } = request;
     ObsEpoch {
         t_rx_s: bijux_gnss_core::api::Seconds(0.0),
         source_time: ReceiverSampleTrace::from_sample_index(0, 1_000.0),
@@ -223,10 +226,17 @@ fn make_dual_signal_epoch_from_phase_meters(
         role: ReceiverRole::Rover,
         sats: vec![
             ObsSatellite {
-                signal_id: SigId { sat, band: first_band, code: first_code },
-                pseudorange_m: Meters(p1_m),
+                signal_id: SigId {
+                    sat,
+                    band: reference_observation.band,
+                    code: reference_observation.code,
+                },
+                pseudorange_m: Meters(reference_observation.pseudorange_m),
                 pseudorange_var_m2: 1.0,
-                carrier_phase_cycles: signal_meters_to_cycles(Meters(phi1_m), first_signal),
+                carrier_phase_cycles: signal_meters_to_cycles(
+                    Meters(reference_observation.carrier_phase_m),
+                    reference_observation.signal,
+                ),
                 carrier_phase_var_cycles2: 0.01,
                 doppler_hz: bijux_gnss_core::api::Hertz(0.0),
                 doppler_var_hz2: 1.0,
@@ -252,15 +262,22 @@ fn make_dual_signal_epoch_from_phase_meters(
                     smoothing_window: 0,
                     smoothing_age: 0,
                     smoothing_resets: 0,
-                    signal: first_signal,
+                    signal: reference_observation.signal,
                     ..ObsMetadata::default()
                 },
             },
             ObsSatellite {
-                signal_id: SigId { sat, band: second_band, code: second_code },
-                pseudorange_m: Meters(p2_m),
+                signal_id: SigId {
+                    sat,
+                    band: comparison_observation.band,
+                    code: comparison_observation.code,
+                },
+                pseudorange_m: Meters(comparison_observation.pseudorange_m),
                 pseudorange_var_m2: 1.0,
-                carrier_phase_cycles: signal_meters_to_cycles(Meters(phi2_m), second_signal),
+                carrier_phase_cycles: signal_meters_to_cycles(
+                    Meters(comparison_observation.carrier_phase_m),
+                    comparison_observation.signal,
+                ),
                 carrier_phase_var_cycles2: 0.01,
                 doppler_hz: bijux_gnss_core::api::Hertz(0.0),
                 doppler_var_hz2: 1.0,
@@ -286,7 +303,7 @@ fn make_dual_signal_epoch_from_phase_meters(
                     smoothing_window: 0,
                     smoothing_age: 0,
                     smoothing_resets: 0,
-                    signal: second_signal,
+                    signal: comparison_observation.signal,
                     ..ObsMetadata::default()
                 },
             },
@@ -451,7 +468,7 @@ fn iono_free_code_api_supports_l1_l5_pairs() {
 
 #[test]
 fn iono_free_code_api_keeps_code_available_without_carrier_lock() {
-    let mut epoch = make_dual_freq_epoch(20_200_005.0, 20_200_008.235308182, 1000.0, 1001.0);
+    let mut epoch = make_dual_freq_epoch(20_200_005.0, 20_200_008.235_308_18, 1000.0, 1001.0);
     for satellite in &mut epoch.sats {
         satellite.lock_flags.carrier_lock = false;
         satellite.carrier_phase_var_cycles2 = f64::NAN;
@@ -497,7 +514,7 @@ fn iono_free_phase_api_supports_l1_l5_pairs() {
 
 #[test]
 fn iono_free_phase_api_keeps_phase_available_without_code_lock() {
-    let mut epoch = make_dual_freq_epoch(20_200_005.0, 20_200_008.235308182, 1000.0, 1001.0);
+    let mut epoch = make_dual_freq_epoch(20_200_005.0, 20_200_008.235_308_18, 1000.0, 1001.0);
     for satellite in &mut epoch.sats {
         satellite.lock_flags.code_lock = false;
         satellite.pseudorange_var_m2 = f64::NAN;
@@ -526,19 +543,23 @@ fn galileo_geometry_free_and_iono_free_phase_use_e1_e5_wavelengths() {
     let narrow_lane_wavelength_m = 299_792_458.0 / (e1.carrier_hz.value() + e5.carrier_hz.value());
     let wide_lane_wavelength_m =
         299_792_458.0 / (e1.carrier_hz.value() - e5.carrier_hz.value()).abs();
-    let epoch = make_dual_signal_epoch_from_phase_meters(
+    let epoch = make_dual_signal_epoch_from_phase_meters(DualSignalObsEpochRequest {
         sat,
-        e1,
-        SignalBand::E1,
-        SignalCode::E1B,
-        e5,
-        SignalBand::E5,
-        SignalCode::E5a,
-        24_345_678.125,
-        24_345_679.875,
-        24_345_677.0,
-        24_345_674.5,
-    );
+        reference_observation: SignalObservationMeters {
+            signal: e1,
+            band: SignalBand::E1,
+            code: SignalCode::E1B,
+            pseudorange_m: 24_345_678.125,
+            carrier_phase_m: 24_345_677.0,
+        },
+        comparison_observation: SignalObservationMeters {
+            signal: e5,
+            band: SignalBand::E5,
+            code: SignalCode::E5a,
+            pseudorange_m: 24_345_679.875,
+            carrier_phase_m: 24_345_674.5,
+        },
+    });
 
     let combinations =
         combinations_from_obs_epochs(&[epoch.clone()], SignalBand::E1, SignalBand::E5);
@@ -594,19 +615,23 @@ fn beidou_geometry_free_and_iono_free_phase_use_b1_b2_wavelengths() {
     let narrow_lane_wavelength_m = 299_792_458.0 / (b1.carrier_hz.value() + b2.carrier_hz.value());
     let wide_lane_wavelength_m =
         299_792_458.0 / (b1.carrier_hz.value() - b2.carrier_hz.value()).abs();
-    let epoch = make_dual_signal_epoch_from_phase_meters(
+    let epoch = make_dual_signal_epoch_from_phase_meters(DualSignalObsEpochRequest {
         sat,
-        b1,
-        SignalBand::B1,
-        SignalCode::B1I,
-        b2,
-        SignalBand::B2,
-        SignalCode::B2I,
-        24_345_678.125,
-        24_345_679.875,
-        24_345_677.5,
-        24_345_674.25,
-    );
+        reference_observation: SignalObservationMeters {
+            signal: b1,
+            band: SignalBand::B1,
+            code: SignalCode::B1I,
+            pseudorange_m: 24_345_678.125,
+            carrier_phase_m: 24_345_677.5,
+        },
+        comparison_observation: SignalObservationMeters {
+            signal: b2,
+            band: SignalBand::B2,
+            code: SignalCode::B2I,
+            pseudorange_m: 24_345_679.875,
+            carrier_phase_m: 24_345_674.25,
+        },
+    });
 
     let combinations =
         combinations_from_obs_epochs(&[epoch.clone()], SignalBand::B1, SignalBand::B2);
@@ -662,19 +687,23 @@ fn galileo_melbourne_wubbena_diagnostics_publish_wide_lane_wavelength() {
     let expected_wide_lane_wavelength_m =
         299_792_458.0 / (e1.carrier_hz.value() - e5.carrier_hz.value()).abs();
     let diagnostics = melbourne_wubbena_diagnostics_from_obs_epochs(
-        &[make_dual_signal_epoch_from_phase_meters(
+        &[make_dual_signal_epoch_from_phase_meters(DualSignalObsEpochRequest {
             sat,
-            e1,
-            SignalBand::E1,
-            SignalCode::E1B,
-            e5,
-            SignalBand::E5,
-            SignalCode::E5a,
-            24_345_678.125,
-            24_345_679.875,
-            24_345_677.0,
-            24_345_674.5,
-        )],
+            reference_observation: SignalObservationMeters {
+                signal: e1,
+                band: SignalBand::E1,
+                code: SignalCode::E1B,
+                pseudorange_m: 24_345_678.125,
+                carrier_phase_m: 24_345_677.0,
+            },
+            comparison_observation: SignalObservationMeters {
+                signal: e5,
+                band: SignalBand::E5,
+                code: SignalCode::E5a,
+                pseudorange_m: 24_345_679.875,
+                carrier_phase_m: 24_345_674.5,
+            },
+        })],
         SignalBand::E1,
         SignalBand::E5,
         MelbourneWubbenaThresholds::default(),
@@ -698,19 +727,23 @@ fn beidou_melbourne_wubbena_diagnostics_publish_wide_lane_wavelength() {
     let expected_wide_lane_wavelength_m =
         299_792_458.0 / (b1.carrier_hz.value() - b2.carrier_hz.value()).abs();
     let diagnostics = melbourne_wubbena_diagnostics_from_obs_epochs(
-        &[make_dual_signal_epoch_from_phase_meters(
+        &[make_dual_signal_epoch_from_phase_meters(DualSignalObsEpochRequest {
             sat,
-            b1,
-            SignalBand::B1,
-            SignalCode::B1I,
-            b2,
-            SignalBand::B2,
-            SignalCode::B2I,
-            24_345_678.125,
-            24_345_679.875,
-            24_345_677.5,
-            24_345_674.25,
-        )],
+            reference_observation: SignalObservationMeters {
+                signal: b1,
+                band: SignalBand::B1,
+                code: SignalCode::B1I,
+                pseudorange_m: 24_345_678.125,
+                carrier_phase_m: 24_345_677.5,
+            },
+            comparison_observation: SignalObservationMeters {
+                signal: b2,
+                band: SignalBand::B2,
+                code: SignalCode::B2I,
+                pseudorange_m: 24_345_679.875,
+                carrier_phase_m: 24_345_674.25,
+            },
+        })],
         SignalBand::B1,
         SignalBand::B2,
         MelbourneWubbenaThresholds::default(),

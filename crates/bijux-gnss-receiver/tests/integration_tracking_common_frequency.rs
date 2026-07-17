@@ -152,7 +152,7 @@ fn track_common_frequency_case(
     tracking.finish_tracking_session(session)
 }
 
-fn track_for_sat<'a>(artifacts: &'a TrackingArtifacts, sat: SatId) -> &'a TrackingResult {
+fn track_for_sat(artifacts: &TrackingArtifacts, sat: SatId) -> &TrackingResult {
     artifacts.tracking.iter().find(|track| track.sat == sat).expect("track for satellite")
 }
 

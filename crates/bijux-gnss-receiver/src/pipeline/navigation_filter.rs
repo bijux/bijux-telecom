@@ -12,10 +12,16 @@ pub struct NavigationFilter {
     inner: NavNavigationFilter,
 }
 
+impl Default for NavigationFilter {
+    fn default() -> Self {
+        Self { inner: NavNavigationFilter::new() }
+    }
+}
+
 impl NavigationFilter {
     #[cfg(test)]
     pub fn new() -> Self {
-        Self { inner: NavNavigationFilter::new() }
+        Self::default()
     }
 
     pub fn from_pipeline_config(config: &ReceiverPipelineConfig) -> Self {

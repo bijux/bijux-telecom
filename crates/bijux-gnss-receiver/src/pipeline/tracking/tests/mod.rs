@@ -111,10 +111,26 @@ fn tracking_epoch_count_includes_trailing_partial_epoch() {
 fn code_value_at_phase_wraps_fractional_chip_phases() {
     let code = vec![1_i8, -1, 1, -1];
 
-    assert_eq!(bijux_gnss_signal::api::code_value_at_phase(&code, 0.25).unwrap(), 1.0);
-    assert_eq!(bijux_gnss_signal::api::code_value_at_phase(&code, 1.75).unwrap(), -1.0);
-    assert_eq!(bijux_gnss_signal::api::code_value_at_phase(&code, 4.10).unwrap(), 1.0);
-    assert_eq!(bijux_gnss_signal::api::code_value_at_phase(&code, -0.10).unwrap(), -1.0);
+    assert_eq!(
+        bijux_gnss_signal::api::code_value_at_phase(&code, 0.25)
+            .expect("sample code at quarter-chip phase"),
+        1.0
+    );
+    assert_eq!(
+        bijux_gnss_signal::api::code_value_at_phase(&code, 1.75)
+            .expect("sample code near second-chip boundary"),
+        -1.0
+    );
+    assert_eq!(
+        bijux_gnss_signal::api::code_value_at_phase(&code, 4.10)
+            .expect("sample code after whole-code wrap"),
+        1.0
+    );
+    assert_eq!(
+        bijux_gnss_signal::api::code_value_at_phase(&code, -0.10)
+            .expect("sample code before zero-chip boundary"),
+        -1.0
+    );
 }
 
 #[test]

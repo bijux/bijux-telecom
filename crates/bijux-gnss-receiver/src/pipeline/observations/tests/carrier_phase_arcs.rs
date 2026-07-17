@@ -99,7 +99,7 @@ fn observations_reset_carrier_phase_arc_after_unlock() {
     };
     let track = TrackingResult {
         sat: SatId { constellation: Constellation::Gps, prn: 10 },
-        carrier_hz: carrier_hz,
+        carrier_hz,
         code_phase_samples: 0.0,
         acquisition_hypothesis: "accepted".to_string(),
         acquisition_score: 1.0,

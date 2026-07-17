@@ -286,16 +286,16 @@ fn acquisition_accuracy_budget_resolves_thresholds_by_signal_family() {
 #[test]
 fn acquisition_accuracy_budget_rejects_split_spectrum_code_phase_error_inside_legacy_budget() {
     let budgets = truth_guided_receiver_accuracy_budgets();
-    let report = synthetic_truth_table_report(
-        SatId { constellation: Constellation::Galileo, prn: 11 },
-        None,
-        SignalBand::E1,
-        SignalCode::E1B,
-        4_092_000.0,
-        500,
-        400.0,
-        2,
-    );
+    let report = synthetic_truth_table_report(SyntheticTruthTableReportRequest {
+        sat: SatId { constellation: Constellation::Galileo, prn: 11 },
+        glonass_frequency_channel: None,
+        signal_band: SignalBand::E1,
+        signal_code: SignalCode::E1B,
+        sample_rate_hz: 4_092_000.0,
+        doppler_step_hz: 500,
+        doppler_error_hz: 400.0,
+        code_phase_error_samples: 2,
+    });
 
     let accuracy = validate_acquisition_accuracy_budget(&report, budgets.acquisition);
     let satellite = accuracy.satellites.first().expect("Galileo E1B budget row");
@@ -310,16 +310,16 @@ fn acquisition_accuracy_budget_rejects_split_spectrum_code_phase_error_inside_le
 #[test]
 fn acquisition_accuracy_budget_rejects_high_rate_doppler_error_inside_legacy_budget() {
     let budgets = truth_guided_receiver_accuracy_budgets();
-    let report = synthetic_truth_table_report(
-        SatId { constellation: Constellation::Gps, prn: 18 },
-        None,
-        SignalBand::L5,
-        SignalCode::L5Q,
-        10_230_000.0,
-        250,
-        300.0,
-        1,
-    );
+    let report = synthetic_truth_table_report(SyntheticTruthTableReportRequest {
+        sat: SatId { constellation: Constellation::Gps, prn: 18 },
+        glonass_frequency_channel: None,
+        signal_band: SignalBand::L5,
+        signal_code: SignalCode::L5Q,
+        sample_rate_hz: 10_230_000.0,
+        doppler_step_hz: 250,
+        doppler_error_hz: 300.0,
+        code_phase_error_samples: 1,
+    });
 
     let accuracy = validate_acquisition_accuracy_budget(&report, budgets.acquisition);
     let satellite = accuracy.satellites.first().expect("GPS L5Q budget row");
@@ -335,6 +335,17 @@ struct TruthTableFixture {
     config: ReceiverPipelineConfig,
     frame: SamplesFrame,
     truth: SyntheticIqTruthBundle,
+}
+
+struct SyntheticTruthTableReportRequest {
+    sat: SatId,
+    glonass_frequency_channel: Option<bijux_gnss_core::api::GlonassFrequencyChannel>,
+    signal_band: SignalBand,
+    signal_code: SignalCode,
+    sample_rate_hz: f64,
+    doppler_step_hz: i32,
+    doppler_error_hz: f64,
+    code_phase_error_samples: usize,
 }
 
 fn signal_truth_fixture(
@@ -360,15 +371,18 @@ fn signal_truth_fixture(
 }
 
 fn synthetic_truth_table_report(
-    sat: SatId,
-    glonass_frequency_channel: Option<bijux_gnss_core::api::GlonassFrequencyChannel>,
-    signal_band: SignalBand,
-    signal_code: SignalCode,
-    sample_rate_hz: f64,
-    doppler_step_hz: i32,
-    doppler_error_hz: f64,
-    code_phase_error_samples: usize,
+    request: SyntheticTruthTableReportRequest,
 ) -> SyntheticAcquisitionTruthTableReport {
+    let SyntheticTruthTableReportRequest {
+        sat,
+        glonass_frequency_channel,
+        signal_band,
+        signal_code,
+        sample_rate_hz,
+        doppler_step_hz,
+        doppler_error_hz,
+        code_phase_error_samples,
+    } = request;
     SyntheticAcquisitionTruthTableReport {
         scenario_id: format!("synthetic-budget-{signal_band:?}-{signal_code:?}"),
         doppler_tolerance_bins: 1,

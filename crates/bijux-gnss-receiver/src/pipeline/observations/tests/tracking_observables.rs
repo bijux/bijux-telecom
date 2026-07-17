@@ -9,8 +9,8 @@ fn observation_satellite_order_is_canonical() {
     let report_a = observations_from_tracking_results(&config, &tracks_a, 10);
     let report_b = observations_from_tracking_results(&config, &tracks_b, 10);
 
-    let json_a = serde_json::to_string(&report_a.output).unwrap();
-    let json_b = serde_json::to_string(&report_b.output).unwrap();
+    let json_a = serde_json::to_string(&report_a.output).expect("serialize canonical report a");
+    let json_b = serde_json::to_string(&report_b.output).expect("serialize canonical report b");
     assert_eq!(json_a, json_b);
 }
 

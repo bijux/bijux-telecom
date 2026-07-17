@@ -10,9 +10,7 @@ use bijux_gnss_receiver::api::{
     SignalSource, TrackingArtifacts, TrackingEngine,
 };
 
-use support::navigation_truth::{
-    multisatellite_pvt_scenario, truth_seeded_acquisition_results, SyntheticPvtScenario,
-};
+use support::navigation_truth::{multisatellite_pvt_scenario, truth_seeded_acquisition_results};
 
 const CONTINUOUS_TRACKING_DURATION_S: f64 = 30.0;
 const STREAMING_TRACKING_CODE_PERIODS: usize = 100;
@@ -21,7 +19,6 @@ const EXPECTED_CONTINUOUS_TRACKING_EPOCHS: u64 = 30_000;
 #[derive(Clone)]
 struct MultisatTrackingRun {
     config: ReceiverPipelineConfig,
-    profile: SyntheticPvtScenario,
     artifacts: TrackingArtifacts,
 }
 
@@ -66,7 +63,7 @@ fn run_multisat_tracking_session() -> MultisatTrackingRun {
     }
 
     assert!(source.is_done(), "tracking source did not reach end of stream");
-    MultisatTrackingRun { config, profile, artifacts: tracking.finish_tracking_session(session) }
+    MultisatTrackingRun { config, artifacts: tracking.finish_tracking_session(session) }
 }
 
 fn multisat_tracking_run() -> &'static MultisatTrackingRun {
