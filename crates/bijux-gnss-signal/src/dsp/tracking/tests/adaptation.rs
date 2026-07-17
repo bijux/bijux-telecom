@@ -162,3 +162,40 @@ fn tracking_adaptation_caps_pending_hysteresis_memory() {
         );
     }
 }
+
+#[test]
+fn tracking_adaptation_releases_dynamic_stress_after_moderate_residuals_settle() {
+    let base_profile =
+        TrackingLoopProfile { dll_bw_hz: 2.0, pll_bw_hz: 15.0, fll_bw_hz: 10.0, integration_ms: 1 };
+    let dynamic_input = TrackingAdaptationInput {
+        cn0_dbhz: 45.0,
+        fll_error_hz: 30.0,
+        carrier_rate_hz_per_s: 400.0,
+        carrier_lock_ready: false,
+        steady_state_lock: false,
+        discriminator_stable: false,
+    };
+    let recovery_input = TrackingAdaptationInput {
+        cn0_dbhz: 45.0,
+        fll_error_hz: 5.0,
+        carrier_rate_hz_per_s: 0.0,
+        carrier_lock_ready: true,
+        steady_state_lock: true,
+        discriminator_stable: true,
+    };
+
+    let entered = advance_tracking_adaptation(
+        base_profile,
+        TrackingAdaptationState::default(),
+        dynamic_input,
+    );
+    let first = advance_tracking_adaptation(base_profile, entered.state, recovery_input);
+    let second = advance_tracking_adaptation(base_profile, first.state, recovery_input);
+    let third = advance_tracking_adaptation(base_profile, second.state, recovery_input);
+    let fourth = advance_tracking_adaptation(base_profile, third.state, recovery_input);
+
+    assert_eq!(entered.profile_kind, TrackingLoopProfileKind::DynamicStress);
+    assert_eq!(first.profile_kind, TrackingLoopProfileKind::DynamicStress);
+    assert_eq!(third.profile_kind, TrackingLoopProfileKind::DynamicStress);
+    assert_eq!(fourth.profile_kind, TrackingLoopProfileKind::Nominal);
+}

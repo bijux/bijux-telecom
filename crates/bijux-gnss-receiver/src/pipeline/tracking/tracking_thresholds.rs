@@ -35,6 +35,11 @@ const SHORT_FADE_RELOCK_EVIDENCE_GRACE_EPOCHS: u16 = 3;
 // Enter steady tracking only after the carrier/code loops stay jointly locked
 // across a short sustained window instead of a single optimistic epoch.
 const PULL_IN_REQUIRED_STABLE_EPOCHS: u8 = 3;
+// FLL-assisted pull-in can still carry residual phase bias well above the
+// steady-state PLL gate while the carrier frequency is otherwise converged.
+// Admit tracking once the phase error stays within a bounded quadrant and the
+// carrier estimators agree, then let the narrower PLL gate take over.
+const CARRIER_CONVERGENCE_MAX_PHASE_ERROR_RAD: f32 = 1.6;
 const REACQUISITION_REQUIRED_LOST_EPOCHS: usize = 3;
 const REACQUISITION_CONFIRMATION_EPOCHS: u8 = 2;
 const REACQUISITION_PULL_IN_EPOCH_BUDGET: u8 = 20;

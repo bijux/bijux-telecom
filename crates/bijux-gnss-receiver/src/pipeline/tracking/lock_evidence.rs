@@ -17,6 +17,7 @@ fn tracking_lock_detector_thresholds(
         dll_false_unlock_probability: DLL_FALSE_UNLOCK_PROBABILITY,
         pll_false_unlock_probability: PLL_FALSE_UNLOCK_PROBABILITY,
         fll_false_unlock_probability: FLL_FALSE_UNLOCK_PROBABILITY,
+        fll_bw_hz: tracking_params.fll_bw_hz,
         dynamic_stress_hz: carrier_rate_hz_per_s.abs() * coherent_integration_s.max(0.0),
     })
 }

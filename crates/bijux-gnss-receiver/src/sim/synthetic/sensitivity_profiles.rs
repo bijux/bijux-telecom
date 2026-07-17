@@ -169,6 +169,7 @@ pub fn measure_tracking_lock_detector_calibration(
                 dll_false_unlock_probability: TRACKING_LOCK_DETECTOR_FALSE_UNLOCK_TARGET,
                 pll_false_unlock_probability: TRACKING_LOCK_DETECTOR_FALSE_UNLOCK_TARGET,
                 fll_false_unlock_probability: TRACKING_LOCK_DETECTOR_FALSE_UNLOCK_TARGET,
+                fll_bw_hz: config.fll_bw_hz,
                 dynamic_stress_hz: case.dynamic_stress_hz,
             });
             let probabilities = lock_detector_probability_summary(LockDetectorProbabilityInput {

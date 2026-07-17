@@ -15,6 +15,15 @@ fn anti_false_lock_detected_rejects_early_late_energy_near_prompt() {
 }
 
 #[test]
+fn anti_false_lock_detected_accepts_clean_tracking_geometry_below_guard_band() {
+    assert!(!anti_false_lock_detected(
+        Complex::new(7.44, 0.0),
+        Complex::new(8.0, 0.0),
+        Complex::new(7.44, 0.0),
+    ));
+}
+
+#[test]
 fn normalize_dll_discriminator_preserves_reference_spacing_gain() {
     assert_eq!(normalize_dll_discriminator(0.25, 0.5), 0.25);
 }

@@ -118,3 +118,28 @@ fn tracking_params_for_state_ignores_adapted_profile_when_disabled() {
     assert_eq!(effective.fll_bw_hz, base_tracking_params.fll_bw_hz);
     assert_eq!(effective.integration_ms, base_tracking_params.integration_ms);
 }
+
+#[test]
+fn pull_in_keeps_fll_active_while_doppler_estimators_are_still_spread() {
+    let divergent_doppler = super::DopplerEstimatorConsistency {
+        loop_residual_hz: 0.0,
+        phase_rate_residual_hz: 196.0,
+        prompt_correlation_residual_hz: 196.0,
+        spread_hz: 196.0,
+        limit_hz: 75.0,
+        consistent: false,
+    };
+
+    assert!(super::apply_fll_during_epoch(
+        12.0,
+        ChannelState::PullIn,
+        false,
+        divergent_doppler,
+    ));
+    assert!(!super::apply_fll_during_epoch(
+        12.0,
+        ChannelState::Tracking,
+        false,
+        divergent_doppler,
+    ));
+}

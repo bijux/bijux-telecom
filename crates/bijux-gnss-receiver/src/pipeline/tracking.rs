@@ -1155,25 +1155,34 @@ impl Tracking {
             prompt_power_ratio,
             state.unstable_discriminator_epochs,
         );
-        state.pull_in_stable_epochs = update_pull_in_stable_epochs(
-            state.pull_in_stable_epochs,
-            sustained_prompt_lock,
-            sustained_code_lock,
-            sustained_pll_lock,
-            raw_fll_lock,
-            cycle_slip,
-        );
         let (weak_cn0_epochs, cn0_supports_lock, refuse_lock) = update_prelock_cn0_refusal(
             state.state,
             state.weak_cn0_epochs,
             state.acquisition_cn0_proxy_dbhz,
         );
         state.weak_cn0_epochs = weak_cn0_epochs;
+        let carrier_convergence_lock = cn0_supports_lock
+            && sustained_prompt_lock
+            && sustained_code_lock
+            && raw_fll_lock
+            && doppler_consistency.consistent
+            && pll_err.abs() <= CARRIER_CONVERGENCE_MAX_PHASE_ERROR_RAD
+            && !cycle_slip
+            && !anti_false_lock;
+        let sustained_or_converged_pll_lock = sustained_pll_lock || carrier_convergence_lock;
+        state.pull_in_stable_epochs = update_pull_in_stable_epochs(
+            state.pull_in_stable_epochs,
+            sustained_prompt_lock,
+            sustained_code_lock,
+            sustained_or_converged_pll_lock,
+            raw_fll_lock,
+            cycle_slip,
+        );
         let steady_state_tracking_ready = if from_state == ChannelState::Degraded {
             cn0_supports_lock
                 && lock
                 && sustained_code_lock
-                && raw_pll_lock
+                && (raw_pll_lock || carrier_convergence_lock)
                 && raw_fll_lock
                 && doppler_consistency.consistent
                 && !cycle_slip
@@ -1182,7 +1191,7 @@ impl Tracking {
             cn0_supports_lock
                 && sustained_prompt_lock
                 && sustained_code_lock
-                && sustained_pll_lock
+                && sustained_or_converged_pll_lock
                 && doppler_consistency.consistent
                 && !cycle_slip
                 && !anti_false_lock
@@ -1191,7 +1200,9 @@ impl Tracking {
             if matches!(from_state, ChannelState::Tracking | ChannelState::Degraded) {
                 steady_state_tracking_ready
             } else {
-                cn0_supports_lock && state.pull_in_stable_epochs >= PULL_IN_REQUIRED_STABLE_EPOCHS
+                cn0_supports_lock
+                    && sustained_or_converged_pll_lock
+                    && state.pull_in_stable_epochs >= PULL_IN_REQUIRED_STABLE_EPOCHS
             };
         let short_fade_relock_evidence = doppler_consistency.consistent
             && !anti_false_lock
@@ -1319,7 +1330,7 @@ impl Tracking {
         let pll_lock = tracking_state_locked
             && cn0_supports_lock
             && sustained_prompt_lock
-            && sustained_pll_lock
+            && sustained_or_converged_pll_lock
             && !cycle_slip;
         let fll_lock = state.state != ChannelState::Lost
             && doppler_consistency.consistent
@@ -1343,9 +1354,8 @@ impl Tracking {
             ));
         }
 
-        let apply_fll = fll_bw > 0.0
-            && doppler_consistency.consistent
-            && should_apply_fll(state.state, raw_fll_lock);
+        let apply_fll =
+            apply_fll_during_epoch(fll_bw, state.state, raw_fll_lock, doppler_consistency);
         let tracked_center_hz =
             tracked_signal_center_hz(self.config.intermediate_freq_hz, signal_model.signal_spec);
         let current_carrier_doppler_hz = tracked_signal_doppler_hz(
@@ -1365,8 +1375,7 @@ impl Tracking {
             fll_bw_hz: fll_bw,
             fll_err_hz: fll_err_hz as f64,
             apply_fll,
-            apply_pll_frequency: !apply_fll
-                || (matches!(state.state, ChannelState::PullIn) && !raw_fll_lock),
+            apply_pll_frequency: !apply_fll || matches!(state.state, ChannelState::PullIn),
         });
         let tracked_carrier_hz = tracked_center_hz + carrier_loop.carrier_hz;
         let code_rate_reference_hz = next_code_rate_reference_hz(

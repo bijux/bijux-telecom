@@ -10,6 +10,7 @@ fn lock_detector_distributions_tighten_with_stronger_cn0() {
         dll_false_unlock_probability: 1.0e-6,
         pll_false_unlock_probability: 1.0e-6,
         fll_false_unlock_probability: 1.0e-6,
+        fll_bw_hz: 10.0,
         dynamic_stress_hz: 0.0,
     });
     let strong = lock_detector_distributions(LockDetectorCalibrationInput {
@@ -20,6 +21,7 @@ fn lock_detector_distributions_tighten_with_stronger_cn0() {
         dll_false_unlock_probability: 1.0e-6,
         pll_false_unlock_probability: 1.0e-6,
         fll_false_unlock_probability: 1.0e-6,
+        fll_bw_hz: 10.0,
         dynamic_stress_hz: 0.0,
     });
 
@@ -39,6 +41,7 @@ fn calibrated_lock_detector_thresholds_expand_for_weaker_signals() {
         dll_false_unlock_probability: 1.0e-6,
         pll_false_unlock_probability: 1.0e-6,
         fll_false_unlock_probability: 1.0e-6,
+        fll_bw_hz: 10.0,
         dynamic_stress_hz: 0.0,
     });
     let weak = calibrated_lock_detector_thresholds(LockDetectorCalibrationInput {
@@ -49,6 +52,7 @@ fn calibrated_lock_detector_thresholds_expand_for_weaker_signals() {
         dll_false_unlock_probability: 1.0e-6,
         pll_false_unlock_probability: 1.0e-6,
         fll_false_unlock_probability: 1.0e-6,
+        fll_bw_hz: 10.0,
         dynamic_stress_hz: 0.0,
     });
 
@@ -69,6 +73,7 @@ fn calibrated_lock_detector_thresholds_include_dynamic_frequency_stress() {
         dll_false_unlock_probability: 1.0e-6,
         pll_false_unlock_probability: 1.0e-6,
         fll_false_unlock_probability: 1.0e-6,
+        fll_bw_hz: 10.0,
         dynamic_stress_hz: 0.0,
     });
     let dynamic = calibrated_lock_detector_thresholds(LockDetectorCalibrationInput {
@@ -81,6 +86,7 @@ fn calibrated_lock_detector_thresholds_include_dynamic_frequency_stress() {
             dll_false_unlock_probability: 1.0e-6,
             pll_false_unlock_probability: 1.0e-6,
             fll_false_unlock_probability: 1.0e-6,
+            fll_bw_hz: 10.0,
             dynamic_stress_hz: 0.0,
         }
     });
@@ -88,6 +94,26 @@ fn calibrated_lock_detector_thresholds_include_dynamic_frequency_stress() {
     assert!((dynamic.fll_lock_hz - calm.fll_lock_hz - 35.0).abs() <= 1.0e-9);
     assert_eq!(dynamic.dll_lock, calm.dll_lock);
     assert_eq!(dynamic.pll_lock_rad, calm.pll_lock_rad);
+}
+
+#[test]
+fn calibrated_lock_detector_thresholds_preserve_operational_tracking_floors() {
+    let thresholds = calibrated_lock_detector_thresholds(LockDetectorCalibrationInput {
+        cn0_dbhz: 75.0,
+        coherent_integration_s: 0.001,
+        samples_per_chip: 4.0,
+        early_late_spacing_chips: 0.5,
+        dll_false_unlock_probability: 1.0e-6,
+        pll_false_unlock_probability: 1.0e-6,
+        fll_false_unlock_probability: 1.0e-6,
+        fll_bw_hz: 12.0,
+        dynamic_stress_hz: 0.0,
+    });
+
+    assert!(thresholds.dll_lock >= 0.2, "{thresholds:?}");
+    assert!(thresholds.dll_hold >= 0.4, "{thresholds:?}");
+    assert!(thresholds.pll_lock_rad >= 0.35, "{thresholds:?}");
+    assert!(thresholds.fll_lock_hz >= 12.0, "{thresholds:?}");
 }
 
 #[test]
@@ -101,6 +127,7 @@ fn lock_detector_probability_summary_reports_calibrated_false_unlock_rate() {
         dll_false_unlock_probability: target,
         pll_false_unlock_probability: target,
         fll_false_unlock_probability: target,
+        fll_bw_hz: 10.0,
         dynamic_stress_hz: 0.0,
     });
 
@@ -129,6 +156,7 @@ fn lock_detector_probability_summary_quantifies_false_lock_and_missed_unlock_reg
         dll_false_unlock_probability: 1.0e-6,
         pll_false_unlock_probability: 1.0e-6,
         fll_false_unlock_probability: 1.0e-6,
+        fll_bw_hz: 10.0,
         dynamic_stress_hz: 0.0,
     });
     let wide_unlocked = lock_detector_probability_summary(LockDetectorProbabilityInput {

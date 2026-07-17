@@ -13,9 +13,10 @@ use num_complex::Complex;
 const DLL_LOCK_MAX_CODE_ERROR: f32 = 0.2;
 const DLL_HOLD_MAX_CODE_ERROR: f32 = 0.4;
 const DLL_LOW_RESOLUTION_LOCK_MAX_CODE_ERROR: f32 = 0.6;
+const PLL_LOCK_MIN_PHASE_ERROR_RAD: f32 = 0.35;
 const DLL_REFERENCE_EARLY_LATE_SPACING_CHIPS: f64 = 0.5;
 const DOUBLE_DELTA_OUTER_WEIGHT: f32 = 0.5;
-const ANTI_FALSE_LOCK_MAX_EARLY_LATE_TO_PROMPT_RATIO: f32 = 0.9;
+const ANTI_FALSE_LOCK_MAX_EARLY_LATE_TO_PROMPT_RATIO: f32 = 0.95;
 const FLL_PULL_IN_MAX_CORRECTION_BW_MULTIPLIER: f64 = 4.0;
 const TRACKING_UNCERTAINTY_MIN_CODE_PHASE_SAMPLES: f64 = 0.01;
 const TRACKING_UNCERTAINTY_MIN_CARRIER_PHASE_CYCLES: f64 = 0.001;
@@ -26,10 +27,10 @@ const LOOP_FILTER_IMPULSE_RESPONSE_EPOCHS: usize = 16_384;
 const LOOP_FILTER_IMPULSE_RESPONSE_EPSILON: f64 = 1.0e-15;
 const WEAK_SIGNAL_ENTRY_CN0_DBHZ: f64 = 31.0;
 const WEAK_SIGNAL_EXIT_CN0_DBHZ: f64 = 34.0;
-const DYNAMIC_STRESS_ENTRY_FLL_ERROR_HZ: f64 = 2.5;
-const DYNAMIC_STRESS_EXIT_FLL_ERROR_HZ: f64 = 1.0;
-const DYNAMIC_STRESS_ENTRY_CARRIER_RATE_HZ_PER_S: f64 = 5.0;
-const DYNAMIC_STRESS_EXIT_CARRIER_RATE_HZ_PER_S: f64 = 2.0;
+const DYNAMIC_STRESS_ENTRY_FLL_ERROR_HZ: f64 = 12.0;
+const DYNAMIC_STRESS_EXIT_FLL_ERROR_HZ: f64 = 6.0;
+const DYNAMIC_STRESS_ENTRY_CARRIER_RATE_HZ_PER_S: f64 = 200.0;
+const DYNAMIC_STRESS_EXIT_CARRIER_RATE_HZ_PER_S: f64 = 50.0;
 const WEAK_SIGNAL_INTEGRATION_MS: u32 = 5;
 const DYNAMIC_STRESS_INTEGRATION_MS: u32 = 1;
 const MAX_TRACKING_ADAPTATION_PENDING_EPOCHS: u8 = 4;
@@ -230,6 +231,8 @@ pub struct LockDetectorCalibrationInput {
     pub pll_false_unlock_probability: f64,
     /// Target probability that a truly locked FLL epoch is rejected by discriminator noise.
     pub fll_false_unlock_probability: f64,
+    /// Effective FLL noise bandwidth in Hz for practical hold-floor calibration.
+    pub fll_bw_hz: f64,
     /// Extra carrier-frequency stress in Hz from known dynamics or oscillator motion.
     pub dynamic_stress_hz: f64,
 }
@@ -1142,15 +1145,19 @@ pub fn calibrated_lock_detector_thresholds(
     let dll_quantile = two_sided_normal_quantile(input.dll_false_unlock_probability);
     let pll_quantile = two_sided_normal_quantile(input.pll_false_unlock_probability);
     let fll_quantile = two_sided_normal_quantile(input.fll_false_unlock_probability);
-    let dll_lock = (dll_quantile * distributions.dll_sigma).clamp(0.05, 0.95) as f32;
+    let dll_lock = (dll_quantile * distributions.dll_sigma)
+        .clamp(dll_lock_threshold(input.samples_per_chip, input.early_late_spacing_chips) as f64, 0.95)
+        as f32;
     let pll_lock_upper_rad = std::f64::consts::PI - f32::EPSILON as f64;
-    let pll_lock_rad =
-        (pll_quantile * distributions.pll_sigma_rad).clamp(0.05, pll_lock_upper_rad) as f32;
-    let fll_lock_hz =
-        (fll_quantile * distributions.fll_sigma_hz + distributions.dynamic_stress_hz).max(1.0);
+    let pll_lock_rad = (pll_quantile * distributions.pll_sigma_rad)
+        .clamp(PLL_LOCK_MIN_PHASE_ERROR_RAD as f64, pll_lock_upper_rad) as f32;
+    let fll_lock_hz = (fll_quantile * distributions.fll_sigma_hz + distributions.dynamic_stress_hz)
+        .max(fll_lock_threshold_hz(input.fll_bw_hz));
     LockDetectorThresholds {
         dll_lock,
-        dll_hold: (dll_lock as f64 * 1.5).clamp(dll_lock as f64, 0.98) as f32,
+        dll_hold: (dll_lock as f64 * 1.5)
+            .clamp(dll_hold_threshold(input.samples_per_chip, input.early_late_spacing_chips) as f64, 0.98)
+            as f32,
         pll_lock_rad,
         pll_hold_rad: (pll_lock_rad as f64 * 1.35).clamp(pll_lock_rad as f64, std::f64::consts::PI)
             as f32,

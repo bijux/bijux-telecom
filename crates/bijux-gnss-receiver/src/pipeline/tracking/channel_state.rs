@@ -192,6 +192,17 @@ fn should_apply_fll(state: ChannelState, raw_fll_lock: bool) -> bool {
     matches!(state, ChannelState::PullIn | ChannelState::Degraded) || !raw_fll_lock
 }
 
+fn apply_fll_during_epoch(
+    fll_bw_hz: f64,
+    state: ChannelState,
+    raw_fll_lock: bool,
+    doppler_consistency: DopplerEstimatorConsistency,
+) -> bool {
+    fll_bw_hz > 0.0
+        && should_apply_fll(state, raw_fll_lock)
+        && (doppler_consistency.consistent || state == ChannelState::PullIn)
+}
+
 fn doppler_estimator_consistency(
     loop_residual_hz: f64,
     phase_rate_residual_hz: f64,
