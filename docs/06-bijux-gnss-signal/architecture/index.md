@@ -12,6 +12,26 @@ last_reviewed: 2026-07-17
 Open this section when the question is where signal behavior lives in code and
 why the source tree is partitioned the way it is.
 
+## Structural Shape
+
+```mermaid
+flowchart LR
+    api["api.rs<br/>curated public surface"]
+    catalog["catalog.rs"]
+    codes["codes/"]
+    dsp["dsp/"]
+    samples["raw_iq.rs and samples.rs"]
+    validation["obs_validation.rs"]
+    downstream["receiver nav cli infra tests"]
+
+    catalog --> api
+    codes --> api
+    dsp --> api
+    samples --> api
+    validation --> api
+    api --> downstream
+```
+
 ## Read These First
 
 - open [Module Map](module-map.md) first when the question is simply where a
@@ -45,6 +65,8 @@ why the source tree is partitioned the way it is.
 
 ## Leave This Section When
 
+- leave for [Foundation](../foundation/) when the real issue is still package
+  ownership rather than structure
 - leave for [Interfaces](../interfaces/) when the question is what callers may
   rely on rather than how the code is partitioned
 - leave for [Quality](../quality/) when the structure is clear and the next

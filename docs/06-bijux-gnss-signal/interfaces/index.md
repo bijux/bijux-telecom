@@ -12,6 +12,31 @@ last_reviewed: 2026-07-17
 Open this section when the question is what `bijux-gnss-signal` publicly
 promises to downstream crates.
 
+## Contract Surface
+
+`bijux-gnss-signal` publishes one curated surface through
+`bijux_gnss_signal::api`, but that surface carries several real contract
+families: signal identity, code generation, DSP helpers, raw-sample contracts,
+validation helpers, and integration traits.
+
+```mermaid
+flowchart LR
+    caller["downstream crate or tool"]
+    api["bijux_gnss_signal::api"]
+    codes["code contracts"]
+    dsp["dsp contracts"]
+    samples["raw iq and sample contracts"]
+    validation["validation contracts"]
+    traits["trait contracts"]
+
+    caller --> api
+    api --> codes
+    api --> dsp
+    api --> samples
+    api --> validation
+    api --> traits
+```
+
 ## Read These First
 
 - open [API Surface](api-surface.md) first when the question is what this
@@ -34,16 +59,20 @@ promises to downstream crates.
 - [Entrypoints And Examples](entrypoints-and-examples.md)
 - [Compatibility Commitments](compatibility-commitments.md)
 
-## First Public Surfaces
+## First Proof Check
 
 - `crates/bijux-gnss-signal/src/api.rs`
+- `crates/bijux-gnss-signal/docs/PUBLIC_API.md`
+- `crates/bijux-gnss-signal/docs/CONTRACTS.md`
 - `crates/bijux-gnss-signal/src/raw_iq.rs`
 - `crates/bijux-gnss-signal/src/samples.rs`
 - `crates/bijux-gnss-signal/src/obs_validation.rs`
 
 ## Leave This Section When
 
+- leave for [Foundation](../foundation/) when the question is whether a public
+  surface belongs in the signal crate at all
 - leave for [Architecture](../architecture/) when the question is about module
   placement rather than public contract
-- leave for [Operations](../operations/) when the interface is clear and the
-  next question is how to change it safely
+- leave for [Operations](../operations/) or [Quality](../quality/) when the
+  interface is clear and the next question is safe change or proof

@@ -12,6 +12,25 @@ last_reviewed: 2026-07-17
 Open this section when the question is how `bijux-gnss-dev` organizes its
 binary command surface and repository-scoped effects in code.
 
+## Structural Shape
+
+```mermaid
+flowchart LR
+    cli["Commands enum<br/>surface inventory"]
+    dispatch["main()<br/>workflow dispatch"]
+    validation["governed-file validation"]
+    benchmark["benchmark governance"]
+    helpers["shared repository helpers"]
+    tests["integration tests"]
+
+    cli --> dispatch
+    dispatch --> validation
+    dispatch --> benchmark
+    validation --> helpers
+    benchmark --> helpers
+    tests --> dispatch
+```
+
 ## Read These First
 
 - open [Module Map](module-map.md) first when the question is where a maintainer
@@ -42,6 +61,8 @@ binary command surface and repository-scoped effects in code.
 
 ## Leave This Section When
 
+- leave for [Foundation](../foundation/) when the real issue is still about
+  maintainer ownership rather than structure
 - leave for [Interfaces](../interfaces/) when the question is what maintainers
   may rely on rather than how the code is organized
 - leave for [Quality](../quality/) when the structure is clear and the next
