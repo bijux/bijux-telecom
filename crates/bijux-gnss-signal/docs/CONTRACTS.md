@@ -7,6 +7,8 @@
 The crate owns canonical signal definitions, wavelength conversions, and registry access used across
 acquisition, tracking, and synthetic generation.
 
+That registry surface is described in [CATALOG.md](CATALOG.md).
+
 ## Code-generation contract
 
 The code families own:
@@ -41,3 +43,5 @@ decisions.
 
 `RawIqMetadata`, quantization enums, and sample-conversion helpers define the stable raw-sample
 metadata layer shared by CLI, infrastructure, receiver, and tests.
+
+Those two surfaces are described in [RAW_IQ.md](RAW_IQ.md) and [SAMPLES.md](SAMPLES.md).
