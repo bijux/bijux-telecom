@@ -25,3 +25,9 @@ Use this sequence when a command-boundary change is more than a trivial edit.
 This crate sits at the top of the stack, so one "small" command change can
 quietly shift workflow meaning across several lower crates. Committing by
 command intent keeps history aligned with the public surface.
+
+## First Proof Check
+
+- `crates/bijux-gnss/docs/WORKFLOWS.md`
+- `crates/bijux-gnss/docs/TESTS.md`
+- `crates/bijux-gnss/tests/integration_validate_config.rs`

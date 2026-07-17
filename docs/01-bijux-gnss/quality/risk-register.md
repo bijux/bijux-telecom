@@ -25,3 +25,9 @@ This page records the main trust risks in `bijux-gnss`.
 - choose validation by command family, not by convenience
 - keep facade scope narrow and documented
 - maintain the refusal ledger in [This Package Does Not Own](../this-package-does-not-own.md)
+
+## Protecting Proof
+
+- `crates/bijux-gnss/docs/COMMANDS.md`
+- `crates/bijux-gnss/docs/FACADE.md`
+- `crates/bijux-gnss/tests/integration_guardrails.rs`

@@ -19,3 +19,9 @@ complete, reviewable, and honestly proven.
 - the relevant local proof has been run or the gap is explicitly called out
 - public command meaning has not changed silently
 - the commit boundary matches one durable command intent
+
+## Protecting Proof
+
+- `crates/bijux-gnss/docs/TESTS.md`
+- `crates/bijux-gnss/docs/WORKFLOWS.md`
+- `docs/01-bijux-gnss/operations/verification-commands.md`

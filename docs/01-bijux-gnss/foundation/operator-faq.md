@@ -31,3 +31,11 @@ actually start from.
 The command handbook should answer reader routing honestly, not duplicate lower
 technical manuals. This page exists to route recurring operator questions to the
 right owner fast.
+
+## First Proof Check
+
+- `crates/bijux-gnss/docs/COMMANDS.md`
+- `../../02-bijux-gnss-core/index.md`
+- `../../04-bijux-gnss-nav/index.md`
+- `../../05-bijux-gnss-receiver/quality/index.md`
+- `../../07-bijux-gnss-dev/quality/index.md`

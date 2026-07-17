@@ -22,3 +22,9 @@ Use this checklist when reviewing a `bijux-gnss` change.
 - if a workflow fixture changed, is the reason explicit and technically
   credible
 - do the handbook pages still match the changed behavior
+
+## Protecting Proof
+
+- `crates/bijux-gnss/docs/TESTS.md`
+- `crates/bijux-gnss/docs/FACADE.md`
+- `docs/01-bijux-gnss/this-package-does-not-own.md`

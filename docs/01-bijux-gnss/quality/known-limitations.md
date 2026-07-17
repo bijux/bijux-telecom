@@ -20,3 +20,9 @@ reason the lower scientific crates are large.
   choosing the right validation slice
 - facade convenience can create pressure to grow the top package beyond its
   proper role
+
+## First Proof Check
+
+- `crates/bijux-gnss/docs/TESTS.md`
+- `crates/bijux-gnss/tests/integration_guardrails.rs`
+- `crates/bijux-gnss/tests/integration_validate_synthetic_navigation.rs`
