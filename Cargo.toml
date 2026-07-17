@@ -12,6 +12,9 @@ members = [
   "crates/bijux-gnss-policies",
   "crates/bijux-telecom-dev",
 ]
+exclude = [
+  "crates/bijux-gnss-receiver-fuzz",
+]
 
 [workspace.package]
 edition = "2021"
