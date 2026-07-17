@@ -16,6 +16,8 @@ The crate owns how commands assemble lower-level crates into a user-facing workf
 own the scientific behavior of those lower-level crates.
 
 The workflow families and their composition boundary are described in [WORKFLOWS.md](WORKFLOWS.md).
+The execution and validation workflow surfaces are described in [EXECUTION.md](EXECUTION.md) and
+[VALIDATION.md](VALIDATION.md).
 
 ## Façade contract
 
