@@ -12,12 +12,25 @@ last_reviewed: 2026-07-17
 Open this section when the question is what `bijux-gnss-dev` publicly promises
 to maintainers and repository automation.
 
-## What This Section Covers
+## Read These First
 
-- the binary command surface
-- governed input files and evidence outputs
-- command-entry expectations and compatibility commitments
-- the explicit absence of a Rust library API
+- open [Command Surface](command-surface.md) first when the question is which
+  maintainer commands exist
+- open [Governed Input Contracts](governed-input-contracts.md) when the question
+  is what repository files this binary treats as reviewed inputs
+- open [Output Contracts](output-contracts.md) when the question is where
+  maintenance evidence is emitted
+
+## Pages In This Section
+
+- [Command Surface](command-surface.md)
+- [Governed Input Contracts](governed-input-contracts.md)
+- [Output Contracts](output-contracts.md)
+- [Binary Boundary](binary-boundary.md)
+- [Command Entry Contracts](command-entry-contracts.md)
+- [Workflow Contracts](workflow-contracts.md)
+- [Entry Points And Examples](entry-points-and-examples.md)
+- [Compatibility Commitments](compatibility-commitments.md)
 
 ## First Public Surfaces
 
@@ -25,3 +38,10 @@ to maintainers and repository automation.
 - `crates/bijux-gnss-dev/docs/COMMANDS.md`
 - `crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md`
 - `crates/bijux-gnss-dev/docs/OUTPUTS.md`
+
+## Leave This Section When
+
+- leave for [Architecture](../architecture/) when the question is about code
+  organization rather than maintainer contract
+- leave for [Operations](../operations/) when the interface is clear and the
+  next question is how to change it safely
