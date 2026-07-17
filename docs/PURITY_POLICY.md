@@ -14,7 +14,7 @@ The following modules are treated as pure/functional and must remain determinist
 
 ## Effects Boundary
 Side effects are only allowed in:
-- CLI crate (`crates/bijux-gnss-cli`)
+- Command entrypoint code under `crates/bijux-gnss/src/main.rs` and `crates/bijux-gnss/src/cli/`
 - Receiver runtime boundary (`crates/bijux-gnss-receiver/src/engine/runtime.rs` and sink implementations)
 - Explicit I/O adapters under `crates/bijux-gnss-receiver/src/io/`
 

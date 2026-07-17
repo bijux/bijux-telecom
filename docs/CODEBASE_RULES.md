@@ -13,7 +13,7 @@
 - `bijux-gnss-signal`: DSP primitives (NCO, mixing, correlators, FFT helpers, code generators).
 - `bijux-gnss-receiver`: pipeline orchestration (ingest → acquire → track → obs). No nav math.
 - `bijux-gnss-nav`: ephemeris, satellite state, corrections, solvers, filters (EKF/PPP/RTK nav-side).
-- `bijux-gnss-cli`: wiring + UX only. No domain logic.
+- `bijux-gnss`: public facade plus `bijux` command wiring and UX. No domain logic beyond facade re-exports and command entrypoints.
 
 ## No Thin Modules
 - A module must own types or logic.
