@@ -3,6 +3,7 @@
 mod directories;
 mod identity;
 mod paths;
+mod persistence;
 mod provenance;
 mod records;
 
@@ -77,7 +78,7 @@ pub fn write_run_report(
     profile: &bijux_gnss_receiver::api::ReceiverConfig,
     dataset: Option<&crate::datasets::DatasetEntry>,
 ) -> Result<RunReport, bijux_gnss_receiver::api::core::InputError> {
-    records::report::write_run_report(args, command, profile, dataset)
+    persistence::write_run_report(args, command, profile, dataset)
 }
 
 /// Write a run manifest to disk.
@@ -88,5 +89,5 @@ pub fn write_manifest(
     dataset: Option<&crate::datasets::DatasetEntry>,
     summary: &serde_json::Value,
 ) -> Result<RunManifest, bijux_gnss_receiver::api::core::InputError> {
-    records::manifest::write_manifest(args, command, profile, dataset, summary)
+    persistence::write_manifest(args, command, profile, dataset, summary)
 }
