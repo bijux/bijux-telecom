@@ -12,19 +12,23 @@ pub(crate) fn validate_config_ingest(profile: &ReceiverConfig) -> Result<()> {
 pub(crate) fn handle_track(command: GnssCommand) -> Result<()> {
     let GnssCommand::Track {
         common,
-        file,
-        sampling_hz,
-        if_hz,
-        code_hz,
-        code_length,
-        doppler_search_hz,
-        doppler_step_hz,
-        offset_bytes: _offset_bytes,
-        prn,
+        input,
+        sampling,
+        intermediate_frequency,
+        code_replica,
+        acquisition_search,
+        window: _window,
+        prns,
     } = command
     else {
         bail!("invalid command for handler");
     };
+    let RawCaptureInputArgs { file } = input;
+    let SamplingRateOverrideArgs { sampling_hz } = sampling;
+    let IntermediateFrequencyArgs { if_hz } = intermediate_frequency;
+    let CodeReplicaArgs { code_hz, code_length } = code_replica;
+    let AcquisitionSearchArgs { doppler_search_hz, doppler_step_hz } = acquisition_search;
+    let DefaultPrnSelectionArgs { prn } = prns;
 
     let runtime = runtime_config_from_env(&common, None);
     let dataset = load_dataset(&common)?;
@@ -110,13 +114,16 @@ pub(crate) fn handle_track(command: GnssCommand) -> Result<()> {
 
 pub(crate) fn handle_inspect(command: GnssCommand) -> Result<()> {
     let GnssCommand::Inspect {
-                common,
-                file,
-                sampling_hz,
-                max_samples,
-            } = command else {
+        common,
+        input,
+        sampling,
+        max_samples,
+    } = command
+    else {
         bail!("invalid command for handler");
     };
+    let RawCaptureInputArgs { file } = input;
+    let SamplingRateOverrideArgs { sampling_hz } = sampling;
 
     let _ = runtime_config_from_env(&common, None);
                     let dataset = load_dataset(&common)?;

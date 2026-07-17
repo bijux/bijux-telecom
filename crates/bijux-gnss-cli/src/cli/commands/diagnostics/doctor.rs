@@ -1,9 +1,10 @@
 use super::*;
 
 pub(crate) fn handle_doctor(command: GnssCommand) -> Result<()> {
-    let GnssCommand::Doctor { common, file } = command else {
+    let GnssCommand::Doctor { common, input } = command else {
         bail!("invalid command for handler");
     };
+    let RawCaptureInputArgs { file } = input;
 
     let _ = runtime_config_from_env(&common, None);
     println!("bijux gnss doctor");

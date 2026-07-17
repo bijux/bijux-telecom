@@ -2,8 +2,14 @@ mod diagnostics_commands;
 mod artifact_commands;
 mod navigation_commands;
 mod configuration_commands;
+mod capture_arguments;
 
 pub(crate) use artifact_commands::{ArtifactCommand, DiagnosticFailOn};
+pub(crate) use capture_arguments::{
+    AcquisitionSearchArgs, CaptureWindowArgs, CodeReplicaArgs, DefaultPrnSelectionArgs,
+    IntermediateFrequencyArgs, RawCaptureInputArgs, RequiredPrnSelectionArgs,
+    SamplingRateOverrideArgs,
+};
 pub(crate) use configuration_commands::{
     ConfigCommand, ConfigSchemaArgs, ConfigUpgradeArgs, ValidateConfigArgs,
 };
@@ -43,44 +49,30 @@ pub(crate) enum GnssCommand {
         #[command(flatten)]
         common: CommonArgs,
 
-        #[arg(long, alias = "path", value_name = "FILE")]
-        file: Option<PathBuf>,
+        #[command(flatten)]
+        input: RawCaptureInputArgs,
 
-        #[arg(long)]
-        sampling_hz: Option<f64>,
+        #[command(flatten)]
+        sampling: SamplingRateOverrideArgs,
 
-        #[arg(long)]
-        if_hz: Option<f64>,
+        #[command(flatten)]
+        intermediate_frequency: IntermediateFrequencyArgs,
 
-        #[arg(long)]
-        code_hz: Option<f64>,
+        #[command(flatten)]
+        code_replica: CodeReplicaArgs,
 
-        #[arg(long)]
-        code_length: Option<usize>,
+        #[command(flatten)]
+        acquisition_search: AcquisitionSearchArgs,
 
-        /// Override the receiver profile's maximum Doppler search range, in Hz.
-        #[arg(long, alias = "doppler")]
-        doppler_search_hz: Option<i32>,
-
-        /// Override the receiver profile's Doppler bin width, in Hz.
-        #[arg(long)]
-        doppler_step_hz: Option<i32>,
-
-        #[arg(long, default_value_t = 0)]
-        offset_bytes: u64,
+        #[command(flatten)]
+        window: CaptureWindowArgs,
 
         /// Number of top candidates per PRN
         #[arg(long, default_value_t = 3)]
         top: usize,
 
-        /// Comma-separated PRN list, e.g. "1,3,8"
-        #[arg(
-            long,
-            value_delimiter = ',',
-            default_value = "1,2,3,4,5",
-            value_parser = clap::value_parser!(u8).range(1..=32)
-        )]
-        prn: Vec<u8>,
+        #[command(flatten)]
+        prns: DefaultPrnSelectionArgs,
     },
 
     /// Track satellites from a raw IQ file with explicit metadata
@@ -88,39 +80,26 @@ pub(crate) enum GnssCommand {
         #[command(flatten)]
         common: CommonArgs,
 
-        #[arg(long, alias = "path", value_name = "FILE")]
-        file: Option<PathBuf>,
+        #[command(flatten)]
+        input: RawCaptureInputArgs,
 
-        #[arg(long)]
-        sampling_hz: Option<f64>,
+        #[command(flatten)]
+        sampling: SamplingRateOverrideArgs,
 
-        #[arg(long)]
-        if_hz: Option<f64>,
+        #[command(flatten)]
+        intermediate_frequency: IntermediateFrequencyArgs,
 
-        #[arg(long)]
-        code_hz: Option<f64>,
+        #[command(flatten)]
+        code_replica: CodeReplicaArgs,
 
-        #[arg(long)]
-        code_length: Option<usize>,
+        #[command(flatten)]
+        acquisition_search: AcquisitionSearchArgs,
 
-        /// Override the receiver profile's maximum Doppler search range, in Hz.
-        #[arg(long, alias = "doppler")]
-        doppler_search_hz: Option<i32>,
+        #[command(flatten)]
+        window: CaptureWindowArgs,
 
-        /// Override the receiver profile's Doppler bin width, in Hz.
-        #[arg(long)]
-        doppler_step_hz: Option<i32>,
-
-        #[arg(long, default_value_t = 0)]
-        offset_bytes: u64,
-
-        #[arg(
-            long,
-            value_delimiter = ',',
-            default_value = "1,2,3,4,5",
-            value_parser = clap::value_parser!(u8).range(1..=32)
-        )]
-        prn: Vec<u8>,
+        #[command(flatten)]
+        prns: DefaultPrnSelectionArgs,
     },
 
     /// Navigation-related commands
@@ -151,11 +130,11 @@ pub(crate) enum GnssCommand {
         #[command(flatten)]
         common: CommonArgs,
 
-        #[arg(long, alias = "path", value_name = "FILE")]
-        file: Option<PathBuf>,
+        #[command(flatten)]
+        input: RawCaptureInputArgs,
 
-        #[arg(long)]
-        sampling_hz: Option<f64>,
+        #[command(flatten)]
+        sampling: SamplingRateOverrideArgs,
 
         #[arg(long, default_value_t = 0)]
         max_samples: usize,
@@ -366,8 +345,8 @@ pub(crate) enum GnssCommand {
         #[command(flatten)]
         common: CommonArgs,
 
-        #[arg(long, alias = "path", value_name = "FILE")]
-        file: Option<PathBuf>,
+        #[command(flatten)]
+        input: RawCaptureInputArgs,
 
         /// Replay mode; if set, uses --rate to pace output
         #[arg(long)]
@@ -401,8 +380,8 @@ pub(crate) enum GnssCommand {
         #[command(flatten)]
         common: CommonArgs,
 
-        #[arg(long, alias = "path", value_name = "FILE")]
-        file: Option<PathBuf>,
+        #[command(flatten)]
+        input: RawCaptureInputArgs,
     },
 
     /// Run a full validation pipeline and emit validation_report.json
@@ -459,35 +438,26 @@ pub(crate) enum GnssCommand {
         #[command(flatten)]
         common: CommonArgs,
 
-        #[arg(long, alias = "path", value_name = "FILE")]
-        file: Option<PathBuf>,
+        #[command(flatten)]
+        input: RawCaptureInputArgs,
 
-        #[arg(long)]
-        sampling_hz: Option<f64>,
+        #[command(flatten)]
+        sampling: SamplingRateOverrideArgs,
 
-        #[arg(long)]
-        if_hz: Option<f64>,
+        #[command(flatten)]
+        intermediate_frequency: IntermediateFrequencyArgs,
 
-        #[arg(long)]
-        code_hz: Option<f64>,
+        #[command(flatten)]
+        code_replica: CodeReplicaArgs,
 
-        #[arg(long)]
-        code_length: Option<usize>,
-
-        /// Override the receiver profile's maximum Doppler search range, in Hz.
-        #[arg(long, alias = "doppler")]
-        doppler_search_hz: Option<i32>,
-
-        /// Override the receiver profile's Doppler bin width, in Hz.
-        #[arg(long)]
-        doppler_step_hz: Option<i32>,
+        #[command(flatten)]
+        acquisition_search: AcquisitionSearchArgs,
 
         /// Broadcast navigation JSON, broadcast ephemeris JSON, or RINEX NAV file
         #[arg(long, value_name = "FILE")]
         eph: PathBuf,
 
-        /// Comma-separated PRN list, e.g. "11,12,25,31,32"
-        #[arg(long, value_delimiter = ',', value_parser = clap::value_parser!(u8).range(1..=32))]
-        prn: Vec<u8>,
+        #[command(flatten)]
+        prns: RequiredPrnSelectionArgs,
     },
 }

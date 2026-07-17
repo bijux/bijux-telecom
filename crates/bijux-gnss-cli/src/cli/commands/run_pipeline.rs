@@ -12,20 +12,24 @@ pub(crate) fn validate_config(profile: &ReceiverConfig) -> Result<()> {
 pub(crate) fn handle_acquire(command: GnssCommand) -> Result<()> {
     let GnssCommand::Acquire {
         common,
-        file,
-        sampling_hz,
-        if_hz,
-        code_hz,
-        code_length,
-        doppler_search_hz,
-        doppler_step_hz,
-        offset_bytes: _offset_bytes,
+        input,
+        sampling,
+        intermediate_frequency,
+        code_replica,
+        acquisition_search,
+        window: _window,
         top,
-        prn,
+        prns,
     } = command
     else {
         bail!("invalid command for handler");
     };
+    let RawCaptureInputArgs { file } = input;
+    let SamplingRateOverrideArgs { sampling_hz } = sampling;
+    let IntermediateFrequencyArgs { if_hz } = intermediate_frequency;
+    let CodeReplicaArgs { code_hz, code_length } = code_replica;
+    let AcquisitionSearchArgs { doppler_search_hz, doppler_step_hz } = acquisition_search;
+    let DefaultPrnSelectionArgs { prn } = prns;
 
     let dataset = load_dataset(&common)?;
     let mut profile = load_config(&common)?;
@@ -334,9 +338,10 @@ pub(crate) fn handle_validate_sidecar(command: GnssCommand) -> Result<()> {
 }
 
 pub(crate) fn handle_run(command: GnssCommand) -> Result<()> {
-    let GnssCommand::Run { common, file, replay, rate } = command else {
+    let GnssCommand::Run { common, input, replay, rate } = command else {
         bail!("invalid command for handler");
     };
+    let RawCaptureInputArgs { file } = input;
 
     let dataset = load_dataset(&common)?;
     let runtime = runtime_config_from_capture_start(

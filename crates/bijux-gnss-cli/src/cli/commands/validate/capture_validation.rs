@@ -3,19 +3,23 @@ use super::*;
 pub(crate) fn handle_validate_capture(command: GnssCommand) -> Result<()> {
     let GnssCommand::ValidateCapture {
         common,
-        file,
-        sampling_hz,
-        if_hz,
-        code_hz,
-        code_length,
-        doppler_search_hz,
-        doppler_step_hz,
+        input,
+        sampling,
+        intermediate_frequency,
+        code_replica,
+        acquisition_search,
         eph,
-        prn,
+        prns,
     } = command
     else {
         bail!("invalid command for handler");
     };
+    let RawCaptureInputArgs { file } = input;
+    let SamplingRateOverrideArgs { sampling_hz } = sampling;
+    let IntermediateFrequencyArgs { if_hz } = intermediate_frequency;
+    let CodeReplicaArgs { code_hz, code_length } = code_replica;
+    let AcquisitionSearchArgs { doppler_search_hz, doppler_step_hz } = acquisition_search;
+    let RequiredPrnSelectionArgs { prn } = prns;
 
     if prn.is_empty() {
         bail!("--prn is required for validate-capture");
