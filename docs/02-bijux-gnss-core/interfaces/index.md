@@ -60,6 +60,8 @@ flowchart LR
 - [API Surface](api-surface.md)
 - [Public Imports](public-imports.md)
 - [Artifact Contracts](artifact-contracts.md)
+- [Engineering Conventions](engineering-conventions.md)
+- [Measurement And Engine Contracts](measurement-and-engine-contracts.md)
 - [Observation and Tracking Contracts](observation-and-tracking-contracts.md)
 - [Navigation Solution Contracts](navigation-solution-contracts.md)
 - [Configuration and Diagnostics](configuration-and-diagnostics.md)

@@ -50,6 +50,7 @@ flowchart LR
 - [Test Strategy](test-strategy.md)
 - [Invariants](invariants.md)
 - [Change Validation](change-validation.md)
+- [Numerical Budgets](numerical-budgets.md)
 - [Review Checklist](review-checklist.md)
 - [Definition of Done](definition-of-done.md)
 - [Known Limitations](known-limitations.md)
