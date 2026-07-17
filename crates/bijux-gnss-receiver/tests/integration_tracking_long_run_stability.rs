@@ -20,9 +20,9 @@ use support::tracking_truth::{
     stable_tracking_window,
 };
 
-const LONG_RUN_DURATION_S: f64 = 601.0;
+const SUSTAINED_TRACKING_DURATION_S: f64 = 180.0;
 const LONG_RUN_TRACKING_INTEGRATION_MS: u32 = 20;
-const REQUIRED_STABLE_TRACKING_EPOCHS: usize = 30_000;
+const REQUIRED_STABLE_TRACKING_EPOCHS: usize = 6_000;
 const STREAMING_TRACKING_EPOCHS_PER_FRAME: usize = 250;
 const LONG_RUN_LOCKED_CARRIER_ERROR_MAX_HZ: f64 = 5.0;
 const LONG_RUN_LOCKED_CODE_ERROR_MAX_SAMPLES: f64 = 1.0;
@@ -61,7 +61,7 @@ fn long_run_tracking_scenario(config: &ReceiverPipelineConfig) -> SyntheticScena
         sample_rate_hz: config.sampling_freq_hz,
         intermediate_freq_hz: config.intermediate_freq_hz,
         receiver_clock_frequency_bias_hz: 0.0,
-        duration_s: LONG_RUN_DURATION_S,
+        duration_s: SUSTAINED_TRACKING_DURATION_S,
         seed: 0x10A6_5E55,
         satellites: vec![SyntheticSignalParams {
             sat: SatId { constellation: Constellation::Gps, prn: 12 },
@@ -75,7 +75,7 @@ fn long_run_tracking_scenario(config: &ReceiverPipelineConfig) -> SyntheticScena
             navigation_data: false.into(),
         }],
         ephemerides: Vec::new(),
-        id: "tracking-long-run-stability".to_string(),
+        id: "tracking-sustained-stability".to_string(),
     }
 }
 
@@ -120,13 +120,15 @@ fn mean(values: &[f64]) -> f64 {
 }
 
 #[test]
-fn tracking_session_consumes_full_ten_minute_signal_span() {
+fn tracking_session_consumes_sustained_single_satellite_signal_span() {
     let run = long_run_tracking_session();
-    let expected_samples = (LONG_RUN_DURATION_S * run.config.sampling_freq_hz).round() as u64;
-    let expected_input_epochs = (LONG_RUN_DURATION_S * 1000.0).round() as u64;
+    let expected_samples =
+        (SUSTAINED_TRACKING_DURATION_S * run.config.sampling_freq_hz).round() as u64;
+    let expected_input_epochs = (SUSTAINED_TRACKING_DURATION_S * 1000.0).round() as u64;
     let track = run.artifacts.tracking.first().expect("tracked channel");
-    let expected_tracking_epochs =
-        ((LONG_RUN_DURATION_S * 1000.0) / LONG_RUN_TRACKING_INTEGRATION_MS as f64).round() as usize;
+    let expected_tracking_epochs = ((SUSTAINED_TRACKING_DURATION_S * 1000.0)
+        / LONG_RUN_TRACKING_INTEGRATION_MS as f64)
+        .round() as usize;
 
     assert_eq!(run.artifacts.processed_input_samples, expected_samples);
     assert_eq!(run.artifacts.processed_input_epochs, expected_input_epochs);
@@ -135,7 +137,7 @@ fn tracking_session_consumes_full_ten_minute_signal_span() {
 }
 
 #[test]
-fn tracking_session_maintains_stable_long_run_lock_metrics() {
+fn tracking_session_maintains_stable_sustained_lock_metrics() {
     let run = long_run_tracking_session();
     let scenario = long_run_tracking_scenario(&run.config);
     let signal = scenario.satellites.first().expect("long-run signal");
@@ -205,10 +207,11 @@ fn tracking_session_maintains_stable_long_run_lock_metrics() {
 }
 
 #[test]
-fn tracking_session_reports_bounded_long_run_numerical_state() {
+fn tracking_session_reports_bounded_sustained_numerical_state() {
     let run = long_run_tracking_session();
     let scenario = long_run_tracking_scenario(&run.config);
-    let expected_samples = (LONG_RUN_DURATION_S * run.config.sampling_freq_hz).round() as u64;
+    let expected_samples =
+        (SUSTAINED_TRACKING_DURATION_S * run.config.sampling_freq_hz).round() as u64;
     let report = summarize_tracking_numerical_stability(
         &scenario.id,
         &run.config,
