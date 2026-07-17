@@ -36,3 +36,11 @@ state or typed rejection evidence is produced.
 
 - `crates/bijux-gnss-nav/src/formats/`
 - `crates/bijux-gnss-nav/docs/FORMATS.md`
+
+## Protecting Proof
+
+Inspect `crates/bijux-gnss-nav/src/formats/`,
+`crates/bijux-gnss-nav/docs/FORMATS.md`, and the most relevant decoder and
+product tests such as SP3, broadcast orbit, and constellation-specific
+navigation decode families to confirm these contracts still start at typed
+navigation state rather than repository file handling.

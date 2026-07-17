@@ -47,3 +47,10 @@ implementation freedom or the meaning of a public scientific claim.
 - `crates/bijux-gnss-nav/tests/integration_rtk_ambiguity_fixing.rs`
 - `crates/bijux-gnss-nav/docs/ESTIMATION.md`
 - `crates/bijux-gnss-nav/docs/PUBLIC_API.md`
+
+## Protecting Proof
+
+Inspect the estimation source family above together with position, PPP, RTK,
+and integrity-focused tests before changing any public estimation type. Those
+proofs show whether a change preserves implementation freedom or alters the
+meaning of a public scientific claim.

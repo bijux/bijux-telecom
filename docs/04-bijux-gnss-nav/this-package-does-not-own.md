@@ -37,3 +37,13 @@ ledger to keep scientific breadth from turning into boundary sprawl.
 Without an explicit refusal list, readers can mistake scientific breadth for
 permission to absorb every adjacent concern. Update this page when repeated
 review pressure reveals a new boundary worth naming.
+
+## First Neighbor Proof Check
+
+Inspect [01-bijux-gnss](../01-bijux-gnss/),
+[03-bijux-gnss-infra](../03-bijux-gnss-infra/),
+[05-bijux-gnss-receiver](../05-bijux-gnss-receiver/),
+[06-bijux-gnss-signal](../06-bijux-gnss-signal/), and
+[02-bijux-gnss-core](../02-bijux-gnss-core/) before widening navigation
+ownership. That check is what keeps scientific breadth from hardening into
+dishonest cross-owner sprawl.

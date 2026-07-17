@@ -41,3 +41,11 @@ of external GNSS time systems and physically motivated model use belongs here.
 - `crates/bijux-gnss-nav/tests/integration_troposphere_elevation.rs`
 - `crates/bijux-gnss-nav/docs/TIME.md`
 - `crates/bijux-gnss-nav/docs/MODELS.md`
+
+## Protecting Proof
+
+Inspect the time and model source families above together with
+`crates/bijux-gnss-nav/tests/integration_time_system_conversions.rs` and
+`crates/bijux-gnss-nav/tests/integration_troposphere_elevation.rs` to confirm
+navigation-specific time interpretation and physical models still match checked
+scientific proof.

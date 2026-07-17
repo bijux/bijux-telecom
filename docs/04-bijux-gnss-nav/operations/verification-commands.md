@@ -34,3 +34,12 @@ cargo test -p bijux-gnss-nav --test integration_time_system_conversions
 - use orbit and time reference tests for state-interpretation changes
 - use correction-specific tests before broad position tests when possible
 - use PPP or RTK family tests before wider mixed-navigation tests
+
+## First Proof Check
+
+Use `crates/bijux-gnss-nav/docs/TESTS.md`,
+`crates/bijux-gnss-nav/docs/ESTIMATION.md`,
+`crates/bijux-gnss-nav/docs/FORMATS.md`, and
+`crates/bijux-gnss-nav/docs/TIME.md` as the verification map. Then inspect the
+changed source family so the proof set stays aligned with the actual scientific
+surface that moved.

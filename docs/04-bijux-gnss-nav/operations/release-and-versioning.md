@@ -25,3 +25,12 @@ file movement.
 - changed refusal or downgrade meaning
 - changed interpretation of a supported external navigation product
 - changed solver evidence that downstream crates present to users
+
+## First Proof Check
+
+Inspect `crates/bijux-gnss-nav/docs/PUBLIC_API.md`,
+`crates/bijux-gnss-nav/docs/ESTIMATION.md`,
+`crates/bijux-gnss-nav/docs/FORMATS.md`, and
+`crates/bijux-gnss-nav/src/api.rs`. Then inspect the most relevant format,
+orbit, or estimator proof family to confirm any claimed release safety still
+matches public scientific meaning.

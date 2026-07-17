@@ -30,3 +30,11 @@ families consume after navigation products have been interpreted.
 
 - `crates/bijux-gnss-nav/src/orbits/`
 - `crates/bijux-gnss-nav/docs/ORBITS.md`
+
+## Protecting Proof
+
+Inspect `crates/bijux-gnss-nav/src/orbits/`,
+`crates/bijux-gnss-nav/docs/ORBITS.md`,
+`crates/bijux-gnss-nav/tests/integration_broadcast_orbit_reference.rs`, and
+`crates/bijux-gnss-nav/tests/integration_sp3_reference_accuracy.rs` to confirm
+orbit contracts still match reference-backed navigation state.

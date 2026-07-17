@@ -30,3 +30,11 @@ These are the expectations that should remain true even as the crate grows.
 
 If a change moves public scientific meaning, the docs and proof obligations
 must move with it.
+
+## First Proof Check
+
+Inspect `crates/bijux-gnss-nav/docs/PUBLIC_API.md`,
+`crates/bijux-gnss-nav/docs/ESTIMATION.md`,
+`crates/bijux-gnss-nav/docs/TESTS.md`, and the most relevant reference or
+estimator tests to confirm the invariants named here still have checked
+scientific proof.

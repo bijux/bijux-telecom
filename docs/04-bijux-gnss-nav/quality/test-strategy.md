@@ -48,3 +48,11 @@ at the owning scientific layer and at the most relevant integration layer.
 - `integration_public_ppp_convergence.rs`
 - `integration_rtk_*.rs`
 - `integration_raim_*.rs`
+
+## First Proof Check
+
+Inspect `crates/bijux-gnss-nav/docs/TESTS.md`,
+`crates/bijux-gnss-nav/docs/ESTIMATION.md`,
+`crates/bijux-gnss-nav/docs/FORMATS.md`, and the example families above
+together. That route shows whether proof is still distributed by scientific
+owner instead of by convenience.

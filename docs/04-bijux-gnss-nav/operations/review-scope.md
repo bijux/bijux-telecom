@@ -30,3 +30,12 @@ count.
 
 A one-line threshold change in RAIM or PPP policy can be riskier than a larger
 refactor isolated inside one parser family.
+
+## First Proof Check
+
+Use `crates/bijux-gnss-nav/docs/PUBLIC_API.md`,
+`crates/bijux-gnss-nav/docs/ESTIMATION.md`,
+`crates/bijux-gnss-nav/docs/FORMATS.md`, and
+`crates/bijux-gnss-nav/docs/TESTS.md` as the review map. Then inspect the
+changed scientific family and its matching proof tests so review depth follows
+scientific contract risk rather than file count.

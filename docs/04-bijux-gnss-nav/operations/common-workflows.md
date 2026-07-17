@@ -39,3 +39,12 @@ This page describes the recurring edit patterns in `bijux-gnss-nav`.
   that prove the public effect
 - review refusal, downgrade, and integrity evidence as carefully as success
   outputs
+
+## First Proof Check
+
+Read `crates/bijux-gnss-nav/docs/FORMATS.md`,
+`crates/bijux-gnss-nav/docs/ORBITS.md`,
+`crates/bijux-gnss-nav/docs/CORRECTIONS.md`,
+`crates/bijux-gnss-nav/docs/ESTIMATION.md`, and
+`crates/bijux-gnss-nav/docs/TESTS.md` before editing. Those surfaces map a
+proposed change to the right scientific owner and proof family.

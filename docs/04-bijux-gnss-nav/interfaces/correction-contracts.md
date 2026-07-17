@@ -32,3 +32,11 @@ navigation contract.
 
 - `crates/bijux-gnss-nav/src/corrections/`
 - `crates/bijux-gnss-nav/docs/CORRECTIONS.md`
+
+## Protecting Proof
+
+Inspect `crates/bijux-gnss-nav/src/corrections/`,
+`crates/bijux-gnss-nav/docs/CORRECTIONS.md`, and the correction-focused tests
+such as ionosphere, windup, and bias integration families to confirm these
+contracts remain reusable navigation science rather than caller-specific
+workarounds.
