@@ -38,6 +38,8 @@ The override layer owns typed profile mutation, while the experiment/sweep layer
 parameter expansion over experiment specs. These contracts let callers vary configurations without
 building ad hoc string manipulation.
 
+These two surfaces are detailed in [OVERRIDES.md](OVERRIDES.md) and [EXPERIMENTS.md](EXPERIMENTS.md).
+
 ## Validation adapter contract
 
 `validate_reference` and related API re-exports own the infrastructure-facing bridge between
