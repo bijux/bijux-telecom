@@ -7,7 +7,7 @@ use bijux_gnss_nav::api::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::reference_data::station_truth::{station_enu_error_m, PublicStationTruth};
+use super::station_truth::{station_enu_error_m, PublicStationTruth};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PublicPppConvergenceEpoch {
