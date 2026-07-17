@@ -50,3 +50,20 @@ graph alone would show.
 For every proposed dependency or export, ask whether it strengthens reusable
 signal ownership or whether it is an attempt to sneak a higher-level concern
 into the signal boundary.
+
+## First Proof Check
+
+Inspect `crates/bijux-gnss-signal/Cargo.toml`,
+`crates/bijux-gnss-signal/docs/ARCHITECTURE.md`, and
+`crates/bijux-gnss-signal/docs/BOUNDARY.md`. Then inspect
+`crates/bijux-gnss-signal/src/api.rs`,
+`crates/bijux-gnss-signal/src/obs_validation.rs`, and
+`crates/bijux-gnss-signal/tests/integration_guardrails.rs` to confirm the
+crate still depends downward while exporting a curated signal boundary upward.
+
+## First Neighbor Proof Check
+
+When a dependency question is really about runtime ownership, leave this page
+for [05-bijux-gnss-receiver/foundation/dependencies-and-adjacencies](../../05-bijux-gnss-receiver/foundation/dependencies-and-adjacencies.md).
+When the pressure is navigation-science coupling, inspect
+[04-bijux-gnss-nav/foundation/dependencies-and-adjacencies](../../04-bijux-gnss-nav/foundation/dependencies-and-adjacencies.md).

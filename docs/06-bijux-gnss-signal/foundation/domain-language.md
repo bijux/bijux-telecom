@@ -36,3 +36,14 @@ Use this vocabulary consistently when changing `bijux-gnss-signal`.
 - navigation quality:
   use this only for `bijux-gnss-nav` or receiver-level judgments, not signal
   compatibility checks
+
+## First Proof Check
+
+Inspect `crates/bijux-gnss-signal/docs/CATALOG.md`,
+`crates/bijux-gnss-signal/docs/CODE_FAMILIES.md`,
+`crates/bijux-gnss-signal/docs/DSP.md`, and
+`crates/bijux-gnss-signal/docs/VALIDATION.md`. Then inspect
+`crates/bijux-gnss-signal/src/catalog.rs`,
+`crates/bijux-gnss-signal/src/dsp/mod.rs`, and
+`crates/bijux-gnss-signal/src/obs_validation.rs` to make sure the words on
+this page still match the actual source ownership seams.

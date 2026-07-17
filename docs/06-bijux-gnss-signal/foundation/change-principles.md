@@ -31,3 +31,13 @@ behavior. The right standard is conservative structure with explicit proof.
 - adding a public export before deciding whether the signal crate should own it
 - weakening reference or continuity proof because the implementation "looks
   equivalent"
+
+## First Proof Check
+
+Read `crates/bijux-gnss-signal/docs/BOUNDARY.md` and
+`crates/bijux-gnss-signal/docs/PUBLIC_API.md` first. Then inspect
+`crates/bijux-gnss-signal/tests/integration_guardrails.rs`,
+`crates/bijux-gnss-signal/tests/integration_ca_code_reference.rs`, and
+`crates/bijux-gnss-signal/tests/integration_replica_continuity.rs` to confirm
+that boundary discipline and deterministic signal behavior are still defended
+by checked-in proof.

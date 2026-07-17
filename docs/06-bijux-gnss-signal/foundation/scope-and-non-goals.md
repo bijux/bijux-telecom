@@ -35,3 +35,16 @@ last_reviewed: 2026-07-17
 If a helper needs to know where samples came from on disk, how a receiver stage
 is sequenced, or whether a final navigation answer is trustworthy, the helper
 is already outside this crate's proper scope.
+
+## First Proof Check
+
+Read `crates/bijux-gnss-signal/docs/BOUNDARY.md`,
+`crates/bijux-gnss-signal/docs/CONTRACTS.md`,
+`crates/bijux-gnss-signal/docs/RAW_IQ.md`, and
+`crates/bijux-gnss-signal/docs/VALIDATION.md`. Then inspect
+`crates/bijux-gnss-signal/src/raw_iq.rs`,
+`crates/bijux-gnss-signal/src/samples.rs`,
+`crates/bijux-gnss-signal/src/obs_validation.rs`, and
+`crates/bijux-gnss-signal/tests/prop_obs_epoch_validation.rs` to confirm the
+crate still stops at signal contracts instead of climbing into repository or
+navigation ownership.

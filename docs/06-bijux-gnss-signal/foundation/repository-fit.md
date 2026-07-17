@@ -33,3 +33,14 @@ commands and receiver runtime, but higher than bare shared units and IDs.
 Without this crate, the repository would either duplicate signal behavior
 across higher-level packages or force `bijux-gnss-core` to absorb signal-domain
 details that do not belong in a shared foundational crate.
+
+## First Proof Check
+
+Inspect `crates/bijux-gnss-signal/docs/ARCHITECTURE.md`,
+`crates/bijux-gnss-signal/docs/PUBLIC_API.md`, and
+`crates/bijux-gnss-signal/docs/TESTS.md`. Then inspect
+`crates/bijux-gnss-signal/src/lib.rs`,
+`crates/bijux-gnss-signal/src/api.rs`, and
+`crates/bijux-gnss-signal/tests/integration_signal_component_registry.rs` to
+confirm that this crate still fits between shared contracts below and
+runtime-science consumers above.

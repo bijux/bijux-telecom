@@ -36,3 +36,15 @@ behavior separate from operational policy.
 When a change proposal says "this needs to live near signal math," that is not
 enough. The real question is whether the behavior is still reusable without
 assuming one receiver runtime, one repository layout, or one operator workflow.
+
+## First Proof Check
+
+Read `crates/bijux-gnss-signal/docs/BOUNDARY.md` and
+`crates/bijux-gnss-signal/docs/CONTRACTS.md` first. Then inspect
+`crates/bijux-gnss-signal/src/api.rs`,
+`crates/bijux-gnss-signal/src/catalog.rs`,
+`crates/bijux-gnss-signal/src/dsp/mod.rs`,
+`crates/bijux-gnss-signal/src/raw_iq.rs`, and
+`crates/bijux-gnss-signal/src/obs_validation.rs` to confirm the crate still
+owns reusable signal contracts rather than runtime, persistence, or operator
+policy.
