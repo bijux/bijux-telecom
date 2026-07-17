@@ -13,7 +13,7 @@ pub(super) fn validate_obs_artifact(data: &str) -> Result<Vec<DiagnosticEvent>, 
         }
 
         let wrapped: ObsEpochV1 = serde_json::from_str(line).map_err(super::map_err)?;
-        super::validate_schema_version(wrapped.header.schema_version, "obs")?;
+        super::schema_policy::validate_schema_version(wrapped.header.schema_version, "obs")?;
         if let Some(previous) = last_t_rx_s {
             if wrapped.payload.t_rx_s.0 < previous.0 {
                 events.push(DiagnosticEvent::new(

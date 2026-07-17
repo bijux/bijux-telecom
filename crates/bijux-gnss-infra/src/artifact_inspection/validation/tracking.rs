@@ -12,7 +12,7 @@ pub(super) fn validate_track_artifact(data: &str) -> Result<Vec<DiagnosticEvent>
         }
 
         let wrapped: TrackEpochV1 = serde_json::from_str(line).map_err(super::map_err)?;
-        super::validate_schema_version(wrapped.header.schema_version, "track")?;
+        super::schema_policy::validate_schema_version(wrapped.header.schema_version, "track")?;
         if let Some(previous) = last_sample_index {
             if wrapped.payload.sample_index < previous {
                 events.push(DiagnosticEvent::new(

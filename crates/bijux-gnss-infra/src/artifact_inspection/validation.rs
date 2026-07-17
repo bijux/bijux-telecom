@@ -3,15 +3,17 @@
 use std::path::Path;
 
 use bijux_gnss_receiver::api::core::{
-    AcqResultV1, ArtifactHeaderV1, ArtifactPayloadValidate, ArtifactReadPolicy, DiagnosticEvent,
-    InputError, NavSolutionEpochV1, TrackEpochV1,
+    AcqResultV1, ArtifactHeaderV1, ArtifactPayloadValidate, DiagnosticEvent, InputError,
+    NavSolutionEpochV1, TrackEpochV1,
 };
 
 use super::artifact_type::ArtifactKind;
 use super::ArtifactValidationResult;
 
+mod acquisition;
 mod observation;
 mod navigation;
+mod schema_policy;
 mod tracking;
 
 /// Validate an artifact file and return diagnostics.
@@ -27,17 +29,13 @@ pub fn artifact_validate(
     let kind = ArtifactKind::detect(kind, path)
         .ok_or_else(|| InputError { message: "unsupported artifact type".to_string() })?;
     let diagnostics = match kind {
-        ArtifactKind::Acq => validate_acq_artifact(&data)?,
+        ArtifactKind::Acq => acquisition::validate_acq_artifact(&data)?,
         ArtifactKind::Track => tracking::validate_track_artifact(&data)?,
         ArtifactKind::Obs => observation::validate_obs_artifact(&data)?,
         ArtifactKind::Pvt => navigation::validate_nav_artifact(&data)?,
     };
 
     Ok(ArtifactValidationResult { kind: kind.as_str().to_string(), diagnostics })
-}
-
-fn validate_acq_artifact(data: &str) -> Result<Vec<DiagnosticEvent>, InputError> {
-    validate_wrapped_payloads::<AcqResultV1>(data, "acq")
 }
 
 fn validate_wrapped_payloads<T>(data: &str, kind: &str) -> Result<Vec<DiagnosticEvent>, InputError>
@@ -50,19 +48,10 @@ where
             continue;
         }
         let wrapped: T = serde_json::from_str(line).map_err(map_err)?;
-        validate_schema_version(wrapped.header().schema_version, kind)?;
+        schema_policy::validate_schema_version(wrapped.header().schema_version, kind)?;
         events.extend(wrapped.validate_payload());
     }
     Ok(events)
-}
-
-fn validate_schema_version(schema_version: u32, kind: &str) -> Result<(), InputError> {
-    if schema_version != ArtifactReadPolicy::LATEST {
-        return Err(InputError {
-            message: format!("unsupported {kind} schema_version {schema_version}"),
-        });
-    }
-    Ok(())
 }
 
 trait WrappedPayloadValidate {
