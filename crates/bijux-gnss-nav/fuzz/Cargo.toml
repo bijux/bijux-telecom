@@ -11,10 +11,10 @@ cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = "0.4"
-bijux-gnss-nav = { path = "../bijux-gnss-nav", version = "0.1.0" }
+bijux-gnss-nav = { path = "..", version = "0.1.0" }
 
 [dev-dependencies]
-bijux-gnss-policies = { path = "../bijux-gnss-policies", version = "0.1.0" }
+bijux-gnss-policies = { path = "../../bijux-gnss-policies", version = "0.1.0" }
 
 [[bin]]
 name = "rinex_observation_header"
@@ -22,3 +22,5 @@ path = "fuzz_targets/rinex_observation_header.rs"
 test = false
 doc = false
 bench = false
+
+[workspace]
