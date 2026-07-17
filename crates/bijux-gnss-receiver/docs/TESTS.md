@@ -17,6 +17,7 @@
 - stage boundaries remain coherent under real receiver flows
 - runtime orchestration does not silently drift away from signal and navigation assumptions
 - synthetic and reference-backed validation stays available at the receiver boundary
+- runtime artifact collection remains meaningful before repository persistence is layered on top
 
 ## Verification
 

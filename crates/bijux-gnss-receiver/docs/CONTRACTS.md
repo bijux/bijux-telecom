@@ -20,10 +20,14 @@ The pipeline layer owns:
 
 This contract is about runtime composition, not repository persistence.
 
+The runtime stage boundary and handoff responsibilities are detailed in [PIPELINE.md](PIPELINE.md).
+
 ## Artifact contract
 
 `RunArtifacts` and the observation/tracking/navigation report types define the in-memory result of a
 receiver run before infrastructure crates persist or inspect it.
+
+The in-memory artifact boundary is detailed in [ARTIFACTS.md](ARTIFACTS.md).
 
 ## Validation and simulation contract
 

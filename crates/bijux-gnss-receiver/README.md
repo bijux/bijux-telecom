@@ -1,34 +1,55 @@
 # bijux-gnss-receiver
 
-## What this crate does
-`bijux-gnss-receiver` owns GNSS receiver-pipeline orchestration. It takes signal sources and
-receiver configuration, runs acquisition/tracking/observation/navigation stages, emits run
-artifacts, and exposes simulation and validation support behind the receiver boundary.
+`bijux-gnss-receiver` owns GNSS receiver runtime orchestration for the workspace.
 
-## Why this crate exists
-Signal primitives and navigation science are not enough by themselves; the workspace also needs the
-runtime that connects them into a receiver. This crate is that integration boundary.
+## Scope
 
-## Public entrypoint
-The curated downstream surface is `bijux_gnss_receiver::api`.
+This crate owns:
 
-## Ownership boundary
-This crate owns receiver runtime composition and stage execution. It must not own repository run
-layouts, operator CLI workflows, or duplicate the low-level science already owned by `signal` and
-`nav`. The boundary is documented in [docs/BOUNDARY.md](docs/BOUNDARY.md).
+- receiver configuration and runtime state
+- acquisition, tracking, observation, and optional navigation stage execution
+- clock, sample-source, and artifact-sink boundaries
+- in-memory run artifacts and receiver-boundary validation helpers
+- synthetic execution helpers exposed at the receiver boundary
 
-## Source layout
+This crate does not own repository persistence, operator workflow policy, low-level signal-code
+generation, or standalone navigation science.
 
-- `engine/` owns runtime configuration, logging, metrics, and the top-level receiver composition
-- `pipeline/` owns acquisition, tracking, observations, navigation, and related stage helpers
-- `io/` and `ports/` own source/sink boundaries and clock abstractions
-- `sim/` and validation modules own synthetic execution and validation-report support
+## Public surface
 
-The architecture and verification map are documented in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+`bijux_gnss_receiver::api` is the deliberate downstream surface. It exposes the receiver boundary,
+its stage engines, runtime configuration, and curated re-exports from lower layers without turning
+the crate into a catch-all domain library.
 
-## Documentation map
-This crate keeps one root README and crate-specific docs under `docs/`:
+## Source map
+
+- `src/engine/` owns runtime configuration, logging, metrics, and receiver composition.
+- `src/pipeline/` owns staged acquisition, tracking, observations, and optional navigation flows.
+- `src/io/` and `src/ports/` own source/sink and clock abstractions.
+- `src/artifacts.rs`, `src/validation_report.rs`, and related modules own runtime-side outputs.
+- `src/sim/` owns synthetic receiver execution helpers.
+
+## Documentation
+
+The crate root intentionally contains only this README. Durable crate documentation lives under
+`docs/`:
+
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+- [docs/ARTIFACTS.md](docs/ARTIFACTS.md)
 - [docs/BOUNDARY.md](docs/BOUNDARY.md)
+- [docs/CONTRACTS.md](docs/CONTRACTS.md)
+- [docs/PIPELINE.md](docs/PIPELINE.md)
+- [docs/PUBLIC_API.md](docs/PUBLIC_API.md)
+- [docs/TESTS.md](docs/TESTS.md)
 
-Repository work is governed by [../../README.md](../../README.md).
+## Verification
+
+Run from the repository root when changing this crate:
+
+```sh
+cargo test -p bijux-gnss-receiver --test integration_basic
+cargo test -p bijux-gnss-receiver --test integration_receiver_support_matrix_inventory
+cargo test -p bijux-gnss-receiver --test integration_navigation_pvt_accuracy_budget
+```
+
+Repository-wide expectations are documented in [../../README.md](../../README.md).
