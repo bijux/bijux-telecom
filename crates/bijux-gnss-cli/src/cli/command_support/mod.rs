@@ -1,15 +1,15 @@
 use super::*;
 
-mod artifact_io;
-mod config_resolution;
+mod artifact_loading;
+mod command_inputs;
 mod experiment_artifacts;
 mod navigation_artifacts;
 mod sample_windows;
 mod signal_quality;
 mod tracking_observation_artifacts;
 
-pub(crate) use artifact_io::*;
-pub(crate) use config_resolution::*;
+pub(crate) use artifact_loading::*;
+pub(crate) use command_inputs::*;
 pub(crate) use experiment_artifacts::*;
 pub(crate) use navigation_artifacts::*;
 pub(crate) use sample_windows::*;
