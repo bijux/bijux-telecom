@@ -109,31 +109,24 @@ use code_period_ambiguity::{
     resolve_integer_code_period_ambiguities, CODE_PERIOD_AMBIGUITY_EPS_S,
     CODE_PERIOD_AMBIGUITY_NON_UNIQUE,
 };
-pub use decision_artifacts::observation_decisions_from_epochs;
 use epoch_manifest::stamp_observation_epoch_manifest;
 use epoch_validation::{apply_observation_epoch_sanity, validate_observation_epoch_sequence};
-pub use measurement_quality::{
-    ObservationMeasurementQualityEpochReport, ObservationMeasurementQualitySatellite,
-};
 #[cfg(test)]
 use nav_epoch_fixture::nav_observation_epoch_fixture;
 #[cfg(test)]
 use pseudorange_timing::resolve_pseudorange_from_transmit_time;
 use residual_reports::{observation_signal_key, observation_snapshot_key};
-pub use residual_reports::{
-    ObservationResidualEpochReport, ObservationResidualSatellite, ObservationResidualValue,
-};
 pub(crate) use signal_model::supports_observation_signal;
 #[cfg(test)]
 use signal_model::{tracked_signal_center_hz, tracked_signal_code_for_band};
-pub use tracking_reports::{
-    observation_artifacts_from_tracking_results,
-    observation_measurement_quality_from_tracking_results,
-    observation_measurement_quality_from_tracking_results_with_gps_anchor,
-    observation_residuals_from_tracking_results,
-    observation_residuals_from_tracking_results_with_gps_anchor,
-    observations_from_tracking_results, observations_from_tracking_results_with_gps_anchor,
-};
+
+pub type ObservationMeasurementQualityEpochReport =
+    measurement_quality::ObservationMeasurementQualityEpochReport;
+pub type ObservationMeasurementQualitySatellite =
+    measurement_quality::ObservationMeasurementQualitySatellite;
+pub type ObservationResidualEpochReport = residual_reports::ObservationResidualEpochReport;
+pub type ObservationResidualSatellite = residual_reports::ObservationResidualSatellite;
+pub type ObservationResidualValue = residual_reports::ObservationResidualValue;
 
 const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -186,6 +179,90 @@ pub(crate) fn accepted_rover_observation_epoch(
         decision_reason,
         manifest,
     }
+}
+
+pub fn observation_decisions_from_epochs(
+    epochs: &[ObsEpoch],
+) -> Vec<bijux_gnss_core::api::ObsDecisionArtifact> {
+    decision_artifacts::observation_decisions_from_epochs(epochs)
+}
+
+pub fn observations_from_tracking_results(
+    config: &ReceiverPipelineConfig,
+    tracks: &[TrackingResult],
+    hatch_window: u32,
+) -> StepReport<Vec<ObsEpoch>> {
+    tracking_reports::observations_from_tracking_results(config, tracks, hatch_window)
+}
+
+pub fn observations_from_tracking_results_with_gps_anchor(
+    config: &ReceiverPipelineConfig,
+    capture_start_gps_time: Option<GpsTime>,
+    tracks: &[TrackingResult],
+    hatch_window: u32,
+) -> StepReport<Vec<ObsEpoch>> {
+    tracking_reports::observations_from_tracking_results_with_gps_anchor(
+        config,
+        capture_start_gps_time,
+        tracks,
+        hatch_window,
+    )
+}
+
+pub fn observation_residuals_from_tracking_results(
+    config: &ReceiverPipelineConfig,
+    tracks: &[TrackingResult],
+    hatch_window: u32,
+) -> StepReport<Vec<ObservationResidualEpochReport>> {
+    tracking_reports::observation_residuals_from_tracking_results(config, tracks, hatch_window)
+}
+
+pub fn observation_residuals_from_tracking_results_with_gps_anchor(
+    config: &ReceiverPipelineConfig,
+    capture_start_gps_time: Option<GpsTime>,
+    tracks: &[TrackingResult],
+    hatch_window: u32,
+) -> StepReport<Vec<ObservationResidualEpochReport>> {
+    tracking_reports::observation_residuals_from_tracking_results_with_gps_anchor(
+        config,
+        capture_start_gps_time,
+        tracks,
+        hatch_window,
+    )
+}
+
+pub fn observation_measurement_quality_from_tracking_results(
+    config: &ReceiverPipelineConfig,
+    tracks: &[TrackingResult],
+    hatch_window: u32,
+) -> StepReport<Vec<ObservationMeasurementQualityEpochReport>> {
+    tracking_reports::observation_measurement_quality_from_tracking_results(
+        config,
+        tracks,
+        hatch_window,
+    )
+}
+
+pub fn observation_measurement_quality_from_tracking_results_with_gps_anchor(
+    config: &ReceiverPipelineConfig,
+    capture_start_gps_time: Option<GpsTime>,
+    tracks: &[TrackingResult],
+    hatch_window: u32,
+) -> StepReport<Vec<ObservationMeasurementQualityEpochReport>> {
+    tracking_reports::observation_measurement_quality_from_tracking_results_with_gps_anchor(
+        config,
+        capture_start_gps_time,
+        tracks,
+        hatch_window,
+    )
+}
+
+pub fn observation_artifacts_from_tracking_results(
+    config: &ReceiverPipelineConfig,
+    tracks: &[TrackingResult],
+    hatch_window: u32,
+) -> StepReport<ObservationPipelineArtifacts> {
+    tracking_reports::observation_artifacts_from_tracking_results(config, tracks, hatch_window)
 }
 
 pub fn observations_from_tracking(

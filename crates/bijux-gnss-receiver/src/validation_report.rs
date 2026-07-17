@@ -1416,13 +1416,13 @@ fn build_ppp_config(profile: &ReceiverConfig) -> PppConfig {
         },
         weighting: WeightingConfig {
             model: match profile.navigation.weighting.mode {
-                crate::engine::receiver_config::NavigationWeightingMode::Elevation => {
+                crate::engine::receiver_config::navigation::NavigationWeightingMode::Elevation => {
                     PositionWeightingModel::Elevation
                 }
-                crate::engine::receiver_config::NavigationWeightingMode::Cn0 => {
+                crate::engine::receiver_config::navigation::NavigationWeightingMode::Cn0 => {
                     PositionWeightingModel::Cn0
                 }
-                crate::engine::receiver_config::NavigationWeightingMode::ElevationCn0 => {
+                crate::engine::receiver_config::navigation::NavigationWeightingMode::ElevationCn0 => {
                     PositionWeightingModel::ElevationCn0
                 }
             },

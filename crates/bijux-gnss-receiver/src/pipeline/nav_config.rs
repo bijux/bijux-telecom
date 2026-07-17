@@ -6,10 +6,10 @@ use bijux_gnss_nav::api::{
     PositionRuntimeWeightingConfig, PositionWeightingModel,
 };
 
-use crate::engine::receiver_config::{
+use crate::engine::receiver_config::navigation::{
     ConstellationSelectionPolicy, NavigationMotionClass, NavigationWeightingMode,
-    ReceiverPipelineConfig,
 };
+use crate::engine::receiver_config::ReceiverPipelineConfig;
 
 pub(crate) fn navigation_filter_config(config: &ReceiverPipelineConfig) -> NavigationFilterConfig {
     NavigationFilterConfig {

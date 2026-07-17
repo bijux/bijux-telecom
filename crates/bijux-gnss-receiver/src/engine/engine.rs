@@ -914,7 +914,8 @@ mod tests {
         acquisition_requests_for_satellites, default_acquisition_requests,
         filter_acquisition_requests,
     };
-    use crate::engine::receiver_config::{ConstellationSelectionPolicy, ReceiverPipelineConfig};
+    use crate::engine::receiver_config::navigation::ConstellationSelectionPolicy;
+    use crate::engine::receiver_config::ReceiverPipelineConfig;
     use bijux_gnss_core::api::{Constellation, SatId, SignalBand, SignalCode};
 
     #[test]

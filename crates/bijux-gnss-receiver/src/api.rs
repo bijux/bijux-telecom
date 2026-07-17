@@ -1,10 +1,12 @@
 //! Public API for bijux-gnss-receiver.
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
+pub use crate::engine::receiver_config::navigation::{
+    ConstellationSelectionPolicy, NavigationMotionClass, NavigationWeightingMode,
+};
 /// Receiver configuration and schema.
 pub use crate::engine::receiver_config::{
-    AcquisitionThresholdMode, AcquisitionThresholdPolicyConfig, ConstellationSelectionPolicy,
-    NavigationMotionClass, NavigationWeightingMode, ReceiverConfig, ReceiverError,
+    AcquisitionThresholdMode, AcquisitionThresholdPolicyConfig, ReceiverConfig, ReceiverError,
     ReceiverPipelineConfig,
 };
 /// Receiver runtime options (side-effectful controls).

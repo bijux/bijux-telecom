@@ -1,10 +1,12 @@
 #![allow(missing_docs)]
 
+use crate::engine::receiver_config::navigation::{
+    DEFAULT_PPP_PRECISE_PRODUCT_BRIDGE_ACTION, DEFAULT_PPP_PRECISE_PRODUCT_REFUSE_ACTION,
+    DEFAULT_PPP_PRECISE_PRODUCT_RESET_ACTION,
+};
 use crate::engine::receiver_config::{
     acquisition_integration_ms_is_supported, parse_band, supported_acquisition_integration_ms_csv,
     BandTrackingSpec, ReceiverConfig, ReceiverPipelineConfig,
-    DEFAULT_PPP_PRECISE_PRODUCT_BRIDGE_ACTION, DEFAULT_PPP_PRECISE_PRODUCT_REFUSE_ACTION,
-    DEFAULT_PPP_PRECISE_PRODUCT_RESET_ACTION,
 };
 use bijux_gnss_core::api::{ConfigError, SchemaVersion, ValidateConfig, ValidationReport};
 
@@ -487,10 +489,10 @@ impl ReceiverConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::engine::receiver_config::{
-        AcquisitionThresholdMode, ConstellationSelectionPolicy, NavigationMotionClass,
-        NavigationWeightingMode,
+    use crate::engine::receiver_config::navigation::{
+        ConstellationSelectionPolicy, NavigationMotionClass, NavigationWeightingMode,
     };
+    use crate::engine::receiver_config::AcquisitionThresholdMode;
     use bijux_gnss_core::api::Constellation;
     use schemars::schema_for;
 
