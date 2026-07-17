@@ -23,6 +23,7 @@ pub mod lnav_bits;
 #[path = "gps_navigation/lnav_decode.rs"]
 pub mod lnav_decode;
 pub mod precise_products;
+#[path = "rinex_navigation/mod.rs"]
 pub mod rinex;
 #[path = "rinex_observation/mod.rs"]
 pub mod rinex_obs;
