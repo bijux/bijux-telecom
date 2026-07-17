@@ -1,5 +1,27 @@
 use super::*;
 
+fn publish_diagnostics_report<T, F>(
+    common: &CommonArgs,
+    command: &str,
+    report: &T,
+    schema_name: &str,
+    print_table: F,
+) -> Result<()>
+where
+    T: serde::Serialize,
+    F: FnOnce(&T),
+{
+    let _ = runtime_config_from_env(common, None);
+    match common.report {
+        ReportFormat::Table => print_table(report),
+        ReportFormat::Json => emit_report(common, command, report)?,
+    }
+    let report_value = serde_json::to_value(report)?;
+    write_diagnostics_report_artifact(common, command, &report_value, schema_name)?;
+    write_manifest(common, command, &ReceiverConfig::default(), None, report)?;
+    Ok(())
+}
+
 pub(crate) fn handle_diagnostics(command: GnssCommand) -> Result<()> {
     let GnssCommand::Diagnostics { command } = command else {
         bail!("invalid command for handler");
@@ -7,49 +29,26 @@ pub(crate) fn handle_diagnostics(command: GnssCommand) -> Result<()> {
 
     match command {
         DiagnosticsCommand::OperatorMap { common } => {
-            let _ = runtime_config_from_env(&common, None);
             let report = operator_map_report();
-            match common.report {
-                ReportFormat::Table => print_operator_map_table(&report),
-                ReportFormat::Json => emit_report(&common, "diagnostics_operator_map", &report)?,
-            }
-            write_diagnostics_report_artifact(
+            publish_diagnostics_report(
                 &common,
                 "diagnostics_operator_map",
                 &report,
                 "diagnostics_operator_map_report.schema.json",
-            )?;
-            write_manifest(
-                &common,
-                "diagnostics_operator_map",
-                &ReceiverConfig::default(),
-                None,
-                &report,
+                print_operator_map_table,
             )?;
         }
         DiagnosticsCommand::Workflow { common } => {
-            let _ = runtime_config_from_env(&common, None);
             let report = workflow_map_report();
-            match common.report {
-                ReportFormat::Table => print_workflow_table(&report),
-                ReportFormat::Json => emit_report(&common, "diagnostics_workflow", &report)?,
-            }
-            write_diagnostics_report_artifact(
+            publish_diagnostics_report(
                 &common,
                 "diagnostics_workflow",
                 &report,
                 "diagnostics_workflow_report.schema.json",
-            )?;
-            write_manifest(
-                &common,
-                "diagnostics_workflow",
-                &ReceiverConfig::default(),
-                None,
-                &report,
+                print_workflow_table,
             )?;
         }
         DiagnosticsCommand::Summarize { common, run_dir, top } => {
-            let _ = runtime_config_from_env(&common, None);
             let events = summarize_run_diagnostics(&run_dir)?;
             let summary = bijux_gnss_infra::api::core::aggregate_diagnostics(&events);
             let mut entries = summary.entries.clone();
@@ -68,111 +67,52 @@ pub(crate) fn handle_diagnostics(command: GnssCommand) -> Result<()> {
                     })
                 ),
             });
-            match common.report {
-                ReportFormat::Table => {
-                    print_diagnostics_summary_table(
-                        report.get("entries").and_then(|v| v.as_array()),
-                        top,
-                    );
-                }
-                ReportFormat::Json => emit_report(&common, "diagnostics_summarize", &report)?,
-            }
-            write_diagnostics_report_artifact(
+            publish_diagnostics_report(
                 &common,
                 "diagnostics_summarize",
                 &report,
                 "diagnostics_summary_report.schema.json",
-            )?;
-            write_manifest(
-                &common,
-                "diagnostics_summarize",
-                &ReceiverConfig::default(),
-                None,
-                &report,
+                |report| print_diagnostics_summary_table(report.get("entries").and_then(|v| v.as_array()), top),
             )?;
         }
         DiagnosticsCommand::Explain { common, run_dir } => {
-            let _ = runtime_config_from_env(&common, None);
             let summary = explain_run_scope(&run_dir)?;
-            match common.report {
-                ReportFormat::Table => print_diagnostics_explain_table(&summary),
-                ReportFormat::Json => emit_report(&common, "diagnostics_explain", &summary)?,
-            }
-            write_diagnostics_report_artifact(
+            publish_diagnostics_report(
                 &common,
                 "diagnostics_explain",
                 &summary,
                 "diagnostics_explain_report.schema.json",
-            )?;
-            write_manifest(
-                &common,
-                "diagnostics_explain",
-                &ReceiverConfig::default(),
-                None,
-                &summary,
+                print_diagnostics_explain_table,
             )?;
         }
         DiagnosticsCommand::VerifyRepro { common, run_dir } => {
-            let _ = runtime_config_from_env(&common, None);
             let report = verify_repro_bundle(&run_dir)?;
-            match common.report {
-                ReportFormat::Table => print_verify_repro_table(&report),
-                ReportFormat::Json => emit_report(&common, "diagnostics_verify_repro", &report)?,
-            }
-            write_diagnostics_report_artifact(
+            publish_diagnostics_report(
                 &common,
                 "diagnostics_verify_repro",
                 &report,
                 "diagnostics_verify_repro_report.schema.json",
-            )?;
-            write_manifest(
-                &common,
-                "diagnostics_verify_repro",
-                &ReceiverConfig::default(),
-                None,
-                &report,
+                print_verify_repro_table,
             )?;
         }
         DiagnosticsCommand::Compare { common, baseline_run_dir, candidate_run_dir } => {
-            let _ = runtime_config_from_env(&common, None);
             let report = compare_run_evidence(&baseline_run_dir, &candidate_run_dir)?;
-            match common.report {
-                ReportFormat::Table => print_compare_report_table(&report),
-                ReportFormat::Json => emit_report(&common, "diagnostics_compare", &report)?,
-            }
-            write_diagnostics_report_artifact(
+            publish_diagnostics_report(
                 &common,
                 "diagnostics_compare",
                 &report,
                 "diagnostics_compare_report.schema.json",
-            )?;
-            write_manifest(
-                &common,
-                "diagnostics_compare",
-                &ReceiverConfig::default(),
-                None,
-                &report,
+                print_compare_report_table,
             )?;
         }
         DiagnosticsCommand::ReplayAudit { common, baseline_run_dir, candidate_run_dir } => {
-            let _ = runtime_config_from_env(&common, None);
             let report = replay_audit_report(&baseline_run_dir, &candidate_run_dir)?;
-            match common.report {
-                ReportFormat::Table => print_replay_audit_table(&report),
-                ReportFormat::Json => emit_report(&common, "diagnostics_replay_audit", &report)?,
-            }
-            write_diagnostics_report_artifact(
+            publish_diagnostics_report(
                 &common,
                 "diagnostics_replay_audit",
                 &report,
                 "diagnostics_replay_audit_report.schema.json",
-            )?;
-            write_manifest(
-                &common,
-                "diagnostics_replay_audit",
-                &ReceiverConfig::default(),
-                None,
-                &report,
+                print_replay_audit_table,
             )?;
         }
         DiagnosticsCommand::AdvancedGate { common, run_dir, mode, strict } => {
@@ -189,89 +129,42 @@ pub(crate) fn handle_diagnostics(command: GnssCommand) -> Result<()> {
                     ),
                 ));
             }
-            match common.report {
-                ReportFormat::Table => print_advanced_gate_table(&report),
-                ReportFormat::Json => emit_report(&common, "diagnostics_advanced_gate", &report)?,
-            }
-            write_diagnostics_report_artifact(
+            publish_diagnostics_report(
                 &common,
                 "diagnostics_advanced_gate",
                 &report,
                 "diagnostics_advanced_gate_report.schema.json",
-            )?;
-            write_manifest(
-                &common,
-                "diagnostics_advanced_gate",
-                &ReceiverConfig::default(),
-                None,
-                &report,
+                print_advanced_gate_table,
             )?;
         }
         DiagnosticsCommand::ArtifactInventory { common, run_dir } => {
-            let _ = runtime_config_from_env(&common, None);
             let report = artifact_inventory_report(&run_dir)?;
-            match common.report {
-                ReportFormat::Table => print_artifact_inventory_table(&report),
-                ReportFormat::Json => {
-                    emit_report(&common, "diagnostics_artifact_inventory", &report)?
-                }
-            }
-            write_diagnostics_report_artifact(
+            publish_diagnostics_report(
                 &common,
                 "diagnostics_artifact_inventory",
                 &report,
                 "diagnostics_artifact_inventory_report.schema.json",
-            )?;
-            write_manifest(
-                &common,
-                "diagnostics_artifact_inventory",
-                &ReceiverConfig::default(),
-                None,
-                &report,
+                print_artifact_inventory_table,
             )?;
         }
         DiagnosticsCommand::DebugPlan { common, run_dir } => {
-            let _ = runtime_config_from_env(&common, None);
             let report = debug_plan_report(&run_dir)?;
-            match common.report {
-                ReportFormat::Table => print_debug_plan_table(&report),
-                ReportFormat::Json => emit_report(&common, "diagnostics_debug_plan", &report)?,
-            }
-            write_diagnostics_report_artifact(
+            publish_diagnostics_report(
                 &common,
                 "diagnostics_debug_plan",
                 &report,
                 "diagnostics_debug_plan_report.schema.json",
-            )?;
-            write_manifest(
-                &common,
-                "diagnostics_debug_plan",
-                &ReceiverConfig::default(),
-                None,
-                &report,
+                print_debug_plan_table,
             )?;
         }
         DiagnosticsCommand::BenchmarkSummary { common, run_dir } => {
-            let _ = runtime_config_from_env(&common, None);
             let report = benchmark_summary_report(&run_dir)?;
-            match common.report {
-                ReportFormat::Table => print_benchmark_summary_table(&report),
-                ReportFormat::Json => {
-                    emit_report(&common, "diagnostics_benchmark_summary", &report)?
-                }
-            }
-            write_diagnostics_report_artifact(
+            publish_diagnostics_report(
                 &common,
                 "diagnostics_benchmark_summary",
                 &report,
                 "diagnostics_benchmark_summary_report.schema.json",
-            )?;
-            write_manifest(
-                &common,
-                "diagnostics_benchmark_summary",
-                &ReceiverConfig::default(),
-                None,
-                &report,
+                print_benchmark_summary_table,
             )?;
         }
         DiagnosticsCommand::MediumGate { common, run_dir, strict } => {
