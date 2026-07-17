@@ -11,11 +11,11 @@ use bijux_gnss_nav::api::{
     GpsEphemeris, RtkDoubleDifferenceObservation, RtkSingleDifferenceObservation,
 };
 
-use crate::independent_models::coordinates::{
+use crate::reference_models::coordinates::{
     enu_to_ecef_m, geodetic_to_ecef_m, EnuVector, GeodeticPoint,
 };
-use crate::independent_models::gps_broadcast::solve_transmit_state_for_receiver;
-use crate::independent_models::rtk::{
+use crate::reference_models::gps_broadcast::solve_transmit_state_for_receiver;
+use crate::reference_models::rtk::{
     choose_reference_signal, double_differences_from_single_differences,
     single_differences_from_epochs,
 };

@@ -13,11 +13,11 @@ use bijux_gnss_nav::api::{
     SatellitePhaseCenterOffset,
 };
 
-use crate::independent_models::antenna::{
+use crate::reference_models::antenna::{
     receiver_range_correction_m, satellite_range_correction_m,
 };
-use crate::independent_models::coordinates::{ecef_to_enu_m, geodetic_to_ecef_m, GeodeticPoint};
-use crate::independent_models::gps_broadcast::{
+use crate::reference_models::coordinates::{ecef_to_enu_m, geodetic_to_ecef_m, GeodeticPoint};
+use crate::reference_models::gps_broadcast::{
     pseudorange_from_truth, solve_transmit_state_for_receiver,
 };
 

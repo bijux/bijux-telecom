@@ -1,6 +1,6 @@
 use bijux_gnss_nav::api::{GpsEphemeris, PositionObservation};
 
-use crate::independent_models::gps_broadcast::sat_state_gps_l1ca;
+use crate::reference_models::gps_broadcast::sat_state_gps_l1ca;
 
 use super::SPEED_OF_LIGHT_MPS;
 

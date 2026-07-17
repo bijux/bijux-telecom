@@ -6,7 +6,7 @@ use bijux_gnss_nav::api::{
     SatellitePhaseCenterOffset,
 };
 
-use crate::independent_models::coordinates::{
+use crate::reference_models::coordinates::{
     cross3, dot3, ecef_to_geodetic_point, normalize3, subtract3,
 };
 

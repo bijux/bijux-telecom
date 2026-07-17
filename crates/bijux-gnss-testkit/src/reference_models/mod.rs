@@ -1,4 +1,4 @@
-//! Independent scientific models used to build and validate test fixtures.
+//! Scientific reference models used to build and validate test fixtures.
 
 pub(crate) mod antenna;
 pub(crate) mod atmosphere;

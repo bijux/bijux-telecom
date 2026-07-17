@@ -5,7 +5,7 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
-use crate::independent_models::coordinates::{ecef_to_enu_m, geodetic_to_ecef_m, GeodeticPoint};
+use crate::reference_models::coordinates::{ecef_to_enu_m, geodetic_to_ecef_m, GeodeticPoint};
 use crate::reference_data::REFERENCE_COORDINATE_CSV_HEADER;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
