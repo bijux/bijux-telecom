@@ -23,3 +23,9 @@ The durable public surface of `bijux-gnss-dev` is its binary command set.
 Each command exists because it owns a reviewed maintainer workflow, not because
 the repository happens to need another root-level utility. The command list is
 small on purpose.
+
+## Protecting Proof
+
+- `crates/bijux-gnss-dev/src/main.rs`
+- `crates/bijux-gnss-dev/docs/COMMANDS.md`
+- `crates/bijux-gnss-dev/docs/CONTRACTS.md`

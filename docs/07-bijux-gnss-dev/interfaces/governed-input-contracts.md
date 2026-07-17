@@ -35,3 +35,9 @@ whose shape and meaning are part of the maintainer workflow surface.
 If a repository file affects maintainer behavior but is not important enough to
 be named and documented here, the workflow probably does not belong in this
 crate yet.
+
+## Protecting Proof
+
+- `crates/bijux-gnss-dev/src/main.rs`
+- `crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md`
+- `crates/bijux-gnss-dev/tests/integration_nextest_suite_selection.rs`

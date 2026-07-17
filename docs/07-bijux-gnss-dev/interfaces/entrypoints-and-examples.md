@@ -28,3 +28,8 @@ If a maintainer updates a reviewed security exception, the durable sequence is:
 2. run `bijux-gnss-dev audit-allowlist`
 3. run `bijux-gnss-dev audit-ignore-args` if automation consumes the derived
    flags
+
+## Protecting Proof
+
+- `crates/bijux-gnss-dev/docs/COMMANDS.md`
+- `crates/bijux-gnss-dev/docs/WORKFLOWS.md`

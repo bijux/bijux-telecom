@@ -25,3 +25,9 @@ last_reviewed: 2026-07-17
 - internal helper layout inside `main.rs` is not a caller promise
 - the crate does not promise a reusable Rust API
 - product crates are not expected to integrate with this crate as a library
+
+## Protecting Proof
+
+- `crates/bijux-gnss-dev/docs/CONTRACTS.md`
+- `crates/bijux-gnss-dev/docs/PUBLIC_API.md`
+- `crates/bijux-gnss-dev/docs/WORKFLOWS.md`

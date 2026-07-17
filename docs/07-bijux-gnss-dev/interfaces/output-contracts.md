@@ -25,3 +25,9 @@ These outputs are part of the workflow boundary. Reviewers should be able to
 tell which file is raw run evidence, which file is the current normalized
 snapshot, and which file is the checked-in baseline. They should also be able
 to tell that audit and deviation commands remain read-only.
+
+## Protecting Proof
+
+- `crates/bijux-gnss-dev/src/main.rs`
+- `crates/bijux-gnss-dev/docs/OUTPUTS.md`
+- `crates/bijux-gnss-dev/docs/BENCHMARKS.md`

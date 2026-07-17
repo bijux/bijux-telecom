@@ -23,3 +23,9 @@ last_reviewed: 2026-07-17
 - that the crate will expose `lib.rs`
 - that product crates should depend on maintainer internals instead of their
   own owning surfaces
+
+## Protecting Proof
+
+- `crates/bijux-gnss-dev/src/main.rs`
+- `crates/bijux-gnss-dev/docs/PUBLIC_API.md`
+- `crates/bijux-gnss-dev/tests/integration_guardrails.rs`

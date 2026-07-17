@@ -86,7 +86,8 @@ flowchart LR
 - source root:
   [`crates/bijux-gnss-dev/src/main.rs`](../../crates/bijux-gnss-dev/src/main.rs)
 - proof tests:
-  [`crates/bijux-gnss-dev/tests/`](../../crates/bijux-gnss-dev/tests)
+  [`crates/bijux-gnss-dev/tests/integration_guardrails.rs`](../../crates/bijux-gnss-dev/tests/integration_guardrails.rs),
+  [`crates/bijux-gnss-dev/tests/integration_nextest_suite_selection.rs`](../../crates/bijux-gnss-dev/tests/integration_nextest_suite_selection.rs)
 
 ## Support Crates That Matter Here
 
@@ -145,6 +146,7 @@ flowchart LR
 - `crates/bijux-gnss-dev/docs/COMMANDS.md`
 - `crates/bijux-gnss-dev/docs/AUDIT_POLICY.md`
 - `crates/bijux-gnss-dev/docs/BENCHMARKS.md`
+- `crates/bijux-gnss-dev/docs/OUTPUTS.md`
 - `crates/bijux-gnss-dev/tests/integration_guardrails.rs`
 - `crates/bijux-gnss-dev/tests/integration_nextest_suite_selection.rs`
 

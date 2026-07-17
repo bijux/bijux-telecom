@@ -62,9 +62,11 @@ flowchart LR
 
 - `crates/bijux-gnss-dev/src/main.rs`
 - `crates/bijux-gnss-dev/docs/COMMANDS.md`
+- `crates/bijux-gnss-dev/docs/CONTRACTS.md`
 - `crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md`
 - `crates/bijux-gnss-dev/docs/OUTPUTS.md`
 - `crates/bijux-gnss-dev/docs/WORKFLOWS.md`
+- `crates/bijux-gnss-dev/docs/TESTS.md`
 
 ## Leave This Section When
 

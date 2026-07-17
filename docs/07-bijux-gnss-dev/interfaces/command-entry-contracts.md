@@ -27,3 +27,9 @@ Each command has a narrow entry contract.
   inputs
 - `bench-compare` accepts strictness and threshold controls for benchmark
   regression review
+
+## Protecting Proof
+
+- `crates/bijux-gnss-dev/src/main.rs`
+- `crates/bijux-gnss-dev/docs/COMMANDS.md`
+- `crates/bijux-gnss-dev/docs/WORKFLOWS.md`
