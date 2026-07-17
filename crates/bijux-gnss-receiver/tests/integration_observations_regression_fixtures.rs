@@ -4,7 +4,7 @@ use std::path::Path;
 
 use bijux_gnss_core::api::{
     Chips, Constellation, Epoch, Hertz, ObservationEpochDecision, ReceiverSampleTrace, SatId,
-    TrackEpoch,
+    TrackEpoch, TrackingUncertainty,
 };
 use bijux_gnss_receiver::api::{
     observations_from_tracking_results, ReceiverPipelineConfig, TrackingResult,
@@ -30,6 +30,15 @@ struct ObservationRowFixture {
     prompt_q: f32,
     carrier_hz: f64,
     lock_state: String,
+    tracking_uncertainty: Option<TrackingUncertaintyFixture>,
+}
+
+#[derive(Debug, Deserialize)]
+struct TrackingUncertaintyFixture {
+    code_phase_samples: f64,
+    carrier_phase_cycles: f64,
+    doppler_hz: f64,
+    cn0_dbhz: f64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -165,6 +174,14 @@ fn tracks_from_fixture_rows(
             cycle_slip_reason: None,
             lock_state: row.lock_state.clone(),
             lock_state_reason: None,
+            tracking_uncertainty: row.tracking_uncertainty.as_ref().map(|uncertainty| {
+                TrackingUncertainty {
+                    code_phase_samples: uncertainty.code_phase_samples,
+                    carrier_phase_cycles: uncertainty.carrier_phase_cycles,
+                    doppler_hz: uncertainty.doppler_hz,
+                    cn0_dbhz: uncertainty.cn0_dbhz,
+                }
+            }),
             ..TrackEpoch::default()
         });
     }

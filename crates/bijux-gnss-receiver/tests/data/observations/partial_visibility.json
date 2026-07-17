@@ -11,7 +11,13 @@
       "prompt_i": 1.0,
       "prompt_q": 0.0,
       "carrier_hz": 0.0,
-      "lock_state": "tracking"
+      "lock_state": "tracking",
+      "tracking_uncertainty": {
+        "code_phase_samples": 0.08,
+        "carrier_phase_cycles": 0.03,
+        "doppler_hz": 0.8,
+        "cn0_dbhz": 0.4
+      }
     },
     {
       "sat_prn": 8,
