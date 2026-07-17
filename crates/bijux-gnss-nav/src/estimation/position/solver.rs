@@ -12,9 +12,7 @@ use super::raim::{
     formal_protection_levels, PositionProtectionLevels, RaimFaultDetection, RaimFaultExclusion,
     RaimFaultHypothesis, RaimSolutionSeparationCheck, RaimSolutionSeparationSubset,
 };
-use crate::models::atmosphere::{
-    KlobucharCoefficients,
-};
+use crate::models::atmosphere::KlobucharCoefficients;
 use crate::orbits::beidou::BeidouBroadcastNavigationData;
 use crate::orbits::galileo::GalileoBroadcastNavigationData;
 use crate::orbits::glonass::GlonassBroadcastNavigationFrame;
@@ -25,8 +23,8 @@ use bijux_gnss_core::api::{
     Constellation, InterSystemBias, Llh, MeasurementRejectReason, ObsEpoch, SatId, Seconds,
 };
 
-pub mod dops;
 mod corrections;
+pub mod dops;
 pub mod geodesy;
 mod least_squares;
 mod matrix;
@@ -36,11 +34,11 @@ pub mod solution_outcome;
 mod solution_quality;
 mod state;
 pub mod weighting;
-use dops::{compute_dops, scaled_position_covariance_ecef_m2};
 use corrections::{
     corrected_observation_records, linearized_geometry_row, linearized_pseudorange_row,
     resolve_satellite_geometry,
 };
+use dops::{compute_dops, scaled_position_covariance_ecef_m2};
 use geodesy::ecef_to_geodetic;
 use least_squares::solve_weighted_least_squares;
 #[cfg(test)]
@@ -496,7 +494,7 @@ impl PositionSolver {
             .map(|(geometry, residual)| {
                 (
                     geometry.observation.clone(),
-                    geometry.state.clone(),
+                    geometry.state,
                     residual.residual_m,
                     residual.effective_weight,
                 )
@@ -867,7 +865,7 @@ impl PositionSolver {
         let residual_values = geometry
             .iter()
             .map(|satellite_geometry| {
-                linearized_pseudorange_row(&estimate, satellite_geometry)
+                linearized_pseudorange_row(estimate, satellite_geometry)
                     .map(|row| row.0)
                     .expect("working-set geometry must linearize")
             })

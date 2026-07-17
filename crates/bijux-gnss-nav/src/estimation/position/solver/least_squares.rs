@@ -64,11 +64,11 @@ pub(super) fn decompose_weighted_design(h: &[Vec<f64>], w: &[f64]) -> Option<Piv
             return None;
         }
         let scale = weight.sqrt();
-        for col in 0..dimension {
-            if !row[col].is_finite() {
+        for (col, value) in row.iter().enumerate().take(dimension) {
+            if !value.is_finite() {
                 return None;
             }
-            weighted_design[row_index][col] = row[col] * scale;
+            weighted_design[row_index][col] = value * scale;
         }
     }
     pivoted_qr(&weighted_design)
@@ -82,8 +82,8 @@ fn pivoted_qr(a: &[Vec<f64>]) -> Option<PivotedQr> {
     }
     let mut columns = vec![vec![0.0_f64; row_count]; dimension];
     for (row_index, row) in a.iter().enumerate() {
-        for col in 0..dimension {
-            columns[col][row_index] = row[col];
+        for (col, value) in row.iter().enumerate().take(dimension) {
+            columns[col][row_index] = *value;
         }
     }
     let mut pivots = (0..dimension).collect::<Vec<_>>();
@@ -132,8 +132,8 @@ fn pivoted_qr(a: &[Vec<f64>]) -> Option<PivotedQr> {
         }
         max_diagonal = max_diagonal.max(diagonal);
         min_diagonal = min_diagonal.min(diagonal);
-        for row in 0..row_count {
-            q_columns[col][row] = vector[row] / diagonal;
+        for (row, value) in vector.iter().enumerate().take(row_count) {
+            q_columns[col][row] = value / diagonal;
         }
         rank += 1;
         for trailing_col in (col + 1)..dimension {
@@ -152,8 +152,8 @@ fn solve_qr_coordinates(qr: &PivotedQr, b: &[f64]) -> Option<Vec<f64>> {
         return None;
     }
     let mut qtb = vec![0.0_f64; dimension];
-    for col in 0..dimension {
-        qtb[col] = dot(&qr.q_columns[col], b);
+    for (col, qtb_value) in qtb.iter_mut().enumerate().take(dimension) {
+        *qtb_value = dot(&qr.q_columns[col], b);
     }
     solve_upper_triangular(&qr.r, &qtb)
 }
@@ -170,8 +170,8 @@ fn solve_upper_triangular(r: &[Vec<f64>], b: &[f64]) -> Option<Vec<f64>> {
             return None;
         }
         let mut sum = b[row];
-        for col in (row + 1)..dimension {
-            sum -= r[row][col] * x[col];
+        for (col, x_value) in x.iter().enumerate().take(dimension).skip(row + 1) {
+            sum -= r[row][col] * x_value;
         }
         x[row] = sum / diagonal;
     }
@@ -191,8 +191,8 @@ pub(super) fn covariance_from_upper_triangular(
         let mut basis = vec![0.0_f64; dimension];
         basis[basis_col] = 1.0;
         let solution = solve_upper_triangular(r, &basis)?;
-        for row in 0..dimension {
-            inverse_r[row][basis_col] = solution[row];
+        for (row, solution_value) in solution.iter().enumerate().take(dimension) {
+            inverse_r[row][basis_col] = *solution_value;
         }
     }
     let mut covariance_pivoted = vec![vec![0.0_f64; dimension]; dimension];

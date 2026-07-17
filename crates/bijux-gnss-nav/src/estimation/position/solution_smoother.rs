@@ -119,10 +119,8 @@ impl PositionSolutionSmoother {
     ) {
         self.state = [position_ecef_m[0], position_ecef_m[1], position_ecef_m[2], 0.0, 0.0, 0.0];
         self.covariance = [[0.0; 6]; 6];
-        for row in 0..3 {
-            for col in 0..3 {
-                self.covariance[row][col] = measurement_covariance_m2[row][col];
-            }
+        for (row, covariance_row) in measurement_covariance_m2.iter().enumerate() {
+            self.covariance[row][..3].copy_from_slice(covariance_row);
             self.covariance[row + 3][row + 3] = self.config.initial_velocity_sigma_mps.powi(2);
         }
         self.last_t_rx_s = Some(t_rx_s);
@@ -277,9 +275,9 @@ fn enforce_covariance_floor(
     mut covariance_m2: [[f64; 3]; 3],
     floor_variance_m2: f64,
 ) -> [[f64; 3]; 3] {
-    for axis in 0..3 {
-        if !covariance_m2[axis][axis].is_finite() || covariance_m2[axis][axis] < floor_variance_m2 {
-            covariance_m2[axis][axis] = floor_variance_m2;
+    for (axis, covariance_row) in covariance_m2.iter_mut().enumerate() {
+        if !covariance_row[axis].is_finite() || covariance_row[axis] < floor_variance_m2 {
+            covariance_row[axis] = floor_variance_m2;
         }
     }
     covariance_m2
@@ -321,10 +319,8 @@ fn process_noise_covariance(
 
 fn top_left_covariance(covariance: &[[f64; 6]; 6]) -> [[f64; 3]; 3] {
     let mut position_covariance = [[0.0; 3]; 3];
-    for row in 0..3 {
-        for col in 0..3 {
-            position_covariance[row][col] = covariance[row][col];
-        }
+    for (row, position_covariance_row) in position_covariance.iter_mut().enumerate() {
+        position_covariance_row.copy_from_slice(&covariance[row][..3]);
     }
     position_covariance
 }
@@ -463,9 +459,9 @@ fn mat6_mul(left: &[[f64; 6]; 6], right: &[[f64; 6]; 6]) -> [[f64; 6]; 6] {
 
 fn mat6_transpose(matrix: &[[f64; 6]; 6]) -> [[f64; 6]; 6] {
     let mut transpose = [[0.0; 6]; 6];
-    for row in 0..6 {
-        for col in 0..6 {
-            transpose[row][col] = matrix[col][row];
+    for (row, transpose_row) in transpose.iter_mut().enumerate() {
+        for (col, transpose_value) in transpose_row.iter_mut().enumerate() {
+            *transpose_value = matrix[col][row];
         }
     }
     transpose
@@ -489,8 +485,8 @@ fn mat6x3_vec_mul(matrix: &[[f64; 3]; 6], vector: &[f64; 3]) -> [f64; 6] {
 
 fn identity6() -> [[f64; 6]; 6] {
     let mut identity = [[0.0; 6]; 6];
-    for axis in 0..6 {
-        identity[axis][axis] = 1.0;
+    for (axis, identity_row) in identity.iter_mut().enumerate() {
+        identity_row[axis] = 1.0;
     }
     identity
 }
