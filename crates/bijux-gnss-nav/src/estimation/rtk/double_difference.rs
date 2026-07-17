@@ -1024,7 +1024,8 @@ mod tests {
     };
     use crate::estimation::position::solver::geodesy::{ecef_to_enu, ecef_to_geodetic};
     use crate::estimation::rtk::antenna::{
-        modeled_pseudorange_with_antenna_corrections_m, RtkAntennaCorrectionConfig,
+        modeled_pseudorange_with_antenna_corrections_m, AntennaAwarePseudorangeRequest,
+        RtkAntennaCorrectionConfig,
     };
     use crate::estimation::rtk::single_difference::{
         RtkEpochAlignmentEvidence, RtkSingleDifferenceCovarianceEvidence,

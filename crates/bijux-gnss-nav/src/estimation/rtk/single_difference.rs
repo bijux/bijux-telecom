@@ -739,8 +739,10 @@ mod tests {
         RtkSingleDifferenceCovarianceEvidence, RtkSingleDifferenceObservation,
         RtkSourceObservationVariance, RTK_EPOCH_ALIGNMENT_TOLERANCE_S, SPEED_OF_LIGHT_MPS,
     };
-    use crate::estimation::rtk::antenna::modeled_pseudorange_with_antenna_corrections_m;
-    use crate::estimation::rtk::antenna::RtkAntennaCorrectionConfig;
+    use crate::estimation::rtk::antenna::{
+        modeled_pseudorange_with_antenna_corrections_m, AntennaAwarePseudorangeRequest,
+        RtkAntennaCorrectionConfig,
+    };
     use crate::models::antenna::{
         ReceiverAntennaCalibration, ReceiverAntennaCalibrations, ReceiverPhaseCenterOffset,
         SatelliteAntennaCalibration, SatelliteAntennaCalibrations, SatellitePhaseCenterOffset,

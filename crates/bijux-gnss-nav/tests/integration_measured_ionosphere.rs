@@ -12,20 +12,34 @@ use bijux_gnss_signal::api::{
     signal_spec_gps_l1_ca, signal_spec_gps_l2_py,
 };
 
-fn dual_frequency_epoch(
+#[derive(Clone, Copy)]
+struct DualFrequencySignalObservation {
+    band: SignalBand,
+    code: SignalCode,
+    signal: SignalSpec,
+    pseudorange_m: f64,
+}
+
+#[derive(Clone, Copy)]
+struct DualFrequencyEpochRequest {
     sat: SatId,
-    first_band: SignalBand,
-    first_code: SignalCode,
-    first_signal: SignalSpec,
-    first_code_m: f64,
-    second_band: SignalBand,
-    second_code: SignalCode,
-    second_signal: SignalSpec,
-    second_code_m: f64,
+    first_observation: DualFrequencySignalObservation,
+    second_observation: DualFrequencySignalObservation,
     phase_bias_m: f64,
-) -> ObsEpoch {
-    let geometry_free_code_m = second_code_m - first_code_m;
-    let geometry_free_phase_m = geometry_free_code_m + phase_bias_m;
+}
+
+#[derive(Clone, Copy)]
+struct MeasuredIonosphereRecoveryRequest {
+    sat: SatId,
+    first_observation: DualFrequencySignalObservation,
+    second_observation: DualFrequencySignalObservation,
+    first_delay_m: f64,
+}
+
+fn dual_frequency_epoch(request: DualFrequencyEpochRequest) -> ObsEpoch {
+    let geometry_free_code_m =
+        request.second_observation.pseudorange_m - request.first_observation.pseudorange_m;
+    let geometry_free_phase_m = geometry_free_code_m + request.phase_bias_m;
     let reference_phase_m = 22_000_000.0;
 
     ObsEpoch {
@@ -40,24 +54,28 @@ fn dual_frequency_epoch(
         role: ReceiverRole::Rover,
         sats: vec![
             satellite(
-                sat,
-                first_band,
-                first_code,
-                first_signal,
-                first_code_m,
+                request.sat,
+                request.first_observation.band,
+                request.first_observation.code,
+                request.first_observation.signal,
+                request.first_observation.pseudorange_m,
                 signal_meters_to_cycles(
                     Meters(reference_phase_m + geometry_free_phase_m),
-                    first_signal,
+                    request.first_observation.signal,
                 )
                 .0,
             ),
             satellite(
-                sat,
-                second_band,
-                second_code,
-                second_signal,
-                second_code_m,
-                signal_meters_to_cycles(Meters(reference_phase_m), second_signal).0,
+                request.sat,
+                request.second_observation.band,
+                request.second_observation.code,
+                request.second_observation.signal,
+                request.second_observation.pseudorange_m,
+                signal_meters_to_cycles(
+                    Meters(reference_phase_m),
+                    request.second_observation.signal,
+                )
+                .0,
             ),
         ],
         decision: ObservationEpochDecision::Accepted,
@@ -110,45 +128,39 @@ fn satellite(
     }
 }
 
-fn assert_measured_ionosphere_recovery(
-    sat: SatId,
-    first_band: SignalBand,
-    first_code: SignalCode,
-    first_signal: SignalSpec,
-    second_band: SignalBand,
-    second_code: SignalCode,
-    second_signal: SignalSpec,
-    first_delay_m: f64,
-) {
+fn assert_measured_ionosphere_recovery(request: MeasuredIonosphereRecoveryRequest) {
     let base_range_m = 24_000_000.0;
-    let second_delay_m =
-        first_order_ionosphere_code_delay_m(Meters(first_delay_m), first_signal, second_signal)
-            .expect("finite second-band delay")
-            .0;
+    let second_delay_m = first_order_ionosphere_code_delay_m(
+        Meters(request.first_delay_m),
+        request.first_observation.signal,
+        request.second_observation.signal,
+    )
+    .expect("finite second-band delay")
+    .0;
     let observations = measured_ionosphere_from_obs_epochs(
-        &[dual_frequency_epoch(
-            sat,
-            first_band,
-            first_code,
-            first_signal,
-            base_range_m + first_delay_m,
-            second_band,
-            second_code,
-            second_signal,
-            base_range_m + second_delay_m,
-            4.25,
-        )],
-        first_band,
-        second_band,
+        &[dual_frequency_epoch(DualFrequencyEpochRequest {
+            sat: request.sat,
+            first_observation: DualFrequencySignalObservation {
+                pseudorange_m: base_range_m + request.first_delay_m,
+                ..request.first_observation
+            },
+            second_observation: DualFrequencySignalObservation {
+                pseudorange_m: base_range_m + second_delay_m,
+                ..request.second_observation
+            },
+            phase_bias_m: 4.25,
+        })],
+        request.first_observation.band,
+        request.second_observation.band,
     );
 
     assert_eq!(observations.len(), 1);
     let observation = &observations[0];
     assert_eq!(observation.code_status, "ok");
     assert_eq!(observation.phase_status, "ok");
-    assert_eq!(observation.phase_arc_reset, true);
+    assert!(observation.phase_arc_reset);
     assert!(
-        (observation.code_delay_band_1_m.expect("band 1 code delay") - first_delay_m).abs()
+        (observation.code_delay_band_1_m.expect("band 1 code delay") - request.first_delay_m).abs()
             < 1.0e-6
     );
     assert!(
@@ -156,7 +168,8 @@ fn assert_measured_ionosphere_recovery(
             < 1.0e-6
     );
     assert!(
-        (observation.phase_delay_band_1_m.expect("band 1 phase delay") - first_delay_m).abs()
+        (observation.phase_delay_band_1_m.expect("band 1 phase delay") - request.first_delay_m)
+            .abs()
             < 1.0e-6
     );
     assert!(
@@ -167,42 +180,60 @@ fn assert_measured_ionosphere_recovery(
 
 #[test]
 fn measured_ionosphere_recovers_gps_l1_l2_delay() {
-    assert_measured_ionosphere_recovery(
-        SatId { constellation: Constellation::Gps, prn: 11 },
-        SignalBand::L1,
-        SignalCode::Ca,
-        signal_spec_gps_l1_ca(),
-        SignalBand::L2,
-        SignalCode::Py,
-        signal_spec_gps_l2_py(),
-        6.5,
-    );
+    assert_measured_ionosphere_recovery(MeasuredIonosphereRecoveryRequest {
+        sat: SatId { constellation: Constellation::Gps, prn: 11 },
+        first_observation: DualFrequencySignalObservation {
+            band: SignalBand::L1,
+            code: SignalCode::Ca,
+            signal: signal_spec_gps_l1_ca(),
+            pseudorange_m: 0.0,
+        },
+        second_observation: DualFrequencySignalObservation {
+            band: SignalBand::L2,
+            code: SignalCode::Py,
+            signal: signal_spec_gps_l2_py(),
+            pseudorange_m: 0.0,
+        },
+        first_delay_m: 6.5,
+    });
 }
 
 #[test]
 fn measured_ionosphere_recovers_galileo_e1_e5_delay() {
-    assert_measured_ionosphere_recovery(
-        SatId { constellation: Constellation::Galileo, prn: 19 },
-        SignalBand::E1,
-        SignalCode::E1B,
-        signal_spec_galileo_e1b(),
-        SignalBand::E5,
-        SignalCode::E5a,
-        signal_spec_galileo_e5a(),
-        7.25,
-    );
+    assert_measured_ionosphere_recovery(MeasuredIonosphereRecoveryRequest {
+        sat: SatId { constellation: Constellation::Galileo, prn: 19 },
+        first_observation: DualFrequencySignalObservation {
+            band: SignalBand::E1,
+            code: SignalCode::E1B,
+            signal: signal_spec_galileo_e1b(),
+            pseudorange_m: 0.0,
+        },
+        second_observation: DualFrequencySignalObservation {
+            band: SignalBand::E5,
+            code: SignalCode::E5a,
+            signal: signal_spec_galileo_e5a(),
+            pseudorange_m: 0.0,
+        },
+        first_delay_m: 7.25,
+    });
 }
 
 #[test]
 fn measured_ionosphere_recovers_beidou_b1_b2_delay() {
-    assert_measured_ionosphere_recovery(
-        SatId { constellation: Constellation::Beidou, prn: 11 },
-        SignalBand::B1,
-        SignalCode::B1I,
-        signal_spec_beidou_b1i(),
-        SignalBand::B2,
-        SignalCode::B2I,
-        signal_spec_beidou_b2i(),
-        8.0,
-    );
+    assert_measured_ionosphere_recovery(MeasuredIonosphereRecoveryRequest {
+        sat: SatId { constellation: Constellation::Beidou, prn: 11 },
+        first_observation: DualFrequencySignalObservation {
+            band: SignalBand::B1,
+            code: SignalCode::B1I,
+            signal: signal_spec_beidou_b1i(),
+            pseudorange_m: 0.0,
+        },
+        second_observation: DualFrequencySignalObservation {
+            band: SignalBand::B2,
+            code: SignalCode::B2I,
+            signal: signal_spec_beidou_b2i(),
+            pseudorange_m: 0.0,
+        },
+        first_delay_m: 8.0,
+    });
 }

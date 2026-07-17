@@ -689,11 +689,13 @@ fn sequential_position_filter_recovers_static_receiver_clock_drift_from_doppler(
         (0.0, 0.0, 0.0),
         truth_clock_drift_s_per_s,
     );
-    let mut config = PositionFilterConfig::default();
-    config.base_pseudorange_sigma_m = 1.5;
-    config.base_doppler_sigma_hz = 0.05;
-    config.initial_velocity_sigma_mps = 5.0;
-    config.initial_clock_drift_sigma_s_per_s = 1.0e-4;
+    let mut config = PositionFilterConfig {
+        base_pseudorange_sigma_m: 1.5,
+        base_doppler_sigma_hz: 0.05,
+        initial_velocity_sigma_mps: 5.0,
+        initial_clock_drift_sigma_s_per_s: 1.0e-4,
+        ..PositionFilterConfig::default()
+    };
     config.process_noise.vel_mps = 0.05;
     config.process_noise.clock_drift_s_per_s = 1.0e-10;
     let mut filter = PositionFilter::new(config);
@@ -1270,9 +1272,11 @@ fn sequential_position_filter_coasts_through_total_satellite_loss() {
 fn sequential_position_filter_refuses_innovation_growth_and_recovers() {
     let ephemerides = sample_filter_ephemerides();
     let epochs = static_receiver_epochs(&ephemerides, 3, 1.0);
-    let mut config = PositionFilterConfig::default();
-    config.gating_chi2_code = None;
-    config.huber_k = None;
+    let mut config = PositionFilterConfig {
+        gating_chi2_code: None,
+        huber_k: None,
+        ..PositionFilterConfig::default()
+    };
     config.divergence.max_innovation_rms_m = 80.0;
     let mut filter = PositionFilter::new(config);
 

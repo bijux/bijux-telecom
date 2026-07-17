@@ -262,17 +262,23 @@ mod tests {
         signal_spec_galileo_e1b, signal_spec_gps_l1_ca, signal_spec_gps_l2_py, signal_spec_gps_l5,
     };
 
-    fn dual_frequency_epoch(
-        second_band: SignalBand,
-        second_code: SignalCode,
-        second_signal: bijux_gnss_core::api::SignalSpec,
-        pseudorange_1_m: f64,
-        pseudorange_2_m: f64,
-        code_lock_1: bool,
-        code_lock_2: bool,
-        variance_1_m2: f64,
-        variance_2_m2: f64,
-    ) -> ObsEpoch {
+    struct DualFrequencySignalObservation {
+        band: SignalBand,
+        code: SignalCode,
+        signal: bijux_gnss_core::api::SignalSpec,
+        pseudorange_m: f64,
+        code_lock: bool,
+        variance_m2: f64,
+    }
+
+    struct DualFrequencyEpochRequest {
+        second_observation: DualFrequencySignalObservation,
+        first_pseudorange_m: f64,
+        first_code_lock: bool,
+        first_variance_m2: f64,
+    }
+
+    fn dual_frequency_epoch(request: DualFrequencyEpochRequest) -> ObsEpoch {
         let sat = SatId { constellation: Constellation::Gps, prn: 11 };
         let signal_1 = signal_spec_gps_l1_ca();
         ObsEpoch {
@@ -291,18 +297,18 @@ mod tests {
                     SignalBand::L1,
                     SignalCode::Ca,
                     signal_1,
-                    pseudorange_1_m,
-                    code_lock_1,
-                    variance_1_m2,
+                    request.first_pseudorange_m,
+                    request.first_code_lock,
+                    request.first_variance_m2,
                 ),
                 make_satellite(
                     sat,
-                    second_band,
-                    second_code,
-                    second_signal,
-                    pseudorange_2_m,
-                    code_lock_2,
-                    variance_2_m2,
+                    request.second_observation.band,
+                    request.second_observation.code,
+                    request.second_observation.signal,
+                    request.second_observation.pseudorange_m,
+                    request.second_observation.code_lock,
+                    request.second_observation.variance_m2,
                 ),
             ],
             decision: ObservationEpochDecision::Accepted,
@@ -364,17 +370,19 @@ mod tests {
         let l2 = signal_spec_gps_l2_py();
         let iono_l2_m = iono_l1_m * (l1.carrier_hz.value() * l1.carrier_hz.value())
             / (l2.carrier_hz.value() * l2.carrier_hz.value());
-        let epoch = dual_frequency_epoch(
-            SignalBand::L2,
-            SignalCode::Py,
-            l2,
-            base_range_m + iono_l1_m,
-            base_range_m + iono_l2_m,
-            true,
-            true,
-            1.0,
-            4.0,
-        );
+        let epoch = dual_frequency_epoch(DualFrequencyEpochRequest {
+            second_observation: DualFrequencySignalObservation {
+                band: SignalBand::L2,
+                code: SignalCode::Py,
+                signal: l2,
+                pseudorange_m: base_range_m + iono_l2_m,
+                code_lock: true,
+                variance_m2: 4.0,
+            },
+            first_pseudorange_m: base_range_m + iono_l1_m,
+            first_code_lock: true,
+            first_variance_m2: 1.0,
+        });
 
         let observations = iono_free_code_from_obs_epochs(&[epoch], SignalBand::L1, SignalBand::L2);
 
@@ -399,17 +407,19 @@ mod tests {
         let l5 = signal_spec_gps_l5();
         let iono_l5_m = iono_l1_m * (l1.carrier_hz.value() * l1.carrier_hz.value())
             / (l5.carrier_hz.value() * l5.carrier_hz.value());
-        let epoch = dual_frequency_epoch(
-            SignalBand::L5,
-            SignalCode::Unknown,
-            l5,
-            base_range_m + iono_l1_m,
-            base_range_m + iono_l5_m,
-            true,
-            true,
-            1.0,
-            1.0,
-        );
+        let epoch = dual_frequency_epoch(DualFrequencyEpochRequest {
+            second_observation: DualFrequencySignalObservation {
+                band: SignalBand::L5,
+                code: SignalCode::Unknown,
+                signal: l5,
+                pseudorange_m: base_range_m + iono_l5_m,
+                code_lock: true,
+                variance_m2: 1.0,
+            },
+            first_pseudorange_m: base_range_m + iono_l1_m,
+            first_code_lock: true,
+            first_variance_m2: 1.0,
+        });
 
         let observations = iono_free_code_from_obs_epochs(&[epoch], SignalBand::L1, SignalBand::L5);
 
@@ -421,17 +431,19 @@ mod tests {
     #[test]
     fn iono_free_code_does_not_require_carrier_lock_or_carrier_variance() {
         let l2 = signal_spec_gps_l2_py();
-        let epoch = dual_frequency_epoch(
-            SignalBand::L2,
-            SignalCode::Py,
-            l2,
-            20_200_005.0,
-            20_200_008.235308182,
-            true,
-            true,
-            1.0,
-            1.0,
-        );
+        let epoch = dual_frequency_epoch(DualFrequencyEpochRequest {
+            second_observation: DualFrequencySignalObservation {
+                band: SignalBand::L2,
+                code: SignalCode::Py,
+                signal: l2,
+                pseudorange_m: 20_200_008.235_308_18,
+                code_lock: true,
+                variance_m2: 1.0,
+            },
+            first_pseudorange_m: 20_200_005.0,
+            first_code_lock: true,
+            first_variance_m2: 1.0,
+        });
 
         let observations = iono_free_code_from_obs_epochs(&[epoch], SignalBand::L1, SignalBand::L2);
 
@@ -442,17 +454,19 @@ mod tests {
     #[test]
     fn iono_free_code_rejects_missing_code_lock() {
         let l2 = signal_spec_gps_l2_py();
-        let epoch = dual_frequency_epoch(
-            SignalBand::L2,
-            SignalCode::Py,
-            l2,
-            20_200_005.0,
-            20_200_008.235308182,
-            true,
-            false,
-            1.0,
-            1.0,
-        );
+        let epoch = dual_frequency_epoch(DualFrequencyEpochRequest {
+            second_observation: DualFrequencySignalObservation {
+                band: SignalBand::L2,
+                code: SignalCode::Py,
+                signal: l2,
+                pseudorange_m: 20_200_008.235_308_18,
+                code_lock: false,
+                variance_m2: 1.0,
+            },
+            first_pseudorange_m: 20_200_005.0,
+            first_code_lock: true,
+            first_variance_m2: 1.0,
+        });
 
         let observations = iono_free_code_from_obs_epochs(&[epoch], SignalBand::L1, SignalBand::L2);
 
@@ -471,17 +485,19 @@ mod tests {
             CodeBias { sig: l2_signal, bias_m: -0.5 },
         ]);
         let observations = iono_free_code_from_obs_epochs_with_biases(
-            &[dual_frequency_epoch(
-                SignalBand::L2,
-                SignalCode::Py,
-                signal_spec_gps_l2_py(),
-                20_200_010.0,
-                20_200_005.0,
-                true,
-                true,
-                1.0,
-                1.0,
-            )],
+            &[dual_frequency_epoch(DualFrequencyEpochRequest {
+                second_observation: DualFrequencySignalObservation {
+                    band: SignalBand::L2,
+                    code: SignalCode::Py,
+                    signal: signal_spec_gps_l2_py(),
+                    pseudorange_m: 20_200_005.0,
+                    code_lock: true,
+                    variance_m2: 1.0,
+                },
+                first_pseudorange_m: 20_200_010.0,
+                first_code_lock: true,
+                first_variance_m2: 1.0,
+            })],
             SignalBand::L1,
             SignalBand::L2,
             Some(&bias_table),
@@ -500,17 +516,19 @@ mod tests {
     #[test]
     fn iono_free_code_rejects_unsupported_band_pairs() {
         let observations = iono_free_code_from_obs_epochs(
-            &[dual_frequency_epoch(
-                SignalBand::L2,
-                SignalCode::Py,
-                signal_spec_gps_l2_py(),
-                20_200_010.0,
-                20_200_005.0,
-                true,
-                true,
-                1.0,
-                1.0,
-            )],
+            &[dual_frequency_epoch(DualFrequencyEpochRequest {
+                second_observation: DualFrequencySignalObservation {
+                    band: SignalBand::L2,
+                    code: SignalCode::Py,
+                    signal: signal_spec_gps_l2_py(),
+                    pseudorange_m: 20_200_005.0,
+                    code_lock: true,
+                    variance_m2: 1.0,
+                },
+                first_pseudorange_m: 20_200_010.0,
+                first_code_lock: true,
+                first_variance_m2: 1.0,
+            })],
             SignalBand::L2,
             SignalBand::L5,
         );

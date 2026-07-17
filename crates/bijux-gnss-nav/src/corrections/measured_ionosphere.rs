@@ -543,6 +543,18 @@ mod tests {
         cycle_slip: bool,
     }
 
+    struct SatelliteObservation {
+        sat: SatId,
+        band: SignalBand,
+        code: SignalCode,
+        signal: bijux_gnss_core::api::SignalSpec,
+        pseudorange_m: f64,
+        carrier_phase_cycles: f64,
+        code_lock: bool,
+        carrier_lock: bool,
+        cycle_slip: bool,
+    }
+
     fn dual_frequency_epoch(terms: EpochTerms) -> ObsEpoch {
         let sat = SatId { constellation: Constellation::Gps, prn: 11 };
         let l1_signal = signal_spec_gps_l1_ca();
@@ -562,32 +574,36 @@ mod tests {
             processing_ms: None,
             role: ReceiverRole::Rover,
             sats: vec![
-                make_satellite(
+                make_satellite(SatelliteObservation {
                     sat,
-                    SignalBand::L1,
-                    SignalCode::Ca,
-                    l1_signal,
-                    terms.l1_code_m,
-                    signal_meters_to_cycles(
+                    band: SignalBand::L1,
+                    code: SignalCode::Ca,
+                    signal: l1_signal,
+                    pseudorange_m: terms.l1_code_m,
+                    carrier_phase_cycles: signal_meters_to_cycles(
                         Meters(reference_phase_m + geometry_free_phase_m),
                         l1_signal,
                     )
                     .0,
-                    terms.code_lock,
-                    terms.carrier_lock,
-                    terms.cycle_slip,
-                ),
-                make_satellite(
+                    code_lock: terms.code_lock,
+                    carrier_lock: terms.carrier_lock,
+                    cycle_slip: terms.cycle_slip,
+                }),
+                make_satellite(SatelliteObservation {
                     sat,
-                    SignalBand::L2,
-                    SignalCode::Py,
-                    l2_signal,
-                    terms.l2_code_m,
-                    signal_meters_to_cycles(Meters(reference_phase_m), l2_signal).0,
-                    terms.code_lock,
-                    terms.carrier_lock,
-                    terms.cycle_slip,
-                ),
+                    band: SignalBand::L2,
+                    code: SignalCode::Py,
+                    signal: l2_signal,
+                    pseudorange_m: terms.l2_code_m,
+                    carrier_phase_cycles: signal_meters_to_cycles(
+                        Meters(reference_phase_m),
+                        l2_signal,
+                    )
+                    .0,
+                    code_lock: terms.code_lock,
+                    carrier_lock: terms.carrier_lock,
+                    cycle_slip: terms.cycle_slip,
+                }),
             ],
             decision: ObservationEpochDecision::Accepted,
             decision_reason: Some("accepted_observables_present".to_string()),
@@ -595,27 +611,26 @@ mod tests {
         }
     }
 
-    fn make_satellite(
-        sat: SatId,
-        band: SignalBand,
-        code: SignalCode,
-        signal: bijux_gnss_core::api::SignalSpec,
-        pseudorange_m: f64,
-        carrier_phase_cycles: f64,
-        code_lock: bool,
-        carrier_lock: bool,
-        cycle_slip: bool,
-    ) -> ObsSatellite {
+    fn make_satellite(observation: SatelliteObservation) -> ObsSatellite {
         ObsSatellite {
-            signal_id: SigId { sat, band, code },
-            pseudorange_m: Meters(pseudorange_m),
+            signal_id: SigId {
+                sat: observation.sat,
+                band: observation.band,
+                code: observation.code,
+            },
+            pseudorange_m: Meters(observation.pseudorange_m),
             pseudorange_var_m2: 1.0,
-            carrier_phase_cycles: bijux_gnss_core::api::Cycles(carrier_phase_cycles),
+            carrier_phase_cycles: bijux_gnss_core::api::Cycles(observation.carrier_phase_cycles),
             carrier_phase_var_cycles2: 0.01,
             doppler_hz: Hertz(0.0),
             doppler_var_hz2: 0.0,
             cn0_dbhz: 45.0,
-            lock_flags: LockFlags { code_lock, carrier_lock, bit_lock: false, cycle_slip },
+            lock_flags: LockFlags {
+                code_lock: observation.code_lock,
+                carrier_lock: observation.carrier_lock,
+                bit_lock: false,
+                cycle_slip: observation.cycle_slip,
+            },
             multipath_suspect: false,
             observation_status: ObservationStatus::Accepted,
             observation_reject_reasons: Vec::new(),
@@ -631,7 +646,7 @@ mod tests {
                 smoothing_window: 0,
                 smoothing_age: 0,
                 smoothing_resets: 0,
-                signal,
+                signal: observation.signal,
                 ..ObsMetadata::default()
             },
         }
@@ -745,9 +760,9 @@ mod tests {
                     < 1.0e-6
             );
         }
-        assert_eq!(observations[0].phase_arc_reset, true);
-        assert_eq!(observations[1].phase_arc_reset, false);
-        assert_eq!(observations[2].phase_arc_reset, false);
+        assert!(observations[0].phase_arc_reset);
+        assert!(!observations[1].phase_arc_reset);
+        assert!(!observations[2].phase_arc_reset);
     }
 
     #[test]
@@ -795,8 +810,8 @@ mod tests {
         );
 
         assert_eq!(observations.len(), 2);
-        assert_eq!(observations[0].phase_arc_reset, true);
-        assert_eq!(observations[1].phase_arc_reset, true);
+        assert!(observations[0].phase_arc_reset);
+        assert!(observations[1].phase_arc_reset);
         assert_eq!(observations[1].phase_status, "ok");
         assert!(
             (observations[1].phase_delay_band_1_m.expect("releveled phase delay")

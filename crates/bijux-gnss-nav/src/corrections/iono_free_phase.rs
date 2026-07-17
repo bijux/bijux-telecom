@@ -214,17 +214,23 @@ mod tests {
 
     const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
 
-    fn dual_frequency_epoch(
-        second_band: SignalBand,
-        second_code: SignalCode,
-        second_signal: bijux_gnss_core::api::SignalSpec,
-        phase_1_cycles: f64,
-        phase_2_cycles: f64,
-        carrier_lock_1: bool,
-        carrier_lock_2: bool,
-        variance_1_cycles2: f64,
-        variance_2_cycles2: f64,
-    ) -> ObsEpoch {
+    struct DualFrequencySignalObservation {
+        band: SignalBand,
+        code: SignalCode,
+        signal: bijux_gnss_core::api::SignalSpec,
+        phase_cycles: f64,
+        carrier_lock: bool,
+        variance_cycles2: f64,
+    }
+
+    struct DualFrequencyEpochRequest {
+        second_observation: DualFrequencySignalObservation,
+        first_phase_cycles: f64,
+        first_carrier_lock: bool,
+        first_variance_cycles2: f64,
+    }
+
+    fn dual_frequency_epoch(request: DualFrequencyEpochRequest) -> ObsEpoch {
         let sat = SatId { constellation: Constellation::Gps, prn: 11 };
         let signal_1 = signal_spec_gps_l1_ca();
         ObsEpoch {
@@ -243,18 +249,18 @@ mod tests {
                     SignalBand::L1,
                     SignalCode::Ca,
                     signal_1,
-                    phase_1_cycles,
-                    carrier_lock_1,
-                    variance_1_cycles2,
+                    request.first_phase_cycles,
+                    request.first_carrier_lock,
+                    request.first_variance_cycles2,
                 ),
                 make_satellite(
                     sat,
-                    second_band,
-                    second_code,
-                    second_signal,
-                    phase_2_cycles,
-                    carrier_lock_2,
-                    variance_2_cycles2,
+                    request.second_observation.band,
+                    request.second_observation.code,
+                    request.second_observation.signal,
+                    request.second_observation.phase_cycles,
+                    request.second_observation.carrier_lock,
+                    request.second_observation.variance_cycles2,
                 ),
             ],
             decision: ObservationEpochDecision::Accepted,
@@ -322,17 +328,19 @@ mod tests {
             / (l2.carrier_hz.value() * l2.carrier_hz.value());
         let lambda1 = SPEED_OF_LIGHT_MPS / l1.carrier_hz.value();
         let lambda2 = SPEED_OF_LIGHT_MPS / l2.carrier_hz.value();
-        let epoch = dual_frequency_epoch(
-            SignalBand::L2,
-            SignalCode::Py,
-            l2,
-            carrier_cycles(base_range_m, iono_l1_m, lambda1, 0.0),
-            carrier_cycles(base_range_m, iono_l2_m, lambda2, 0.0),
-            true,
-            true,
-            0.01,
-            0.04,
-        );
+        let epoch = dual_frequency_epoch(DualFrequencyEpochRequest {
+            second_observation: DualFrequencySignalObservation {
+                band: SignalBand::L2,
+                code: SignalCode::Py,
+                signal: l2,
+                phase_cycles: carrier_cycles(base_range_m, iono_l2_m, lambda2, 0.0),
+                carrier_lock: true,
+                variance_cycles2: 0.04,
+            },
+            first_phase_cycles: carrier_cycles(base_range_m, iono_l1_m, lambda1, 0.0),
+            first_carrier_lock: true,
+            first_variance_cycles2: 0.01,
+        });
 
         let observations =
             iono_free_phase_from_obs_epochs(&[epoch], SignalBand::L1, SignalBand::L2);
@@ -363,17 +371,19 @@ mod tests {
             / (l5.carrier_hz.value() * l5.carrier_hz.value());
         let lambda1 = SPEED_OF_LIGHT_MPS / l1.carrier_hz.value();
         let lambda5 = SPEED_OF_LIGHT_MPS / l5.carrier_hz.value();
-        let epoch = dual_frequency_epoch(
-            SignalBand::L5,
-            SignalCode::Unknown,
-            l5,
-            carrier_cycles(base_range_m, iono_l1_m, lambda1, 0.0),
-            carrier_cycles(base_range_m, iono_l5_m, lambda5, 0.0),
-            true,
-            true,
-            0.01,
-            0.01,
-        );
+        let epoch = dual_frequency_epoch(DualFrequencyEpochRequest {
+            second_observation: DualFrequencySignalObservation {
+                band: SignalBand::L5,
+                code: SignalCode::Unknown,
+                signal: l5,
+                phase_cycles: carrier_cycles(base_range_m, iono_l5_m, lambda5, 0.0),
+                carrier_lock: true,
+                variance_cycles2: 0.01,
+            },
+            first_phase_cycles: carrier_cycles(base_range_m, iono_l1_m, lambda1, 0.0),
+            first_carrier_lock: true,
+            first_variance_cycles2: 0.01,
+        });
 
         let observations =
             iono_free_phase_from_obs_epochs(&[epoch], SignalBand::L1, SignalBand::L5);
@@ -395,17 +405,24 @@ mod tests {
             / (l2.carrier_hz.value() * l2.carrier_hz.value());
         let lambda1 = SPEED_OF_LIGHT_MPS / l1.carrier_hz.value();
         let lambda2 = SPEED_OF_LIGHT_MPS / l2.carrier_hz.value();
-        let epoch = dual_frequency_epoch(
-            SignalBand::L2,
-            SignalCode::Py,
-            l2,
-            carrier_cycles(base_range_m, iono_l1_m, lambda1, ambiguity_l1_cycles),
-            carrier_cycles(base_range_m, iono_l2_m, lambda2, ambiguity_l2_cycles),
-            true,
-            true,
-            0.01,
-            0.01,
-        );
+        let epoch = dual_frequency_epoch(DualFrequencyEpochRequest {
+            second_observation: DualFrequencySignalObservation {
+                band: SignalBand::L2,
+                code: SignalCode::Py,
+                signal: l2,
+                phase_cycles: carrier_cycles(base_range_m, iono_l2_m, lambda2, ambiguity_l2_cycles),
+                carrier_lock: true,
+                variance_cycles2: 0.01,
+            },
+            first_phase_cycles: carrier_cycles(
+                base_range_m,
+                iono_l1_m,
+                lambda1,
+                ambiguity_l1_cycles,
+            ),
+            first_carrier_lock: true,
+            first_variance_cycles2: 0.01,
+        });
 
         let observations =
             iono_free_phase_from_obs_epochs(&[epoch], SignalBand::L1, SignalBand::L2);
@@ -429,17 +446,19 @@ mod tests {
     #[test]
     fn iono_free_phase_does_not_require_code_lock_or_code_variance() {
         let l2 = signal_spec_gps_l2_py();
-        let epoch = dual_frequency_epoch(
-            SignalBand::L2,
-            SignalCode::Py,
-            l2,
-            1000.0,
-            1001.0,
-            true,
-            true,
-            0.01,
-            0.01,
-        );
+        let epoch = dual_frequency_epoch(DualFrequencyEpochRequest {
+            second_observation: DualFrequencySignalObservation {
+                band: SignalBand::L2,
+                code: SignalCode::Py,
+                signal: l2,
+                phase_cycles: 1001.0,
+                carrier_lock: true,
+                variance_cycles2: 0.01,
+            },
+            first_phase_cycles: 1000.0,
+            first_carrier_lock: true,
+            first_variance_cycles2: 0.01,
+        });
 
         let observations =
             iono_free_phase_from_obs_epochs(&[epoch], SignalBand::L1, SignalBand::L2);
@@ -452,17 +471,19 @@ mod tests {
     #[test]
     fn iono_free_phase_rejects_missing_carrier_lock() {
         let l2 = signal_spec_gps_l2_py();
-        let epoch = dual_frequency_epoch(
-            SignalBand::L2,
-            SignalCode::Py,
-            l2,
-            1000.0,
-            1001.0,
-            true,
-            false,
-            0.01,
-            0.01,
-        );
+        let epoch = dual_frequency_epoch(DualFrequencyEpochRequest {
+            second_observation: DualFrequencySignalObservation {
+                band: SignalBand::L2,
+                code: SignalCode::Py,
+                signal: l2,
+                phase_cycles: 1001.0,
+                carrier_lock: false,
+                variance_cycles2: 0.01,
+            },
+            first_phase_cycles: 1000.0,
+            first_carrier_lock: true,
+            first_variance_cycles2: 0.01,
+        });
 
         let observations =
             iono_free_phase_from_obs_epochs(&[epoch], SignalBand::L1, SignalBand::L2);
@@ -476,17 +497,19 @@ mod tests {
     #[test]
     fn iono_free_phase_rejects_unsupported_band_pairs() {
         let observations = iono_free_phase_from_obs_epochs(
-            &[dual_frequency_epoch(
-                SignalBand::L2,
-                SignalCode::Py,
-                signal_spec_gps_l2_py(),
-                1000.0,
-                1001.0,
-                true,
-                true,
-                0.01,
-                0.01,
-            )],
+            &[dual_frequency_epoch(DualFrequencyEpochRequest {
+                second_observation: DualFrequencySignalObservation {
+                    band: SignalBand::L2,
+                    code: SignalCode::Py,
+                    signal: signal_spec_gps_l2_py(),
+                    phase_cycles: 1001.0,
+                    carrier_lock: true,
+                    variance_cycles2: 0.01,
+                },
+                first_phase_cycles: 1000.0,
+                first_carrier_lock: true,
+                first_variance_cycles2: 0.01,
+            })],
             SignalBand::L2,
             SignalBand::L5,
         );

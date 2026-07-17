@@ -1534,9 +1534,11 @@ mod tests {
 
     #[test]
     fn position_filter_assigns_larger_sigma_to_low_elevation_pseudorange() {
-        let mut config = PositionFilterConfig::default();
-        config.base_pseudorange_sigma_m = 3.0;
-        config.weighting = WeightingConfig::default();
+        let config = PositionFilterConfig {
+            base_pseudorange_sigma_m: 3.0,
+            weighting: WeightingConfig::default(),
+            ..PositionFilterConfig::default()
+        };
 
         let low_elevation_sigma = pseudorange_sigma_m(
             &sample_position_observation(45.0, Some(10.0)),
@@ -1556,10 +1558,14 @@ mod tests {
 
     #[test]
     fn position_filter_assigns_larger_sigma_to_low_cn0_pseudorange() {
-        let mut config = PositionFilterConfig::default();
-        config.base_pseudorange_sigma_m = 3.0;
-        config.weighting =
-            WeightingConfig { model: PositionWeightingModel::Cn0, ..WeightingConfig::default() };
+        let config = PositionFilterConfig {
+            base_pseudorange_sigma_m: 3.0,
+            weighting: WeightingConfig {
+                model: PositionWeightingModel::Cn0,
+                ..WeightingConfig::default()
+            },
+            ..PositionFilterConfig::default()
+        };
 
         let weak_signal_sigma = pseudorange_sigma_m(
             &sample_position_observation(28.0, Some(45.0)),
@@ -1579,11 +1585,13 @@ mod tests {
 
     #[test]
     fn position_filter_assigns_larger_sigma_to_low_elevation_and_low_cn0_pseudorange() {
-        let mut config = PositionFilterConfig::default();
-        config.base_pseudorange_sigma_m = 3.0;
-        config.weighting = WeightingConfig {
-            model: PositionWeightingModel::ElevationCn0,
-            ..WeightingConfig::default()
+        let config = PositionFilterConfig {
+            base_pseudorange_sigma_m: 3.0,
+            weighting: WeightingConfig {
+                model: PositionWeightingModel::ElevationCn0,
+                ..WeightingConfig::default()
+            },
+            ..PositionFilterConfig::default()
         };
 
         let weak_low_sigma = pseudorange_sigma_m(

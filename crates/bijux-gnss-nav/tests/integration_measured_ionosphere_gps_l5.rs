@@ -11,57 +11,65 @@ use bijux_gnss_signal::api::{
     signal_spec_gps_l5,
 };
 
-fn dual_frequency_epoch(
+struct DualFrequencySignalObservation {
+    band: SignalBand,
+    code: SignalCode,
+    signal: SignalSpec,
+    pseudorange_m: f64,
+}
+
+struct DualFrequencyEpochRequest {
     sat: SatId,
     epoch_idx: u64,
     discontinuity: bool,
-    first_band: SignalBand,
-    first_code: SignalCode,
-    first_signal: SignalSpec,
-    first_code_m: f64,
-    second_band: SignalBand,
-    second_code: SignalCode,
-    second_signal: SignalSpec,
-    second_code_m: f64,
+    first_observation: DualFrequencySignalObservation,
+    second_observation: DualFrequencySignalObservation,
     phase_bias_m: f64,
     cycle_slip: bool,
-) -> ObsEpoch {
-    let geometry_free_code_m = second_code_m - first_code_m;
-    let geometry_free_phase_m = geometry_free_code_m + phase_bias_m;
+}
+
+fn dual_frequency_epoch(request: DualFrequencyEpochRequest) -> ObsEpoch {
+    let geometry_free_code_m =
+        request.second_observation.pseudorange_m - request.first_observation.pseudorange_m;
+    let geometry_free_phase_m = geometry_free_code_m + request.phase_bias_m;
     let reference_phase_m = 22_000_000.0;
 
     ObsEpoch {
-        t_rx_s: Seconds(epoch_idx as f64),
-        source_time: ReceiverSampleTrace::from_sample_index(epoch_idx, 1_000.0),
+        t_rx_s: Seconds(request.epoch_idx as f64),
+        source_time: ReceiverSampleTrace::from_sample_index(request.epoch_idx, 1_000.0),
         gps_week: None,
         tow_s: None,
-        epoch_idx,
-        discontinuity,
+        epoch_idx: request.epoch_idx,
+        discontinuity: request.discontinuity,
         valid: true,
         processing_ms: None,
         role: ReceiverRole::Rover,
         sats: vec![
             satellite(
-                sat,
-                first_band,
-                first_code,
-                first_signal,
-                first_code_m,
+                request.sat,
+                request.first_observation.band,
+                request.first_observation.code,
+                request.first_observation.signal,
+                request.first_observation.pseudorange_m,
                 signal_meters_to_cycles(
                     Meters(reference_phase_m + geometry_free_phase_m),
-                    first_signal,
+                    request.first_observation.signal,
                 )
                 .0,
-                cycle_slip,
+                request.cycle_slip,
             ),
             satellite(
-                sat,
-                second_band,
-                second_code,
-                second_signal,
-                second_code_m,
-                signal_meters_to_cycles(Meters(reference_phase_m), second_signal).0,
-                cycle_slip,
+                request.sat,
+                request.second_observation.band,
+                request.second_observation.code,
+                request.second_observation.signal,
+                request.second_observation.pseudorange_m,
+                signal_meters_to_cycles(
+                    Meters(reference_phase_m),
+                    request.second_observation.signal,
+                )
+                .0,
+                request.cycle_slip,
             ),
         ],
         decision: ObservationEpochDecision::Accepted,
@@ -121,21 +129,25 @@ fn measured_ionosphere_recovers_gps_l1_l5_slant_delay() {
         .0;
 
     let observations = measured_ionosphere_from_obs_epochs(
-        &[dual_frequency_epoch(
+        &[dual_frequency_epoch(DualFrequencyEpochRequest {
             sat,
-            0,
-            false,
-            SignalBand::L1,
-            SignalCode::Ca,
-            l1,
-            24_000_000.0 + l1_delay_m,
-            SignalBand::L5,
-            SignalCode::Unknown,
-            l5,
-            24_000_000.0 + l5_delay_m,
-            4.25,
-            false,
-        )],
+            epoch_idx: 0,
+            discontinuity: false,
+            first_observation: DualFrequencySignalObservation {
+                band: SignalBand::L1,
+                code: SignalCode::Ca,
+                signal: l1,
+                pseudorange_m: 24_000_000.0 + l1_delay_m,
+            },
+            second_observation: DualFrequencySignalObservation {
+                band: SignalBand::L5,
+                code: SignalCode::Unknown,
+                signal: l5,
+                pseudorange_m: 24_000_000.0 + l5_delay_m,
+            },
+            phase_bias_m: 4.25,
+            cycle_slip: false,
+        })],
         SignalBand::L1,
         SignalBand::L5,
     );
@@ -144,7 +156,7 @@ fn measured_ionosphere_recovers_gps_l1_l5_slant_delay() {
     let observation = &observations[0];
     assert_eq!(observation.code_status, "ok");
     assert_eq!(observation.phase_status, "ok");
-    assert_eq!(observation.phase_arc_reset, true);
+    assert!(observation.phase_arc_reset);
     assert!((observation.code_delay_band_1_m.expect("L1 delay") - l1_delay_m).abs() < 1.0e-6);
     assert!((observation.code_delay_band_2_m.expect("L5 delay") - l5_delay_m).abs() < 1.0e-6);
     assert!(
@@ -161,36 +173,44 @@ fn measured_ionosphere_relevels_gps_l1_l5_phase_arc_after_cycle_slip() {
     let l1 = signal_spec_gps_l1_ca();
     let l5 = signal_spec_gps_l5();
     let epochs = vec![
-        dual_frequency_epoch(
+        dual_frequency_epoch(DualFrequencyEpochRequest {
             sat,
-            0,
-            false,
-            SignalBand::L1,
-            SignalCode::Ca,
-            l1,
-            24_000_006.5,
-            SignalBand::L5,
-            SignalCode::Unknown,
-            l5,
-            24_000_003.0,
-            4.25,
-            false,
-        ),
-        dual_frequency_epoch(
+            epoch_idx: 0,
+            discontinuity: false,
+            first_observation: DualFrequencySignalObservation {
+                band: SignalBand::L1,
+                code: SignalCode::Ca,
+                signal: l1,
+                pseudorange_m: 24_000_006.5,
+            },
+            second_observation: DualFrequencySignalObservation {
+                band: SignalBand::L5,
+                code: SignalCode::Unknown,
+                signal: l5,
+                pseudorange_m: 24_000_003.0,
+            },
+            phase_bias_m: 4.25,
+            cycle_slip: false,
+        }),
+        dual_frequency_epoch(DualFrequencyEpochRequest {
             sat,
-            1,
-            false,
-            SignalBand::L1,
-            SignalCode::Ca,
-            l1,
-            24_000_006.5,
-            SignalBand::L5,
-            SignalCode::Unknown,
-            l5,
-            24_000_003.0,
-            6.75,
-            true,
-        ),
+            epoch_idx: 1,
+            discontinuity: false,
+            first_observation: DualFrequencySignalObservation {
+                band: SignalBand::L1,
+                code: SignalCode::Ca,
+                signal: l1,
+                pseudorange_m: 24_000_006.5,
+            },
+            second_observation: DualFrequencySignalObservation {
+                band: SignalBand::L5,
+                code: SignalCode::Unknown,
+                signal: l5,
+                pseudorange_m: 24_000_003.0,
+            },
+            phase_bias_m: 6.75,
+            cycle_slip: true,
+        }),
     ];
 
     let observations = measured_ionosphere_from_obs_epochs(&epochs, SignalBand::L1, SignalBand::L5);

@@ -731,10 +731,11 @@ mod tests {
         canonical_receiver_antenna_type, receiver_antenna_frame_ecef,
         receiver_antenna_range_correction_m, satellite_antenna_frame_ecef,
         satellite_antenna_range_correction_m, satellite_band_from_antex_frequency,
-        AntennaAzimuthPhaseCenterVariation, AntennaPhaseCenterVariation,
-        ReceiverAntennaCalibration, ReceiverAntennaCalibrations, ReceiverAntennaFrame,
-        ReceiverPhaseCenterOffset, SatelliteAntennaCalibration, SatelliteAntennaCalibrations,
-        SatelliteAntennaFrame, SatellitePhaseCenterOffset,
+        AntennaAzimuthPhaseCenterVariation, AntennaPhaseCenterVariation, AntennaPhaseGeometry,
+        AntennaRangeGeometry, DualFrequencySignal, ReceiverAntennaCalibration,
+        ReceiverAntennaCalibrations, ReceiverAntennaFrame, ReceiverPhaseCenterOffset,
+        SatelliteAntennaCalibration, SatelliteAntennaCalibrations, SatelliteAntennaFrame,
+        SatellitePhaseCenterOffset,
     };
 
     #[test]

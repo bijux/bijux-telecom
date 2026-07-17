@@ -5,8 +5,9 @@ use super::{
     phase_windup_cycles_for_satellite, ppp_code_sigma_m, ppp_common_range_sigma_m,
     ppp_indices_from_state_identities, ppp_measurement_observations, ppp_phase_sigma_cycles,
     ppp_state_label, ppp_stochastic_evidence_from_config, resolved_code_bias_m,
-    resolved_iono_free_code_bias_m, single_frequency_antenna_range_correction_m, PppFilter,
-    PppPhaseBreaks, SPEED_OF_LIGHT_MPS,
+    resolved_iono_free_code_bias_m, single_frequency_antenna_range_correction_m,
+    IonoFreeAntennaCorrectionRequest, PppFilter, PppPhaseBreaks,
+    SingleFrequencyAntennaCorrectionRequest, SPEED_OF_LIGHT_MPS,
 };
 use crate::api::{
     ecef_to_geodetic, elevation_azimuth_deg, geodetic_to_ecef, BroadcastProductsProvider,
@@ -29,9 +30,9 @@ use crate::formats::precise_products::{
     PreciseProductDiscontinuity, PreciseProductDiscontinuityKind, PreciseProductSurface,
 };
 use crate::models::antenna::{
-    AntennaPhaseCenterVariation, ReceiverAntennaCalibration, ReceiverAntennaCalibrations,
-    ReceiverPhaseCenterOffset, SatelliteAntennaCalibration, SatelliteAntennaCalibrations,
-    SatellitePhaseCenterOffset,
+    AntennaPhaseCenterVariation, AntennaPhaseGeometry, AntennaRangeGeometry, DualFrequencySignal,
+    ReceiverAntennaCalibration, ReceiverAntennaCalibrations, ReceiverPhaseCenterOffset,
+    SatelliteAntennaCalibration, SatelliteAntennaCalibrations, SatellitePhaseCenterOffset,
 };
 use crate::models::atmosphere::SaastamoinenModel;
 use bijux_gnss_core::api::{

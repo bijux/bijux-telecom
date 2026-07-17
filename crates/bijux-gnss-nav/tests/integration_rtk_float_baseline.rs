@@ -105,7 +105,7 @@ fn wavelength_for_observation(observation: &RtkDoubleDifferenceObservation) -> f
     }
 }
 
-fn synthetic_double_difference(
+struct SyntheticDoubleDifferenceRequest {
     sig: SigId,
     ref_sig: SigId,
     signal_position_m: [f64; 3],
@@ -114,7 +114,21 @@ fn synthetic_double_difference(
     rover_ecef_m: [f64; 3],
     ambiguity_cycles: f64,
     glonass_channel: Option<GlonassFrequencyChannel>,
+}
+
+fn synthetic_double_difference(
+    request: SyntheticDoubleDifferenceRequest,
 ) -> (RtkDoubleDifferenceObservation, RtkDoubleDifferenceSatelliteStates) {
+    let SyntheticDoubleDifferenceRequest {
+        sig,
+        ref_sig,
+        signal_position_m,
+        reference_position_m,
+        base_ecef_m,
+        rover_ecef_m,
+        ambiguity_cycles,
+        glonass_channel,
+    } = request;
     let signal_rover_range_m = geometric_range_m(rover_ecef_m, signal_position_m);
     let signal_base_range_m = geometric_range_m(base_ecef_m, signal_position_m);
     let reference_rover_range_m = geometric_range_m(rover_ecef_m, reference_position_m);
@@ -349,7 +363,7 @@ fn rtk_float_baseline_solver_combines_constellation_aware_double_differences() {
     let mut satellite_states = Vec::new();
     for (sig, ref_sig, signal_position_m, reference_position_m, ambiguity_cycles, channel) in cases
     {
-        let (observation, states) = synthetic_double_difference(
+        let (observation, states) = synthetic_double_difference(SyntheticDoubleDifferenceRequest {
             sig,
             ref_sig,
             signal_position_m,
@@ -357,8 +371,8 @@ fn rtk_float_baseline_solver_combines_constellation_aware_double_differences() {
             base_ecef_m,
             rover_ecef_m,
             ambiguity_cycles,
-            channel,
-        );
+            glonass_channel: channel,
+        });
         observations.push(observation);
         satellite_states.push(states);
     }
@@ -442,7 +456,7 @@ fn rtk_execution_wrappers_project_constellation_state_baseline() {
     let mut satellite_states = Vec::new();
     for (sig, ref_sig, signal_position_m, reference_position_m, ambiguity_cycles, channel) in cases
     {
-        let (observation, states) = synthetic_double_difference(
+        let (observation, states) = synthetic_double_difference(SyntheticDoubleDifferenceRequest {
             sig,
             ref_sig,
             signal_position_m,
@@ -450,8 +464,8 @@ fn rtk_execution_wrappers_project_constellation_state_baseline() {
             base_ecef_m,
             rover_ecef_m,
             ambiguity_cycles,
-            channel,
-        );
+            glonass_channel: channel,
+        });
         observations.push(observation);
         satellite_states.push(states);
     }
@@ -479,16 +493,16 @@ fn rtk_execution_wrappers_project_constellation_state_baseline() {
 fn rtk_float_baseline_solver_refuses_mismatched_constellation_time_scale() {
     let base_ecef_m = [6_378_137.0, 0.0, 0.0];
     let rover_ecef_m = [6_378_141.0, -2.0, 1.0];
-    let (observation, mut states) = synthetic_double_difference(
-        sig(Constellation::Galileo, 19, SignalBand::E1, SignalCode::E1B),
-        sig(Constellation::Galileo, 11, SignalBand::E1, SignalCode::E1B),
-        [-14_500_000.0, 19_600_000.0, 18_100_000.0],
-        [9_800_000.0, 21_400_000.0, 15_900_000.0],
+    let (observation, mut states) = synthetic_double_difference(SyntheticDoubleDifferenceRequest {
+        sig: sig(Constellation::Galileo, 19, SignalBand::E1, SignalCode::E1B),
+        ref_sig: sig(Constellation::Galileo, 11, SignalBand::E1, SignalCode::E1B),
+        signal_position_m: [-14_500_000.0, 19_600_000.0, 18_100_000.0],
+        reference_position_m: [9_800_000.0, 21_400_000.0, 15_900_000.0],
         base_ecef_m,
         rover_ecef_m,
-        -7.0,
-        None,
-    );
+        ambiguity_cycles: -7.0,
+        glonass_channel: None,
+    });
     states.rover_signal.time_scale = RtkConstellationTimeScale::Gps;
     let mut observations = vec![observation.clone(), observation.clone(), observation];
     observations[1].sig.sat.prn = 20;
@@ -512,16 +526,16 @@ fn rtk_float_baseline_solver_refuses_uncalibrated_glonass_fdma_phase() {
     let rover_ecef_m = enu_to_ecef(base_ecef_m, truth_enu_m);
     let shared_channel = GlonassFrequencyChannel::new(-4).expect("valid GLONASS channel");
     let other_channel = GlonassFrequencyChannel::new(3).expect("valid GLONASS channel");
-    let (mut observation, states) = synthetic_double_difference(
-        sig(Constellation::Glonass, 8, SignalBand::L1, SignalCode::Unknown),
-        sig(Constellation::Glonass, 4, SignalBand::L1, SignalCode::Unknown),
-        [-19_500_000.0, -10_400_000.0, 18_800_000.0],
-        [4_400_000.0, -21_100_000.0, 16_600_000.0],
+    let (mut observation, states) = synthetic_double_difference(SyntheticDoubleDifferenceRequest {
+        sig: sig(Constellation::Glonass, 8, SignalBand::L1, SignalCode::Unknown),
+        ref_sig: sig(Constellation::Glonass, 4, SignalBand::L1, SignalCode::Unknown),
+        signal_position_m: [-19_500_000.0, -10_400_000.0, 18_800_000.0],
+        reference_position_m: [4_400_000.0, -21_100_000.0, 16_600_000.0],
         base_ecef_m,
         rover_ecef_m,
-        -3.0,
-        Some(shared_channel),
-    );
+        ambiguity_cycles: -3.0,
+        glonass_channel: Some(shared_channel),
+    });
     observation.glonass_inter_frequency_bias = RtkGlonassInterFrequencyBiasEvidence {
         status: RtkGlonassInterFrequencyBiasStatus::CalibrationRequired,
         signal_channel: Some(shared_channel),

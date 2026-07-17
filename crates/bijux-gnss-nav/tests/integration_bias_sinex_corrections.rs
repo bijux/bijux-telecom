@@ -25,17 +25,21 @@ fn absolute_bias_sinex_corrects_gps_l1_l2_iono_free_code() {
     let iono_l1_m = 4.0;
     let l1_bias_m = 3.0e-9 * SPEED_OF_LIGHT_MPS;
     let l2_bias_m = 9.0e-9 * SPEED_OF_LIGHT_MPS;
-    let epoch = dual_frequency_epoch(
+    let epoch = dual_frequency_epoch(DualFrequencyEpochRequest {
         sat,
-        SignalBand::L1,
-        SignalCode::Ca,
-        l1,
-        base_range_m + iono_l1_m + l1_bias_m,
-        SignalBand::L2,
-        SignalCode::Py,
-        l2,
-        base_range_m + dispersive_delay_at_band(iono_l1_m, l1, l2) + l2_bias_m,
-    );
+        primary_observation: DualFrequencySignalObservation {
+            band: SignalBand::L1,
+            code: SignalCode::Ca,
+            signal: l1,
+            pseudorange_m: base_range_m + iono_l1_m + l1_bias_m,
+        },
+        secondary_observation: DualFrequencySignalObservation {
+            band: SignalBand::L2,
+            code: SignalCode::Py,
+            signal: l2,
+            pseudorange_m: base_range_m + dispersive_delay_at_band(iono_l1_m, l1, l2) + l2_bias_m,
+        },
+    });
 
     let observations = iono_free_code_from_obs_epochs_with_biases(
         &[epoch],
@@ -68,17 +72,21 @@ fn relative_bias_sinex_derives_galileo_e1_e5_corrections() {
     let (weight_1, weight_2) = iono_free_weights(e1.carrier_hz.value(), e5.carrier_hz.value());
     let e1_bias_m = isb_m + weight_2 * dsb_m;
     let e5_bias_m = isb_m - weight_1 * dsb_m;
-    let epoch = dual_frequency_epoch(
+    let epoch = dual_frequency_epoch(DualFrequencyEpochRequest {
         sat,
-        SignalBand::E1,
-        SignalCode::E1B,
-        e1,
-        base_range_m + iono_e1_m + e1_bias_m,
-        SignalBand::E5,
-        SignalCode::E5a,
-        e5,
-        base_range_m + dispersive_delay_at_band(iono_e1_m, e1, e5) + e5_bias_m,
-    );
+        primary_observation: DualFrequencySignalObservation {
+            band: SignalBand::E1,
+            code: SignalCode::E1B,
+            signal: e1,
+            pseudorange_m: base_range_m + iono_e1_m + e1_bias_m,
+        },
+        secondary_observation: DualFrequencySignalObservation {
+            band: SignalBand::E5,
+            code: SignalCode::E5a,
+            signal: e5,
+            pseudorange_m: base_range_m + dispersive_delay_at_band(iono_e1_m, e1, e5) + e5_bias_m,
+        },
+    });
 
     let observations = iono_free_code_from_obs_epochs_with_biases(
         &[epoch],
@@ -96,17 +104,21 @@ fn relative_bias_sinex_derives_galileo_e1_e5_corrections() {
     );
 }
 
-fn dual_frequency_epoch(
+struct DualFrequencySignalObservation {
+    band: SignalBand,
+    code: SignalCode,
+    signal: SignalSpec,
+    pseudorange_m: f64,
+}
+
+struct DualFrequencyEpochRequest {
     sat: SatId,
-    first_band: SignalBand,
-    first_code: SignalCode,
-    first_signal: SignalSpec,
-    first_pseudorange_m: f64,
-    second_band: SignalBand,
-    second_code: SignalCode,
-    second_signal: SignalSpec,
-    second_pseudorange_m: f64,
-) -> ObsEpoch {
+    primary_observation: DualFrequencySignalObservation,
+    secondary_observation: DualFrequencySignalObservation,
+}
+
+fn dual_frequency_epoch(request: DualFrequencyEpochRequest) -> ObsEpoch {
+    let DualFrequencyEpochRequest { sat, primary_observation, secondary_observation } = request;
     ObsEpoch {
         t_rx_s: Seconds(0.0),
         source_time: ReceiverSampleTrace::from_sample_index(0, 1_000.0),
@@ -118,8 +130,20 @@ fn dual_frequency_epoch(
         processing_ms: None,
         role: ReceiverRole::Rover,
         sats: vec![
-            satellite(sat, first_band, first_code, first_signal, first_pseudorange_m),
-            satellite(sat, second_band, second_code, second_signal, second_pseudorange_m),
+            satellite(
+                sat,
+                primary_observation.band,
+                primary_observation.code,
+                primary_observation.signal,
+                primary_observation.pseudorange_m,
+            ),
+            satellite(
+                sat,
+                secondary_observation.band,
+                secondary_observation.code,
+                secondary_observation.signal,
+                secondary_observation.pseudorange_m,
+            ),
         ],
         decision: ObservationEpochDecision::Accepted,
         decision_reason: Some("accepted_observables_present".to_string()),
