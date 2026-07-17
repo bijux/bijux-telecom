@@ -11,6 +11,8 @@ The crate owns:
 
 These define how a receiver run is configured and what runtime hooks are available.
 
+The runtime-composition layer behind those contracts is detailed in [RUNTIME.md](RUNTIME.md).
+
 ## Stage execution contract
 
 The pipeline layer owns:
@@ -34,3 +36,6 @@ The in-memory artifact boundary is detailed in [ARTIFACTS.md](ARTIFACTS.md).
 When `nav` is enabled, the crate also owns receiver-boundary validation helpers, synthetic scenario
 execution, and covariance realism support. These are runtime-facing validation capabilities, not the
 repository-facing validation contract owned by `infra`.
+
+The execution-time source, sink, and clock seams that support this boundary are detailed in
+[PORTS.md](PORTS.md).
