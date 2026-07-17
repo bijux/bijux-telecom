@@ -5,8 +5,7 @@ pub use crate::artifact::v1::nav::NavSolutionEpochV1;
 pub use crate::artifact::v1::obs::ObsEpochV1;
 pub use crate::artifact::v1::obs_decision::ObsDecisionV1;
 pub use crate::artifact::v1::support_matrix::SupportMatrixV1;
-pub use crate::artifact::v1::track::TrackEpochV1;
-pub use crate::artifact::v1::track_transition::TrackTransitionV1;
+pub use crate::artifact::v1::tracking::{TrackEpochV1, TrackTransitionV1};
 pub use crate::artifact::v1::{ppp, rtk};
 /// Artifact headers and versioned payloads.
 pub use crate::artifact::{
