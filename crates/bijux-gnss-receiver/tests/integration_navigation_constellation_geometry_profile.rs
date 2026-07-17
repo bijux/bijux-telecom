@@ -21,7 +21,7 @@ fn public_constellation_geometry_profile_reports_lower_dop_for_mixed_case() {
     );
     let mixed_case = build_receiver_constellation_geometry_case(
         "receiver_constellation_geometry_mixed",
-        4,
+        3,
         2,
         2,
     );
@@ -33,8 +33,16 @@ fn public_constellation_geometry_profile_reports_lower_dop_for_mixed_case() {
         );
 
     assert_eq!(report.points.len(), 2);
-    let mixed = &report.points[0];
-    let gps_only = &report.points[1];
+    let mixed = report
+        .points
+        .iter()
+        .find(|point| point.scenario_id == "receiver_constellation_geometry_mixed")
+        .expect("mixed constellation geometry point");
+    let gps_only = report
+        .points
+        .iter()
+        .find(|point| point.scenario_id == "receiver_constellation_geometry_gps_only")
+        .expect("gps-only constellation geometry point");
     assert_eq!(mixed.scenario_id, "receiver_constellation_geometry_mixed");
     assert_eq!(
         mixed.constellations,
@@ -75,8 +83,16 @@ fn public_constellation_geometry_profile_reports_higher_availability_for_mixed_c
         );
 
     assert_eq!(report.points.len(), 2);
-    let mixed = &report.points[0];
-    let gps_only = &report.points[1];
+    let mixed = report
+        .points
+        .iter()
+        .find(|point| point.scenario_id == "receiver_constellation_availability_mixed")
+        .expect("mixed constellation availability point");
+    let gps_only = report
+        .points
+        .iter()
+        .find(|point| point.scenario_id == "receiver_constellation_availability_gps_only")
+        .expect("gps-only constellation availability point");
     assert_eq!(mixed.scenario_id, "receiver_constellation_availability_mixed");
     assert_eq!(mixed.visible_satellite_count, 7);
     assert_eq!(mixed.solved_epoch_count, 1);

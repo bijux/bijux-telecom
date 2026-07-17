@@ -147,7 +147,7 @@ fn tracking_does_not_claim_sample_rate_mismatch_when_acquisition_uncertainty_is_
     let sat = SatId { constellation: Constellation::Gps, prn: 11 };
 
     let mut declared_config = true_config.clone();
-    declared_config.sampling_freq_hz = 5_050_000.0;
+    declared_config.sampling_freq_hz = 5_005_000.0;
     let tracking = TrackingEngine::new(declared_config.clone(), ReceiverRuntime::default());
     let acquisitions = vec![accepted_acquisition(
         sat,

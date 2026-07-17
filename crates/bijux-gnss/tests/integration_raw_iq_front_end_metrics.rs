@@ -1088,9 +1088,9 @@ fn track_reports_sample_rate_mismatch_for_wrong_sample_rate_capture() {
     fs::create_dir_all(&temp).expect("create temp dir");
 
     let iq_path = temp.join("wrong-sample-rate.iq8");
-    write_synthetic_iq8_capture_with_signal_if_and_duration_s(&iq_path, 4_000_000.0, 0.0, 0.012);
+    write_synthetic_iq8_capture_with_signal_if_and_duration_s(&iq_path, 5_000_000.0, 0.0, 0.012);
     let sidecar_path = temp.join("wrong-sample-rate.sidecar.toml");
-    write_raw_iq_sidecar_with_format_sample_rate_and_if(&sidecar_path, "iq8", 5_200_000.0, 0.0);
+    write_raw_iq_sidecar_with_format_sample_rate_and_if(&sidecar_path, "iq8", 5_050_000.0, 0.0);
 
     let out_dir = temp.join("track-out");
     let output = run_bijux(

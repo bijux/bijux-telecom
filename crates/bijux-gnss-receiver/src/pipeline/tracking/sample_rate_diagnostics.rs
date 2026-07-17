@@ -37,6 +37,7 @@ fn detect_sample_rate_mismatch(
             first_unstable_epoch_index,
             max_abs_phase_step_samples,
             phase_step_limit_samples,
+            catastrophic: true,
         });
     }
 
@@ -58,6 +59,7 @@ fn detect_sample_rate_mismatch(
                 first_unstable_epoch_index,
                 max_abs_phase_step_samples,
                 phase_step_limit_samples,
+                catastrophic: false,
             });
         }
     }

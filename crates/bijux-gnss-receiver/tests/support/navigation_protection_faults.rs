@@ -16,6 +16,8 @@ pub struct SyntheticProtectionFaultPoint {
     pub max_abs_pseudorange_noise_m: f64,
     pub max_hpl_m: f64,
     pub max_vpl_m: f64,
+    pub solution_count: usize,
+    pub protected_epoch_count: usize,
     pub invalid_epoch_count: usize,
     pub horizontal_breach_epoch_count: usize,
     pub vertical_breach_epoch_count: usize,
@@ -65,6 +67,15 @@ pub fn synthetic_protection_fault_sweep() -> Vec<SyntheticProtectionFaultPoint> 
                 max_abs_pseudorange_noise_m,
                 max_hpl_m: max_reported_hpl_m(&run.run).unwrap_or(0.0),
                 max_vpl_m: max_reported_vpl_m(&run.run).unwrap_or(0.0),
+                solution_count: run.run.solutions.len(),
+                protected_epoch_count: run
+                    .run
+                    .solutions
+                    .iter()
+                    .filter(|solution| {
+                        solution.integrity_hpl_m.is_some() && solution.integrity_vpl_m.is_some()
+                    })
+                    .count(),
                 invalid_epoch_count: invalid_epoch_count(&run.run),
                 horizontal_breach_epoch_count: report
                     .protection_levels
@@ -81,11 +92,13 @@ pub fn synthetic_protection_fault_evidence(points: &[SyntheticProtectionFaultPoi
         .iter()
         .map(|point| {
             format!(
-                "{}: noise_max={:.3}m hpl_max={:.3}m vpl_max={:.3}m invalid_epochs={} hpl_breaches={} vpl_breaches={}",
+                "{}: noise_max={:.3}m hpl_max={:.3}m vpl_max={:.3}m protected_epochs={}/{} invalid_epochs={} hpl_breaches={} vpl_breaches={}",
                 point.profile_name,
                 point.max_abs_pseudorange_noise_m,
                 point.max_hpl_m,
                 point.max_vpl_m,
+                point.protected_epoch_count,
+                point.solution_count,
                 point.invalid_epoch_count,
                 point.horizontal_breach_epoch_count,
                 point.vertical_breach_epoch_count,

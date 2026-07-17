@@ -569,17 +569,6 @@ impl Tracking {
         acquisition_uncertainty: Option<&AcqUncertainty>,
         epochs: &mut [TrackEpoch],
     ) {
-        let Some(acquisition_uncertainty) = acquisition_uncertainty else {
-            return;
-        };
-        if acquisition_uncertainty.code_phase_samples > 0.5 + f64::EPSILON {
-            return;
-        }
-        if acquisition_uncertainty.doppler_hz
-            > self.config.acquisition_doppler_step_hz.max(1) as f64 + f64::EPSILON
-        {
-            return;
-        }
         let samples_per_code = samples_per_code(
             self.config.sampling_freq_hz,
             self.config.code_freq_basis_hz,
@@ -588,6 +577,15 @@ impl Tracking {
         let Some(diagnostic) = detect_sample_rate_mismatch(epochs, samples_per_code) else {
             return;
         };
+        let uncertainty_supports_hidden_drift =
+            acquisition_uncertainty.is_some_and(|uncertainty| {
+                uncertainty.code_phase_samples <= 0.5 + f64::EPSILON
+                    && uncertainty.doppler_hz
+                        <= self.config.acquisition_doppler_step_hz.max(1) as f64 + f64::EPSILON
+            });
+        if !diagnostic.catastrophic && !uncertainty_supports_hidden_drift {
+            return;
+        }
 
         let first_epoch = &epochs[diagnostic.first_unstable_epoch_index];
         self.runtime.trace.record(TraceRecord {

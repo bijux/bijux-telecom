@@ -43,6 +43,7 @@ struct CodePhaseStabilityDiagnostic {
     first_unstable_epoch_index: usize,
     max_abs_phase_step_samples: f64,
     phase_step_limit_samples: f64,
+    catastrophic: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
