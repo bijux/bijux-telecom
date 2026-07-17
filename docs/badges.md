@@ -23,6 +23,13 @@ some other Bijux repositories. Until that automation exists here, treat this
 file as the single source of truth and keep the generated block in sync across
 both entry surfaces instead of hand-editing badge lines independently.
 
+This simpler contract is still intentional. Unlike repositories with published
+package-family badges, `bijux-telecom` currently needs only one repository
+summary line and one documentation badge line. If a future release adds
+published docs badges, package badges, or generated templating, extend this
+file first and regenerate the entry surfaces from here instead of inventing a
+second badge policy in `README.md` or `docs/index.md`.
+
 Badge order is part of the contract:
 
 1. repository summary and workflow badges
@@ -37,6 +44,14 @@ Link policy is also fixed here:
   `https://github.com/bijux?tab=packages&repo_name=bijux-telecom`
 - the documentation badge must link to the checked-in `docs/` tree until a
   published docs site becomes canonical
+
+Review rule:
+
+- if a badge link changes, update both entry surfaces in the same change set
+- if a badge is removed, explain which repository promise no longer deserves a
+  public summary badge
+- if a new badge is added, it must represent a durable repository surface, not
+  a temporary rollout state
 
 If this repository later adopts templated badge automation, migrate that
 automation from this file rather than letting `README.md` and `docs/index.md`

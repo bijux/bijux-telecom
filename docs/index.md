@@ -47,6 +47,15 @@ shadow API manual for every crate. Once package ownership is clear, it should
 hand the reader to the owning crate README, crate `docs/`, source tree, test
 suite, or repository evidence surface.
 
+One concrete reading path keeps that restraint honest. A top-level GNSS
+command starts in `bijux-gnss`, hands shared record meaning to
+`bijux-gnss-core`, depends on `bijux-gnss-infra` for datasets and persisted
+run evidence, executes staged runtime work through `bijux-gnss-receiver`,
+consumes reusable signal truth from `bijux-gnss-signal`, and may consume
+navigation science from `bijux-gnss-nav`. Repository-health questions about
+that chain belong to `bijux-gnss-dev`, while policy guardrails and independent
+truth assets belong to `bijux-gnss-policies` and `bijux-gnss-testkit`.
+
 ```mermaid
 flowchart TB
     root["repository handbook<br/>package map and handoff logic"]
@@ -91,6 +100,27 @@ That shape is a contract, not an accident. Support crates still matter, but
 they should be routed from this root page rather than growing the repository
 handbook into a second crate registry.
 
+## One Real Review Route
+
+When a reader starts from the installed GNSS command and wants the fastest
+honest path to proof, the route should usually be:
+
+1. start in [01-bijux-gnss](01-bijux-gnss/) for command vocabulary and CLI
+   routing
+2. move to [03-bijux-gnss-infra](03-bijux-gnss-infra/) if the question is
+   datasets, run identity, or persisted evidence
+3. move to [05-bijux-gnss-receiver](05-bijux-gnss-receiver/) if the question
+   is staged execution or runtime artifacts before persistence
+4. move to [06-bijux-gnss-signal](06-bijux-gnss-signal/) if the question
+   turns into reusable signal math, sample contracts, or code families
+5. move to [04-bijux-gnss-nav](04-bijux-gnss-nav/) if the claim depends on
+   estimators, corrections, or navigation-quality science
+6. fall back to [02-bijux-gnss-core](02-bijux-gnss-core/) whenever the real
+   disagreement is shared record meaning rather than command or runtime policy
+
+That is not the only route, but it is the clearest proof-first route for a
+large share of repository questions.
+
 ## What This Root Handbook Owns
 
 - the package map for the primary GNSS product path
@@ -130,6 +160,13 @@ class handbook owners in `docs/`:
 When a product claim depends on reference truth or repository guardrails,
 leave the root series after package routing and inspect those support crates
 directly.
+
+## Support-Crate Trigger Table
+
+| if the strongest claim depends on | leave the seven-handbook chain for | inspect first |
+| --- | --- | --- |
+| repository-shape policy, governance guardrails, or layout validation | `bijux-gnss-policies` | `crates/bijux-gnss-policies/README.md`, `crates/bijux-gnss-policies/docs/` |
+| independent scientific fixtures, truth packets, or reference-model consumers | `bijux-gnss-testkit` | `crates/bijux-gnss-testkit/README.md`, `crates/bijux-gnss-testkit/docs/` |
 
 ## Package Handbooks
 
@@ -184,6 +221,7 @@ directly.
 | workspace and package boundaries | `Cargo.toml`, `crates/` |
 | repository-owned documentation routing | `docs/`, this handbook series, crate `README.md` files |
 | command and maintainer entrypoints | `crates/bijux-gnss/src/main.rs`, `crates/bijux-gnss-dev/src/main.rs`, `Makefile` |
+| command and maintainer contract docs | `crates/bijux-gnss/docs/`, `crates/bijux-gnss-dev/docs/WORKFLOWS.md`, `crates/bijux-gnss-dev/docs/OUTPUTS.md` |
 | data and configuration inputs | `datasets/`, `configs/`, `schemas/` |
 | execution and regression evidence | crate `tests/`, repository `artifacts/`, validation commands in crate READMEs |
 
