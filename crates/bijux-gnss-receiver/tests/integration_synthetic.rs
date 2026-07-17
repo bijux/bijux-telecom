@@ -361,9 +361,8 @@ fn synthetic_epoch_frame(
         .into_iter()
         .enumerate()
         .map(|(offset, code)| {
-            let sample_index = start_sample_index + offset as u64;
             let phase_rad = (carrier_phase_rad
-                + TAU * carrier_hz * (sample_index as f64 / config.sampling_freq_hz))
+                + TAU * carrier_hz * (offset as f64 / config.sampling_freq_hz))
                 .rem_euclid(TAU);
             Complex::new(phase_rad.cos() as f32, phase_rad.sin() as f32) * code
         })

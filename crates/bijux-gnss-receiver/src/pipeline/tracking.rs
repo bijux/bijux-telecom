@@ -576,15 +576,16 @@ impl Tracking {
         acquisition_uncertainty: Option<&AcqUncertainty>,
         epochs: &mut [TrackEpoch],
     ) {
-        if let Some(acquisition_uncertainty) = acquisition_uncertainty {
-            if acquisition_uncertainty.code_phase_samples > 0.5 + f64::EPSILON {
-                return;
-            }
-            if acquisition_uncertainty.doppler_hz
-                > self.config.acquisition_doppler_step_hz.max(1) as f64 + f64::EPSILON
-            {
-                return;
-            }
+        let Some(acquisition_uncertainty) = acquisition_uncertainty else {
+            return;
+        };
+        if acquisition_uncertainty.code_phase_samples > 0.5 + f64::EPSILON {
+            return;
+        }
+        if acquisition_uncertainty.doppler_hz
+            > self.config.acquisition_doppler_step_hz.max(1) as f64 + f64::EPSILON
+        {
+            return;
         }
         let samples_per_code = samples_per_code(
             self.config.sampling_freq_hz,
@@ -610,14 +611,27 @@ impl Tracking {
             ],
         });
 
-        for epoch in epochs.iter_mut().skip(diagnostic.first_unstable_epoch_index) {
+        let first_epoch_to_mark = epochs
+            .iter()
+            .enumerate()
+            .skip(diagnostic.first_unstable_epoch_index)
+            .find_map(|(index, epoch)| {
+                (epoch.cycle_slip || !epoch.dll_lock || !epoch.pll_lock || !epoch.lock)
+                    .then_some(index)
+            })
+            .unwrap_or(diagnostic.first_unstable_epoch_index);
+
+        for (index, epoch) in epochs.iter_mut().enumerate().skip(first_epoch_to_mark) {
             let replaceable_reason = epoch.lock_state_reason.as_deref().is_none_or(|reason| {
                 matches!(
                     reason,
                     "carrier_pull_in" | "carrier_converged" | "fade_recovered" | "signal_fade"
                 )
             });
-            if replaceable_reason {
+            if index == first_epoch_to_mark
+                || epoch.lock_state_reason.as_deref() == Some("phase_jump")
+                || replaceable_reason
+            {
                 epoch.lock_state_reason = Some("sample_rate_mismatch".to_string());
             }
         }

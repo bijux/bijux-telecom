@@ -124,7 +124,20 @@ fn tracking_marks_persistent_code_phase_drift_as_sample_rate_mismatch() {
         .iter()
         .find(|epoch| epoch.lock_state_reason.as_deref() == Some("sample_rate_mismatch"))
         .unwrap_or_else(|| panic!("sample rate mismatch must be reported: {epochs:?}"));
-    assert!(first_mismatch.cycle_slip || !first_mismatch.dll_lock || !first_mismatch.pll_lock);
+    let previous_epoch = epochs
+        .iter()
+        .rev()
+        .find(|epoch| epoch.sample_index < first_mismatch.sample_index)
+        .expect("sample rate mismatch epoch must have a predecessor");
+    let code_phase_jump_samples =
+        (first_mismatch.code_phase_samples.0 - previous_epoch.code_phase_samples.0).abs();
+    assert!(
+        first_mismatch.cycle_slip
+            || !first_mismatch.dll_lock
+            || !first_mismatch.pll_lock
+            || code_phase_jump_samples >= 100.0,
+        "first sample-rate mismatch epoch must reflect degraded tracking evidence: code_phase_jump_samples={code_phase_jump_samples} first_mismatch={first_mismatch:?} epochs={epochs:?}"
+    );
 }
 
 #[test]
