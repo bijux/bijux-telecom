@@ -1,7 +1,7 @@
 //! Artifact validation and explanation helpers.
 
-mod explanation;
 mod artifact_type;
+mod summary;
 mod validation;
 
 #[cfg(test)]
@@ -37,7 +37,7 @@ pub struct ArtifactExplainResult {
 
 /// Explain an artifact file and summarize its diagnostics.
 pub fn artifact_explain(path: &std::path::Path) -> Result<ArtifactExplainResult, InputError> {
-    explanation::artifact_explain(path)
+    summary::artifact_explain(path)
 }
 
 /// Validate an artifact file and return diagnostics.
