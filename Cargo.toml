@@ -4,7 +4,6 @@ members = [
   "crates/bijux-gnss",
   "crates/bijux-gnss-core",
   "crates/bijux-gnss-receiver",
-  "crates/bijux-gnss-cli",
   "crates/bijux-gnss-signal",
   "crates/bijux-gnss-nav",
   "crates/bijux-gnss-infra",
