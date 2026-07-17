@@ -55,6 +55,16 @@ These contracts are intentionally low-level and reusable.
 Their serialized representation must remain portable across crates and persisted artifacts. The
 crate-wide serialization rules are recorded in [SERIALIZATION.md](SERIALIZATION.md).
 
+## Diagnostics and support contracts
+
+The crate also owns:
+- shared diagnostic event and summary records
+- stable diagnostic code metadata
+- support-matrix status and row contracts exchanged across runtime, infrastructure, and CLI layers
+
+These surfaces are detailed in [DIAGNOSTICS.md](DIAGNOSTICS.md) and
+[SUPPORT_MATRIX.md](SUPPORT_MATRIX.md).
+
 ## Configuration contracts
 
 The configuration layer owns:
