@@ -4,12 +4,12 @@
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
-use bijux_gnss_testkit::public_station_truth::{
+use bijux_gnss_testkit::reference_data::station_truth::{
     load_public_station_truths,
     public_station_truth_by_fixture as find_public_station_truth_by_fixture,
 };
 #[allow(unused_imports)]
-pub use bijux_gnss_testkit::public_station_truth::{
+pub use bijux_gnss_testkit::reference_data::station_truth::{
     station_enu_error_m, EnuError, PublicStationTruth,
 };
 

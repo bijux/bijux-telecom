@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::independent_models::coordinates::elevation_azimuth_deg;
 use crate::independent_models::gps_broadcast::satellite_state_from_observation;
-use crate::public_station_truth::PublicStationTruth;
+use crate::reference_data::station_truth::PublicStationTruth;
 
 pub const LOW_ELEVATION_CEILING_DEG: f64 = 20.0;
 pub const MID_ELEVATION_CEILING_DEG: f64 = 45.0;

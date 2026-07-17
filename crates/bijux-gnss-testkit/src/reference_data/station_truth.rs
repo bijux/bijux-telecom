@@ -6,6 +6,7 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 
 use crate::independent_models::coordinates::{ecef_to_enu_m, geodetic_to_ecef_m, GeodeticPoint};
+use crate::reference_data::REFERENCE_COORDINATE_CSV_HEADER;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PublicStationTruth {
@@ -78,7 +79,7 @@ pub fn parse_public_station_truth_csv(data: &str) -> Result<Vec<PublicStationTru
     let Some(header) = lines.next() else {
         return Err("public station truth manifest is empty".to_string());
     };
-    if header.trim() != "marker_name,fixture_name,lat_deg,lon_deg,alt_m,source" {
+    if header.trim() != REFERENCE_COORDINATE_CSV_HEADER {
         return Err(format!("unexpected public station truth header '{header}'"));
     }
 
