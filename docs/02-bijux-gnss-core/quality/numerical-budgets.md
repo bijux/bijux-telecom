@@ -24,3 +24,9 @@ shared contract owner rather than leaving it as unaffiliated root prose.
 Budget numbers still need proof in the owning runtime or navigation crate. What
 belongs here is the shared contract language around those tolerances and why
 downstream readers should interpret them consistently.
+
+## First Proof Check
+
+- `crates/bijux-gnss-core/docs/INVARIANTS.md`
+- `../../05-bijux-gnss-receiver/quality/test-strategy.md`
+- `../../04-bijux-gnss-nav/quality/test-strategy.md`

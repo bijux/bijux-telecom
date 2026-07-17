@@ -24,3 +24,9 @@ The question most often starts at the foundational layer: whether core meaning
 and record types are intended to anchor a future `no_std` subset. Today the
 answer is no, and that decision should be documented with the owner of shared
 cross-crate assumptions.
+
+## First Proof Check
+
+- `crates/bijux-gnss-core/Cargo.toml`
+- `crates/bijux-gnss-core/docs/BOUNDARY.md`
+- `../../03-bijux-gnss-infra/foundation/dependencies-and-adjacencies.md`

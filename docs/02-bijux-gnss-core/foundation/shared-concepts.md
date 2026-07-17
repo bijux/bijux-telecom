@@ -28,3 +28,9 @@ owner that actually defines the vocabulary lower crates exchange.
 `bijux-gnss-core` should not own the implementation of each stage, but it does
 own the shared record meanings that let signal, receiver, navigation, and
 command crates speak consistently about them.
+
+## First Proof Check
+
+- `crates/bijux-gnss-core/docs/CONTRACT_MAP.md`
+- `crates/bijux-gnss-core/src/observation/`
+- `crates/bijux-gnss-core/src/nav_solution.rs`

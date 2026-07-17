@@ -18,3 +18,9 @@ last_reviewed: 2026-07-17
 - Did the change avoid importing higher-level crate behavior into core?
 - Would a reader know which contract family owns the change without reading the
   full implementation diff?
+
+## Protecting Proof
+
+- `crates/bijux-gnss-core/docs/TESTS.md`
+- `crates/bijux-gnss-core/tests/public_api_guardrail.rs`
+- `crates/bijux-gnss-core/tests/nav_artifact_validation.rs`

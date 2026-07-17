@@ -25,3 +25,9 @@ shared units, identifiers, and cross-crate physical meaning.
 Conventions that multiple higher crates must read the same way belong here.
 Implementation tactics for one solver, one signal family, or one runtime stage
 still belong in their local owners.
+
+## Protecting Proof
+
+- `crates/bijux-gnss-core/docs/CONTRACTS.md`
+- `crates/bijux-gnss-core/docs/INVARIANTS.md`
+- `crates/bijux-gnss-core/src/observation/`

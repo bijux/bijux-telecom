@@ -42,3 +42,11 @@ page when recurring review arguments reveal a new boundary pressure worth
 making durable. If the next proof surface is a stage scheduler, solver tuning
 rule, filesystem policy, or command wording change, the owner is almost
 certainly not `bijux-gnss-core`.
+
+## First Neighbor Proof Check
+
+- `../06-bijux-gnss-signal/index.md`
+- `../04-bijux-gnss-nav/index.md`
+- `../05-bijux-gnss-receiver/index.md`
+- `../03-bijux-gnss-infra/index.md`
+- `../01-bijux-gnss/index.md`

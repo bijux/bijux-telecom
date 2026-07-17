@@ -26,3 +26,10 @@ guides into the shared-contract owner.
 The receiver, signal, navigation, and command crates may each touch these
 records, but only `bijux-gnss-core` should define what the records mean across
 those boundaries.
+
+## Protecting Proof
+
+- `crates/bijux-gnss-core/docs/CONTRACTS.md`
+- `crates/bijux-gnss-core/src/artifact.rs`
+- `crates/bijux-gnss-core/src/observation/`
+- `crates/bijux-gnss-core/src/nav_solution.rs`
