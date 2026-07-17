@@ -23,7 +23,7 @@ inputs and evidence outputs instead of through hidden product coupling.
   benchmark commands emit raw and normalized evidence into governed locations
 - tests to repository structure:
   the nextest-roster test binds maintainer policy to actual repository test
-  names
+  names without pretending the roster is a runtime command input
 
 ## Integration Rule
 

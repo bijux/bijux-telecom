@@ -15,8 +15,15 @@ This binary consumes a narrow set of reviewed repository inputs.
 
 - `audit-allowlist.toml`
 - `configs/rust/deny.deviations.toml`
-- `configs/rust/nextest-slow-roster.txt`
 - `benchmarks/bencher_baseline.txt`
+
+## Guarded But Not Command-Consumed
+
+- `configs/rust/nextest-slow-roster.txt`
+
+The slow roster matters to this handbook, but it is guarded through
+`tests/integration_nextest_suite_selection.rs` rather than being read by a
+maintainer command in `src/main.rs`.
 
 ## Contract Rule
 

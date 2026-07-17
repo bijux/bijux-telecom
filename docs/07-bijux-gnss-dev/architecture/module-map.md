@@ -36,9 +36,14 @@ purpose.
   `compare_baseline`
 - shared validation helpers:
   date and ID shape checks
+- repository-shape test governance:
+  `tests/integration_guardrails.rs` and
+  `tests/integration_nextest_suite_selection.rs`
 
 ## Why One File Is Acceptable Today
 
 The command surface is still narrow and the ownership unit is the binary
 itself. If the crate grows, it should split by durable workflow family such as
-audit governance or benchmark governance, not by temporary sequencing.
+audit governance or benchmark governance, not by temporary sequencing. A split
+should also preserve the current distinction between read-only validators and
+the single write-producing benchmark workflow.

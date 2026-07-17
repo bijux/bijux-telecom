@@ -21,6 +21,10 @@ The crate has four durable centers of gravity:
 - benchmark comparison and evidence emission for a curated maintainer benchmark
   set
 
+Three of those workflows are read-only contract checks or derivations. The
+benchmark workflow is the exception: it is the only owned command here that
+intentionally writes repository evidence.
+
 The crate is intentionally a binary-only boundary. It is meant to sit at the
 repository edge where governance inputs, diagnostics, and benchmark evidence
 need an owner without turning maintainer behavior into a reusable product API.

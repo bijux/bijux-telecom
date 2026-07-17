@@ -18,6 +18,8 @@ lanes.
 - unit tests stay close to implementation when locality improves clarity
 - integration, golden, and fault tests live where they prove crate boundaries
 - property tests must keep bounded ranges and durable regression seeds
+- roster-governance tests must prove that named slow tests still resolve to
+  real repository test functions
 
 ## Lane Discipline
 
@@ -31,3 +33,10 @@ lanes.
 Tests that routinely exceed the fast-lane budget must be classified and routed
 out of `make test`. Tests that cannot justify their runtime even in the full
 lane should be split, reduced, or removed.
+
+## Maintainer Rule
+
+If a change touches `configs/rust/nextest-slow-roster.txt`, run
+`cargo test -p bijux-gnss-dev --test integration_nextest_suite_selection`
+because that file is defended by test policy rather than by a maintainer
+command.

@@ -16,9 +16,12 @@ last_reviewed: 2026-07-17
 - change derived audit-ignore argument behavior
 - extend or adjust benchmark comparison behavior
 - strengthen repository-structure guardrail tests
+- update slow-test roster policy through guarded tests rather than through a
+  new command flag
 
 ## Workflow Rule
 
 Choose the workflow based on the owned maintainer surface. A benchmark-evidence
 change is reviewed differently from a governed-TOML validation change even if
-both happen in the same binary.
+both happen in the same binary. The audit and deviation workflows are read-only
+contract checks; `bench-compare` is the write-producing evidence workflow.
