@@ -28,3 +28,6 @@ The CLI crate owns:
 
 The underlying science and persistence behavior still belong to the lower-level crates the commands
 delegate into.
+
+The workflow-composition boundary for these command families is described in
+[WORKFLOWS.md](WORKFLOWS.md).

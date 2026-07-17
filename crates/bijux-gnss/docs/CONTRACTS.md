@@ -15,6 +15,8 @@ This crate owns the stable shape of:
 The crate owns how commands assemble lower-level crates into a user-facing workflow. It does not
 own the scientific behavior of those lower-level crates.
 
+The workflow families and their composition boundary are described in [WORKFLOWS.md](WORKFLOWS.md).
+
 ## Façade contract
 
 `src/lib.rs` owns a narrow package-level façade over the lower-level GNSS crates. That façade is a

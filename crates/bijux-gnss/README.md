@@ -1,36 +1,59 @@
 # bijux-gnss
 
-## What this crate does
-`bijux-gnss` is the user-facing crate for the GNSS workspace. It owns the `bijux` binary, parses
-operator commands, prepares runtime context, renders reports, and delegates durable signal,
-receiver, infrastructure, and navigation behavior to the lower-level crates that actually own it.
+`bijux-gnss` owns the operator-facing GNSS command boundary for the workspace.
 
-## Why this crate exists
-The workspace needs one operator boundary that can expose GNSS workflows without leaking internal
-crate structure into every command. This crate is that boundary.
+## Scope
 
-## Public entrypoints
+This crate owns:
 
-- `src/main.rs` owns the binary command surface
-- `src/lib.rs` exposes curated re-exports of `core`, `receiver`, `signal`, and optional `nav`
+- the `bijux` binary
+- command names, arguments, and top-level workflow composition
+- runtime setup and operator-facing reporting during command execution
+- a narrow package façade over lower-level GNSS crates
 
-## Ownership boundary
-This crate owns command-line workflow assembly and reporting. It must not become the home for
-low-level DSP, navigation science, repository run-layout rules, or receiver stage internals. The
-boundary is documented in [docs/BOUNDARY.md](docs/BOUNDARY.md).
+This crate does not own low-level signal implementations, standalone navigation science, receiver
+stage internals, or repository persistence contracts.
 
-## Source layout
+## Public surface
 
-- `cli/command_catalog/` owns command names and argument families
-- `cli/commands/` owns workflow handlers
-- `cli/command_runtime/` owns runtime setup and reporting support
-- `cli/command_support/` owns focused helper adapters used by commands
+This crate has two public surfaces:
 
-The architecture and test layout are documented in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+- the `bijux` binary for operators
+- the small Rust façade from `src/lib.rs` for package-level convenience
 
-## Documentation map
-This crate keeps one root README and crate-specific docs under `docs/`:
+Both surfaces are intentionally thin over lower-level crates that own the science and infrastructure
+they expose.
+
+## Source map
+
+- `src/main.rs` assembles the binary command surface.
+- `src/cli/command_line.rs` owns command parsing and stable argument shape.
+- `src/cli/command_runtime.rs` and `src/cli/execution_support.rs` own runtime setup and workflow
+  support.
+- `src/cli/report.rs` owns operator-facing output rendering.
+- `src/lib.rs` owns the package façade over lower-level crates.
+
+## Documentation
+
+The crate root intentionally contains only this README. Durable crate documentation lives under
+`docs/`:
+
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - [docs/BOUNDARY.md](docs/BOUNDARY.md)
+- [docs/COMMANDS.md](docs/COMMANDS.md)
+- [docs/CONTRACTS.md](docs/CONTRACTS.md)
+- [docs/PUBLIC_API.md](docs/PUBLIC_API.md)
+- [docs/TESTS.md](docs/TESTS.md)
+- [docs/WORKFLOWS.md](docs/WORKFLOWS.md)
 
-Repository work is governed by [../../README.md](../../README.md).
+## Verification
+
+Run from the repository root when changing this crate:
+
+```sh
+cargo test -p bijux-gnss --test integration_validate_config
+cargo test -p bijux-gnss --test integration_nav_decode
+cargo test -p bijux-gnss --test integration_validate_synthetic_navigation
+```
+
+Repository-wide expectations are documented in [../../README.md](../../README.md).

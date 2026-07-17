@@ -13,6 +13,8 @@
 - command handlers remain wired to the correct lower-level surfaces
 - operator-facing workflows continue to produce coherent validation and reporting behavior
 - the CLI boundary does not silently drift when lower-level crates evolve
+- workflow composition remains the CLI’s owned responsibility instead of leaking deeper into
+  scientific or infrastructure crates
 
 ## Verification
 
