@@ -9,16 +9,16 @@ last_reviewed: 2026-07-17
 
 # bijux-gnss-signal
 
-`bijux-gnss-signal` owns reusable signal definitions and DSP primitives for the
-repository. This crate is where spreading codes, catalog lookups, sample
-contracts, front-end filtering, timing helpers, NCOs, and tracking-loop
-building blocks stay reusable instead of being welded into one receiver
-implementation.
+`bijux-gnss-signal` owns reusable GNSS signal definitions, code families, raw
+sample contracts, and runtime-neutral DSP primitives for `bijux-telecom`. This
+crate is where the repository answers signal-layer questions before receiver
+orchestration, dataset persistence, or navigation science start adding their
+own policy.
 
-This package should be the place where signal-layer questions become precise.
-If the question is still "what does this signal look like?" or "how should
-this raw-IQ surface be represented?", this package should answer before the
-receiver runtime starts adding policy.
+The crate is broad in technical depth, but narrow in ownership. It should be
+the authoritative home for signal behavior that must stay reusable across
+commands, validation, synthetic generation, and receiver runtime. It should not
+quietly become a second receiver crate.
 
 ```mermaid
 flowchart LR
@@ -27,92 +27,139 @@ flowchart LR
     receiver["bijux-gnss-receiver<br/>runtime composition"]
     nav["bijux-gnss-nav<br/>navigation science"]
     infra["bijux-gnss-infra<br/>dataset metadata"]
+    gnss["bijux-gnss<br/>commands"]
 
     core --> signal
     signal --> receiver
     signal --> nav
     signal --> infra
+    signal --> gnss
 ```
+
+## Read These First
+
+- open [Foundation](foundation/) when the question is why this crate owns the
+  surface at all
+- open [Interfaces](interfaces/) when the issue is already about public signal
+  API, trait seams, raw-IQ contracts, or validation reports
+- open [Architecture](architecture/) when the question is structural: where
+  catalog, code families, DSP, samples, and validation live in code
+- open [Quality](quality/) when ownership is clear and the question becomes
+  whether the proof bar is technically honest
 
 ## Why This Package Exists
 
-- code generation and DSP primitives must be reusable across receiver features
-  rather than hidden in one stage engine
-- raw-IQ and sample representation contracts need a dedicated owner
-- signal catalogs and observation-compatibility checks should stay explicit and
-  package-local instead of drifting into runtime policy
+- code families and signal catalogs must stay canonical instead of being
+  reimplemented across tests, runtime, and validation tools
+- DSP helpers need one reusable owner below receiver orchestration
+- raw-IQ metadata and sample conversions should remain explicit contracts
+  rather than hidden adapter logic
+- signal-layer observation compatibility needs a home that is stricter than
+  convenience and narrower than full navigation quality judgment
 
 ## What It Owns
 
-- signal catalogs and wavelength helpers
-- constellation-specific code families and secondary-code definitions
-- reusable DSP primitives such as front-end filtering, local replicas, sample
-  timing, NCOs, spectrum helpers, and tracking-loop building blocks
-- raw-IQ metadata, sample conversions, and signal-layer observation validation
+- signal catalogs, wavelength helpers, and default acquisition-signal
+  selection
+- constellation-specific code generators and secondary-code behavior
+- runtime-neutral DSP primitives such as local code, NCOs, replica generation,
+  front-end response, spectrum, and tracking math
+- raw-IQ metadata, sample quantization, and sample conversion helpers
+- signal-layer observation compatibility and epoch-shape validation
 
 ## What It Refuses
 
-- command workflows owned by `bijux-gnss`
-- persisted run layout and repository-level dataset history owned by
+- command workflows and operator-facing vocabulary owned by `bijux-gnss`
+- receiver-stage scheduling, channels, artifacts, and runtime composition owned
+  by `bijux-gnss-receiver`
+- repository-side dataset layout and persisted metadata owned by
   `bijux-gnss-infra`
-- receiver-stage scheduling and artifact emission owned by
-  `bijux-gnss-receiver`
-- navigation estimators and orbit-domain models owned by `bijux-gnss-nav`
-- cross-package IDs and generalized artifact contracts owned by
+- navigation estimation, orbit products, and solution quality judgment owned
+  by `bijux-gnss-nav`
+- shared identity, units, and cross-package observation types owned by
   `bijux-gnss-core`
 
 ## Strongest Proof Surfaces
 
 - crate README:
   [`crates/bijux-gnss-signal/README.md`](../../crates/bijux-gnss-signal/README.md)
-- package docs:
+- crate-local docs:
   [`crates/bijux-gnss-signal/docs/CATALOG.md`](../../crates/bijux-gnss-signal/docs/CATALOG.md),
   [`crates/bijux-gnss-signal/docs/CODE_FAMILIES.md`](../../crates/bijux-gnss-signal/docs/CODE_FAMILIES.md),
   [`crates/bijux-gnss-signal/docs/DSP.md`](../../crates/bijux-gnss-signal/docs/DSP.md),
-  [`crates/bijux-gnss-signal/docs/RAW_IQ.md`](../../crates/bijux-gnss-signal/docs/RAW_IQ.md)
+  [`crates/bijux-gnss-signal/docs/RAW_IQ.md`](../../crates/bijux-gnss-signal/docs/RAW_IQ.md),
+  [`crates/bijux-gnss-signal/docs/VALIDATION.md`](../../crates/bijux-gnss-signal/docs/VALIDATION.md)
 - source roots:
   [`crates/bijux-gnss-signal/src/catalog.rs`](../../crates/bijux-gnss-signal/src/catalog.rs),
-  [`crates/bijux-gnss-signal/src/codes`](../../crates/bijux-gnss-signal/src/codes),
-  [`crates/bijux-gnss-signal/src/dsp`](../../crates/bijux-gnss-signal/src/dsp),
-  [`crates/bijux-gnss-signal/src/raw_iq.rs`](../../crates/bijux-gnss-signal/src/raw_iq.rs)
+  [`crates/bijux-gnss-signal/src/codes/`](../../crates/bijux-gnss-signal/src/codes),
+  [`crates/bijux-gnss-signal/src/dsp/`](../../crates/bijux-gnss-signal/src/dsp),
+  [`crates/bijux-gnss-signal/src/raw_iq.rs`](../../crates/bijux-gnss-signal/src/raw_iq.rs),
+  [`crates/bijux-gnss-signal/src/obs_validation.rs`](../../crates/bijux-gnss-signal/src/obs_validation.rs)
 - proof tests:
-  [`crates/bijux-gnss-signal/tests`](../../crates/bijux-gnss-signal/tests)
+  [`crates/bijux-gnss-signal/tests/`](../../crates/bijux-gnss-signal/tests)
+
+## Sections In This Handbook
+
+- [Foundation](foundation/) for scope, ownership, repository fit, dependency
+  direction, and signal vocabulary
+- [Architecture](architecture/) for module map, execution neutrality,
+  code-family layering, and integration seams
+- [Interfaces](interfaces/) for the curated public API, trait seams, metadata
+  contracts, and compatibility expectations
+- [Operations](operations/) for safe change sequence, reference-data care,
+  verification commands, and review scope
+- [Quality](quality/) for invariants, proof strategy, limitations, risk, and
+  change validation
+- [This Package Does Not Own](this-package-does-not-own.md) for the explicit
+  refusal ledger
 
 ## Start Here When
 
-- the question is about signal codes, chipping structure, or wavelength lookup
-- the issue is front-end filtering, sample timing, NCO behavior, or replica
-  generation
-- the reader wants to verify raw-IQ or sample-conversion contracts
-- a receiver feature seems to depend on a signal-layer rule that should remain
+- the question is about how a signal is identified, sampled, or regenerated
+- the issue is code-generation fidelity, long-duration continuity, or
+  spectrum/front-end behavior
+- the reader needs to trace raw-IQ or sample contracts before runtime consumes
+  them
+- a higher-level crate appears to depend on signal policy that should stay
   reusable
 
 ## Reader Questions This Package Can Answer
 
-- where reusable signal and DSP behavior stops and receiver policy starts
-- how supported code families are organized by constellation and band
-- which raw-IQ and sample contracts downstream crates should inherit instead of
-  recreating
-- where observation compatibility is validated at the signal layer
+- where signal meaning stops and receiver orchestration begins
+- how supported GNSS families are organized across catalog, code, and DSP
+  surfaces
+- which public traits and sample contracts downstream crates should reuse
+- how signal-layer validation differs from full navigation-solution judgment
 
 ## Leave This Handbook When
 
-- the question becomes about runtime tracking behavior or staged execution:
+- the question becomes about runtime scheduling, channel behavior, or emitted
+  receiver artifacts:
   [05-bijux-gnss-receiver](../05-bijux-gnss-receiver/)
-- the question becomes about navigation estimators, orbit state, or precise
-  products:
+- the question becomes about navigation estimators, orbit products, or
+  solution science:
   [04-bijux-gnss-nav](../04-bijux-gnss-nav/)
-- the question becomes about datasets and repository metadata persistence:
+- the question becomes about dataset layout, sidecars, or persisted run
+  metadata:
   [03-bijux-gnss-infra](../03-bijux-gnss-infra/)
-- the question becomes about shared identity, units, or observation record
-  meaning:
+- the question becomes about operator commands or report wording:
+  [01-bijux-gnss](../01-bijux-gnss/)
+- the question becomes about shared satellite identity, time, or observation
+  record meaning:
   [02-bijux-gnss-core](../02-bijux-gnss-core/)
 
 ## First Proof Check
 
+- `crates/bijux-gnss-signal/src/catalog.rs`
 - `crates/bijux-gnss-signal/src/codes/`
 - `crates/bijux-gnss-signal/src/dsp/`
-- `crates/bijux-gnss-signal/src/catalog.rs`
 - `crates/bijux-gnss-signal/src/raw_iq.rs`
 - `crates/bijux-gnss-signal/src/samples.rs`
+- `crates/bijux-gnss-signal/src/obs_validation.rs`
 - `crates/bijux-gnss-signal/docs/DSP.md`
+
+## Design Pressure
+
+If `bijux-gnss-signal` starts carrying receiver execution policy, repository
+I/O, or navigation judgment because those behaviors happen to use signal math,
+the crate stops being a reusable substrate and becomes a catch-all boundary.
