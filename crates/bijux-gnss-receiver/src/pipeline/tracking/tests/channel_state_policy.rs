@@ -23,6 +23,7 @@ fn tracking_lock_detector_thresholds_derive_from_spacing_and_dynamics() {
 fn low_resolution_code_lock_retains_supported_tracking_when_carrier_is_stable() {
     assert!(super::low_resolution_code_lock(1.0, 0.5, true, true, true, false, false));
     assert!(super::low_resolution_code_lock(1.0, 0.5, true, false, true, false, false));
+    assert!(super::low_resolution_code_lock(2.0, 0.5, true, false, true, false, false));
 }
 
 #[test]
@@ -32,6 +33,22 @@ fn low_resolution_code_lock_requires_prompt_and_lock_safety_guards() {
     assert!(!super::low_resolution_code_lock(1.0, 0.5, true, true, true, true, false));
     assert!(!super::low_resolution_code_lock(1.0, 0.5, true, true, true, false, true));
     assert!(!super::low_resolution_code_lock(4.0, 0.5, true, true, true, false, false));
+}
+
+#[test]
+fn low_resolution_false_lock_override_requires_consistent_tracking_evidence() {
+    assert!(super::low_resolution_false_lock_override(
+        2.0, 0.5, true, true, true, true, 0.8, false
+    ));
+    assert!(!super::low_resolution_false_lock_override(
+        2.0, 0.5, true, false, true, true, 0.8, false
+    ));
+    assert!(!super::low_resolution_false_lock_override(
+        2.0, 0.5, true, true, true, false, 0.8, false
+    ));
+    assert!(!super::low_resolution_false_lock_override(
+        2.0, 0.5, true, true, true, true, 2.0, false
+    ));
 }
 
 #[test]
@@ -109,6 +126,88 @@ fn clean_seeded_tracking_clears_false_lock_once_loops_converge() {
             .filter(|epoch| epoch.pll_lock && epoch.fll_lock)
             .all(|epoch| !epoch.anti_false_lock),
         "clean, converged tracking epochs must not remain marked as false lock: {epochs:?}"
+    );
+}
+
+#[test]
+fn low_rate_seeded_tracking_clears_low_resolution_false_lock_when_carrier_is_consistent() {
+    let config = ReceiverPipelineConfig {
+        sampling_freq_hz: 2_046_000.0,
+        intermediate_freq_hz: 0.0,
+        code_freq_basis_hz: 1_023_000.0,
+        code_length: 1023,
+        channels: 1,
+        early_late_spacing_chips: 0.25,
+        dll_bw_hz: 2.0,
+        pll_bw_hz: 18.0,
+        fll_bw_hz: 12.0,
+        ..ReceiverPipelineConfig::default()
+    };
+    let sat = SatId { constellation: Constellation::Gps, prn: 7 };
+    let frame = generate_l1_ca(
+        &config,
+        SyntheticSignalParams {
+            sat,
+            glonass_frequency_channel: None,
+            signal_band: bijux_gnss_core::api::SignalBand::L1,
+            signal_code: bijux_gnss_core::api::SignalCode::Unknown,
+            doppler_hz: -1_000.0,
+            code_phase_chips: 321.5,
+            carrier_phase_rad: 0.0,
+            cn0_db_hz: 52.0,
+            navigation_data: false.into(),
+        },
+        0x710C_A000,
+        0.04,
+    );
+    let code_phase_samples =
+        crate::sim::synthetic::expected_acquisition_code_phase_samples(&config, &frame, 321.5);
+    let tracking = Tracking::new(config, ReceiverRuntime::default());
+    let tracks = tracking.track_from_acquisition(
+        &frame,
+        &[bijux_gnss_core::api::AcqResult {
+            sat,
+            signal_band: bijux_gnss_core::api::SignalBand::L1,
+            signal_code: bijux_gnss_core::api::SignalCode::Unknown,
+            glonass_frequency_channel: None,
+            source_time: bijux_gnss_core::api::ReceiverSampleTrace::default(),
+            candidate_rank: 1,
+            is_primary_candidate: true,
+            doppler_hz: bijux_gnss_core::api::Hertz(-1_000.0),
+            doppler_rate_hz_per_s: 0.0,
+            carrier_hz: bijux_gnss_core::api::Hertz(-1_000.0),
+            code_phase_samples,
+            peak: 1.0,
+            second_peak: 0.1,
+            mean: 0.01,
+            peak_mean_ratio: 20.0,
+            peak_second_ratio: 10.0,
+            cn0_proxy: 52.0,
+            score: 1.0,
+            hypothesis: bijux_gnss_core::api::AcqHypothesis::Accepted,
+            assumptions: None,
+            evidence: Vec::new(),
+            threshold_provenance: None,
+            explain_selection_reason: Some("low_rate_seeded_tracking".to_string()),
+            doppler_refinement: None,
+            code_phase_refinement: None,
+            signal_delay_alignment: None,
+            uncertainty: None,
+        }],
+    );
+    let epochs = &tracks.first().expect("track").epochs;
+
+    assert!(
+        epochs.iter().any(|epoch| epoch.lock_state == "tracking"),
+        "low-rate seeded tracking must reach tracking: {epochs:?}"
+    );
+    assert!(
+        epochs
+            .iter()
+            .skip(4)
+            .filter(|epoch| epoch.fll_lock && epoch.lock_state == "tracking")
+            .all(|epoch| !epoch.anti_false_lock),
+        "low-rate stable tracking must not retain false-lock flags: {epochs:?}"
     );
 }
 

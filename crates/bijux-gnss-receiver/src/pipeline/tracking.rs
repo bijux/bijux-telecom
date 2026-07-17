@@ -1110,20 +1110,31 @@ impl Tracking {
                 from_state,
                 ChannelState::PullIn | ChannelState::Tracking | ChannelState::Degraded
             ) && pll_err.abs() < lock_detector_thresholds.pll_hold_rad);
-        let anti_false_lock = anti_false_lock_detected(
+        let detected_anti_false_lock = anti_false_lock_detected(
             primary_correlator.early,
             primary_correlator.prompt,
             primary_correlator.late,
         ) && !sustained_pll_lock;
+        let prompt_power_ratio = prompt_power_ratio(prompt_power, state.prompt_power_reference);
+        let prompt_power_supports_lock = prompt_power_ratio
+            .is_some_and(|ratio| ratio >= DISCRIMINATOR_INSTABILITY_MIN_PROMPT_POWER_RATIO);
+        let anti_false_lock = detected_anti_false_lock
+            && !low_resolution_false_lock_override(
+                samples_per_chip,
+                tracking_params.early_late_spacing_chips,
+                lock || prompt_power_supports_lock,
+                prompt_power_supports_lock,
+                raw_fll_lock,
+                doppler_consistency.consistent,
+                pll_err,
+                cycle_slip,
+            );
         state.prompt_power_reference = refresh_prompt_power_reference(
             state.prompt_power_reference,
             prompt_power,
             state.state,
             anti_false_lock,
         );
-        let prompt_power_ratio = prompt_power_ratio(prompt_power, state.prompt_power_reference);
-        let prompt_power_supports_lock = prompt_power_ratio
-            .is_some_and(|ratio| ratio >= DISCRIMINATOR_INSTABILITY_MIN_PROMPT_POWER_RATIO);
         let sustained_prompt_lock = lock
             || (matches!(
                 state.state,
@@ -1179,7 +1190,7 @@ impl Tracking {
             raw_fll_lock,
             cycle_slip,
         );
-        let discriminator_feedback_ready = lock
+        let discriminator_feedback_ready = sustained_prompt_lock
             && prompt_power_ratio.is_none_or(|ratio| {
                 ratio >= DISCRIMINATOR_INSTABILITY_MIN_PROMPT_POWER_RATIO
             })

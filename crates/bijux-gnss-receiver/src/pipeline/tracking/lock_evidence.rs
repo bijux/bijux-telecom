@@ -35,6 +35,11 @@ fn lock_detector_provenance(thresholds: LockDetectorThresholds) -> String {
     )
 }
 
+fn low_resolution_tracking_geometry(samples_per_chip: f64, early_late_spacing_chips: f64) -> bool {
+    samples_per_chip * early_late_spacing_chips.abs()
+        <= LOW_RESOLUTION_DLL_MIN_SAMPLE_SEPARATION + f64::EPSILON
+}
+
 fn low_resolution_code_lock(
     samples_per_chip: f64,
     early_late_spacing_chips: f64,
@@ -44,12 +49,30 @@ fn low_resolution_code_lock(
     cycle_slip: bool,
     anti_false_lock: bool,
 ) -> bool {
-    let effective_sample_separation = samples_per_chip * early_late_spacing_chips.abs();
-    effective_sample_separation + f64::EPSILON < LOW_RESOLUTION_DLL_MIN_SAMPLE_SEPARATION
+    low_resolution_tracking_geometry(samples_per_chip, early_late_spacing_chips)
         && prompt_lock
         && (pll_lock || fll_lock)
         && !cycle_slip
         && !anti_false_lock
+}
+
+fn low_resolution_false_lock_override(
+    samples_per_chip: f64,
+    early_late_spacing_chips: f64,
+    prompt_lock: bool,
+    prompt_power_supports_lock: bool,
+    fll_lock: bool,
+    doppler_consistent: bool,
+    pll_err_rad: f32,
+    cycle_slip: bool,
+) -> bool {
+    low_resolution_tracking_geometry(samples_per_chip, early_late_spacing_chips)
+        && prompt_lock
+        && prompt_power_supports_lock
+        && fll_lock
+        && doppler_consistent
+        && pll_err_rad.abs() <= CARRIER_CONVERGENCE_MAX_PHASE_ERROR_RAD
+        && !cycle_slip
 }
 
 fn short_fade_epoch_budget(tracking_params: TrackingParams) -> u16 {
