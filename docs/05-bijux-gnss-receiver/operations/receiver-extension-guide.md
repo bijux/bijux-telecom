@@ -24,3 +24,9 @@ owner that actually composes new stages and receiver behavior.
 
 If a capability is reusable signal math or standalone navigation science, it
 should move into its owner before the receiver depends on it.
+
+## First Proof Check
+
+- `crates/bijux-gnss-receiver/docs/PIPELINE.md`
+- `crates/bijux-gnss-receiver/docs/PORTS.md`
+- `crates/bijux-gnss-receiver/docs/BOUNDARY.md`

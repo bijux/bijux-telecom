@@ -23,3 +23,9 @@ that actually emits and summarizes stage-facing issues.
 
 Shared diagnostic record shapes may live in core, but receiver-owned diagnostic
 behavior and stage-facing meaning belong here with runtime orchestration.
+
+## Protecting Proof
+
+- `crates/bijux-gnss-receiver/docs/ARTIFACTS.md`
+- `crates/bijux-gnss-receiver/docs/RUNTIME.md`
+- `crates/bijux-gnss-receiver/tests/integration_tracking_channel_state_reports.rs`

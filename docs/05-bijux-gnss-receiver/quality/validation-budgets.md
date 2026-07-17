@@ -23,3 +23,9 @@ runtime owner that exposes validation and staged execution proof.
 The exact numbers still need proof in tests and validation workflows. What this
 page anchors is the receiver-side ownership of those validation budgets once
 they become part of top-level runtime trust.
+
+## First Proof Check
+
+- `crates/bijux-gnss-receiver/docs/REFERENCE_VALIDATION.md`
+- `crates/bijux-gnss-receiver/tests/integration_navigation_pvt_accuracy_budget.rs`
+- `crates/bijux-gnss-receiver/tests/integration_tracking_accuracy_budget.rs`

@@ -19,3 +19,9 @@ complete, reviewable, and honestly proven.
 - the relevant local proof has been run or the gap is explicitly called out
 - public runtime meaning has not changed silently
 - the commit boundary matches one durable runtime intent
+
+## Protecting Proof
+
+- `crates/bijux-gnss-receiver/docs/TESTS.md`
+- `crates/bijux-gnss-receiver/docs/RUNTIME.md`
+- `crates/bijux-gnss-receiver/docs/REFERENCE_VALIDATION.md`

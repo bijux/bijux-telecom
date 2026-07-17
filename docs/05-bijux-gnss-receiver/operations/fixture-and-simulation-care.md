@@ -25,3 +25,9 @@ runtime meaning, not only test convenience.
 
 This crate proves many claims through synthetic and integration evidence. Loose
 fixture hygiene can make the suite look broad while weakening what it proves.
+
+## First Proof Check
+
+- `crates/bijux-gnss-receiver/docs/SIMULATION.md`
+- `crates/bijux-gnss-receiver/tests/integration_synthetic.rs`
+- `crates/bijux-gnss-receiver/tests/integration_navigation_validation_run.rs`

@@ -22,3 +22,9 @@ Use this checklist when reviewing a receiver change.
 - if a fixture or synthetic expectation changed, is the reason explicit and
   technically credible
 - do the handbook pages still match the changed behavior
+
+## Protecting Proof
+
+- `crates/bijux-gnss-receiver/docs/TESTS.md`
+- `crates/bijux-gnss-receiver/docs/PUBLIC_API.md`
+- `docs/05-bijux-gnss-receiver/this-package-does-not-own.md`

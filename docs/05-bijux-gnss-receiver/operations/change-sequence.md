@@ -25,3 +25,9 @@ Use this sequence when a receiver-runtime change is more than a trivial edit.
 This crate is broad enough that one "small" runtime or validation edit can
 have public consequences. Committing by runtime intent keeps reviewable history
 aligned with package meaning.
+
+## First Proof Check
+
+- `crates/bijux-gnss-receiver/docs/TESTS.md`
+- `crates/bijux-gnss-receiver/docs/PIPELINE.md`
+- `docs/05-bijux-gnss-receiver/operations/verification-commands.md`

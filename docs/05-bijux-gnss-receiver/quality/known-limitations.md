@@ -21,3 +21,9 @@ This handbook does not pretend the receiver crate is small or simple.
   first appear
 - synthetic proof is powerful but still needs discipline to avoid becoming an
   unbounded truth system
+
+## First Proof Check
+
+- `crates/bijux-gnss-receiver/docs/TESTS.md`
+- `crates/bijux-gnss-receiver/tests/prop_receiver.rs`
+- `crates/bijux-gnss-receiver/tests/integration_pipeline_determinism.rs`
