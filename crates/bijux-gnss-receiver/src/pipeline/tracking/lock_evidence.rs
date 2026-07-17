@@ -56,7 +56,7 @@ fn low_resolution_code_lock(
         && !anti_false_lock
 }
 
-fn low_resolution_false_lock_override(
+struct LowResolutionFalseLockEvidence {
     samples_per_chip: f64,
     early_late_spacing_chips: f64,
     prompt_lock: bool,
@@ -65,14 +65,16 @@ fn low_resolution_false_lock_override(
     doppler_consistent: bool,
     pll_err_rad: f32,
     cycle_slip: bool,
-) -> bool {
-    low_resolution_tracking_geometry(samples_per_chip, early_late_spacing_chips)
-        && prompt_lock
-        && prompt_power_supports_lock
-        && fll_lock
-        && doppler_consistent
-        && pll_err_rad.abs() <= CARRIER_CONVERGENCE_MAX_PHASE_ERROR_RAD
-        && !cycle_slip
+}
+
+fn low_resolution_false_lock_override(evidence: LowResolutionFalseLockEvidence) -> bool {
+    low_resolution_tracking_geometry(evidence.samples_per_chip, evidence.early_late_spacing_chips)
+        && evidence.prompt_lock
+        && evidence.prompt_power_supports_lock
+        && evidence.fll_lock
+        && evidence.doppler_consistent
+        && evidence.pll_err_rad.abs() <= CARRIER_CONVERGENCE_MAX_PHASE_ERROR_RAD
+        && !evidence.cycle_slip
 }
 
 fn short_fade_epoch_budget(tracking_params: TrackingParams) -> u16 {

@@ -37,18 +37,46 @@ fn low_resolution_code_lock_requires_prompt_and_lock_safety_guards() {
 
 #[test]
 fn low_resolution_false_lock_override_requires_consistent_tracking_evidence() {
-    assert!(super::low_resolution_false_lock_override(
-        2.0, 0.5, true, true, true, true, 0.8, false
-    ));
-    assert!(!super::low_resolution_false_lock_override(
-        2.0, 0.5, true, false, true, true, 0.8, false
-    ));
-    assert!(!super::low_resolution_false_lock_override(
-        2.0, 0.5, true, true, true, false, 0.8, false
-    ));
-    assert!(!super::low_resolution_false_lock_override(
-        2.0, 0.5, true, true, true, true, 2.0, false
-    ));
+    assert!(super::low_resolution_false_lock_override(super::LowResolutionFalseLockEvidence {
+        samples_per_chip: 2.0,
+        early_late_spacing_chips: 0.5,
+        prompt_lock: true,
+        prompt_power_supports_lock: true,
+        fll_lock: true,
+        doppler_consistent: true,
+        pll_err_rad: 0.8,
+        cycle_slip: false,
+    }));
+    assert!(!super::low_resolution_false_lock_override(super::LowResolutionFalseLockEvidence {
+        samples_per_chip: 2.0,
+        early_late_spacing_chips: 0.5,
+        prompt_lock: true,
+        prompt_power_supports_lock: false,
+        fll_lock: true,
+        doppler_consistent: true,
+        pll_err_rad: 0.8,
+        cycle_slip: false,
+    }));
+    assert!(!super::low_resolution_false_lock_override(super::LowResolutionFalseLockEvidence {
+        samples_per_chip: 2.0,
+        early_late_spacing_chips: 0.5,
+        prompt_lock: true,
+        prompt_power_supports_lock: true,
+        fll_lock: true,
+        doppler_consistent: false,
+        pll_err_rad: 0.8,
+        cycle_slip: false,
+    }));
+    assert!(!super::low_resolution_false_lock_override(super::LowResolutionFalseLockEvidence {
+        samples_per_chip: 2.0,
+        early_late_spacing_chips: 0.5,
+        prompt_lock: true,
+        prompt_power_supports_lock: true,
+        fll_lock: true,
+        doppler_consistent: true,
+        pll_err_rad: 2.0,
+        cycle_slip: false,
+    }));
 }
 
 #[test]

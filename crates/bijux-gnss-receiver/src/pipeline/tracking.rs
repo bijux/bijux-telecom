@@ -1119,16 +1119,16 @@ impl Tracking {
         let prompt_power_supports_lock = prompt_power_ratio
             .is_some_and(|ratio| ratio >= DISCRIMINATOR_INSTABILITY_MIN_PROMPT_POWER_RATIO);
         let anti_false_lock = detected_anti_false_lock
-            && !low_resolution_false_lock_override(
+            && !low_resolution_false_lock_override(LowResolutionFalseLockEvidence {
                 samples_per_chip,
-                tracking_params.early_late_spacing_chips,
-                lock || prompt_power_supports_lock,
+                early_late_spacing_chips: tracking_params.early_late_spacing_chips,
+                prompt_lock: lock || prompt_power_supports_lock,
                 prompt_power_supports_lock,
-                raw_fll_lock,
-                doppler_consistency.consistent,
-                pll_err,
+                fll_lock: raw_fll_lock,
+                doppler_consistent: doppler_consistency.consistent,
+                pll_err_rad: pll_err,
                 cycle_slip,
-            );
+            });
         state.prompt_power_reference = refresh_prompt_power_reference(
             state.prompt_power_reference,
             prompt_power,
