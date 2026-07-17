@@ -35,3 +35,15 @@ signal-layer assumptions that downstream crates may rely on today.
 These assumptions are only trustworthy when they stay backed by signal tests
 and reference catalogs. When a change weakens the evidence, update the quality
 and operations handbooks before claiming broader support.
+
+## Protecting Proof
+
+Inspect `crates/bijux-gnss-signal/docs/CATALOG.md`,
+`crates/bijux-gnss-signal/docs/CODE_FAMILIES.md`,
+`crates/bijux-gnss-signal/docs/DSP.md`, and
+`crates/bijux-gnss-signal/src/catalog.rs`. Then inspect
+`crates/bijux-gnss-signal/tests/integration_ca_code_reference.rs`,
+`crates/bijux-gnss-signal/tests/integration_ca_code_long_duration_chunks.rs`,
+`crates/bijux-gnss-signal/tests/integration_galileo_e1b_reference.rs`, and
+`crates/bijux-gnss-signal/tests/integration_gps_l2c_replica_model.rs` to
+confirm these assumptions remain reference-backed rather than descriptive only.

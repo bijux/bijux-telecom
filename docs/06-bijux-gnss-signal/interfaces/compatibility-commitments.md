@@ -26,3 +26,13 @@ treated as product drift.
 - internal file layout outside the public facade is not a caller promise
 - private lookup-table modules are not caller promises
 - numeric implementation detail that is not exported is not a caller promise
+
+## Protecting Proof
+
+Inspect `crates/bijux-gnss-signal/docs/PUBLIC_API.md`,
+`crates/bijux-gnss-signal/docs/CONTRACTS.md`, and
+`crates/bijux-gnss-signal/src/api.rs`. Then inspect
+`crates/bijux-gnss-signal/tests/integration_signal_component_registry.rs`,
+`crates/bijux-gnss-signal/tests/integration_raw_iq_metadata.rs`, and
+`crates/bijux-gnss-signal/tests/prop_obs_epoch_validation.rs` to confirm the
+documented compatibility surface still has checked-in proof.

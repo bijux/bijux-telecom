@@ -35,3 +35,21 @@ signal contracts instead of hidden runtime coupling.
 The lightweight traits `SignalSource`, `SampleSource`, `Correlator`, and
 `SampleSink` are the narrow seams that let tests and higher-level crates
 interoperate without transferring runtime ownership into this package.
+
+## First Proof Check
+
+Inspect `crates/bijux-gnss-signal/docs/TRAITS.md`,
+`crates/bijux-gnss-signal/docs/PUBLIC_API.md`, and
+`crates/bijux-gnss-signal/docs/ARCHITECTURE.md`. Then inspect
+`crates/bijux-gnss-signal/src/api.rs`,
+`crates/bijux-gnss-signal/src/raw_iq.rs`,
+`crates/bijux-gnss-signal/src/samples.rs`, and
+`crates/bijux-gnss-signal/src/obs_validation.rs` to confirm the seams remain
+typed signal boundaries rather than hidden runtime adapters.
+
+## First Neighbor Proof Check
+
+When a seam starts carrying stage sequencing or channel orchestration, leave
+this page for [05-bijux-gnss-receiver/architecture/integration-seams](../../05-bijux-gnss-receiver/architecture/integration-seams.md).
+When it starts carrying estimator meaning, inspect
+[04-bijux-gnss-nav/architecture/integration-seams](../../04-bijux-gnss-nav/architecture/integration-seams.md).

@@ -35,3 +35,13 @@ Every extension should answer three questions before it lands:
 - is the name organized by signal meaning or mathematical role
 - can the proof surface demonstrate the new behavior independently of one
   higher-level workflow
+
+## First Proof Check
+
+Inspect `crates/bijux-gnss-signal/docs/CODE_FAMILIES.md`,
+`crates/bijux-gnss-signal/docs/DSP.md`, and
+`crates/bijux-gnss-signal/docs/PUBLIC_API.md`. Then inspect
+`crates/bijux-gnss-signal/src/codes/`,
+`crates/bijux-gnss-signal/src/dsp/`, and the corresponding reference or
+continuity tests under `crates/bijux-gnss-signal/tests/` before approving any
+extension as durable.

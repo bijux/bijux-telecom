@@ -35,3 +35,14 @@ states the contract more clearly than the helper signature alone. If the change
 touches reusable DSP state such as NCOs, replicas, or loop tracking, read the
 long-duration continuity tests before trusting a local helper rename or math
 cleanup.
+
+## First Proof Check
+
+Open `crates/bijux-gnss-signal/docs/ARCHITECTURE.md` and
+`crates/bijux-gnss-signal/docs/TESTS.md` first. Then follow this route through
+`crates/bijux-gnss-signal/src/lib.rs`,
+`crates/bijux-gnss-signal/src/api.rs`,
+`crates/bijux-gnss-signal/src/catalog.rs`,
+`crates/bijux-gnss-signal/src/codes/mod.rs`,
+`crates/bijux-gnss-signal/src/dsp/mod.rs`, and the matching integration test
+family under `crates/bijux-gnss-signal/tests/`.

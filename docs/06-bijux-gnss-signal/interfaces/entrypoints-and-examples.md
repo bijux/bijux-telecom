@@ -34,3 +34,14 @@ the durable path is:
 2. normalize samples through the published conversion helpers
 3. use catalog, code, or DSP helpers as needed
 4. apply validation helpers to shared observation records once they exist
+
+## Protecting Proof
+
+Inspect `crates/bijux-gnss-signal/docs/PUBLIC_API.md`,
+`crates/bijux-gnss-signal/docs/RAW_IQ.md`,
+`crates/bijux-gnss-signal/docs/VALIDATION.md`, and
+`crates/bijux-gnss-signal/src/api.rs`. Then inspect
+`crates/bijux-gnss-signal/tests/integration_iq_sample_conversion.rs`,
+`crates/bijux-gnss-signal/tests/integration_raw_iq_metadata.rs`, and
+`crates/bijux-gnss-signal/tests/prop_obs_epoch_validation.rs` to confirm the
+reader path still matches real entrypoints and validation proof.

@@ -27,3 +27,13 @@ last_reviewed: 2026-07-17
 - review `api.rs` changes as public-boundary changes
 - use the refusal ledger in [This Package Does Not Own](../this-package-does-not-own.md)
   when pressure repeats
+
+## First Proof Check
+
+Inspect `crates/bijux-gnss-signal/docs/BOUNDARY.md`,
+`crates/bijux-gnss-signal/docs/ARCHITECTURE.md`, and
+`crates/bijux-gnss-signal/docs/PUBLIC_API.md`. Then inspect
+`crates/bijux-gnss-signal/src/api.rs`,
+`crates/bijux-gnss-signal/src/dsp/mod.rs`, and
+`crates/bijux-gnss-signal/tests/integration_guardrails.rs` to confirm the
+architectural risk register still matches the enforced crate shape.

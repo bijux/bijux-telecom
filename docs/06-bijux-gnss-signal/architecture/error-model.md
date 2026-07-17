@@ -31,3 +31,14 @@ The error model protects reusable signal boundaries by failing early on bad
 signal assumptions. It should stay focused on signal correctness. Repository
 I/O failures, runtime orchestration failures, and operator policy failures
 belong elsewhere.
+
+## First Proof Check
+
+Inspect `crates/bijux-gnss-signal/src/error.rs`,
+`crates/bijux-gnss-signal/docs/BOUNDARY.md`, and
+`crates/bijux-gnss-signal/docs/CONTRACTS.md`. Then inspect
+`crates/bijux-gnss-signal/tests/integration_raw_iq_metadata.rs`,
+`crates/bijux-gnss-signal/tests/integration_signal_spectrum_front_end_low_pass.rs`,
+and `crates/bijux-gnss-signal/tests/prop_obs_epoch_validation.rs` to confirm
+that failures still map to signal-domain contracts rather than higher-level
+workflow errors.

@@ -29,3 +29,13 @@ Every new export should answer two questions:
 - does the signal crate truly own this behavior
 - is the export name stable enough to remain understandable without the source
   conversation that introduced it
+
+## Protecting Proof
+
+Inspect `crates/bijux-gnss-signal/docs/PUBLIC_API.md`,
+`crates/bijux-gnss-signal/docs/TRAITS.md`, and
+`crates/bijux-gnss-signal/src/api.rs`. Then inspect
+`crates/bijux-gnss-signal/tests/integration_guardrails.rs`,
+`crates/bijux-gnss-signal/tests/integration_signal_component_registry.rs`, and
+`crates/bijux-gnss-signal/tests/integration_replica_continuity.rs` to confirm
+the export groups still map to durable owned surfaces.
