@@ -8,7 +8,7 @@ use crate::datasets::DatasetEntry;
 use crate::hash::hash_config;
 
 use super::build_metadata::build_metadata;
-use super::index::append_run_index;
+use super::history::append_run_history_entry;
 use crate::run_layout::directories::context::{resolve_run_context, RunContextArgs};
 use crate::run_layout::identity::{now_unix_ms, RUN_LAYOUT_SCHEMA_VERSION};
 use crate::run_layout::provenance::{front_end_provenance, replay_scope};
@@ -87,7 +87,7 @@ pub fn write_manifest(
     let context = resolve_run_context(args, command, dataset)?;
     let data = serde_json::to_string_pretty(&manifest).map_err(map_err)?;
     std::fs::write(&context.layout.manifest_path, data).map_err(map_err)?;
-    append_run_index(&context.layout.run_dir, &manifest)?;
+    append_run_history_entry(&context.layout.run_dir, &manifest)?;
     Ok(manifest)
 }
 

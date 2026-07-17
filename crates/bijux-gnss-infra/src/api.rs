@@ -30,8 +30,8 @@ pub use bijux_gnss_receiver::api::core;
 
 /// Run layout helpers.
 pub use crate::run_layout::{
-    append_run_index, artifact_header, artifacts_dir, run_dir, run_report_schema_version,
-    write_manifest, write_run_report, RunContextArgs, RunDirectoryLayout, RunIndexEntry,
+    append_run_history_entry, artifact_header, artifacts_dir, run_dir, run_report_schema_version,
+    write_manifest, write_run_report, RunContextArgs, RunDirectoryLayout, RunHistoryEntry,
     RunManifest, RunReport,
 };
 

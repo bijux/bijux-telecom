@@ -23,8 +23,8 @@ pub type ReplayScope = provenance::ReplayScope;
 /// Front-end provenance captured at run time.
 pub type FrontEndProvenance = provenance::FrontEndProvenance;
 
-/// Run index entry appended to `artifacts/runs/index.jsonl`.
-pub type RunIndexEntry = records::index::RunIndexEntry;
+/// Run history entry appended to `artifacts/runs/index.jsonl`.
+pub type RunHistoryEntry = records::history::RunHistoryEntry;
 
 /// Resolve run directory path.
 pub fn run_dir(
@@ -44,12 +44,12 @@ pub fn artifacts_dir(
     directories::context::artifacts_dir(args, command, dataset)
 }
 
-/// Append a run index entry.
-pub fn append_run_index(
+/// Append a run history entry.
+pub fn append_run_history_entry(
     run_dir: &std::path::Path,
     manifest: &RunManifest,
 ) -> Result<(), bijux_gnss_receiver::api::core::InputError> {
-    records::index::append_run_index(run_dir, manifest)
+    records::history::append_run_history_entry(run_dir, manifest)
 }
 
 /// Build an artifact header for outputs.

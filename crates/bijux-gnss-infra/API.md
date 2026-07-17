@@ -7,8 +7,8 @@ Artifacts
 - `ArtifactValidationResult`, `ArtifactExplainResult`.
 
 Run layout
-- `RunContextArgs`, `RunDirectoryLayout`, `RunManifest`, `RunReport`.
-- `run_dir`, `artifacts_dir`, `artifact_header`, `write_manifest`, `write_run_report`.
+- `RunContextArgs`, `RunDirectoryLayout`, `RunManifest`, `RunReport`, `RunHistoryEntry`.
+- `run_dir`, `artifacts_dir`, `artifact_header`, `write_manifest`, `write_run_report`, `append_run_history_entry`.
 
 Datasets
 - `DatasetRegistry`, `DatasetEntry`, `parse_ecef`.
