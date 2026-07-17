@@ -8,8 +8,8 @@ use bijux_gnss_receiver::api::ReceiverConfig;
 use crate::datasets::DatasetEntry;
 use crate::hash::hash_config;
 
-use super::identity::{dataset_hash, now_unix_ms, run_id};
 use super::layout::RunDirLayout;
+use crate::run_layout::identity::{dataset_hash, now_unix_ms, run_id};
 
 /// Run context arguments.
 #[derive(Debug, Clone)]
@@ -31,13 +31,13 @@ pub struct RunContextArgs<'a> {
 }
 
 #[derive(Debug, Clone)]
-pub(super) struct RunContext {
-    pub(super) layout: RunDirLayout,
+pub(crate) struct RunContext {
+    pub(crate) layout: RunDirLayout,
 }
 
 static RUN_CONTEXT: OnceLock<RunContext> = OnceLock::new();
 
-pub(super) fn resolve_run_context(
+pub(crate) fn resolve_run_context(
     args: &RunContextArgs<'_>,
     command: &str,
     dataset: Option<&DatasetEntry>,

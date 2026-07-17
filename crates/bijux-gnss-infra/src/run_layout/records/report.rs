@@ -7,10 +7,12 @@ use serde::Serialize;
 use crate::datasets::DatasetEntry;
 use crate::hash::{git_hash, hash_config};
 
-use super::context::{resolve_run_context, RunContextArgs};
-use super::identity::{dataset_hash, run_id, RUN_LAYOUT_SCHEMA_VERSION, RUN_REPORT_SCHEMA_VERSION};
-use super::provenance::{front_end_provenance, replay_scope};
-use super::{FrontEndProvenance, ReplayScope};
+use crate::run_layout::directories::context::{resolve_run_context, RunContextArgs};
+use crate::run_layout::identity::{
+    dataset_hash, run_id, RUN_LAYOUT_SCHEMA_VERSION, RUN_REPORT_SCHEMA_VERSION,
+};
+use crate::run_layout::provenance::{front_end_provenance, replay_scope};
+use crate::run_layout::{FrontEndProvenance, ReplayScope};
 
 /// Run report persisted for each execution.
 #[derive(Debug, Serialize)]

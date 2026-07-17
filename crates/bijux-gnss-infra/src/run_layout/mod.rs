@@ -1,25 +1,21 @@
 //! Run directory layout and manifest utilities.
 
-mod artifact_header;
-mod context;
+mod directories;
 mod identity;
-mod index;
-mod layout;
-mod manifest;
 mod provenance;
-mod report;
+mod records;
 
 /// Run directory layout.
-pub type RunDirLayout = layout::RunDirLayout;
+pub type RunDirLayout = directories::layout::RunDirLayout;
 
 /// Run context arguments.
-pub type RunContextArgs<'a> = context::RunContextArgs<'a>;
+pub type RunContextArgs<'a> = directories::context::RunContextArgs<'a>;
 
 /// Run manifest persisted for each execution.
-pub type RunManifest = manifest::RunManifest;
+pub type RunManifest = records::manifest::RunManifest;
 
 /// Run report persisted for each execution.
-pub type RunReport = report::RunReport;
+pub type RunReport = records::report::RunReport;
 
 /// Replay scope persisted in run manifests and reports.
 pub type ReplayScope = provenance::ReplayScope;
@@ -28,7 +24,7 @@ pub type ReplayScope = provenance::ReplayScope;
 pub type FrontEndProvenance = provenance::FrontEndProvenance;
 
 /// Run index entry appended to `artifacts/runs/index.jsonl`.
-pub type RunIndexEntry = index::RunIndexEntry;
+pub type RunIndexEntry = records::index::RunIndexEntry;
 
 /// Resolve run directory path.
 pub fn run_dir(
@@ -36,7 +32,7 @@ pub fn run_dir(
     command: &str,
     dataset: Option<&crate::datasets::DatasetEntry>,
 ) -> Result<std::path::PathBuf, bijux_gnss_receiver::api::core::InputError> {
-    context::run_dir(args, command, dataset)
+    directories::context::run_dir(args, command, dataset)
 }
 
 /// Resolve artifacts directory path.
@@ -45,7 +41,7 @@ pub fn artifacts_dir(
     command: &str,
     dataset: Option<&crate::datasets::DatasetEntry>,
 ) -> Result<std::path::PathBuf, bijux_gnss_receiver::api::core::InputError> {
-    context::artifacts_dir(args, command, dataset)
+    directories::context::artifacts_dir(args, command, dataset)
 }
 
 /// Append a run index entry.
@@ -53,7 +49,7 @@ pub fn append_run_index(
     run_dir: &std::path::Path,
     manifest: &RunManifest,
 ) -> Result<(), bijux_gnss_receiver::api::core::InputError> {
-    index::append_run_index(run_dir, manifest)
+    records::index::append_run_index(run_dir, manifest)
 }
 
 /// Build an artifact header for outputs.
@@ -65,12 +61,12 @@ pub fn artifact_header(
     bijux_gnss_receiver::api::core::ArtifactHeaderV1,
     bijux_gnss_receiver::api::core::InputError,
 > {
-    artifact_header::artifact_header(args, profile, dataset)
+    records::artifact_header::artifact_header(args, profile, dataset)
 }
 
 /// Load run report schema version.
 pub fn run_report_schema_version() -> u32 {
-    report::run_report_schema_version()
+    records::report::run_report_schema_version()
 }
 
 /// Write a run report to disk.
@@ -80,7 +76,7 @@ pub fn write_run_report(
     profile: &bijux_gnss_receiver::api::ReceiverConfig,
     dataset: Option<&crate::datasets::DatasetEntry>,
 ) -> Result<RunReport, bijux_gnss_receiver::api::core::InputError> {
-    report::write_run_report(args, command, profile, dataset)
+    records::report::write_run_report(args, command, profile, dataset)
 }
 
 /// Write a run manifest to disk.
@@ -91,5 +87,5 @@ pub fn write_manifest(
     dataset: Option<&crate::datasets::DatasetEntry>,
     summary: &serde_json::Value,
 ) -> Result<RunManifest, bijux_gnss_receiver::api::core::InputError> {
-    manifest::write_manifest(args, command, profile, dataset, summary)
+    records::manifest::write_manifest(args, command, profile, dataset, summary)
 }
