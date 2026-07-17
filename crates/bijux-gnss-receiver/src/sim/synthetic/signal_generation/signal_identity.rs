@@ -1,12 +1,43 @@
+fn resolved_signal_identity(
+    sat: SatId,
+    signal_band: SignalBand,
+    signal_code: bijux_gnss_core::api::SignalCode,
+) -> (SignalBand, bijux_gnss_core::api::SignalCode) {
+    if signal_code != bijux_gnss_core::api::SignalCode::Unknown {
+        return (signal_band, signal_code);
+    }
+
+    let resolved_code = default_signal_code_for_band(sat.constellation, signal_band);
+    if bijux_gnss_signal::api::resolved_signal_registry_entry(
+        sat,
+        signal_band,
+        resolved_code,
+        None,
+    )
+        .ok()
+        .flatten()
+        .is_some()
+    {
+        return (signal_band, resolved_code);
+    }
+
+    let fallback_band = default_signal_band_for_constellation(sat.constellation);
+    (fallback_band, default_signal_code_for_band(sat.constellation, fallback_band))
+}
+
 fn resolved_signal_code(
     sat: SatId,
     signal_band: SignalBand,
     signal_code: bijux_gnss_core::api::SignalCode,
 ) -> bijux_gnss_core::api::SignalCode {
-    if signal_code != bijux_gnss_core::api::SignalCode::Unknown {
-        return signal_code;
-    }
-    match (sat.constellation, signal_band) {
+    resolved_signal_identity(sat, signal_band, signal_code).1
+}
+
+fn default_signal_code_for_band(
+    constellation: bijux_gnss_core::api::Constellation,
+    signal_band: SignalBand,
+) -> bijux_gnss_core::api::SignalCode {
+    match (constellation, signal_band) {
         (bijux_gnss_core::api::Constellation::Gps, SignalBand::L1) => {
             bijux_gnss_core::api::SignalCode::Ca
         }
@@ -29,6 +60,18 @@ fn resolved_signal_code(
             bijux_gnss_core::api::SignalCode::B2I
         }
         _ => bijux_gnss_core::api::SignalCode::Unknown,
+    }
+}
+
+fn default_signal_band_for_constellation(
+    constellation: bijux_gnss_core::api::Constellation,
+) -> SignalBand {
+    match constellation {
+        bijux_gnss_core::api::Constellation::Gps => SignalBand::L1,
+        bijux_gnss_core::api::Constellation::Galileo => SignalBand::E1,
+        bijux_gnss_core::api::Constellation::Glonass => SignalBand::L1,
+        bijux_gnss_core::api::Constellation::Beidou => SignalBand::B1,
+        bijux_gnss_core::api::Constellation::Unknown => SignalBand::L1,
     }
 }
 

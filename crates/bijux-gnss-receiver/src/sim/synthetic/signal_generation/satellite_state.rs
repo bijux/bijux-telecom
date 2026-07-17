@@ -27,8 +27,9 @@ struct ReceiverOscillatorNoiseKnots {
 }
 
 fn synthetic_replica_model(params: &SyntheticSignalParams) -> SyntheticSignalModel {
-    let signal_code = resolved_signal_code(params.sat, params.signal_band, params.signal_code);
-    match (params.sat.constellation, params.signal_band, signal_code) {
+    let (signal_band, signal_code) =
+        resolved_signal_identity(params.sat, params.signal_band, params.signal_code);
+    match (params.sat.constellation, signal_band, signal_code) {
         (bijux_gnss_core::api::Constellation::Galileo, SignalBand::E5, SignalCode::E5a) => {
             return SyntheticSignalModel::galileo_e5a_qpsk(params.sat.prn)
                 .unwrap_or_else(|_| SyntheticSignalModel::galileo_e5a_qpsk_or_ones(params.sat.prn));
@@ -39,7 +40,7 @@ fn synthetic_replica_model(params: &SyntheticSignalParams) -> SyntheticSignalMod
         }
         _ => {}
     }
-    SyntheticSignalModel::for_sat_signal(params.sat, Some(params.signal_band), signal_code)
+    SyntheticSignalModel::for_sat_signal(params.sat, Some(signal_band), signal_code)
         .ok()
         .flatten()
         .unwrap_or_else(|| SyntheticSignalModel::gps_l1_ca_or_ones(params.sat.prn))
@@ -99,6 +100,8 @@ impl SatState {
         doppler_jerk_hz_per_s2: f64,
         sample_count: u64,
     ) -> Self {
+        let (signal_band, signal_code) =
+            resolved_signal_identity(params.sat, params.signal_band, params.signal_code);
         let receiver_oscillator_phase_noise_knots =
             receiver_oscillator_phase_noise_knots(&receiver_oscillator_model, sample_count);
         let receiver_oscillator_noise_knots =
@@ -122,8 +125,8 @@ impl SatState {
             if_hz: synthetic_intermediate_frequency_hz(
                 config.intermediate_freq_hz,
                 params.sat,
-                params.signal_band,
-                params.signal_code,
+                signal_band,
+                signal_code,
                 params.glonass_frequency_channel,
             ),
             sample_rate_hz: config.sampling_freq_hz,

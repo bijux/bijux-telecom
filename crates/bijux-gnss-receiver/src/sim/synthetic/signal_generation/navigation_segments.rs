@@ -103,10 +103,11 @@ where
 }
 
 fn native_epoch_period_for_signal(params: &SyntheticSignalParams) -> Option<f64> {
-    let signal_code = resolved_signal_code(params.sat, params.signal_band, params.signal_code);
+    let (signal_band, signal_code) =
+        resolved_signal_identity(params.sat, params.signal_band, params.signal_code);
     let registry_entry = bijux_gnss_signal::api::resolved_signal_registry_entry(
         params.sat,
-        params.signal_band,
+        signal_band,
         signal_code,
         params.glonass_frequency_channel,
     )
@@ -114,7 +115,7 @@ fn native_epoch_period_for_signal(params: &SyntheticSignalParams) -> Option<f64>
     .flatten()?;
     let component = registry_entry.default_component()?;
 
-    match (params.sat.constellation, params.signal_band, signal_code) {
+    match (params.sat.constellation, signal_band, signal_code) {
         (bijux_gnss_core::api::Constellation::Gps, SignalBand::L5, SignalCode::L5I)
         | (bijux_gnss_core::api::Constellation::Gps, SignalBand::L5, SignalCode::L5Q)
         | (bijux_gnss_core::api::Constellation::Galileo, SignalBand::E5, SignalCode::E5a)
@@ -128,8 +129,9 @@ fn native_epoch_period_for_signal(params: &SyntheticSignalParams) -> Option<f64>
 }
 
 fn emitted_epoch_symbol(params: &SyntheticSignalParams, primary_code_period_index: usize) -> i8 {
-    let signal_code = resolved_signal_code(params.sat, params.signal_band, params.signal_code);
-    match (params.sat.constellation, params.signal_band, signal_code) {
+    let (signal_band, signal_code) =
+        resolved_signal_identity(params.sat, params.signal_band, params.signal_code);
+    match (params.sat.constellation, signal_band, signal_code) {
         (bijux_gnss_core::api::Constellation::Gps, SignalBand::L5, SignalCode::L5I) => {
             bijux_gnss_signal::api::gps_l5_i_epoch_symbol(
                 &[navigation_symbol_at_index(
@@ -201,10 +203,11 @@ fn nav_symbol_period_for_signal(
         return None;
     }
 
-    let signal_code = resolved_signal_code(params.sat, params.signal_band, params.signal_code);
+    let (signal_band, signal_code) =
+        resolved_signal_identity(params.sat, params.signal_band, params.signal_code);
     let registry_entry = bijux_gnss_signal::api::resolved_signal_registry_entry(
         params.sat,
-        params.signal_band,
+        signal_band,
         signal_code,
         params.glonass_frequency_channel,
     )

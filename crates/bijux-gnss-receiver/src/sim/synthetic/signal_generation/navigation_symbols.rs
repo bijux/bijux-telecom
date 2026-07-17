@@ -1,6 +1,7 @@
 fn nav_bit_mode(params: &SyntheticSignalParams) -> SyntheticNavBitMode {
-    let signal_code = resolved_signal_code(params.sat, params.signal_band, params.signal_code);
-    match (params.sat.constellation, params.signal_band, signal_code) {
+    let (signal_band, signal_code) =
+        resolved_signal_identity(params.sat, params.signal_band, params.signal_code);
+    match (params.sat.constellation, signal_band, signal_code) {
         (bijux_gnss_core::api::Constellation::Gps, SignalBand::L5, SignalCode::L5Q) => {
             SyntheticNavBitMode::GpsL5QNh20
         }
@@ -26,7 +27,7 @@ fn nav_bit_mode(params: &SyntheticSignalParams) -> SyntheticNavBitMode {
             SyntheticNavigationData::ConstantPositive => SyntheticNavBitMode::ConstantPositive,
             SyntheticNavigationData::ConstantNegative => SyntheticNavBitMode::ConstantNegative,
             SyntheticNavigationData::AlternatingStartPositive => {
-                match (params.sat.constellation, params.signal_band, signal_code) {
+                match (params.sat.constellation, signal_band, signal_code) {
                     (
                         bijux_gnss_core::api::Constellation::Galileo,
                         SignalBand::E5,

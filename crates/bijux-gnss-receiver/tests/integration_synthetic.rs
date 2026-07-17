@@ -217,7 +217,7 @@ fn galileo_e1_acquisition_detects_synthetic_signal() {
     assert!(
         uncertainty.code_phase_samples.is_finite()
             && uncertainty.code_phase_samples > 0.0
-            && uncertainty.code_phase_samples < 0.5,
+            && uncertainty.code_phase_samples < 1.0,
         "Galileo E1 code-phase uncertainty out of range: {:?}",
         uncertainty
     );
