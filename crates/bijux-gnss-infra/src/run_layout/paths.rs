@@ -8,7 +8,7 @@ pub fn run_dir(
     command: &str,
     dataset: Option<&DatasetEntry>,
 ) -> Result<std::path::PathBuf, InputError> {
-    super::directories::context::run_dir(args, command, dataset)
+    super::directories::run_dir(args, command, dataset)
 }
 
 /// Resolve artifacts directory path.
@@ -17,5 +17,5 @@ pub fn artifacts_dir(
     command: &str,
     dataset: Option<&DatasetEntry>,
 ) -> Result<std::path::PathBuf, InputError> {
-    super::directories::context::artifacts_dir(args, command, dataset)
+    super::directories::artifacts_dir(args, command, dataset)
 }

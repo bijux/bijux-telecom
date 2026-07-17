@@ -8,7 +8,7 @@ use crate::datasets::DatasetEntry;
 use crate::hash::hash_config;
 
 use super::build_metadata::build_metadata;
-use crate::run_layout::directories::context::{resolve_run_context, RunContextArgs};
+use crate::run_layout::directories::{resolve_run_context, RunContextArgs};
 use crate::run_layout::identity::{
     dataset_hash, run_id, RUN_LAYOUT_SCHEMA_VERSION, RUN_REPORT_SCHEMA_VERSION,
 };

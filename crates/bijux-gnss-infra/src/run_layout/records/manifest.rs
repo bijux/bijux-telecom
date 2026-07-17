@@ -9,7 +9,7 @@ use crate::hash::hash_config;
 
 use super::build_metadata::build_metadata;
 use super::history::append_run_history_entry;
-use crate::run_layout::directories::context::{resolve_run_context, RunContextArgs};
+use crate::run_layout::directories::{resolve_run_context, RunContextArgs};
 use crate::run_layout::identity::{now_unix_ms, RUN_LAYOUT_SCHEMA_VERSION};
 use crate::run_layout::provenance::{front_end_provenance, replay_scope};
 use crate::run_layout::{FrontEndProvenance, ReplayScope};

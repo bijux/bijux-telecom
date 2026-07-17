@@ -4,7 +4,7 @@ mod feature_inventory;
 mod front_end;
 mod replay_context;
 
-use crate::run_layout::directories::context::RunContextArgs;
+use crate::run_layout::directories::RunContextArgs;
 use bijux_gnss_receiver::api::ReceiverConfig;
 
 use crate::datasets::DatasetEntry;

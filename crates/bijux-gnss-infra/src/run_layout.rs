@@ -8,10 +8,10 @@ mod provenance;
 mod records;
 
 /// Run directory layout.
-pub type RunDirectoryLayout = directories::layout::RunDirectoryLayout;
+pub type RunDirectoryLayout = directories::RunDirectoryLayout;
 
 /// Run context arguments.
-pub type RunContextArgs<'a> = directories::context::RunContextArgs<'a>;
+pub type RunContextArgs<'a> = directories::RunContextArgs<'a>;
 
 /// Run manifest persisted for each execution.
 pub type RunManifest = records::manifest::RunManifest;

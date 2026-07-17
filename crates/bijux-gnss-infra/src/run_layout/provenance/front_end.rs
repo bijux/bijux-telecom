@@ -5,7 +5,7 @@ use bijux_gnss_receiver::api::ReceiverConfig;
 
 use crate::datasets::{resolve_raw_iq_metadata, DatasetEntry};
 
-use crate::run_layout::directories::context::RunContextArgs;
+use crate::run_layout::directories::RunContextArgs;
 
 /// Front-end provenance captured at run time.
 #[derive(Debug, serde::Serialize, Clone)]

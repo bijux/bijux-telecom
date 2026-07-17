@@ -1,6 +1,6 @@
 //! Replay context helpers.
 
-use crate::run_layout::directories::context::RunContextArgs;
+use crate::run_layout::directories::RunContextArgs;
 
 /// Replay scope persisted in run manifests and reports.
 #[derive(Debug, serde::Serialize, Clone)]
