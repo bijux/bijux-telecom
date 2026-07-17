@@ -1191,9 +1191,8 @@ impl Tracking {
             cycle_slip,
         );
         let discriminator_feedback_ready = sustained_prompt_lock
-            && prompt_power_ratio.is_none_or(|ratio| {
-                ratio >= DISCRIMINATOR_INSTABILITY_MIN_PROMPT_POWER_RATIO
-            })
+            && prompt_power_ratio
+                .is_none_or(|ratio| ratio >= DISCRIMINATOR_INSTABILITY_MIN_PROMPT_POWER_RATIO)
             && !cycle_slip
             && !anti_false_lock;
         let steady_state_tracking_ready = if from_state == ChannelState::Degraded {

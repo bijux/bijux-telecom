@@ -130,16 +130,8 @@ fn pull_in_keeps_fll_active_while_doppler_estimators_are_still_spread() {
         consistent: false,
     };
 
-    assert!(super::apply_fll_during_epoch(
-        12.0,
-        ChannelState::PullIn,
-        false,
-        divergent_doppler,
-    ));
-    assert!(!super::apply_fll_during_epoch(
-        12.0,
-        ChannelState::Tracking,
-        false,
-        divergent_doppler,
-    ));
+    assert!(super::apply_fll_during_epoch(12.0, ChannelState::PullIn, false, divergent_doppler,));
+    assert!(
+        !super::apply_fll_during_epoch(12.0, ChannelState::Tracking, false, divergent_doppler,)
+    );
 }

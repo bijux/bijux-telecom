@@ -102,6 +102,9 @@ fn estimate_tracking_uncertainty_penalizes_weaker_cn0_for_same_observed_window()
     );
 
     assert!(weak.code_phase_samples > strong.code_phase_samples, "strong={strong:?} weak={weak:?}");
-    assert!(weak.carrier_phase_cycles > strong.carrier_phase_cycles, "strong={strong:?} weak={weak:?}");
+    assert!(
+        weak.carrier_phase_cycles > strong.carrier_phase_cycles,
+        "strong={strong:?} weak={weak:?}"
+    );
     assert!(weak.doppler_hz > strong.doppler_hz, "strong={strong:?} weak={weak:?}");
 }

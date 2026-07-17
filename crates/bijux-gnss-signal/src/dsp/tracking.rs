@@ -1156,19 +1156,22 @@ pub fn calibrated_lock_detector_thresholds(
     let dll_quantile = two_sided_normal_quantile(input.dll_false_unlock_probability);
     let pll_quantile = two_sided_normal_quantile(input.pll_false_unlock_probability);
     let fll_quantile = two_sided_normal_quantile(input.fll_false_unlock_probability);
-    let dll_lock = (dll_quantile * distributions.dll_sigma)
-        .clamp(dll_lock_threshold(input.samples_per_chip, input.early_late_spacing_chips) as f64, 0.95)
-        as f32;
+    let dll_lock = (dll_quantile * distributions.dll_sigma).clamp(
+        dll_lock_threshold(input.samples_per_chip, input.early_late_spacing_chips) as f64,
+        0.95,
+    ) as f32;
     let pll_lock_upper_rad = std::f64::consts::PI - f32::EPSILON as f64;
     let pll_lock_rad = (pll_quantile * distributions.pll_sigma_rad)
-        .clamp(PLL_LOCK_MIN_PHASE_ERROR_RAD as f64, pll_lock_upper_rad) as f32;
+        .clamp(PLL_LOCK_MIN_PHASE_ERROR_RAD as f64, pll_lock_upper_rad)
+        as f32;
     let fll_lock_hz = (fll_quantile * distributions.fll_sigma_hz + distributions.dynamic_stress_hz)
         .max(fll_lock_threshold_hz(input.fll_bw_hz));
     LockDetectorThresholds {
         dll_lock,
-        dll_hold: (dll_lock as f64 * 1.5)
-            .clamp(dll_hold_threshold(input.samples_per_chip, input.early_late_spacing_chips) as f64, 0.98)
-            as f32,
+        dll_hold: (dll_lock as f64 * 1.5).clamp(
+            dll_hold_threshold(input.samples_per_chip, input.early_late_spacing_chips) as f64,
+            0.98,
+        ) as f32,
         pll_lock_rad,
         pll_hold_rad: (pll_lock_rad as f64 * 1.35).clamp(pll_lock_rad as f64, std::f64::consts::PI)
             as f32,
