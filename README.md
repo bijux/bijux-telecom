@@ -118,10 +118,9 @@ regression runs.
 Minimum supported Rust version: `1.78.0`.
 
 ## Documentation
-- `docs/README.md`
-- `docs/GETTING_STARTED.md`
-- `docs/CLI.md`
-- `docs/TESTING.md`
+- `docs/index.md`
+- `docs/01-bijux-gnss/index.md`
+- `docs/07-bijux-gnss-dev/index.md`
 - `makes/README.md`
 
 ## Workspace Layout

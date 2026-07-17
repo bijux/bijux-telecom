@@ -3,8 +3,8 @@
 `docs/badges.md` defines the shared badge contract for `bijux-telecom` public
 entry surfaces.
 
-Use the generated block below in the root `README.md` and `docs/README.md` so
-release readiness and publication status stay consistent.
+Use the generated block below in the root `README.md` so release readiness and
+publication status stay consistent.
 
 <!-- bijux-telecom-badges:generated:start -->
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-0F766E)](https://github.com/bijux/bijux-telecom/blob/main/LICENSE)
