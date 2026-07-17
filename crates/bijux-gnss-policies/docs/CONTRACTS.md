@@ -32,3 +32,6 @@ The active guardrail families and their responsibilities are enumerated in
 
 `src/bin/purity_report.rs` owns a read-only reporting workflow over workspace crate purity
 characteristics. It is a maintainer report, not a product feature.
+
+That reporting surface is detailed in [REPORTING.md](REPORTING.md), and the serialized policy
+snapshot surface is detailed in [SNAPSHOTS.md](SNAPSHOTS.md).

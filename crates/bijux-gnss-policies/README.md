@@ -35,6 +35,8 @@ The crate root intentionally contains only this README. Durable crate documentat
 - [docs/BOUNDARY.md](docs/BOUNDARY.md)
 - [docs/CONTRACTS.md](docs/CONTRACTS.md)
 - [docs/GUARDRAILS.md](docs/GUARDRAILS.md)
+- [docs/REPORTING.md](docs/REPORTING.md)
+- [docs/SNAPSHOTS.md](docs/SNAPSHOTS.md)
 - [docs/PUBLIC_API.md](docs/PUBLIC_API.md)
 - [docs/TESTS.md](docs/TESTS.md)
 
