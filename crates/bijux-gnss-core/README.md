@@ -1,41 +1,60 @@
 # bijux-gnss-core
 
-## What this crate does
-`bijux-gnss-core` owns the stable scientific and engineering contracts shared by the GNSS
-workspace. It defines typed identities, time systems, units, observations, navigation-solution
-records, diagnostics, configuration validation, and versioned artifact payloads without owning
-runtime execution.
+`bijux-gnss-core` owns the shared contract, identity, timekeeping, geometry, diagnostics, and
+artifact foundations for `bijux-telecom`.
 
-## Why it exists
-The rest of the workspace needs one place where foundational GNSS meaning is defined once. This
-crate keeps those definitions durable so `signal`, `nav`, `receiver`, `infra`, `testkit`, and the
-CLI do not drift into incompatible copies of the same concepts.
+## Scope
 
-## Public entrypoint
-The curated downstream surface is `src/api.rs`, exported as `bijux_gnss_core::api`. Internal
-modules stay crate-private unless they are intentionally re-exported there.
+This crate owns:
 
-## Ownership boundaries
-This crate owns data contracts, validation rules, diagnostics, and pure scientific helpers. It must
-not own sample IO, receiver orchestration, navigation solvers, filesystem layouts, or command-line
-behavior. The crate boundary is documented in [docs/BOUNDARY.md](docs/BOUNDARY.md).
+- canonical identifiers for constellations, satellites, and signals
+- physical units, coordinate systems, and time-system conversion contracts
+- acquisition, tracking, observation, differencing, and navigation-solution records
+- diagnostic taxonomies and shared error categories
+- versioned artifact envelopes and payload validation rules
 
-## Source layout
-The crate is organized around a few durable domains:
-- `artifact` for versioned artifact envelopes and payload validators
-- `config` and `diagnostic` for configuration and structured failure reporting
-- `ids`, `time`, `units`, and `geo` for shared physical foundations
-- `observation` and `nav_solution` for receiver-facing and navigation-facing records
+This crate does not own raw sample ingestion, filesystem layout, DSP execution, navigation
+estimation strategy, receiver orchestration, or operator command workflows.
 
-The module map and test ownership are documented in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+## Public surface
 
-## Verification
-The most important checks for this crate are public-surface guardrails, property tests for time and
-units, and artifact validation coverage under `tests/`.
+`bijux_gnss_core::api` is the deliberate downstream entrypoint. Implementation modules stay private
+unless they are intentionally re-exported there. That discipline keeps higher-level crates coupled
+to stable GNSS meaning instead of to internal file layout.
 
-## Documentation map
-This crate keeps one root README and crate-specific docs under `docs/`:
+## Source map
+
+- `src/artifact/` owns versioned artifact envelopes and payload validation.
+- `src/config.rs`, `src/diagnostic/`, and `src/error.rs` own validation and failure-report
+  semantics.
+- `src/ids.rs`, `src/time.rs`, `src/units.rs`, and `src/geo.rs` own foundational scientific types.
+- `src/observation/`, `src/observation_quality.rs`, and `src/nav_solution.rs` own exchanged
+  receiver and navigation records.
+- `src/conventions.rs`, `src/stats.rs`, and `src/support_matrix.rs` own shared semantic helpers
+  that are still crate-foundational rather than runtime-specific.
+
+## Documentation
+
+The crate root intentionally contains only this README. Durable crate documentation lives under
+`docs/`:
+
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - [docs/BOUNDARY.md](docs/BOUNDARY.md)
+- [docs/CONTRACTS.md](docs/CONTRACTS.md)
+- [docs/INVARIANTS.md](docs/INVARIANTS.md)
+- [docs/PUBLIC_API.md](docs/PUBLIC_API.md)
+- [docs/SERIALIZATION.md](docs/SERIALIZATION.md)
+- [docs/TESTS.md](docs/TESTS.md)
 
-Repository work is governed by [../../README.md](../../README.md).
+## Verification
+
+Run from the repository root when changing this crate:
+
+```sh
+cargo test -p bijux-gnss-core --test public_api_guardrail
+cargo test -p bijux-gnss-core --test nav_artifact_validation
+cargo test -p bijux-gnss-core --test tracking_artifact_validation
+cargo test -p bijux-gnss-core --test prop_timekeeping
+```
+
+Repository-wide expectations are documented in [../../README.md](../../README.md).

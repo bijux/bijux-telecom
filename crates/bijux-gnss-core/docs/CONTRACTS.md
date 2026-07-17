@@ -50,6 +50,9 @@ The foundational layer owns:
 
 These contracts are intentionally low-level and reusable.
 
+Their serialized representation must remain portable across crates and persisted artifacts. The
+crate-wide serialization rules are recorded in [SERIALIZATION.md](SERIALIZATION.md).
+
 ## Configuration contracts
 
 The configuration layer owns:

@@ -22,6 +22,7 @@ This file maps the durable test intent for `bijux-gnss-core`.
 - artifact validators reject incoherent payloads instead of silently accepting them
 - foundational time and unit behavior stays stable under edge-case inputs
 - the crate remains aligned with workspace layering and policy rules
+- serialized contract families continue to round-trip through stable artifact-validation fixtures
 
 ## Verification
 
