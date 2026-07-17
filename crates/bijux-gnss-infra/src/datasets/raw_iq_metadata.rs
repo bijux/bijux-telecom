@@ -1,6 +1,5 @@
 //! Raw IQ metadata loading and validation.
 
-use std::fs;
 use std::path::{Path, PathBuf};
 
 use bijux_gnss_receiver::api::core::InputError;
@@ -8,14 +7,11 @@ use bijux_gnss_signal::api::{IqSampleFormat, RawIqMetadata};
 
 use super::DatasetEntry;
 
+mod loading;
+
 /// Load and validate raw IQ metadata from a sidecar file.
 pub fn load_raw_iq_metadata(path: &Path) -> Result<RawIqMetadata, InputError> {
-    let contents = fs::read_to_string(path).map_err(map_err)?;
-    let value: toml::Value = toml::from_str(&contents).map_err(map_err)?;
-    validate_required_raw_iq_fields(&value)?;
-    let metadata: RawIqMetadata = value.try_into().map_err(map_err)?;
-    validate_raw_iq_metadata(&metadata)?;
-    Ok(metadata)
+    loading::load_raw_iq_metadata(path)
 }
 
 /// Resolve raw IQ metadata from explicit sidecar input or dataset registry metadata.
@@ -105,19 +101,7 @@ fn validate_raw_iq_metadata(metadata: &RawIqMetadata) -> Result<(), InputError> 
     Ok(())
 }
 
-fn validate_required_raw_iq_fields(value: &toml::Value) -> Result<(), InputError> {
-    let table = value.as_table().ok_or_else(|| InputError {
-        message: "raw IQ metadata must be a TOML table".to_string(),
-    })?;
-    for field in ["format", "sample_rate_hz", "intermediate_freq_hz", "capture_start_utc"] {
-        if !table.contains_key(field) {
-            return Err(InputError { message: format!("raw IQ metadata must declare {field}") });
-        }
-    }
-    Ok(())
-}
-
-fn map_err(err: impl std::fmt::Display) -> InputError {
+pub(super) fn map_err(err: impl std::fmt::Display) -> InputError {
     InputError { message: err.to_string() }
 }
 
