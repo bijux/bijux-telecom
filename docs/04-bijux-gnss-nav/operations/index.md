@@ -41,6 +41,7 @@ flowchart LR
 - [Common Workflows](common-workflows.md)
 - [Local Development](local-development.md)
 - [Change Sequence](change-sequence.md)
+- [Navigation Extension Guide](navigation-extension-guide.md)
 - [Verification Commands](verification-commands.md)
 - [Precise Product And Fixture Care](precise-product-and-fixture-care.md)
 - [Review Scope](review-scope.md)
