@@ -28,3 +28,9 @@ This page records the main trust risks in `bijux-gnss-nav`.
 - choose validation by scientific family, not by convenience
 - keep refusal and evidence types documented and explicit
 - maintain the refusal ledger in [This Package Does Not Own](../this-package-does-not-own.md)
+
+## Protecting Proof
+
+- `crates/bijux-gnss-nav/docs/PUBLIC_API.md`
+- `crates/bijux-gnss-nav/docs/TESTS.md`
+- `crates/bijux-gnss-nav/tests/integration_guardrails.rs`

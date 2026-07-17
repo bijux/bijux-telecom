@@ -25,3 +25,9 @@ Use this sequence when a navigation-science change is more than a trivial edit.
 This crate is broad enough that one "small" solver or parser edit can have
 public consequences. Committing by scientific intent keeps reviewable history
 aligned with package meaning.
+
+## First Proof Check
+
+- `crates/bijux-gnss-nav/docs/TESTS.md`
+- `crates/bijux-gnss-nav/docs/ESTIMATION.md`
+- `docs/04-bijux-gnss-nav/operations/verification-commands.md`

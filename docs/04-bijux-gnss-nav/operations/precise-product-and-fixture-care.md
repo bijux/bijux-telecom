@@ -25,3 +25,10 @@ that carry scientific meaning, not only test convenience.
 
 This crate proves many claims against known references. Loose fixture hygiene
 can make the test surface look broad while weakening its scientific value.
+
+## First Proof Check
+
+- `crates/bijux-gnss-nav/docs/FORMATS.md`
+- `crates/bijux-gnss-nav/docs/ORBITS.md`
+- `crates/bijux-gnss-nav/tests/integration_sp3_reference_accuracy.rs`
+- `crates/bijux-gnss-nav/tests/integration_clk_reference_accuracy.rs`

@@ -22,3 +22,9 @@ Use this checklist when reviewing a nav change.
 - if a reference or fixture changed, is the reason explicit and scientifically
   credible
 - do the handbook pages still match the changed behavior
+
+## Protecting Proof
+
+- `crates/bijux-gnss-nav/docs/TESTS.md`
+- `crates/bijux-gnss-nav/docs/PUBLIC_API.md`
+- `docs/04-bijux-gnss-nav/this-package-does-not-own.md`

@@ -19,3 +19,9 @@ complete, reviewable, and honestly proven.
 - the relevant local proof has been run or the gap is explicitly called out
 - public scientific meaning has not changed silently
 - the commit boundary matches one durable scientific intent
+
+## Protecting Proof
+
+- `crates/bijux-gnss-nav/docs/TESTS.md`
+- `crates/bijux-gnss-nav/docs/ESTIMATION.md`
+- `crates/bijux-gnss-nav/docs/FORMATS.md`

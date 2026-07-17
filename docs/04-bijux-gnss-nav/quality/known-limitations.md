@@ -21,3 +21,9 @@ This handbook does not pretend the crate is small or simple.
   in ways that make local changes feel broader than they first appear
 - local matrix and model support are intentionally crate-owned, which requires
   periodic review to ensure they do not become generic utility sprawl
+
+## First Proof Check
+
+- `crates/bijux-gnss-nav/docs/TESTS.md`
+- `crates/bijux-gnss-nav/tests/long_run_stability.rs`
+- `crates/bijux-gnss-nav/tests/integration_public_ppp_convergence.rs`
