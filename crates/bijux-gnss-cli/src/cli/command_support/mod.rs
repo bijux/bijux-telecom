@@ -1,19 +1,19 @@
 use super::*;
 
 mod artifact_loading;
+mod capture_windows;
 mod command_inputs;
 mod experiment_artifacts;
 mod navigation_artifacts;
-mod sample_windows;
-mod signal_quality;
+mod raw_iq_quality;
 mod tracking_observation_artifacts;
 
 pub(crate) use artifact_loading::*;
+pub(crate) use capture_windows::*;
 pub(crate) use command_inputs::*;
 pub(crate) use experiment_artifacts::*;
 pub(crate) use navigation_artifacts::*;
-pub(crate) use sample_windows::*;
-pub(crate) use signal_quality::*;
+pub(crate) use raw_iq_quality::*;
 pub(crate) use tracking_observation_artifacts::*;
 
 #[cfg(test)]
