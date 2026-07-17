@@ -76,15 +76,9 @@ fn receiver_promotes_galileo_e1_acquisitions_into_tracking() {
     assert_eq!(sat_result.hypothesis.to_string(), "accepted", "{sat_result:?}");
     assert!(!track.epochs.is_empty(), "{artifacts:?}");
     assert!(
-        track
-            .epochs
-            .iter()
-            .any(|epoch| {
-                epoch.lock
-                    && epoch.lock_state == "tracking"
-                    && epoch.pll_lock
-                    && epoch.fll_lock
-            }),
+        track.epochs.iter().any(|epoch| {
+            epoch.lock && epoch.lock_state == "tracking" && epoch.pll_lock && epoch.fll_lock
+        }),
         "{track:?}",
     );
     assert_eq!(report.final_state, TrackingChannelState::Locked, "{report:?}");

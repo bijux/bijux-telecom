@@ -296,10 +296,7 @@ fn observations_start_new_carrier_phase_arc_after_reacquisition() {
         sats.iter().any(|sat| {
             sat.metadata.time_tag_sample_index >= interruption_start_sample
                 && sat.metadata.time_tag_sample_index < interruption_end_sample
-                && matches!(
-                    sat.metadata.carrier_phase_continuity.as_str(),
-                    "coasted" | "unusable"
-                )
+                && matches!(sat.metadata.carrier_phase_continuity.as_str(), "coasted" | "unusable")
                 && !sat.lock_flags.cycle_slip
         }),
         "interruption must degrade carrier-phase continuity before arc reset: {:?}",

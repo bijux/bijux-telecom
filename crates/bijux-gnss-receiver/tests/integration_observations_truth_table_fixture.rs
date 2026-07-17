@@ -16,8 +16,7 @@ use serde_json::Value;
 
 use observation_truth_table::build_observation_truth_fixture;
 
-const REGENERATE_OBSERVATION_TRUTH_FIXTURE_ENV: &str =
-    "BIJUX_REGENERATE_OBSERVATION_TRUTH_FIXTURE";
+const REGENERATE_OBSERVATION_TRUTH_FIXTURE_ENV: &str = "BIJUX_REGENERATE_OBSERVATION_TRUTH_FIXTURE";
 
 #[test]
 fn observation_truth_table_matches_reference_fixture() {

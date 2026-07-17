@@ -117,10 +117,7 @@ fn quantization_loss_report_measures_lower_precision_against_float_reference() {
         signed8.satellites[0].acquisition_correlation_loss_db.expect("signed8 acquisition loss");
     let signed4_loss =
         signed4.satellites[0].acquisition_correlation_loss_db.expect("signed4 acquisition loss");
-    assert!(
-        signed8_loss < 0.1,
-        "{signed8:?}"
-    );
+    assert!(signed8_loss < 0.1, "{signed8:?}");
     assert!(signed4_loss + 1.0e-6 >= signed8_loss, "{report:?}");
     assert!(
         signed2.satellites[0].quantized_peak_mean_ratio
