@@ -10,6 +10,7 @@
 
 - the testkit remains a truth source rather than a reflection of production helper internals
 - the crate keeps its shared-fixture role without turning into an unbounded misc bucket
+- fixture loading and truth-model boundaries remain explicit enough for other crates to trust them
 
 ## Verification
 

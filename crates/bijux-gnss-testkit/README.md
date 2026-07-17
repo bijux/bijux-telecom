@@ -1,41 +1,52 @@
 # bijux-gnss-testkit
 
-## What this crate does
-`bijux-gnss-testkit` owns deterministic test support for the GNSS workspace: reference data,
-reference models, scenario truth generation, antenna-effect synthesis, and reusable signal/test
-fixtures that higher-level crates can consume without inventing their own physics shortcuts.
+`bijux-gnss-testkit` owns shared GNSS test truth, fixtures, and independent reference models.
 
-## Why this crate exists
-The workspace needs one place where test truth is curated deliberately. Without a dedicated testkit,
-`nav`, `receiver`, and CLI tests would keep copying fragile helpers and would start validating code
-with the same code under test.
+## Scope
 
-## Public entrypoints
+This crate owns:
 
-- `antenna` for antenna-effect truth helpers
-- `fixtures` for deterministic fixture loading
-- `geometry` for geometric support shared by tests
-- `position_truth` for synthetic truth scenarios and residual models
-- `reference_data` for checked-in public reference datasets
-- `signal` for deterministic acquisition and signal-synthesis helpers
+- deterministic fixture loading across crates
+- checked-in reference datasets used as shared test evidence
+- independent reference models used to compute expected behavior
+- truth generation for acquisition, antenna, observation, and position validation
 
-## Ownership boundary
-This crate owns truth generation and test support. It must not become a second implementation of
-the runtime algorithms it is supposed to validate. The boundary is documented in
-[docs/BOUNDARY.md](docs/BOUNDARY.md).
+This crate does not own production receiver orchestration, navigation solver implementations,
+repository persistence rules, or throwaway test-only wrappers around the same helper being tested.
 
-## Source layout
+## Public surface
 
-- `src/reference_models/` contains independent models used to keep truth generation separate from
-  runtime helpers.
-- `src/reference_data/` contains public checked-in truth inputs and derivations.
-- `src/position_truth/` contains synthetic scenario truth construction.
+`lib.rs` exposes a direct module surface for shared test support. The public boundary is organized
+around durable test roles such as fixtures, reference data, antenna truth, and signal synthesis
+rather than around one-off test files.
 
-The architecture and test layout are documented in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+## Source map
 
-## Documentation map
-This crate keeps one root README and crate-specific docs under `docs/`:
+- `src/fixtures.rs` owns deterministic typed fixture loading.
+- `src/reference_data/` owns checked-in public truth inputs and derived records.
+- `src/reference_models/` owns private independent scientific models.
+- `src/position_truth/`, `src/antenna/`, and `src/signal/` own reusable truth-generation helpers.
+
+## Documentation
+
+The crate root intentionally contains only this README. Durable crate documentation lives under
+`docs/`:
+
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - [docs/BOUNDARY.md](docs/BOUNDARY.md)
+- [docs/CONTRACTS.md](docs/CONTRACTS.md)
+- [docs/FIXTURES.md](docs/FIXTURES.md)
+- [docs/PUBLIC_API.md](docs/PUBLIC_API.md)
+- [docs/TESTS.md](docs/TESTS.md)
+- [docs/TRUTH_MODELS.md](docs/TRUTH_MODELS.md)
 
-Repository work is governed by [../../README.md](../../README.md).
+## Verification
+
+Run from the repository root when changing this crate:
+
+```sh
+cargo test -p bijux-gnss-testkit --test scientific_independence
+cargo test -p bijux-gnss-testkit --test integration_guardrails
+```
+
+Repository-wide expectations are documented in [../../README.md](../../README.md).
