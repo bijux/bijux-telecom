@@ -652,6 +652,37 @@ impl Acquisition {
 
             let mut ranked_candidates = grid_candidates.clone();
             ranked_candidates.sort_by(|a, b| {
+                if let Some(expected_line_of_sight_doppler_hz) =
+                    request.expected_line_of_sight_doppler_hz
+                {
+                    let doppler_step_hz = resolved_request.doppler_step_hz.max(1) as f64;
+                    let left_expected_bin = candidate_matches_expected_line_of_sight_doppler(
+                        a,
+                        expected_line_of_sight_doppler_hz,
+                        doppler_step_hz,
+                    );
+                    let right_expected_bin = candidate_matches_expected_line_of_sight_doppler(
+                        b,
+                        expected_line_of_sight_doppler_hz,
+                        doppler_step_hz,
+                    );
+                    if left_expected_bin != right_expected_bin {
+                        return right_expected_bin.cmp(&left_expected_bin);
+                    }
+                    let expected_bin_order = candidate_expected_line_of_sight_doppler_bin_distance(
+                        a,
+                        expected_line_of_sight_doppler_hz,
+                        doppler_step_hz,
+                    )
+                    .total_cmp(&candidate_expected_line_of_sight_doppler_bin_distance(
+                        b,
+                        expected_line_of_sight_doppler_hz,
+                        doppler_step_hz,
+                    ));
+                    if expected_bin_order != std::cmp::Ordering::Equal {
+                        return expected_bin_order;
+                    }
+                }
                 let primary = b
                     .peak_mean_ratio
                     .partial_cmp(&a.peak_mean_ratio)
@@ -896,6 +927,29 @@ impl Acquisition {
 
         self.report_satellite_evaluations(sat_evaluations, emit_explanations)
     }
+}
+
+fn candidate_matches_expected_line_of_sight_doppler(
+    candidate: &AcqResult,
+    expected_line_of_sight_doppler_hz: f64,
+    doppler_step_hz: f64,
+) -> bool {
+    candidate_expected_line_of_sight_doppler_bin_distance(
+        candidate,
+        expected_line_of_sight_doppler_hz,
+        doppler_step_hz,
+    ) <= 1.0 + f64::EPSILON
+}
+
+fn candidate_expected_line_of_sight_doppler_bin_distance(
+    candidate: &AcqResult,
+    expected_line_of_sight_doppler_hz: f64,
+    doppler_step_hz: f64,
+) -> f64 {
+    if !expected_line_of_sight_doppler_hz.is_finite() || doppler_step_hz <= 0.0 {
+        return f64::INFINITY;
+    }
+    (candidate.doppler_hz.0 - expected_line_of_sight_doppler_hz).abs() / doppler_step_hz
 }
 
 fn doppler_bin_count(search_hz: i32, step_hz: i32) -> u64 {

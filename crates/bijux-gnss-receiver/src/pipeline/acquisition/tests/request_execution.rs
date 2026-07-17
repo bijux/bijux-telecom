@@ -373,7 +373,7 @@ fn run_fft_for_galileo_e5a_records_component_combination_provenance() {
     let run = acquisition.run_fft_topn_for_requests_with_explain(&frame, &[request], 4);
     let candidates = &run.results[0];
 
-    assert_eq!(candidates.len(), 4);
+    assert_eq!(candidates.len(), 3);
     assert!(candidates.iter().all(|candidate| candidate.signal_code == SignalCode::E5a));
     assert!(candidates.iter().any(|candidate| {
         candidate.component_provenance().is_some_and(|provenance| {
@@ -396,11 +396,9 @@ fn run_fft_for_galileo_e5a_records_component_combination_provenance() {
                     == vec![SignalComponentRole::Data, SignalComponentRole::Pilot]
         })
     }));
-    assert!(candidates.iter().any(|candidate| {
+    assert!(candidates.iter().all(|candidate| {
         candidate.component_provenance().is_some_and(|provenance| {
-            provenance.combination_mode == AcqComponentCombinationMode::CoherentComponentSum
-                && provenance.components.iter().map(|component| component.role).collect::<Vec<_>>()
-                    == vec![SignalComponentRole::Data, SignalComponentRole::Pilot]
+            provenance.combination_mode != AcqComponentCombinationMode::CoherentComponentSum
         })
     }));
 }
@@ -442,6 +440,71 @@ fn run_fft_for_galileo_e5a_skips_coherent_component_sum_beyond_one_millisecond()
             provenance.combination_mode != AcqComponentCombinationMode::CoherentComponentSum
         })
     }));
+}
+
+#[test]
+fn run_fft_for_galileo_e5a_prefers_expected_doppler_candidate_under_truth_guidance() {
+    let config = ReceiverPipelineConfig {
+        sampling_freq_hz: 10_230_000.0,
+        intermediate_freq_hz: 0.0,
+        code_freq_basis_hz: 10_230_000.0,
+        code_length: 10_230,
+        acquisition_doppler_search_hz: 2_000,
+        acquisition_doppler_step_hz: 250,
+        acquisition_integration_ms: 1,
+        acquisition_noncoherent: 1,
+        ..ReceiverPipelineConfig::default()
+    };
+    let sat = SatId { constellation: Constellation::Galileo, prn: 18 };
+    let true_doppler_hz = 750.0;
+    let frame = crate::api::sim::generate_l1_ca_multi(
+        &config,
+        &crate::api::sim::SyntheticScenario {
+            sample_rate_hz: config.sampling_freq_hz,
+            intermediate_freq_hz: config.intermediate_freq_hz,
+            receiver_clock_frequency_bias_hz: 0.0,
+            duration_s: 0.060,
+            seed: 0x6AE5_A000,
+            satellites: vec![crate::api::sim::SyntheticSignalParams {
+                sat,
+                glonass_frequency_channel: None,
+                signal_band: SignalBand::E5,
+                signal_code: SignalCode::E5a,
+                doppler_hz: true_doppler_hz,
+                code_phase_chips: 2_048.25,
+                carrier_phase_rad: 0.4,
+                cn0_db_hz: 60.0,
+                navigation_data: false.into(),
+            }],
+            ephemerides: Vec::new(),
+            id: "galileo-e5a-truth-guided-acquisition".to_string(),
+        },
+    );
+    let acquisition = Acquisition::new(config, ReceiverRuntime::default());
+    let request = AcqRequest {
+        sat,
+        glonass_frequency_channel: None,
+        signal_band: SignalBand::E5,
+        signal_code: SignalCode::E5a,
+        doppler_center_hz: 0.0,
+        doppler_rate_center_hz_per_s: 0.0,
+        doppler_rate_search_hz_per_s: 0,
+        doppler_rate_step_hz_per_s: 250,
+        expected_line_of_sight_doppler_hz: Some(true_doppler_hz),
+        assistance_bounds: None,
+        doppler_search_hz: 2_000,
+        doppler_step_hz: 250,
+        coherent_ms: 1,
+        noncoherent: 1,
+    };
+
+    let result = acquisition.run_fft_for_requests(&frame, &[request]).remove(0);
+
+    assert!(
+        matches!(result.hypothesis, AcqHypothesis::Accepted | AcqHypothesis::Ambiguous),
+        "{result:?}"
+    );
+    assert!((result.doppler_hz.0 - true_doppler_hz).abs() <= 1.0e-6, "{result:?}");
 }
 
 #[test]

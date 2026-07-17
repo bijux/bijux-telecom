@@ -90,7 +90,7 @@ pub(crate) fn acquisition_strategies_for_signal(
     signal_band: SignalBand,
     signal_code: SignalCode,
     glonass_frequency_channel: Option<GlonassFrequencyChannel>,
-    coherent_ms: u32,
+    _coherent_ms: u32,
 ) -> Result<Vec<AcquisitionStrategyPlan>, SignalError> {
     let registry_entry =
         resolved_signal_registry_entry(sat, signal_band, signal_code, glonass_frequency_channel)?
@@ -170,13 +170,8 @@ pub(crate) fn acquisition_strategies_for_signal(
                 combination_mode: AcqComponentCombinationMode::NoncoherentComponentSum,
                 components: vec![default_component.clone(), pilot_component.clone()],
             });
-            if coherent_ms == search_model.code_period_ms {
-                strategies.push(AcquisitionStrategyPlan {
-                    search_model,
-                    combination_mode: AcqComponentCombinationMode::CoherentComponentSum,
-                    components: vec![default_component, pilot_component],
-                });
-            }
+            // Galileo E5a uses quadrature data/pilot components, so a scalar
+            // coherent component sum injects an unphysical cross-term peak.
         }
         (bijux_gnss_core::api::Constellation::Galileo, SignalBand::E5, SignalCode::E5b) => {
             let pilot_component = AcquisitionComponentPlan {
@@ -197,13 +192,7 @@ pub(crate) fn acquisition_strategies_for_signal(
                 combination_mode: AcqComponentCombinationMode::NoncoherentComponentSum,
                 components: vec![default_component.clone(), pilot_component.clone()],
             });
-            if coherent_ms == search_model.code_period_ms {
-                strategies.push(AcquisitionStrategyPlan {
-                    search_model,
-                    combination_mode: AcqComponentCombinationMode::CoherentComponentSum,
-                    components: vec![default_component, pilot_component],
-                });
-            }
+            // Galileo E5b shares the same quadrature composite structure.
         }
         _ => {}
     }
@@ -255,14 +244,13 @@ mod tests {
             acquisition_strategies_for_signal(sat, SignalBand::E5, SignalCode::E5a, None, 1)
                 .expect("Galileo E5a acquisition strategies");
 
-        assert_eq!(strategies.len(), 4);
+        assert_eq!(strategies.len(), 3);
         assert_eq!(
             strategies.iter().map(|strategy| strategy.combination_mode).collect::<Vec<_>>(),
             vec![
                 AcqComponentCombinationMode::SingleComponent,
                 AcqComponentCombinationMode::SingleComponent,
                 AcqComponentCombinationMode::NoncoherentComponentSum,
-                AcqComponentCombinationMode::CoherentComponentSum,
             ]
         );
         assert_eq!(
@@ -294,10 +282,6 @@ mod tests {
                 .expect("Galileo E5a pilot secondary code")
                 .len(),
             100
-        );
-        assert_eq!(
-            strategies[3].components.iter().map(|component| component.role).collect::<Vec<_>>(),
-            vec![SignalComponentRole::Data, SignalComponentRole::Pilot]
         );
     }
 
