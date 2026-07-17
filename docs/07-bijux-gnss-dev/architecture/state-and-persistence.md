@@ -33,3 +33,9 @@ evidence.
 - long-lived repository data with no documented maintainer workflow owner
 - writes from validation or derivation commands that should have remained
   read-only
+
+## First Proof Check
+
+- `crates/bijux-gnss-dev/src/main.rs`
+- `crates/bijux-gnss-dev/docs/OUTPUTS.md`
+- `crates/bijux-gnss-dev/docs/WORKFLOWS.md`

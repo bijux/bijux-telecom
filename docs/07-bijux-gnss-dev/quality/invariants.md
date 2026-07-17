@@ -28,3 +28,10 @@ These expectations should remain true as the maintainer binary grows.
 
 If a change moves command meaning, the matching docs and proof obligations
 should move with it.
+
+## Protecting Proof
+
+- `crates/bijux-gnss-dev/docs/TESTS.md`
+- `crates/bijux-gnss-dev/docs/WORKFLOWS.md`
+- `crates/bijux-gnss-dev/tests/integration_guardrails.rs`
+- `crates/bijux-gnss-dev/tests/integration_nextest_suite_selection.rs`

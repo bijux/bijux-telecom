@@ -40,3 +40,9 @@ If a change touches `configs/rust/nextest-slow-roster.txt`, run
 `cargo test -p bijux-gnss-dev --test integration_nextest_suite_selection`
 because that file is defended by test policy rather than by a maintainer
 command.
+
+## Protecting Proof
+
+- `crates/bijux-gnss-dev/tests/integration_nextest_suite_selection.rs`
+- `crates/bijux-gnss-dev/docs/TESTS.md`
+- `crates/bijux-gnss-dev/docs/WORKFLOWS.md`

@@ -27,3 +27,9 @@ maintainer contract, not incidental implementation detail.
 This crate may validate reviewed files and write maintenance evidence, but it
 should not quietly invent new repository control files or unmanaged output
 paths.
+
+## First Proof Check
+
+- `crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md`
+- `crates/bijux-gnss-dev/docs/OUTPUTS.md`
+- `crates/bijux-gnss-dev/src/main.rs`

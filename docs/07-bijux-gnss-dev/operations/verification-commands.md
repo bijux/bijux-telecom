@@ -18,6 +18,7 @@ cargo test -p bijux-gnss-dev --test integration_guardrails
 cargo test -p bijux-gnss-dev --test integration_nextest_suite_selection
 cargo run -p bijux-gnss-dev -- audit-allowlist
 cargo run -p bijux-gnss-dev -- deny-policy-deviations
+cargo run -p bijux-gnss-dev -- audit-ignore-args
 ```
 
 ## Matching Command To Change
@@ -26,11 +27,18 @@ cargo run -p bijux-gnss-dev -- deny-policy-deviations
   run `audit-allowlist`
 - deviation workflow changes:
   run `deny-policy-deviations`
+- derived audit-ignore behavior changes:
+  run `audit-ignore-args`
 - nextest-roster or repository-shape changes:
   run the integration tests
 - benchmark workflow changes:
-  run the narrowest honest benchmark-related verification available in context
-  and state clearly if full benchmark execution was skipped
+  run `bijux-gnss-dev bench-compare` or `make bench-compare` when the current
+  context can tolerate benchmark cost, and state clearly when full benchmark
+  execution was skipped
+
+Treat `crates/bijux-gnss-dev/docs/TESTS.md` as the proof map when a change
+touches command validation, roster governance, and benchmark evidence routing
+at the same time.
 
 ## Bad Verification Pattern
 

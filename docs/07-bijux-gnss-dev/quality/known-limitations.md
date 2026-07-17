@@ -21,3 +21,9 @@ This crate is intentionally small, but its workflows still have limits.
   discipline as commands grow
 - maintainer convenience pressure can make bad workflow additions seem
   reasonable unless the boundary is defended explicitly
+
+## First Proof Check
+
+- `crates/bijux-gnss-dev/docs/BENCHMARKS.md`
+- `crates/bijux-gnss-dev/docs/TESTS.md`
+- `crates/bijux-gnss-dev/src/main.rs`

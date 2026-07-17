@@ -28,3 +28,9 @@ the shortest honest sequence for changing repository-owned surfaces.
 Changes that touch governed repository workflows should prove themselves with
 the relevant `make` lane or a narrower crate-local command that directly backs
 that lane. Do not rely on unrelated green tests as substitute proof.
+
+## First Proof Check
+
+- `crates/bijux-gnss-dev/docs/WORKFLOWS.md`
+- `crates/bijux-gnss-dev/docs/TESTS.md`
+- `docs/07-bijux-gnss-dev/operations/verification-commands.md`

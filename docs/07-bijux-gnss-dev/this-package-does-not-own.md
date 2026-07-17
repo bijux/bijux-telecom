@@ -40,3 +40,12 @@ decision here instead of blurring the boundary.
 - add an entry when the same rejected design pressure keeps returning
 - link the owning crate in review discussions
 - prefer a clear refusal over a convenience command that nobody will own later
+
+## First Neighbor Proof Check
+
+- `../01-bijux-gnss/index.md`
+- `../05-bijux-gnss-receiver/index.md`
+- `../03-bijux-gnss-infra/index.md`
+- `../02-bijux-gnss-core/index.md`
+- `../04-bijux-gnss-nav/index.md`
+- `../06-bijux-gnss-signal/index.md`
