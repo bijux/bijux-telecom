@@ -8,18 +8,9 @@ use walkdir::WalkDir;
 use super::config::GuardrailConfig;
 use super::error::{GuardrailError, Result};
 
-pub(crate) fn collect_rs_files(root: &Path) -> Result<Vec<PathBuf>> {
-    let mut files = Vec::new();
-    for entry in WalkDir::new(root) {
-        let entry = entry?;
-        if entry.file_type().is_file()
-            && entry.path().extension().and_then(|s| s.to_str()) == Some("rs")
-        {
-            files.push(entry.into_path());
-        }
-    }
-    Ok(files)
-}
+mod discovery;
+
+pub(crate) use discovery::collect_rs_files;
 
 pub(crate) fn check_depth(
     src_dir: &Path,
