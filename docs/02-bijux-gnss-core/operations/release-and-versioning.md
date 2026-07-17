@@ -24,3 +24,12 @@ inherit its record meanings.
 If a release note would need to say "internal cleanup only" while `api.rs`,
 artifact payloads, or core invariants changed, the change is being described
 dishonestly.
+
+## First Proof Check
+
+Inspect `crates/bijux-gnss-core/docs/PUBLIC_API.md`,
+`crates/bijux-gnss-core/docs/CONTRACTS.md`,
+`crates/bijux-gnss-core/docs/INVARIANTS.md`, and
+`crates/bijux-gnss-core/src/api.rs`. Then inspect the matching validation or
+guardrail tests to confirm any claimed release safety still matches public
+contract meaning.

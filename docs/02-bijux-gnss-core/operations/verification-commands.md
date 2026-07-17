@@ -29,3 +29,11 @@ cargo test -p bijux-gnss-core --test integration_guardrails
   pressure is involved
 - treat `crates/bijux-gnss-core/docs/TESTS.md` as the reference map when a
   contract family change needs a narrower proof route than this page lists
+
+## First Proof Check
+
+Use `crates/bijux-gnss-core/docs/TESTS.md`,
+`crates/bijux-gnss-core/docs/PUBLIC_API.md`, and
+`crates/bijux-gnss-core/docs/CONTRACTS.md` as the verification map. Then
+inspect the changed source family under `crates/bijux-gnss-core/src/` so the
+proof set stays aligned with the actual contract family that moved.

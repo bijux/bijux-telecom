@@ -25,3 +25,11 @@ strength has limits.
 
 Foundational crates become dangerous when their docs imply that strong record
 contracts are equivalent to full workflow correctness.
+
+## First Proof Check
+
+Inspect `crates/bijux-gnss-core/docs/CONTRACTS.md`,
+`crates/bijux-gnss-core/docs/INVARIANTS.md`, and
+`crates/bijux-gnss-core/docs/TESTS.md`. Then inspect artifact, timekeeping,
+and public API guardrail tests to confirm the limits described here are still
+honest relative to the actual proof surface.

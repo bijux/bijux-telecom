@@ -27,3 +27,11 @@ contract change, if any, is legible and defended.
 - invariants are implicit in test names only
 - the crate absorbed behavior because it was easier than naming a downstream
   owner
+
+## First Proof Check
+
+Inspect `crates/bijux-gnss-core/docs/PUBLIC_API.md`,
+`crates/bijux-gnss-core/docs/CONTRACTS.md`,
+`crates/bijux-gnss-core/docs/TESTS.md`, and the changed source family. A core
+change is not done until the public promise, contract prose, and protecting
+tests are still saying the same thing.

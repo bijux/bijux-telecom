@@ -33,3 +33,11 @@ The minimum acceptable proof depends on which contract family changed.
 
 - verify the stronger owner is still core
 - run `cargo test -p bijux-gnss-core --test integration_guardrails`
+
+## First Proof Check
+
+Use `crates/bijux-gnss-core/docs/TESTS.md`,
+`crates/bijux-gnss-core/docs/CONTRACTS.md`, and
+`crates/bijux-gnss-core/docs/PUBLIC_API.md` as the validation map. Then
+inspect the changed source family so the proof set stays tied to real contract
+movement instead of to generic crate confidence.

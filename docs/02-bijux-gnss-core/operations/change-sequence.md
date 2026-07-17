@@ -21,3 +21,11 @@ Use this sequence for any real `bijux-gnss-core` change.
 
 Skipping the first step is the most expensive mistake. A clean downstream owner
 is often cheaper than a permanent new core contract.
+
+## First Proof Check
+
+Read `crates/bijux-gnss-core/docs/CONTRACTS.md`,
+`crates/bijux-gnss-core/docs/PUBLIC_API.md`, and
+`crates/bijux-gnss-core/docs/TESTS.md` before editing. Then inspect the owning
+source family under `crates/bijux-gnss-core/src/` so the change sequence starts
+from actual shared-contract meaning rather than from downstream pressure.

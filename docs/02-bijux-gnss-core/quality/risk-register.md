@@ -42,3 +42,11 @@ higher-level crates start depending on behavior that no invariant page names.
 
 Response:
 write the invariant or narrow the public promise.
+
+## First Proof Check
+
+Inspect `crates/bijux-gnss-core/docs/INVARIANTS.md`,
+`crates/bijux-gnss-core/docs/PUBLIC_API.md`,
+`crates/bijux-gnss-core/tests/public_api_guardrail.rs`, and
+`crates/bijux-gnss-core/tests/integration_guardrails.rs` to confirm the main
+risk routes documented here still have active proof.

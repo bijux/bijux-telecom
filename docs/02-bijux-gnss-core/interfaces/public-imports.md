@@ -40,3 +40,10 @@ use bijux_gnss_core::observation::epochs::ObsEpoch;
 
 The second style couples callers to layout instead of to the stable public
 surface.
+
+## Protecting Proof
+
+Inspect `crates/bijux-gnss-core/src/api.rs`,
+`crates/bijux-gnss-core/docs/PUBLIC_API.md`, and
+`crates/bijux-gnss-core/tests/public_api_guardrail.rs` to confirm the import
+families documented here still match the curated public surface.

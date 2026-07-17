@@ -43,3 +43,12 @@ fn accept_epoch(_epoch: &ObsEpoch) {
 
 The examples are intentionally small. This crate is a contract surface, so the
 best examples are import and exchange examples, not full workflow programs.
+
+## Protecting Proof
+
+Inspect `crates/bijux-gnss-core/src/api.rs`,
+`crates/bijux-gnss-core/docs/PUBLIC_API.md`, and
+`crates/bijux-gnss-core/docs/CONTRACTS.md`. Then inspect
+`crates/bijux-gnss-core/tests/public_api_guardrail.rs` and the most relevant
+artifact or timekeeping validation tests to confirm these examples still match
+real contract entrypoints.

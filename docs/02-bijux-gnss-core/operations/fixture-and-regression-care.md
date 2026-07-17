@@ -28,3 +28,11 @@ move rarely and deliberately.
 
 In a foundational crate, silent fixture churn can hide contract drift that
 later looks like "normal" downstream adaptation.
+
+## First Proof Check
+
+Inspect `crates/bijux-gnss-core/docs/TESTS.md`,
+`crates/bijux-gnss-core/tests/data/obs_fixture.jsonl`, and
+`crates/bijux-gnss-core/tests/prop_timekeeping.proptest-regressions` together
+with the owning contract docs. Those surfaces show whether a fixture change is
+defending shared meaning or merely teaching tests to accept drift.
