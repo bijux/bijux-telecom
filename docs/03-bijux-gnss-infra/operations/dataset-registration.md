@@ -28,3 +28,11 @@ that actually controls dataset registration and sidecar interpretation.
 The infrastructure crate owns dataset registration mechanics. Higher-level
 crates may consume dataset identity, but they should not redefine how the
 repository names and validates captures.
+
+## First Proof Check
+
+Inspect `crates/bijux-gnss-infra/docs/DATASETS.md`,
+`crates/bijux-gnss-infra/src/datasets/registry.rs`, and
+`crates/bijux-gnss-infra/src/datasets/raw_iq_metadata.rs`. Then inspect the
+most relevant dataset parsing or registry tests to confirm dataset registration
+still reflects one typed repository contract.

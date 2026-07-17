@@ -44,3 +44,11 @@ persisted-evidence side.
 
 Response:
 keep runtime behavior with receiver and repository interpretation with infra.
+
+## First Proof Check
+
+Inspect `crates/bijux-gnss-infra/docs/VALIDATION.md`,
+`crates/bijux-gnss-infra/docs/RUN_LAYOUT.md`,
+`crates/bijux-gnss-infra/tests/integration_guardrails.rs`, and
+`crates/bijux-gnss-infra/src/validate_reference.rs` to confirm the main infra
+risk routes documented here still have active proof.

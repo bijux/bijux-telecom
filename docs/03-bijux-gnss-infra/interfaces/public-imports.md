@@ -41,3 +41,10 @@ use bijux_gnss_infra::run_layout::records::RunManifest;
 
 The second style couples callers to file layout instead of to the stable
 infrastructure surface.
+
+## Protecting Proof
+
+Inspect `crates/bijux-gnss-infra/src/api.rs`,
+`crates/bijux-gnss-infra/docs/PUBLIC_API.md`, and
+`crates/bijux-gnss-infra/tests/integration_guardrails.rs` to confirm the
+import families documented here still match the curated public surface.

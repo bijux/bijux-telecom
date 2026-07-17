@@ -23,3 +23,12 @@ from algorithmic novelty.
 
 If a release note would hide a changed run footprint behind generic wording,
 the repository contract is being described dishonestly.
+
+## First Proof Check
+
+Inspect `crates/bijux-gnss-infra/docs/RUN_LAYOUT.md`,
+`crates/bijux-gnss-infra/docs/DATASETS.md`,
+`crates/bijux-gnss-infra/docs/VALIDATION.md`, and
+`crates/bijux-gnss-infra/src/api.rs`. Then inspect the matching tests or source
+families to confirm any claimed release safety still matches persisted
+repository behavior.

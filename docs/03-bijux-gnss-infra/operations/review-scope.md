@@ -28,3 +28,12 @@ Review infra changes with a wider repository lens than the diff alone.
 - `src/artifact_inspection/`
 - `src/validate_reference.rs`
 - any change that rewrites manifest, report, or history semantics
+
+## First Proof Check
+
+Use `crates/bijux-gnss-infra/docs/RUN_LAYOUT.md`,
+`crates/bijux-gnss-infra/docs/DATASETS.md`,
+`crates/bijux-gnss-infra/docs/TESTS.md`, and
+`crates/bijux-gnss-infra/docs/VALIDATION.md` as the review map. Then inspect
+the changed source family so review depth follows repository-contract risk
+rather than diff size alone.

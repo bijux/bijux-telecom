@@ -33,3 +33,12 @@ The minimum acceptable proof depends on which infra contract family changed.
 Infra changes can silently alter repository behavior even when product crates
 still compile. Validation needs to track repository meaning, not only test
 availability.
+
+## First Proof Check
+
+Use `crates/bijux-gnss-infra/docs/TESTS.md`,
+`crates/bijux-gnss-infra/docs/CONTRACTS.md`,
+`crates/bijux-gnss-infra/docs/RUN_LAYOUT.md`, and
+`crates/bijux-gnss-infra/docs/DATASETS.md` as the validation map. Then inspect
+the changed source family so the proof set stays tied to real repository
+meaning.

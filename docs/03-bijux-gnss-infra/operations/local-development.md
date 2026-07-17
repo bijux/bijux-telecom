@@ -27,3 +27,11 @@ contract oriented.
 
 Broad workspace runs are often less useful than a well-chosen narrow check at
 the dataset, run-layout, or override boundary being changed.
+
+## First Proof Check
+
+Read `crates/bijux-gnss-infra/docs/TESTS.md`,
+`crates/bijux-gnss-infra/docs/RUN_LAYOUT.md`, and
+`crates/bijux-gnss-infra/docs/DATASETS.md` before editing. Then inspect the
+owning source family under `crates/bijux-gnss-infra/src/` so local work stays
+aligned with the actual repository contract that moved.

@@ -26,3 +26,11 @@ defended.
 - run-footprint meaning changed but the docs still describe the old behavior
 - the repository trust story depends on assumptions that are no longer written
   down
+
+## First Proof Check
+
+Inspect `crates/bijux-gnss-infra/docs/CONTRACTS.md`,
+`crates/bijux-gnss-infra/docs/TESTS.md`,
+`crates/bijux-gnss-infra/docs/RUN_LAYOUT.md`, and the changed source family.
+An infra change is not done until the repository contract prose and protecting
+proof still describe the same behavior.

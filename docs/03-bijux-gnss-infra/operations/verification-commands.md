@@ -33,3 +33,12 @@ change spans datasets, run layout, overrides, or validation and you need the
 best current proof route. Validation-adapter changes still require explicit
 review of `docs/VALIDATION.md`, `src/api.rs`, and `src/validate_reference.rs`
 because there is not yet a dedicated integration target for that boundary.
+
+## First Proof Check
+
+Use `crates/bijux-gnss-infra/docs/TESTS.md`,
+`crates/bijux-gnss-infra/docs/RUN_LAYOUT.md`,
+`crates/bijux-gnss-infra/docs/DATASETS.md`, and
+`crates/bijux-gnss-infra/docs/VALIDATION.md` as the verification map. Then
+inspect the changed source family so the proof set stays aligned with the
+actual infra contract that moved.

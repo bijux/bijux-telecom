@@ -41,3 +41,11 @@ let _aligned = validate_reference(&solutions, &reference_epochs, ReferenceAlign:
 
 These examples stay small on purpose. The crate’s public value is typed
 repository interpretation, not full workflow narration.
+
+## Protecting Proof
+
+Inspect `crates/bijux-gnss-infra/src/api.rs`,
+`crates/bijux-gnss-infra/docs/PUBLIC_API.md`,
+`crates/bijux-gnss-infra/docs/CONTRACTS.md`, and the most relevant dataset,
+run-layout, or validation tests to confirm these examples still match real
+repository entrypoints.
