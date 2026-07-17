@@ -131,18 +131,18 @@ audit-rs: ## Run cargo-deny and cargo-audit
 		return "$${PIPESTATUS[0]}"; \
 	}; \
 	audit_ignore_args=(); \
-	audit_ignore_args_line="$$(CARGO_TARGET_DIR="$(RS_TARGET_DIR)" cargo run -q -p bijux-telecom-dev -- audit-ignore-args)"; \
+	audit_ignore_args_line="$$(CARGO_TARGET_DIR="$(RS_TARGET_DIR)" cargo run -q -p bijux-gnss-dev -- audit-ignore-args)"; \
 	if [ -n "$${audit_ignore_args_line}" ]; then \
 		read -r -a audit_ignore_args <<< "$${audit_ignore_args_line}"; \
 	fi; \
 	governance_status=0; \
 	deny_status=0; \
 	audit_status=0; \
-	echo "run: cargo run -q -p bijux-telecom-dev -- audit-allowlist" | tee -a "$(RS_AUDIT_REPORT)"; \
-	run_and_log env CARGO_TARGET_DIR="$(RS_TARGET_DIR)" cargo run -q -p bijux-telecom-dev -- audit-allowlist || governance_status=$$?; \
+	echo "run: cargo run -q -p bijux-gnss-dev -- audit-allowlist" | tee -a "$(RS_AUDIT_REPORT)"; \
+	run_and_log env CARGO_TARGET_DIR="$(RS_TARGET_DIR)" cargo run -q -p bijux-gnss-dev -- audit-allowlist || governance_status=$$?; \
 	echo | tee -a "$(RS_AUDIT_REPORT)"; \
-	echo "run: cargo run -q -p bijux-telecom-dev -- deny-policy-deviations" | tee -a "$(RS_AUDIT_REPORT)"; \
-	run_and_log env CARGO_TARGET_DIR="$(RS_TARGET_DIR)" cargo run -q -p bijux-telecom-dev -- deny-policy-deviations || governance_status=$$?; \
+	echo "run: cargo run -q -p bijux-gnss-dev -- deny-policy-deviations" | tee -a "$(RS_AUDIT_REPORT)"; \
+	run_and_log env CARGO_TARGET_DIR="$(RS_TARGET_DIR)" cargo run -q -p bijux-gnss-dev -- deny-policy-deviations || governance_status=$$?; \
 	echo | tee -a "$(RS_AUDIT_REPORT)"; \
 	echo "run: cargo deny check bans licenses sources --config configs/rust/deny.toml" | tee -a "$(RS_AUDIT_REPORT)"; \
 	run_and_log env CARGO_TARGET_DIR="$(RS_TARGET_DIR)" cargo deny check bans licenses sources --config configs/rust/deny.toml || deny_status=$$?; \
@@ -157,8 +157,8 @@ audit-rs: ## Run cargo-deny and cargo-audit
 	test $$deny_status -eq 0; \
 	test $$audit_status -eq 0
 
-bench-compare: ## Run benchmark comparison through bijux-telecom-dev
-	@CARGO_TARGET_DIR="$(RS_TARGET_DIR)" cargo run --locked -q -p bijux-telecom-dev -- bench-compare $(if $(filter 1 true yes,$(BENCH_STRICT)),--strict,)
+bench-compare: ## Run benchmark comparison through bijux-gnss-dev
+	@CARGO_TARGET_DIR="$(RS_TARGET_DIR)" cargo run --locked -q -p bijux-gnss-dev -- bench-compare $(if $(filter 1 true yes,$(BENCH_STRICT)),--strict,)
 
 docs-check: ## Build rustdoc as docs lane baseline
 	@CARGO_TARGET_DIR="$(RS_TARGET_DIR)" cargo doc --workspace --no-deps

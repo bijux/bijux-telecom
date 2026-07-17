@@ -9,8 +9,8 @@ use clap::{Parser, Subcommand};
 use regex::Regex;
 
 #[derive(Parser, Debug)]
-#[command(name = "bijux-telecom-dev")]
-#[command(about = "Maintainer tooling for the bijux-telecom workspace")]
+#[command(name = "bijux-gnss-dev")]
+#[command(about = "Maintainer tooling for the bijux GNSS workspace")]
 struct Cli {
     #[command(subcommand)]
     command: Commands,

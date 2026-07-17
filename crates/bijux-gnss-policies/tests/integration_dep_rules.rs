@@ -64,7 +64,7 @@ fn dependency_direction_rules() {
             "bijux-gnss-testkit",
             HashSet::from(["bijux-gnss-core", "bijux-gnss-infra", "bijux-gnss-nav"]),
         ),
-        ("bijux-telecom-dev", HashSet::new()),
+        ("bijux-gnss-dev", HashSet::new()),
         ("bijux-gnss-policies", HashSet::new()),
     ]
     .into_iter()

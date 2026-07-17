@@ -205,6 +205,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "bijux-gnss-dev"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bijux-gnss-policies",
+ "clap",
+ "regex",
+ "toml",
+]
+
+[[package]]
 name = "bijux-gnss-infra"
 version = "0.1.0"
 dependencies = [
@@ -299,17 +310,6 @@ dependencies = [
  "proptest",
  "serde",
  "serde_json",
- "toml",
-]
-
-[[package]]
-name = "bijux-telecom-dev"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bijux-gnss-policies",
- "clap",
- "regex",
  "toml",
 ]
 
