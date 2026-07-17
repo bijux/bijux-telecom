@@ -38,15 +38,19 @@ mod matrix;
 pub mod observation_inputs;
 pub mod robust_weighting;
 pub mod solution_outcome;
+mod state;
 pub mod weighting;
 use dops::{compute_dops, scaled_position_covariance_ecef_m2};
 use geodesy::{ecef_to_geodetic, elevation_azimuth_deg};
 use least_squares::solve_weighted_least_squares;
-use observation_inputs::constellation_primary_band;
 #[cfg(test)]
 use robust_weighting::robust_weight;
 use robust_weighting::robust_weights;
 use robust_weighting::PositionRobustWeighting;
+use state::{
+    ClockStateModel, ConstellationResidualAccumulator, PositionEstimate,
+    RaimExclusionCandidate, SatelliteGeometry, WorkingSetResidual, WorkingSetSolution,
+};
 
 const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
 const SIGNAL_TIMING_CONSISTENCY_TOLERANCE_S: f64 = 1.0e-6;
@@ -96,202 +100,6 @@ pub fn position_broadcast_navigation_from_beidou_navigations(
 
 pub fn position_observations_from_epoch(epoch: &ObsEpoch) -> Vec<PositionObservation> {
     observation_inputs::position_observations_from_epoch(epoch)
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct ClockStateModel {
-    reference_constellation: Constellation,
-    offset_constellations: Vec<Constellation>,
-}
-
-impl ClockStateModel {
-    fn from_constellations<I>(constellations: I) -> Option<Self>
-    where
-        I: IntoIterator<Item = Constellation>,
-    {
-        let unique = constellations.into_iter().collect::<std::collections::BTreeSet<_>>();
-        if unique.is_empty() {
-            return None;
-        }
-        let reference_constellation = if unique.contains(&Constellation::Gps) {
-            Constellation::Gps
-        } else {
-            *unique.iter().next().expect("non-empty constellation set")
-        };
-        let offset_constellations = unique
-            .into_iter()
-            .filter(|constellation| *constellation != reference_constellation)
-            .collect();
-        Some(Self { reference_constellation, offset_constellations })
-    }
-
-    fn from_inputs(inputs: &[PositionSolveInput]) -> Option<Self> {
-        Self::from_constellations(inputs.iter().map(|input| input.observation.sat.constellation))
-    }
-
-    fn state_len(&self) -> usize {
-        1 + self.offset_constellations.len()
-    }
-
-    fn parameter_len(&self) -> usize {
-        3 + self.state_len()
-    }
-
-    fn offset_index(&self, constellation: Constellation) -> Option<usize> {
-        self.offset_constellations
-            .iter()
-            .position(|candidate| *candidate == constellation)
-            .map(|index| index + 1)
-    }
-
-    fn contains(&self, constellation: Constellation) -> bool {
-        constellation == self.reference_constellation || self.offset_index(constellation).is_some()
-    }
-
-    fn reference_clock_bias_s(&self, state: &[f64]) -> f64 {
-        state.first().copied().unwrap_or(0.0)
-    }
-
-    fn constellation_clock_bias_s(
-        &self,
-        state: &[f64],
-        constellation: Constellation,
-    ) -> Option<f64> {
-        if constellation == self.reference_constellation {
-            return Some(self.reference_clock_bias_s(state));
-        }
-        let offset_index = self.offset_index(constellation)?;
-        Some(self.reference_clock_bias_s(state) + state.get(offset_index).copied().unwrap_or(0.0))
-    }
-
-    fn design_row(&self, constellation: Constellation) -> Option<Vec<f64>> {
-        if !self.contains(constellation) {
-            return None;
-        }
-        let mut row = vec![0.0; self.state_len()];
-        row[0] = 1.0;
-        if let Some(offset_index) = self.offset_index(constellation) {
-            row[offset_index] = 1.0;
-        }
-        Some(row)
-    }
-
-    fn reproject_state(&self, previous: &ClockStateModel, previous_state: &[f64]) -> Vec<f64> {
-        let mut projected_state = vec![0.0; self.state_len()];
-        projected_state[0] = previous
-            .constellation_clock_bias_s(previous_state, self.reference_constellation)
-            .unwrap_or(previous.reference_clock_bias_s(previous_state));
-        for (index, constellation) in self.offset_constellations.iter().copied().enumerate() {
-            let constellation_bias_s = previous
-                .constellation_clock_bias_s(previous_state, constellation)
-                .unwrap_or(projected_state[0]);
-            projected_state[index + 1] = constellation_bias_s - projected_state[0];
-        }
-        projected_state
-    }
-
-    fn inter_system_biases(&self, state: &[f64]) -> Vec<InterSystemBias> {
-        self.offset_constellations
-            .iter()
-            .enumerate()
-            .map(|(index, constellation)| InterSystemBias {
-                constellation: *constellation,
-                band: Some(constellation_primary_band(*constellation)),
-                bias_s: Seconds(state.get(index + 1).copied().unwrap_or(0.0)),
-            })
-            .collect()
-    }
-}
-
-#[derive(Debug, Clone)]
-struct PositionEstimate {
-    ecef_x_m: f64,
-    ecef_y_m: f64,
-    ecef_z_m: f64,
-    clock_model: ClockStateModel,
-    clock_state_s: Vec<f64>,
-}
-
-impl PositionEstimate {
-    fn origin(clock_model: ClockStateModel) -> Self {
-        Self {
-            ecef_x_m: 0.0,
-            ecef_y_m: 0.0,
-            ecef_z_m: 0.0,
-            clock_state_s: vec![0.0; clock_model.state_len()],
-            clock_model,
-        }
-    }
-
-    fn reproject(&self, clock_model: ClockStateModel) -> Self {
-        if self.clock_model == clock_model {
-            return self.clone();
-        }
-        Self {
-            ecef_x_m: self.ecef_x_m,
-            ecef_y_m: self.ecef_y_m,
-            ecef_z_m: self.ecef_z_m,
-            clock_state_s: clock_model.reproject_state(&self.clock_model, &self.clock_state_s),
-            clock_model,
-        }
-    }
-
-    fn reference_clock_bias_s(&self) -> f64 {
-        self.clock_model.reference_clock_bias_s(&self.clock_state_s)
-    }
-
-    fn constellation_clock_bias_s(&self, constellation: Constellation) -> Option<f64> {
-        self.clock_model.constellation_clock_bias_s(&self.clock_state_s, constellation)
-    }
-}
-
-#[derive(Debug, Clone)]
-struct WorkingSetResidual {
-    sat: SatId,
-    residual_m: f64,
-    base_weight: f64,
-    effective_weight: f64,
-}
-
-#[derive(Debug, Default)]
-struct ConstellationResidualAccumulator {
-    pre_fit_sum_sq_m2: f64,
-    pre_fit_sat_count: usize,
-    post_fit_sum_sq_m2: f64,
-    post_fit_sat_count: usize,
-}
-
-#[derive(Debug, Clone)]
-struct SatelliteGeometry {
-    observation: PositionObservation,
-    corrected_pseudorange_m: f64,
-    broadcast_group_delay_correction_chain: PositionObservationCorrectionChain,
-    state: SatelliteState,
-    iono_delay_m: f64,
-    tropo_delay_m: f64,
-}
-
-#[derive(Debug, Clone)]
-struct WorkingSetSolution {
-    estimate: PositionEstimate,
-    geometry: Vec<SatelliteGeometry>,
-    residuals: Vec<WorkingSetResidual>,
-    covariance: Option<Vec<Vec<f64>>>,
-    covariance_symmetrized: bool,
-    covariance_clamped: bool,
-    covariance_max_variance: Option<f64>,
-    solver_rank: usize,
-    solver_condition_number: Option<f64>,
-}
-
-#[derive(Debug, Clone)]
-struct RaimExclusionCandidate {
-    excluded_index: usize,
-    excluded_sat: SatId,
-    candidate_estimate: PositionEstimate,
-    pre_exclusion_rms_m: f64,
-    post_exclusion_rms_m: f64,
-    solution_shift_m: f64,
 }
 
 #[derive(Debug, Clone)]
