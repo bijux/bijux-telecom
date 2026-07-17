@@ -10,7 +10,8 @@ last_reviewed: 2026-07-17
 # Badge Catalog
 
 `docs/badges.md` is the shared badge contract for `bijux-telecom` public entry
-surfaces.
+surfaces. It is the single source of truth for the generated badge block used
+by the repository entry pages.
 
 Keep the generated block below identical in:
 
@@ -20,7 +21,7 @@ Keep the generated block below identical in:
 This repository does not yet publish the richer templated badge system used in
 some other Bijux repositories. Until that automation exists here, treat this
 file as the single source of truth and keep the generated block in sync across
-both entry surfaces.
+both entry surfaces instead of hand-editing badge lines independently.
 
 Badge order is part of the contract:
 
@@ -36,6 +37,10 @@ Link policy is also fixed here:
   `https://github.com/bijux?tab=packages&repo_name=bijux-telecom`
 - the documentation badge must link to the checked-in `docs/` tree until a
   published docs site becomes canonical
+
+If this repository later adopts templated badge automation, migrate that
+automation from this file rather than letting `README.md` and `docs/index.md`
+grow separate badge policies.
 
 ## Generated Badge Block
 

@@ -15,6 +15,9 @@ owns a behavior before reading implementation detail, cargo metadata, or test
 evidence. The root does not replace crate-local documentation. It makes the
 repository legible enough that the next proof surface is obvious.
 
+Read this site by owned proof, not by crate popularity, workspace familiarity,
+or whichever package happened to appear in the last review.
+
 <!-- bijux-telecom-badges:generated:start -->
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-0F766E)](https://github.com/bijux/bijux-telecom/blob/main/LICENSE)
 [![CI](https://github.com/bijux/bijux-telecom/actions/workflows/ci.yml/badge.svg)](https://github.com/bijux/bijux-telecom/actions/workflows/ci.yml)
@@ -30,12 +33,14 @@ repository legible enough that the next proof surface is obvious.
 [![Repository docs](https://img.shields.io/badge/docs-no%20status-9CA3AF?logo=materialformkdocs&logoColor=white)](https://github.com/bijux/bijux-telecom/tree/main/docs)
 <!-- bijux-telecom-badges:generated:end -->
 
-Use this site to answer three questions quickly:
+Use this site to answer four questions quickly:
 
 - which crate actually owns this behavior
 - where should I inspect proof before I trust a strong sentence
 - when should I leave the repository handbook and move into crate-local docs,
   source, or tests
+- when does the question belong to a support crate rather than to one of the
+  seven primary handbook owners
 
 The root discipline is restraint. The repository handbook must not become a
 shadow API manual for every crate. Once package ownership is clear, it should
@@ -74,6 +79,18 @@ flowchart TB
 | signal catalogs, code families, sample contracts, or reusable DSP | [06-bijux-gnss-signal](06-bijux-gnss-signal/) | `crates/bijux-gnss-signal/src/`, `crates/bijux-gnss-signal/docs/` |
 | maintainer governance, audit policy, or benchmark evidence | [07-bijux-gnss-dev](07-bijux-gnss-dev/) | `crates/bijux-gnss-dev/src/main.rs`, `crates/bijux-gnss-dev/docs/` |
 
+## Seven-Handbook Contract
+
+The root `docs/` tree is intentionally narrow:
+
+- seven crate handbooks for the primary GNSS product and maintainer path
+- `index.md` for repository routing
+- `badges.md` for shared entry-surface badge policy
+
+That shape is a contract, not an accident. Support crates still matter, but
+they should be routed from this root page rather than growing the repository
+handbook into a second crate registry.
+
 ## What This Root Handbook Owns
 
 - the package map for the primary GNSS product path
@@ -90,6 +107,7 @@ flowchart TB
 - package-local implementation choices that should be proven in source and
   tests
 - support crates that are not part of this seven-handbook series today
+- substitute crate-local API manuals once the owning package is known
 
 `bijux-gnss-policies` and `bijux-gnss-testkit` are still important, but they
 are support packages rather than the primary product handoff chain the root
@@ -114,23 +132,6 @@ leave the root series after package routing and inspect those support crates
 directly.
 
 ## Package Handbooks
-
-- [01-bijux-gnss](01-bijux-gnss/) for the operator command surface and the thin
-  public facade
-- [02-bijux-gnss-core](02-bijux-gnss-core/) for shared GNSS contracts,
-  identities, units, artifacts, and diagnostic meaning
-- [03-bijux-gnss-infra](03-bijux-gnss-infra/) for dataset registry, run
-  layout, provenance hashing, and repository-facing validation
-- [04-bijux-gnss-nav](04-bijux-gnss-nav/) for orbit products, corrections,
-  parsers, and navigation estimators
-- [05-bijux-gnss-receiver](05-bijux-gnss-receiver/) for runtime composition,
-  pipeline execution, ports, and receiver-side artifacts
-- [06-bijux-gnss-signal](06-bijux-gnss-signal/) for signal catalogs, code
-  families, raw-IQ contracts, and reusable DSP primitives
-- [07-bijux-gnss-dev](07-bijux-gnss-dev/) for maintainer-only governance and
-  repository health workflows
-
-## Package Map At A Glance
 
 | handbook | strongest question it should settle first | strongest local proof |
 | --- | --- | --- |
@@ -172,6 +173,9 @@ directly.
 - Start at [07-bijux-gnss-dev](07-bijux-gnss-dev/) when the question is not
   product behavior at all, but rather repository safety, audit posture, or
   benchmark governance.
+- Leave the seven-handbook chain and inspect `bijux-gnss-policies` or
+  `bijux-gnss-testkit` directly when the strongest claim depends on policy
+  guardrails or independent scientific truth rather than on product ownership.
 
 ## Strongest Repository Proof Surfaces
 
@@ -191,6 +195,8 @@ directly.
   rather than on the seven product and maintainer handbooks
 - you already know the owner and need crate-local proof rather than
   repository-level routing
+- the only remaining disagreement is about one exact file, one test family, or
+  one crate-local invariant
 
 ## Boundary Test
 
