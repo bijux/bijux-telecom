@@ -44,3 +44,6 @@ decision here instead of letting the boundary blur.
 - link the owning crate in review discussions
 - prefer a clear refusal over a convenience abstraction that nobody will own
   later
+- if the strongest sentence being defended is about solution truth, runtime
+  acceptability, dataset persistence, or command policy, the signal crate is
+  the wrong owner even when signal math appears in the implementation

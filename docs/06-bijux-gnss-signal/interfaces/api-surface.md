@@ -24,8 +24,20 @@ should prefer it over reaching into private module layout.
   alignment, and epoch checks
 - trait seams for sample and correlation integration
 
+## Public Trait Surface
+
+The intentionally public traits are `SignalSource`, `SampleSource`,
+`Correlator`, and `SampleSink`. They are signal-boundary seams, not a license
+to move receiver orchestration into this crate.
+
 ## Architectural Rule
 
 The facade is intentionally broad in capability but narrow in ownership. It
 should publish reusable signal behavior without exposing internal structure as a
 public promise.
+
+## Protecting Proof
+
+- `crates/bijux-gnss-signal/docs/PUBLIC_API.md`
+- `crates/bijux-gnss-signal/docs/CATALOG.md`
+- `crates/bijux-gnss-signal/docs/VALIDATION.md`
