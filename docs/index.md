@@ -225,6 +225,25 @@ directly.
 | data and configuration inputs | `datasets/`, `configs/`, `schemas/` |
 | execution and regression evidence | crate `tests/`, repository `artifacts/`, validation commands in crate READMEs |
 
+## First Proof Check
+
+Inspect `README.md`, `Cargo.toml`, `Makefile`, and this root handbook first.
+Then move into the owning crate handbook and crate-local `docs/`, `src/`, or
+tests as soon as the strongest sentence stops being repository routing and
+starts being crate-owned behavior.
+
+## Entry-Surface Contract
+
+The root entry surfaces must agree on three things:
+
+- the badge block governed by [badges.md](badges.md)
+- the repository-level claim about package ownership and proof-first reading
+- the instruction to leave the root once crate-local proof becomes stronger
+
+If `README.md` and `docs/index.md` start telling different stories about those
+three points, the repository becomes harder to trust before a reader even picks
+an owning crate.
+
 ## Leave The Root Handbook When
 
 - one crate handbook clearly owns the next sentence you need to trust

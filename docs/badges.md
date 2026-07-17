@@ -53,6 +53,19 @@ Review rule:
 - if a new badge is added, it must represent a durable repository surface, not
   a temporary rollout state
 
+## First Proof Check
+
+Inspect `README.md`, `docs/index.md`, and the generated badge block below
+together. The proof for this page is not just the Markdown here; it is that the
+repository's public entry surfaces still expose one identical badge contract.
+
+## Reader-Facing Rule
+
+Badges are not decoration. They are short claims about durable repository
+surfaces. If a badge would need a paragraph of caveats to stay honest, the
+badge should change or disappear instead of training readers to distrust the
+entry surfaces.
+
 If this repository later adopts templated badge automation, migrate that
 automation from this file rather than letting `README.md` and `docs/index.md`
 grow separate badge policies.
