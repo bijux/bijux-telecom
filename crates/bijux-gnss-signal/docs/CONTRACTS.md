@@ -16,6 +16,9 @@ The code families own:
 
 These functions define the workspace’s canonical signal-code behavior.
 
+The supported code families and their boundary rules are detailed in
+[CODE_FAMILIES.md](CODE_FAMILIES.md).
+
 ## DSP contract
 
 The DSP layer owns:
@@ -25,6 +28,8 @@ The DSP layer owns:
 - tracking-loop math and uncertainty helpers
 
 These contracts stay below receiver orchestration so they can be tested independently.
+
+The DSP families and their runtime boundary are detailed in [DSP.md](DSP.md).
 
 ## Validation contract
 

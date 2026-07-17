@@ -23,6 +23,7 @@ Key families:
 - long-duration sampling behavior stays chunk-stable
 - signal spectrum and front-end computations remain physically coherent
 - exported signal metadata stays compatible with downstream crates
+- reusable DSP helpers remain trustworthy without depending on receiver orchestration
 
 ## Verification
 

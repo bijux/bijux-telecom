@@ -1,37 +1,55 @@
 # bijux-gnss-signal
 
-## What this crate does
-`bijux-gnss-signal` owns reusable signal-processing primitives for the GNSS workspace. It provides
-signal catalogs, spreading-code generators, replica synthesis, front-end and spectrum helpers,
-tracking-loop primitives, raw-IQ metadata contracts, and observation-compatibility validation.
+`bijux-gnss-signal` owns reusable GNSS signal definitions and DSP primitives.
 
-## Why this crate exists
-Signal math and code-generation logic must be shared across acquisition, tracking, synthetic test
-data, and validation flows without being reimplemented differently in every crate. This crate is
-that shared signal-processing layer.
+## Scope
 
-## Public entrypoint
-The curated downstream surface is `bijux_gnss_signal::api`, which re-exports the stable catalog,
-code, DSP, sample-conversion, and trait families.
+This crate owns:
 
-## Ownership boundary
-This crate owns signal and DSP primitives, not receiver orchestration or navigation estimation. It
-must not grow into a pipeline crate or a generic numeric bucket. The boundary is documented in
-[docs/BOUNDARY.md](docs/BOUNDARY.md).
+- signal catalogs and physical wavelength helpers
+- spreading-code and secondary-code generation across supported constellations
+- front-end, replica, spectrum, timing, NCO, and tracking-loop primitives
+- raw-IQ metadata and sample-conversion contracts
+- signal-layer observation compatibility validation
 
-## Source layout
+This crate does not own receiver orchestration, persisted run layout, navigation estimation, or
+operator command behavior.
 
-- `src/catalog.rs` resolves signal definitions and wavelength helpers.
-- `src/codes/` owns spreading-code and secondary-code generation by constellation family.
-- `src/dsp/` owns front-end, replica, spectrum, timing, NCO, and tracking helpers.
-- `src/obs_validation.rs` owns dual-frequency and inter-frequency observation validation helpers.
-- `src/raw_iq.rs` and `src/samples.rs` own raw-IQ metadata and sample conversion contracts.
+## Public surface
 
-The module and test structure is documented in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+`bijux_gnss_signal::api` is the deliberate downstream surface. It exposes catalog, code, DSP,
+sample, validation, and trait families in a reusable shape while keeping receiver-runtime policy
+out of this crate.
 
-## Documentation map
-This crate keeps one root README and crate-specific docs under `docs/`:
+## Source map
+
+- `src/catalog.rs` owns signal lookup and wavelength helpers.
+- `src/codes/` owns constellation-specific code families.
+- `src/dsp/` owns reusable signal-processing primitives.
+- `src/obs_validation.rs` owns signal-level observation compatibility checks.
+- `src/raw_iq.rs` and `src/samples.rs` own raw-sample contracts and conversions.
+
+## Documentation
+
+The crate root intentionally contains only this README. Durable crate documentation lives under
+`docs/`:
+
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - [docs/BOUNDARY.md](docs/BOUNDARY.md)
+- [docs/CODE_FAMILIES.md](docs/CODE_FAMILIES.md)
+- [docs/CONTRACTS.md](docs/CONTRACTS.md)
+- [docs/DSP.md](docs/DSP.md)
+- [docs/PUBLIC_API.md](docs/PUBLIC_API.md)
+- [docs/TESTS.md](docs/TESTS.md)
 
-Repository work is governed by [../../README.md](../../README.md).
+## Verification
+
+Run from the repository root when changing this crate:
+
+```sh
+cargo test -p bijux-gnss-signal --test integration_signal_component_registry
+cargo test -p bijux-gnss-signal --test integration_signal_spectrum_cboc
+cargo test -p bijux-gnss-signal --test prop_obs_epoch_validation
+```
+
+Repository-wide expectations are documented in [../../README.md](../../README.md).
