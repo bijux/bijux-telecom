@@ -34,7 +34,7 @@ fn temp_dir_path(name: &str) -> PathBuf {
 fn artifact_header() -> ArtifactHeaderV1 {
     ArtifactHeaderV1 {
         schema_version: 1,
-        producer: "bijux-gnss-cli-test".to_string(),
+        producer: "bijux-gnss-test".to_string(),
         producer_version: "0.1.0".to_string(),
         created_at_unix_ms: 1,
         git_sha: "test".to_string(),

@@ -4,10 +4,10 @@ use std::fs;
 use std::path::Path;
 
 #[test]
-fn no_anyhow_eyre_outside_cli() {
+fn no_anyhow_eyre_outside_command_package() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join("..");
     let crates_dir = root.join("crates");
-    let allow = ["bijux-gnss-cli", "bijux-gnss-dev"];
+    let allow = ["bijux-gnss", "bijux-gnss-dev"];
     let mut offenders = Vec::new();
     for entry in fs::read_dir(&crates_dir).expect("read crates dir") {
         let entry = entry.expect("entry");
@@ -28,5 +28,5 @@ fn no_anyhow_eyre_outside_cli() {
             offenders.push(name.to_string());
         }
     }
-    assert!(offenders.is_empty(), "anyhow/eyre found outside CLI: {:?}", offenders);
+    assert!(offenders.is_empty(), "anyhow/eyre found outside command package: {:?}", offenders);
 }

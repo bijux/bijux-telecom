@@ -1,3 +1,3 @@
-# bijux-gnss-cli API
+# bijux-gnss API
 
-Purpose: command-line interface entrypoints and formatting glue.
+Purpose: public facade for the GNSS stack and the `bijux` command-line entrypoint.

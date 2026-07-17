@@ -42,7 +42,6 @@ fn dependency_direction_rules() {
         workspace_dependency_edges(&metadata, &workspace, DependencyKindFilter::NormalAndBuild);
 
     let allowed: HashMap<&str, HashSet<&str>> = [
-        ("bijux-gnss-cli", HashSet::from(["bijux-gnss-infra", "bijux-gnss-nav"])),
         ("bijux-gnss-infra", HashSet::from(["bijux-gnss-receiver", "bijux-gnss-signal"])),
         (
             "bijux-gnss-receiver",
@@ -52,6 +51,7 @@ fn dependency_direction_rules() {
             "bijux-gnss",
             HashSet::from([
                 "bijux-gnss-core",
+                "bijux-gnss-infra",
                 "bijux-gnss-signal",
                 "bijux-gnss-receiver",
                 "bijux-gnss-nav",

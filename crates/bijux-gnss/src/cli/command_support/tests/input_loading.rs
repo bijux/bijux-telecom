@@ -170,7 +170,7 @@ fn read_broadcast_navigation_data_accepts_wrapped_navigation_payload() {
     let wrapped = bijux_gnss_infra::api::core::ArtifactV1 {
         header: ArtifactHeaderV1 {
             schema_version: ArtifactReadPolicy::LATEST,
-            producer: "bijux-gnss-cli".to_string(),
+            producer: "bijux-gnss".to_string(),
             producer_version: "test".to_string(),
             created_at_unix_ms: 0,
             git_sha: "test".to_string(),
