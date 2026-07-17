@@ -764,8 +764,8 @@ fn init_tracing() {}
 
 fn main() -> Result<()> {
     init_tracing();
-    let cli = Cli::parse();
-    match cli.command {
-        AppCommand::Gnss { command } => run_command(command),
+    let command_line = CommandLine::parse();
+    match command_line.command {
+        ApplicationCommand::Gnss { command } => run_command(command),
     }
 }

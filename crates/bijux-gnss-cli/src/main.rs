@@ -2,7 +2,7 @@
 
 include!("cli/mod.rs");
 include!("cli/command_catalog.rs");
-include!("cli/args.rs");
+include!("cli/command_line.rs");
 include!("cli/report.rs");
 #[path = "cli/command_support/mod.rs"]
 mod command_support;

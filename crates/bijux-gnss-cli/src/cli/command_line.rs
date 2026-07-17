@@ -4,13 +4,13 @@
     version,
     about = "GNSS receiver workflows: run, inspect, validate, diagnose, replay, and compare"
 )]
-struct Cli {
+struct CommandLine {
     #[command(subcommand)]
-    command: AppCommand,
+    command: ApplicationCommand,
 }
 
 #[derive(Subcommand)]
-enum AppCommand {
+enum ApplicationCommand {
     /// GNSS receiver commands for operation, validation, diagnostics, and replay
     Gnss {
         #[command(subcommand)]
