@@ -1,0 +1,36 @@
+# Contracts
+
+`bijux-gnss-nav` owns navigation-science contracts across four major families.
+
+## Format contracts
+
+The format layer owns stable decoding and parsing behavior for navigation messages, RINEX products,
+and precise-reference products. It defines how external navigation data enters the workspace.
+
+## Correction contracts
+
+The correction layer owns:
+- atmosphere and broadcast-ionosphere corrections
+- code and phase combinations
+- bias and antenna-effect application
+- dual-frequency compatibility and correction reports
+
+These are reusable domain computations, not receiver orchestration steps.
+
+## Estimation contracts
+
+The estimation layer owns:
+- position solution records and solver behavior
+- integrity and RAIM evidence
+- PPP filter and measurement contracts
+- RTK ambiguity and baseline solution contracts
+
+These contracts describe navigation-domain estimation behavior independent of CLI and repository
+workflows.
+
+## Orbit and model contracts
+
+The orbit/model layer owns:
+- ephemeris and satellite-state records
+- physical supporting models needed by correction and estimation flows
+- time-system rollover handling specific to navigation formats
