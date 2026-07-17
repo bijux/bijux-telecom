@@ -9,7 +9,9 @@ last_reviewed: 2026-07-17
 
 # This Package Does Not Own
 
-`bijux-gnss` is the public entrypoint, but it still needs a refusal ledger.
+`bijux-gnss` is the public entrypoint, so it attracts pressure from every
+neighboring crate. This ledger records the boundaries that must stay outside
+the command crate unless the ownership model itself changes.
 
 ## Explicit Refusals
 
@@ -19,18 +21,21 @@ last_reviewed: 2026-07-17
 - signal catalogs, code families, and reusable DSP primitives
 - generic shared contracts that do not require command-boundary meaning
 
-## Why This Page Exists
+## Strongest Neighboring Owners
 
-Without an explicit refusal list, readers can mistake public entrypoint status
-for permission to absorb every adjacent concern. That would make the handbook
-look complete while making the codebase worse.
+- [03-bijux-gnss-infra](../03-bijux-gnss-infra/) for persisted repository
+  mechanics, datasets, manifests, and run history
+- [05-bijux-gnss-receiver](../05-bijux-gnss-receiver/) for runtime execution,
+  stage orchestration, and in-memory receiver artifacts
+- [04-bijux-gnss-nav](../04-bijux-gnss-nav/) for navigation science, orbit
+  products, and estimator behavior
+- [06-bijux-gnss-signal](../06-bijux-gnss-signal/) for signal ownership,
+  sample contracts, code families, and reusable DSP
+- [02-bijux-gnss-core](../02-bijux-gnss-core/) for cross-package semantic
+  contracts that the CLI only consumes
 
-## When To Leave
+## Review Trigger
 
-- leave for [03-bijux-gnss-infra](../03-bijux-gnss-infra/) for persisted
-  repository mechanics
-- leave for [05-bijux-gnss-receiver](../05-bijux-gnss-receiver/) for runtime
-  execution
-- leave for [04-bijux-gnss-nav](../04-bijux-gnss-nav/) for navigation science
-- leave for [06-bijux-gnss-signal](../06-bijux-gnss-signal/) for signal
-  ownership
+Update this page when the same rejected ownership pressure keeps returning or
+when the command boundary genuinely changes. Do not delete refusals just
+because a command happens to call into the neighboring owner more often.

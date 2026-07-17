@@ -23,7 +23,19 @@ decision here instead of blurring the boundary.
   belong here
 - hidden writes outside governed evidence locations do not belong here
 
-## How To Use This Ledger
+## Strongest Neighboring Owners
+
+- [01-bijux-gnss](../01-bijux-gnss/) for public GNSS commands
+- [05-bijux-gnss-receiver](../05-bijux-gnss-receiver/) for runtime behavior
+  and emitted product artifacts
+- [03-bijux-gnss-infra](../03-bijux-gnss-infra/) for persisted evidence and
+  repository-facing run mechanics
+- [02-bijux-gnss-core](../02-bijux-gnss-core/),
+  [04-bijux-gnss-nav](../04-bijux-gnss-nav/), and
+  [06-bijux-gnss-signal](../06-bijux-gnss-signal/) for reusable GNSS product
+  semantics that maintainer tooling should only inspect, never own
+
+## Review Trigger
 
 - add an entry when the same rejected design pressure keeps returning
 - link the owning crate in review discussions

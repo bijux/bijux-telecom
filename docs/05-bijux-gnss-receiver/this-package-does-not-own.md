@@ -21,17 +21,21 @@ ledger.
 - standalone navigation algorithms and precise-product interpretation
 - generic shared contracts that do not require receiver-runtime meaning
 
-## Why This Page Exists
+## Strongest Neighboring Owners
+
+- [01-bijux-gnss](../01-bijux-gnss/) for command ownership and operator
+  workflow policy
+- [03-bijux-gnss-infra](../03-bijux-gnss-infra/) for persisted repository
+  mechanics and run layout
+- [04-bijux-gnss-nav](../04-bijux-gnss-nav/) for navigation science and
+  estimator behavior
+- [06-bijux-gnss-signal](../06-bijux-gnss-signal/) for signal ownership,
+  sample contracts, and reusable DSP
+- [02-bijux-gnss-core](../02-bijux-gnss-core/) for shared exchange records and
+  artifact envelopes
+
+## Review Trigger
 
 Without an explicit refusal list, readers can mistake runtime centrality for
-permission to absorb every adjacent concern. That would make the handbook look
-complete while making the codebase worse.
-
-## When To Leave
-
-- leave for [01-bijux-gnss](../01-bijux-gnss/) for command ownership
-- leave for [03-bijux-gnss-infra](../03-bijux-gnss-infra/) for persisted
-  repository mechanics
-- leave for [04-bijux-gnss-nav](../04-bijux-gnss-nav/) for navigation science
-- leave for [06-bijux-gnss-signal](../06-bijux-gnss-signal/) for signal
-  ownership
+permission to absorb every adjacent concern. Update this page when new review
+pressure keeps trying to move neighboring ownership into the runtime crate.

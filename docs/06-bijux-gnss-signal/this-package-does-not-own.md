@@ -26,7 +26,19 @@ decision here instead of letting the boundary blur.
 - cross-package IDs, units, and generic observation record meaning belong in
   `bijux-gnss-core`
 
-## How To Use This Ledger
+## Strongest Neighboring Owners
+
+- [05-bijux-gnss-receiver](../05-bijux-gnss-receiver/) for runtime sequencing,
+  channels, and run-budget policy
+- [03-bijux-gnss-infra](../03-bijux-gnss-infra/) for persisted capture lookup,
+  dataset layout, and repository metadata
+- [04-bijux-gnss-nav](../04-bijux-gnss-nav/) for navigation judgment and
+  solution acceptance
+- [01-bijux-gnss](../01-bijux-gnss/) for commands and operator workflow policy
+- [02-bijux-gnss-core](../02-bijux-gnss-core/) for shared IDs, units, and
+  cross-package observation meaning
+
+## Review Trigger
 
 - add an entry when a rejected design pressure keeps returning
 - link the owning crate in review discussions

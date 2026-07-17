@@ -9,7 +9,8 @@ last_reviewed: 2026-07-17
 
 # This Package Does Not Own
 
-`bijux-gnss-nav` is a large crate, but it still needs a refusal ledger.
+`bijux-gnss-nav` is a large scientific crate, so it needs an explicit refusal
+ledger to keep scientific breadth from turning into boundary sprawl.
 
 ## Explicit Refusals
 
@@ -19,16 +20,20 @@ last_reviewed: 2026-07-17
 - raw IQ generation or lower-level signal synthesis behavior
 - generic shared contracts that do not require navigation meaning
 
-## Why This Page Exists
+## Strongest Neighboring Owners
 
-Without an explicit refusal list, readers can mistake the crate's scientific
-breadth for permission to absorb every adjacent concern. That would make the
-handbook clearer while making the codebase worse.
+- [01-bijux-gnss](../01-bijux-gnss/) for command ownership and operator policy
+- [03-bijux-gnss-infra](../03-bijux-gnss-infra/) for persisted evidence and
+  repository mechanics
+- [05-bijux-gnss-receiver](../05-bijux-gnss-receiver/) for runtime stage
+  control and orchestration
+- [06-bijux-gnss-signal](../06-bijux-gnss-signal/) for raw-sample and
+  reusable signal behavior below navigation science
+- [02-bijux-gnss-core](../02-bijux-gnss-core/) for shared record meaning that
+  does not require navigation ownership
 
-## When To Leave
+## Review Trigger
 
-- leave for [01-bijux-gnss](../01-bijux-gnss/) for command ownership
-- leave for [03-bijux-gnss-infra](../03-bijux-gnss-infra/) for persisted
-  evidence and repository mechanics
-- leave for [05-bijux-gnss-receiver](../05-bijux-gnss-receiver/) for runtime
-  stage control
+Without an explicit refusal list, readers can mistake scientific breadth for
+permission to absorb every adjacent concern. Update this page when repeated
+review pressure reveals a new boundary worth naming.
