@@ -491,12 +491,10 @@ mod tests {
     #[test]
     fn beidou_tracking_samples_follow_d1_neumann_hoffman_overlay() {
         let model = LocalCodeModel::beidou_b1i(11).expect("valid BeiDou B1I PRN");
-        let epoch_zero = model
-            .sample_tracking_value(0.25, 0)
-            .expect("valid BeiDou B1I epoch-zero sample");
-        let epoch_five = model
-            .sample_tracking_value(0.25, 5)
-            .expect("valid BeiDou B1I NH-flipped sample");
+        let epoch_zero =
+            model.sample_tracking_value(0.25, 0).expect("valid BeiDou B1I epoch-zero sample");
+        let epoch_five =
+            model.sample_tracking_value(0.25, 5).expect("valid BeiDou B1I NH-flipped sample");
         let epoch_twenty = model
             .sample_tracking_value(0.25, BEIDOU_D1_PRIMARY_EPOCHS_PER_SYMBOL)
             .expect("valid BeiDou B1I repeated NH sample");

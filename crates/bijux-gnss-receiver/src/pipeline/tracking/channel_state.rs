@@ -318,8 +318,7 @@ fn clear_tracking_uncertainty_windows(state: &mut LoopState) {
     state.cn0_estimate_window_dbhz.clear();
 }
 
-fn update_discriminator_instability_epochs(
-    current_epochs: u8,
+struct DiscriminatorInstabilityEvidence {
     from_state: ChannelState,
     phase_transition_source: TrackingPhaseTransitionSource,
     prompt_power_ratio: Option<f32>,
@@ -327,17 +326,26 @@ fn update_discriminator_instability_epochs(
     raw_fll_lock: bool,
     cycle_slip: bool,
     anti_false_lock: bool,
+}
+
+fn update_discriminator_instability_epochs(
+    current_epochs: u8,
+    evidence: DiscriminatorInstabilityEvidence,
 ) -> u8 {
-    let strong_prompt = prompt_power_ratio
+    let strong_prompt = evidence
+        .prompt_power_ratio
         .is_some_and(|ratio| ratio >= DISCRIMINATOR_INSTABILITY_MIN_PROMPT_POWER_RATIO);
-    let carrier_instability = (!raw_pll_lock && !raw_fll_lock)
-        || (phase_transition_source != TrackingPhaseTransitionSource::SecondaryCode
-            && (!raw_pll_lock || !raw_fll_lock));
-    let unstable = matches!(from_state, ChannelState::Tracking | ChannelState::Degraded)
+    let carrier_instability = (!evidence.raw_pll_lock && !evidence.raw_fll_lock)
+        || (evidence.phase_transition_source != TrackingPhaseTransitionSource::SecondaryCode
+            && (!evidence.raw_pll_lock || !evidence.raw_fll_lock));
+    let unstable = matches!(
+        evidence.from_state,
+        ChannelState::Tracking | ChannelState::Degraded
+    )
         && strong_prompt
         && carrier_instability
-        && !cycle_slip
-        && !anti_false_lock;
+        && !evidence.cycle_slip
+        && !evidence.anti_false_lock;
     if unstable {
         current_epochs.saturating_add(1)
     } else {

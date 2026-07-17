@@ -674,11 +674,13 @@ impl Acquisition {
                         expected_line_of_sight_doppler_hz,
                         doppler_step_hz,
                     )
-                    .total_cmp(&candidate_expected_line_of_sight_doppler_bin_distance(
-                        b,
-                        expected_line_of_sight_doppler_hz,
-                        doppler_step_hz,
-                    ));
+                    .total_cmp(
+                        &candidate_expected_line_of_sight_doppler_bin_distance(
+                            b,
+                            expected_line_of_sight_doppler_hz,
+                            doppler_step_hz,
+                        ),
+                    );
                     if expected_bin_order != std::cmp::Ordering::Equal {
                         return expected_bin_order;
                     }

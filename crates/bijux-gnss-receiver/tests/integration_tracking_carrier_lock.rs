@@ -22,8 +22,9 @@ fn assert_clean_signal_carrier_lock(
     epochs: &[bijux_gnss_core::api::TrackEpoch],
     true_doppler_hz: f64,
 ) {
-    let first_lock_epoch_index = first_tracking_lock_epoch_index(epochs)
-        .unwrap_or_else(|| panic!("tracking never reached a stable carrier lock window: epochs={epochs:?}"));
+    let first_lock_epoch_index = first_tracking_lock_epoch_index(epochs).unwrap_or_else(|| {
+        panic!("tracking never reached a stable carrier lock window: epochs={epochs:?}")
+    });
     let stable_window = clean_carrier_lock_window(epochs, true_doppler_hz).unwrap_or_else(|| {
         panic!(
             "tracking never produced a sustained clean carrier-lock window: first_lock_epoch_index={first_lock_epoch_index}, epochs={epochs:?}"
@@ -51,10 +52,10 @@ fn assert_clean_signal_carrier_lock(
     );
 }
 
-fn clean_carrier_lock_window<'a>(
-    epochs: &'a [bijux_gnss_core::api::TrackEpoch],
+fn clean_carrier_lock_window(
+    epochs: &[bijux_gnss_core::api::TrackEpoch],
     true_doppler_hz: f64,
-) -> Option<&'a [bijux_gnss_core::api::TrackEpoch]> {
+) -> Option<&[bijux_gnss_core::api::TrackEpoch]> {
     if CLEAN_SIGNAL_MIN_LOCKED_EPOCHS == 0 || epochs.len() < CLEAN_SIGNAL_MIN_LOCKED_EPOCHS {
         return None;
     }

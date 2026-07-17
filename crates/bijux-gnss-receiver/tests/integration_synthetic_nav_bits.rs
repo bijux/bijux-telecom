@@ -50,35 +50,35 @@ fn synthetic_nav_bits_flip_prompt_polarity_every_twenty_milliseconds() {
     ]
     .into_iter()
     .map(|(sample_index, sample_count)| {
-            let start = sample_index as usize;
-            let end = start + sample_count;
-            let window_frame = SamplesFrame::new(
-                SampleTime { sample_index, sample_rate_hz: config.sampling_freq_hz },
-                Seconds(1.0 / config.sampling_freq_hz),
-                frame.iq[start..end].to_vec(),
-            );
-            let window_code_phase_chips = advance_code_phase_seconds(
-                code_phase_chips,
-                config.code_freq_basis_hz,
-                sample_index as f64 / config.sampling_freq_hz,
-                config.code_length,
-            )
-            .expect("valid navigation-window code phase");
-            let window_code_phase_samples =
-                window_code_phase_chips * config.sampling_freq_hz / config.code_freq_basis_hz;
-            let correlator =
-                tracking.correlate_epoch(bijux_gnss_receiver::api::TrackingCorrelationRequest {
-                    frame: &window_frame,
-                    sat,
-                    carrier_hz: 0.0,
-                    carrier_phase_cycles: 0.0,
-                    code_rate_hz: config.code_freq_basis_hz,
-                    code_phase_samples: window_code_phase_samples,
-                    early_late_spacing_chips: 0.5,
-                });
-            correlator.prompt.re as f64
-        })
-        .collect::<Vec<_>>();
+        let start = sample_index as usize;
+        let end = start + sample_count;
+        let window_frame = SamplesFrame::new(
+            SampleTime { sample_index, sample_rate_hz: config.sampling_freq_hz },
+            Seconds(1.0 / config.sampling_freq_hz),
+            frame.iq[start..end].to_vec(),
+        );
+        let window_code_phase_chips = advance_code_phase_seconds(
+            code_phase_chips,
+            config.code_freq_basis_hz,
+            sample_index as f64 / config.sampling_freq_hz,
+            config.code_length,
+        )
+        .expect("valid navigation-window code phase");
+        let window_code_phase_samples =
+            window_code_phase_chips * config.sampling_freq_hz / config.code_freq_basis_hz;
+        let correlator =
+            tracking.correlate_epoch(bijux_gnss_receiver::api::TrackingCorrelationRequest {
+                frame: &window_frame,
+                sat,
+                carrier_hz: 0.0,
+                carrier_phase_cycles: 0.0,
+                code_rate_hz: config.code_freq_basis_hz,
+                code_phase_samples: window_code_phase_samples,
+                early_late_spacing_chips: 0.5,
+            });
+        correlator.prompt.re as f64
+    })
+    .collect::<Vec<_>>();
 
     assert_eq!(prompt_i.len(), 3);
     let first_window_mean = prompt_i[0];

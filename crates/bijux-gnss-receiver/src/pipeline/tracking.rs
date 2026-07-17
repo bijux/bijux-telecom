@@ -1020,9 +1020,9 @@ impl Tracking {
         }
 
         let primary_correlator = correlation.primary;
-        let pilot_secondary_code_ready =
-            signal_model.carrier_phase_transition_source() != TrackingPhaseTransitionSource::SecondaryCode
-                || state.secondary_code_sync.is_some_and(|sync| sync.accepted);
+        let pilot_secondary_code_ready = signal_model.carrier_phase_transition_source()
+            != TrackingPhaseTransitionSource::SecondaryCode
+            || state.secondary_code_sync.is_some_and(|sync| sync.accepted);
         let (carrier_prompt, carrier_prompt_source) = if pilot_secondary_code_ready {
             select_carrier_prompt(
                 primary_correlator.prompt,
@@ -1174,13 +1174,15 @@ impl Tracking {
             );
         state.unstable_discriminator_epochs = update_discriminator_instability_epochs(
             state.unstable_discriminator_epochs,
-            state.state,
-            phase_transition_source,
-            prompt_power_ratio,
-            raw_pll_lock,
-            raw_fll_lock,
-            cycle_slip,
-            anti_false_lock,
+            DiscriminatorInstabilityEvidence {
+                from_state: state.state,
+                phase_transition_source,
+                prompt_power_ratio,
+                raw_pll_lock,
+                raw_fll_lock,
+                cycle_slip,
+                anti_false_lock,
+            },
         );
         let loss_of_lock_cause = classify_loss_of_lock_cause(
             state.state,
