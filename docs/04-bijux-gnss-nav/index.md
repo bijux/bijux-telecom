@@ -9,109 +9,153 @@ last_reviewed: 2026-07-17
 
 # bijux-gnss-nav
 
-`bijux-gnss-nav` owns navigation-domain science in `bijux-telecom`. This is
-where orbital products, message formats, corrections, physical models, and
-positioning estimators become explicit package-owned behavior instead of being
-hidden inside the receiver or the CLI.
+`bijux-gnss-nav` owns navigation-domain GNSS science in `bijux-telecom`. This
+crate is where external navigation products become typed state, where orbit and
+clock models are interpreted, and where correction, positioning, integrity,
+PPP, and RTK behavior stay explicit instead of being scattered across the
+receiver, CLI, or infrastructure layers.
 
-The core question this package answers is not "can we track a signal?" but
-"given measurements and reference products, what navigation truth is the
-system claiming, and under which models?"
+This package matters because GNSS navigation is not one algorithm. It is a
+stack of scientific obligations: time-scale interpretation, product parsing,
+physical models, correction law, and estimator behavior all have to agree
+before a higher layer can claim a trustworthy solution.
 
 ```mermaid
 flowchart LR
-    signal["bijux-gnss-signal<br/>signal primitives"]
-    core["bijux-gnss-core<br/>shared observation contracts"]
+    gnss["bijux-gnss<br/>commands"]
+    receiver["bijux-gnss-receiver<br/>runtime orchestration"]
     nav["bijux-gnss-nav<br/>navigation science"]
-    receiver["bijux-gnss-receiver<br/>runtime navigation stage"]
-    infra["bijux-gnss-infra<br/>reference validation and artifacts"]
-    gnss["bijux-gnss<br/>operator workflows"]
+    signal["bijux-gnss-signal<br/>signal-domain primitives"]
+    core["bijux-gnss-core<br/>shared contracts"]
+    infra["bijux-gnss-infra<br/>repository evidence"]
 
-    signal --> nav
-    core --> nav
-    nav --> receiver
-    nav --> infra
-    nav --> gnss
+    gnss --> nav
+    receiver --> nav
+    nav --> signal
+    nav --> core
+    infra --> nav
 ```
+
+## Read These First
+
+- open [Foundation](foundation/) when the question is why this crate owns a
+  scientific concern at all
+- open [Interfaces](interfaces/) when the dispute is already about public
+  decoders, orbit products, solver types, or time and correction contracts
+- open [Architecture](architecture/) when the question is structural: where
+  formats, corrections, estimation, models, and orbit logic live in code
+- open [Quality](quality/) when ownership is clear and the question becomes
+  whether the proof bar is strong enough
 
 ## Why This Package Exists
 
-- broadcast orbits, precise products, and navigation corrections need one
-  scientific owner independent of runtime policy
-- message parsing and estimator logic should remain inspectable without having
-  to read the receiver pipeline
-- PPP, RTK, integrity, and solution claims deserve package-level boundaries,
-  not scattered modules under unrelated owners
+- one crate needs to own how navigation truth enters the repository from
+  broadcast messages, RINEX files, and precise products
+- correction law and estimator behavior should be reusable scientific surfaces,
+  not receiver-local implementation details
+- navigation-time interpretation and constellation-specific orbit logic need a
+  single owner instead of being reimplemented in commands and tests
 
 ## What It Owns
 
-- orbit and ephemeris interpretation across supported constellations
-- navigation and precise-product parsing families
-- atmospheric, bias, and combination corrections
-- SPP, PPP, RAIM, EKF, RTK, and related estimation surfaces
-- supporting physical models and navigation-specific time helpers
+- constellation-specific broadcast ephemeris and precise-product
+  interpretation
+- navigation-product and observation parser families tied to GNSS domain
+  meaning
+- atmospheric, bias, and signal-combination corrections
+- position, integrity, PPP, and RTK estimator behavior
+- navigation-specific time systems, rollover logic, and supporting physical
+  models
 
 ## What It Refuses
 
-- raw-IQ contracts and low-level DSP primitives owned by `bijux-gnss-signal`
-- receiver runtime composition owned by `bijux-gnss-receiver`
-- dataset registry and run layout persistence owned by `bijux-gnss-infra`
-- command-line workflow policy owned by `bijux-gnss`
-- shared cross-package identities and artifact envelopes owned by
-  `bijux-gnss-core`
+- sample scheduling, capture flow, and runtime channel orchestration owned by
+  `bijux-gnss-receiver`
+- raw signal generation and spreading-code surfaces owned by
+  `bijux-gnss-signal`
+- repository run layout, manifests, and dataset registry mechanics owned by
+  `bijux-gnss-infra`
+- command UX and operator entrypoints owned by `bijux-gnss`
+- cross-package shared contracts that belong in `bijux-gnss-core`
 
 ## Strongest Proof Surfaces
 
 - crate README:
   [`crates/bijux-gnss-nav/README.md`](../../crates/bijux-gnss-nav/README.md)
-- package docs:
+- crate-local scientific docs:
+  [`crates/bijux-gnss-nav/docs/ARCHITECTURE.md`](../../crates/bijux-gnss-nav/docs/ARCHITECTURE.md),
+  [`crates/bijux-gnss-nav/docs/CONTRACTS.md`](../../crates/bijux-gnss-nav/docs/CONTRACTS.md),
   [`crates/bijux-gnss-nav/docs/ORBITS.md`](../../crates/bijux-gnss-nav/docs/ORBITS.md),
-  [`crates/bijux-gnss-nav/docs/FORMATS.md`](../../crates/bijux-gnss-nav/docs/FORMATS.md),
   [`crates/bijux-gnss-nav/docs/CORRECTIONS.md`](../../crates/bijux-gnss-nav/docs/CORRECTIONS.md),
-  [`crates/bijux-gnss-nav/docs/ESTIMATION.md`](../../crates/bijux-gnss-nav/docs/ESTIMATION.md)
+  [`crates/bijux-gnss-nav/docs/ESTIMATION.md`](../../crates/bijux-gnss-nav/docs/ESTIMATION.md),
+  [`crates/bijux-gnss-nav/docs/TIME.md`](../../crates/bijux-gnss-nav/docs/TIME.md)
 - source roots:
-  [`crates/bijux-gnss-nav/src/orbits`](../../crates/bijux-gnss-nav/src/orbits),
   [`crates/bijux-gnss-nav/src/formats`](../../crates/bijux-gnss-nav/src/formats),
+  [`crates/bijux-gnss-nav/src/orbits`](../../crates/bijux-gnss-nav/src/orbits),
   [`crates/bijux-gnss-nav/src/corrections`](../../crates/bijux-gnss-nav/src/corrections),
   [`crates/bijux-gnss-nav/src/estimation`](../../crates/bijux-gnss-nav/src/estimation)
 - proof tests:
   [`crates/bijux-gnss-nav/tests`](../../crates/bijux-gnss-nav/tests)
 
+## Sections In This Handbook
+
+- [Foundation](foundation/) for role, scope, ownership, repository fit, and
+  navigation vocabulary
+- [Architecture](architecture/) for module layout, dependency direction,
+  persistence boundaries, and integration seams
+- [Interfaces](interfaces/) for public API, product contracts, correction
+  contracts, estimator contracts, and compatibility expectations
+- [Operations](operations/) for safe change sequence, verification, review
+  scope, and benchmark-aware maintenance
+- [Quality](quality/) for invariants, proof strategy, limitations, risk, and
+  change validation
+- [This Package Does Not Own](this-package-does-not-own.md) for the explicit
+  refusal ledger
+
 ## Start Here When
 
-- the question is about ephemerides, broadcast messages, or precise products
-- the issue is how a correction or estimator is defined, not how it is
-  scheduled
-- a reviewer needs to know whether a navigation claim belongs in science code
+- the question is how a navigation file or precise product becomes typed GNSS
+  state
+- the issue is whether a correction or estimator belongs in navigation science
   or in runtime orchestration
-- a receiver feature seems to depend on navigation-domain assumptions that need
-  to be proven separately
+- the reader needs to understand which crate owns time-scale interpretation,
+  RAIM evidence, PPP state, or RTK differencing behavior
+- a reviewer wants to know whether a public navigation claim is backed by a
+  real scientific owner
 
 ## Reader Questions This Package Can Answer
 
-- which models, corrections, and estimators are treated as package-owned
-  navigation behavior
-- where RINEX and constellation-specific navigation formats are parsed
-- how orbit state and correction families are separated from runtime execution
-- where solution-quality claims should be challenged first
+- how broadcast and precise orbital products are turned into solver-ready state
+- why corrections and estimators belong together here without collapsing into a
+  single monolith
+- where GNSS-specific time handling stops being a core concern and becomes a
+  navigation concern
+- how public orbit, correction, and position surfaces stay usable by higher
+  crates without exposing every internal helper
 
 ## Leave This Handbook When
 
-- the question becomes about signal-code or sample primitives:
-  [06-bijux-gnss-signal](../06-bijux-gnss-signal/)
-- the question becomes about receiver-stage execution or observation-to-PVT
-  flow:
-  [05-bijux-gnss-receiver](../05-bijux-gnss-receiver/)
-- the question becomes about persisted references or artifact inspection:
-  [03-bijux-gnss-infra](../03-bijux-gnss-infra/)
-- the question becomes about shared types or observation contracts:
+- the question becomes about user-facing commands:
+  [01-bijux-gnss](../01-bijux-gnss/)
+- the question becomes about shared observation or artifact schemas:
   [02-bijux-gnss-core](../02-bijux-gnss-core/)
+- the question becomes about persisted repository evidence:
+  [03-bijux-gnss-infra](../03-bijux-gnss-infra/)
+- the question becomes about runtime scheduling and acquisition or tracking
+  orchestration:
+  [05-bijux-gnss-receiver](../05-bijux-gnss-receiver/)
 
 ## First Proof Check
 
-- `crates/bijux-gnss-nav/src/orbits/`
+- `crates/bijux-gnss-nav/src/api.rs`
 - `crates/bijux-gnss-nav/src/formats/`
+- `crates/bijux-gnss-nav/src/orbits/`
 - `crates/bijux-gnss-nav/src/corrections/`
 - `crates/bijux-gnss-nav/src/estimation/`
-- `crates/bijux-gnss-nav/src/models/`
-- `crates/bijux-gnss-nav/docs/ESTIMATION.md`
+- `crates/bijux-gnss-nav/docs/PUBLIC_API.md`
+
+## Design Pressure
+
+If `bijux-gnss-nav` starts carrying command policy, repository persistence, or
+receiver scheduling because those surfaces "need science nearby," the crate
+stops being a trustworthy owner and becomes a convenience bucket.
