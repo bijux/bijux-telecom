@@ -9,6 +9,14 @@
         "constellation": "Gps",
         "prn": 3
       },
+      "signal_id": {
+        "sat": {
+          "constellation": "Gps",
+          "prn": 3
+        },
+        "band": "L1",
+        "code": "Ca"
+      },
       "injected_doppler_hz": -250.0,
       "expected_measured_doppler_hz": -250.0,
       "injected_code_phase_chips": 593.1465602097451,
@@ -19,7 +27,7 @@
       "epochs": [
         {
           "artifact_id": "obs-epoch-0000000000",
-          "epoch_id": "epoch:0|sample:0|t:0.000000000|decision:Accepted|sats:Gps-03:L1:Ca:26555559.242:0.000000:-250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0;Gps-07:L1:Ca:26557101.392:0.000000:-125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0;Gps-11:L1:Ca:26562843.884:0.000000:0.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0;Gps-19:L1:Ca:26559974.015:0.000000:125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0;Gps-23:L1:Ca:26555538.781:0.000000:250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0",
+          "epoch_id": "epoch:0|sample:0|t:0.000000000|decision:Accepted|sats:Gps-03:L1:Ca:26555559.242:0.000000:-250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0:gps-03-l1-ca-e0000000000-s000000000000;Gps-07:L1:Ca:26557101.392:0.000000:-125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0:gps-07-l1-ca-e0000000000-s000000000000;Gps-11:L1:Ca:26562843.884:0.000000:0.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0:gps-11-l1-ca-e0000000000-s000000000000;Gps-19:L1:Ca:26559974.015:0.000000:125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0:gps-19-l1-ca-e0000000000-s000000000000;Gps-23:L1:Ca:26555538.781:0.000000:250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0:gps-23-l1-ca-e0000000000-s000000000000",
           "epoch_index": 0,
           "sample_index": 0,
           "observation_status": "Accepted",
@@ -53,7 +61,7 @@
         },
         {
           "artifact_id": "obs-epoch-0000000001",
-          "epoch_id": "epoch:1|sample:1023|t:0.001000000|decision:Accepted|sats:Gps-03:L1:Ca:26555559.218:-0.250000:-250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-07:L1:Ca:26557101.380:-0.125000:-125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-11:L1:Ca:26562843.884:0.000000:0.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-19:L1:Ca:26559974.027:0.125000:125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-23:L1:Ca:26555538.805:0.250000:250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0",
+          "epoch_id": "epoch:1|sample:1023|t:0.001000000|decision:Accepted|sats:Gps-03:L1:Ca:26555559.218:-0.250000:-250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0:gps-03-l1-ca-e0000000000-s000000000000;Gps-07:L1:Ca:26557101.380:-0.125000:-125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0:gps-07-l1-ca-e0000000000-s000000000000;Gps-11:L1:Ca:26562843.884:0.000000:0.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0:gps-11-l1-ca-e0000000000-s000000000000;Gps-19:L1:Ca:26559974.027:0.125000:125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0:gps-19-l1-ca-e0000000000-s000000000000;Gps-23:L1:Ca:26555538.805:0.250000:250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0:gps-23-l1-ca-e0000000000-s000000000000",
           "epoch_index": 1,
           "sample_index": 1023,
           "observation_status": "Accepted",
@@ -87,7 +95,7 @@
         },
         {
           "artifact_id": "obs-epoch-0000000002",
-          "epoch_id": "epoch:2|sample:2046|t:0.002000000|decision:Accepted|sats:Gps-03:L1:Ca:26555559.194:-0.500000:-250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-07:L1:Ca:26557101.368:-0.250000:-125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-11:L1:Ca:26562843.884:0.000000:0.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-19:L1:Ca:26559974.039:0.250000:125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-23:L1:Ca:26555538.829:0.500000:250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0",
+          "epoch_id": "epoch:2|sample:2046|t:0.002000000|decision:Accepted|sats:Gps-03:L1:Ca:26555559.194:-0.500000:-250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0:gps-03-l1-ca-e0000000000-s000000000000;Gps-07:L1:Ca:26557101.368:-0.250000:-125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0:gps-07-l1-ca-e0000000000-s000000000000;Gps-11:L1:Ca:26562843.884:0.000000:0.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0:gps-11-l1-ca-e0000000000-s000000000000;Gps-19:L1:Ca:26559974.039:0.250000:125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0:gps-19-l1-ca-e0000000000-s000000000000;Gps-23:L1:Ca:26555538.829:0.500000:250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0:gps-23-l1-ca-e0000000000-s000000000000",
           "epoch_index": 2,
           "sample_index": 2046,
           "observation_status": "Accepted",
@@ -126,6 +134,14 @@
         "constellation": "Gps",
         "prn": 7
       },
+      "signal_id": {
+        "sat": {
+          "constellation": "Gps",
+          "prn": 7
+        },
+        "band": "L1",
+        "code": "Ca"
+      },
       "injected_doppler_hz": -125.0,
       "expected_measured_doppler_hz": -125.0,
       "injected_code_phase_chips": 598.4089342235675,
@@ -136,7 +152,7 @@
       "epochs": [
         {
           "artifact_id": "obs-epoch-0000000000",
-          "epoch_id": "epoch:0|sample:0|t:0.000000000|decision:Accepted|sats:Gps-03:L1:Ca:26555559.242:0.000000:-250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0;Gps-07:L1:Ca:26557101.392:0.000000:-125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0;Gps-11:L1:Ca:26562843.884:0.000000:0.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0;Gps-19:L1:Ca:26559974.015:0.000000:125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0;Gps-23:L1:Ca:26555538.781:0.000000:250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0",
+          "epoch_id": "epoch:0|sample:0|t:0.000000000|decision:Accepted|sats:Gps-03:L1:Ca:26555559.242:0.000000:-250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0:gps-03-l1-ca-e0000000000-s000000000000;Gps-07:L1:Ca:26557101.392:0.000000:-125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0:gps-07-l1-ca-e0000000000-s000000000000;Gps-11:L1:Ca:26562843.884:0.000000:0.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0:gps-11-l1-ca-e0000000000-s000000000000;Gps-19:L1:Ca:26559974.015:0.000000:125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0:gps-19-l1-ca-e0000000000-s000000000000;Gps-23:L1:Ca:26555538.781:0.000000:250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0:gps-23-l1-ca-e0000000000-s000000000000",
           "epoch_index": 0,
           "sample_index": 0,
           "observation_status": "Accepted",
@@ -170,7 +186,7 @@
         },
         {
           "artifact_id": "obs-epoch-0000000001",
-          "epoch_id": "epoch:1|sample:1023|t:0.001000000|decision:Accepted|sats:Gps-03:L1:Ca:26555559.218:-0.250000:-250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-07:L1:Ca:26557101.380:-0.125000:-125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-11:L1:Ca:26562843.884:0.000000:0.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-19:L1:Ca:26559974.027:0.125000:125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-23:L1:Ca:26555538.805:0.250000:250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0",
+          "epoch_id": "epoch:1|sample:1023|t:0.001000000|decision:Accepted|sats:Gps-03:L1:Ca:26555559.218:-0.250000:-250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0:gps-03-l1-ca-e0000000000-s000000000000;Gps-07:L1:Ca:26557101.380:-0.125000:-125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0:gps-07-l1-ca-e0000000000-s000000000000;Gps-11:L1:Ca:26562843.884:0.000000:0.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0:gps-11-l1-ca-e0000000000-s000000000000;Gps-19:L1:Ca:26559974.027:0.125000:125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0:gps-19-l1-ca-e0000000000-s000000000000;Gps-23:L1:Ca:26555538.805:0.250000:250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0:gps-23-l1-ca-e0000000000-s000000000000",
           "epoch_index": 1,
           "sample_index": 1023,
           "observation_status": "Accepted",
@@ -204,7 +220,7 @@
         },
         {
           "artifact_id": "obs-epoch-0000000002",
-          "epoch_id": "epoch:2|sample:2046|t:0.002000000|decision:Accepted|sats:Gps-03:L1:Ca:26555559.194:-0.500000:-250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-07:L1:Ca:26557101.368:-0.250000:-125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-11:L1:Ca:26562843.884:0.000000:0.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-19:L1:Ca:26559974.039:0.250000:125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-23:L1:Ca:26555538.829:0.500000:250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0",
+          "epoch_id": "epoch:2|sample:2046|t:0.002000000|decision:Accepted|sats:Gps-03:L1:Ca:26555559.194:-0.500000:-250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0:gps-03-l1-ca-e0000000000-s000000000000;Gps-07:L1:Ca:26557101.368:-0.250000:-125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0:gps-07-l1-ca-e0000000000-s000000000000;Gps-11:L1:Ca:26562843.884:0.000000:0.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0:gps-11-l1-ca-e0000000000-s000000000000;Gps-19:L1:Ca:26559974.039:0.250000:125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0:gps-19-l1-ca-e0000000000-s000000000000;Gps-23:L1:Ca:26555538.829:0.500000:250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0:gps-23-l1-ca-e0000000000-s000000000000",
           "epoch_index": 2,
           "sample_index": 2046,
           "observation_status": "Accepted",
@@ -243,6 +259,14 @@
         "constellation": "Gps",
         "prn": 11
       },
+      "signal_id": {
+        "sat": {
+          "constellation": "Gps",
+          "prn": 11
+        },
+        "band": "L1",
+        "code": "Ca"
+      },
       "injected_doppler_hz": 0.0,
       "expected_measured_doppler_hz": 0.0,
       "injected_code_phase_chips": 618.0043865136831,
@@ -253,7 +277,7 @@
       "epochs": [
         {
           "artifact_id": "obs-epoch-0000000000",
-          "epoch_id": "epoch:0|sample:0|t:0.000000000|decision:Accepted|sats:Gps-03:L1:Ca:26555559.242:0.000000:-250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0;Gps-07:L1:Ca:26557101.392:0.000000:-125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0;Gps-11:L1:Ca:26562843.884:0.000000:0.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0;Gps-19:L1:Ca:26559974.015:0.000000:125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0;Gps-23:L1:Ca:26555538.781:0.000000:250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0",
+          "epoch_id": "epoch:0|sample:0|t:0.000000000|decision:Accepted|sats:Gps-03:L1:Ca:26555559.242:0.000000:-250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0:gps-03-l1-ca-e0000000000-s000000000000;Gps-07:L1:Ca:26557101.392:0.000000:-125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0:gps-07-l1-ca-e0000000000-s000000000000;Gps-11:L1:Ca:26562843.884:0.000000:0.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0:gps-11-l1-ca-e0000000000-s000000000000;Gps-19:L1:Ca:26559974.015:0.000000:125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0:gps-19-l1-ca-e0000000000-s000000000000;Gps-23:L1:Ca:26555538.781:0.000000:250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0:gps-23-l1-ca-e0000000000-s000000000000",
           "epoch_index": 0,
           "sample_index": 0,
           "observation_status": "Accepted",
@@ -287,7 +311,7 @@
         },
         {
           "artifact_id": "obs-epoch-0000000001",
-          "epoch_id": "epoch:1|sample:1023|t:0.001000000|decision:Accepted|sats:Gps-03:L1:Ca:26555559.218:-0.250000:-250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-07:L1:Ca:26557101.380:-0.125000:-125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-11:L1:Ca:26562843.884:0.000000:0.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-19:L1:Ca:26559974.027:0.125000:125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-23:L1:Ca:26555538.805:0.250000:250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0",
+          "epoch_id": "epoch:1|sample:1023|t:0.001000000|decision:Accepted|sats:Gps-03:L1:Ca:26555559.218:-0.250000:-250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0:gps-03-l1-ca-e0000000000-s000000000000;Gps-07:L1:Ca:26557101.380:-0.125000:-125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0:gps-07-l1-ca-e0000000000-s000000000000;Gps-11:L1:Ca:26562843.884:0.000000:0.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0:gps-11-l1-ca-e0000000000-s000000000000;Gps-19:L1:Ca:26559974.027:0.125000:125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0:gps-19-l1-ca-e0000000000-s000000000000;Gps-23:L1:Ca:26555538.805:0.250000:250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0:gps-23-l1-ca-e0000000000-s000000000000",
           "epoch_index": 1,
           "sample_index": 1023,
           "observation_status": "Accepted",
@@ -321,7 +345,7 @@
         },
         {
           "artifact_id": "obs-epoch-0000000002",
-          "epoch_id": "epoch:2|sample:2046|t:0.002000000|decision:Accepted|sats:Gps-03:L1:Ca:26555559.194:-0.500000:-250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-07:L1:Ca:26557101.368:-0.250000:-125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-11:L1:Ca:26562843.884:0.000000:0.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-19:L1:Ca:26559974.039:0.250000:125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-23:L1:Ca:26555538.829:0.500000:250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0",
+          "epoch_id": "epoch:2|sample:2046|t:0.002000000|decision:Accepted|sats:Gps-03:L1:Ca:26555559.194:-0.500000:-250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0:gps-03-l1-ca-e0000000000-s000000000000;Gps-07:L1:Ca:26557101.368:-0.250000:-125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0:gps-07-l1-ca-e0000000000-s000000000000;Gps-11:L1:Ca:26562843.884:0.000000:0.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0:gps-11-l1-ca-e0000000000-s000000000000;Gps-19:L1:Ca:26559974.039:0.250000:125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0:gps-19-l1-ca-e0000000000-s000000000000;Gps-23:L1:Ca:26555538.829:0.500000:250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0:gps-23-l1-ca-e0000000000-s000000000000",
           "epoch_index": 2,
           "sample_index": 2046,
           "observation_status": "Accepted",
@@ -360,6 +384,14 @@
         "constellation": "Gps",
         "prn": 19
       },
+      "signal_id": {
+        "sat": {
+          "constellation": "Gps",
+          "prn": 19
+        },
+        "band": "L1",
+        "code": "Ca"
+      },
       "injected_doppler_hz": 125.0,
       "expected_measured_doppler_hz": 125.0,
       "injected_code_phase_chips": 608.211358895438,
@@ -370,7 +402,7 @@
       "epochs": [
         {
           "artifact_id": "obs-epoch-0000000000",
-          "epoch_id": "epoch:0|sample:0|t:0.000000000|decision:Accepted|sats:Gps-03:L1:Ca:26555559.242:0.000000:-250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0;Gps-07:L1:Ca:26557101.392:0.000000:-125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0;Gps-11:L1:Ca:26562843.884:0.000000:0.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0;Gps-19:L1:Ca:26559974.015:0.000000:125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0;Gps-23:L1:Ca:26555538.781:0.000000:250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0",
+          "epoch_id": "epoch:0|sample:0|t:0.000000000|decision:Accepted|sats:Gps-03:L1:Ca:26555559.242:0.000000:-250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0:gps-03-l1-ca-e0000000000-s000000000000;Gps-07:L1:Ca:26557101.392:0.000000:-125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0:gps-07-l1-ca-e0000000000-s000000000000;Gps-11:L1:Ca:26562843.884:0.000000:0.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0:gps-11-l1-ca-e0000000000-s000000000000;Gps-19:L1:Ca:26559974.015:0.000000:125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0:gps-19-l1-ca-e0000000000-s000000000000;Gps-23:L1:Ca:26555538.781:0.000000:250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0:gps-23-l1-ca-e0000000000-s000000000000",
           "epoch_index": 0,
           "sample_index": 0,
           "observation_status": "Accepted",
@@ -404,7 +436,7 @@
         },
         {
           "artifact_id": "obs-epoch-0000000001",
-          "epoch_id": "epoch:1|sample:1023|t:0.001000000|decision:Accepted|sats:Gps-03:L1:Ca:26555559.218:-0.250000:-250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-07:L1:Ca:26557101.380:-0.125000:-125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-11:L1:Ca:26562843.884:0.000000:0.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-19:L1:Ca:26559974.027:0.125000:125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-23:L1:Ca:26555538.805:0.250000:250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0",
+          "epoch_id": "epoch:1|sample:1023|t:0.001000000|decision:Accepted|sats:Gps-03:L1:Ca:26555559.218:-0.250000:-250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0:gps-03-l1-ca-e0000000000-s000000000000;Gps-07:L1:Ca:26557101.380:-0.125000:-125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0:gps-07-l1-ca-e0000000000-s000000000000;Gps-11:L1:Ca:26562843.884:0.000000:0.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0:gps-11-l1-ca-e0000000000-s000000000000;Gps-19:L1:Ca:26559974.027:0.125000:125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0:gps-19-l1-ca-e0000000000-s000000000000;Gps-23:L1:Ca:26555538.805:0.250000:250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0:gps-23-l1-ca-e0000000000-s000000000000",
           "epoch_index": 1,
           "sample_index": 1023,
           "observation_status": "Accepted",
@@ -438,7 +470,7 @@
         },
         {
           "artifact_id": "obs-epoch-0000000002",
-          "epoch_id": "epoch:2|sample:2046|t:0.002000000|decision:Accepted|sats:Gps-03:L1:Ca:26555559.194:-0.500000:-250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-07:L1:Ca:26557101.368:-0.250000:-125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-11:L1:Ca:26562843.884:0.000000:0.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-19:L1:Ca:26559974.039:0.250000:125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-23:L1:Ca:26555538.829:0.500000:250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0",
+          "epoch_id": "epoch:2|sample:2046|t:0.002000000|decision:Accepted|sats:Gps-03:L1:Ca:26555559.194:-0.500000:-250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0:gps-03-l1-ca-e0000000000-s000000000000;Gps-07:L1:Ca:26557101.368:-0.250000:-125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0:gps-07-l1-ca-e0000000000-s000000000000;Gps-11:L1:Ca:26562843.884:0.000000:0.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0:gps-11-l1-ca-e0000000000-s000000000000;Gps-19:L1:Ca:26559974.039:0.250000:125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0:gps-19-l1-ca-e0000000000-s000000000000;Gps-23:L1:Ca:26555538.829:0.500000:250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0:gps-23-l1-ca-e0000000000-s000000000000",
           "epoch_index": 2,
           "sample_index": 2046,
           "observation_status": "Accepted",
@@ -477,6 +509,14 @@
         "constellation": "Gps",
         "prn": 23
       },
+      "signal_id": {
+        "sat": {
+          "constellation": "Gps",
+          "prn": 23
+        },
+        "band": "L1",
+        "code": "Ca"
+      },
       "injected_doppler_hz": 250.0,
       "expected_measured_doppler_hz": 250.0,
       "injected_code_phase_chips": 593.076742507692,
@@ -487,7 +527,7 @@
       "epochs": [
         {
           "artifact_id": "obs-epoch-0000000000",
-          "epoch_id": "epoch:0|sample:0|t:0.000000000|decision:Accepted|sats:Gps-03:L1:Ca:26555559.242:0.000000:-250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0;Gps-07:L1:Ca:26557101.392:0.000000:-125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0;Gps-11:L1:Ca:26562843.884:0.000000:0.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0;Gps-19:L1:Ca:26559974.015:0.000000:125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0;Gps-23:L1:Ca:26555538.781:0.000000:250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0",
+          "epoch_id": "epoch:0|sample:0|t:0.000000000|decision:Accepted|sats:Gps-03:L1:Ca:26555559.242:0.000000:-250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0:gps-03-l1-ca-e0000000000-s000000000000;Gps-07:L1:Ca:26557101.392:0.000000:-125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0:gps-07-l1-ca-e0000000000-s000000000000;Gps-11:L1:Ca:26562843.884:0.000000:0.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0:gps-11-l1-ca-e0000000000-s000000000000;Gps-19:L1:Ca:26559974.015:0.000000:125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0:gps-19-l1-ca-e0000000000-s000000000000;Gps-23:L1:Ca:26555538.781:0.000000:250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0:gps-23-l1-ca-e0000000000-s000000000000",
           "epoch_index": 0,
           "sample_index": 0,
           "observation_status": "Accepted",
@@ -521,7 +561,7 @@
         },
         {
           "artifact_id": "obs-epoch-0000000001",
-          "epoch_id": "epoch:1|sample:1023|t:0.001000000|decision:Accepted|sats:Gps-03:L1:Ca:26555559.218:-0.250000:-250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-07:L1:Ca:26557101.380:-0.125000:-125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-11:L1:Ca:26562843.884:0.000000:0.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-19:L1:Ca:26559974.027:0.125000:125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-23:L1:Ca:26555538.805:0.250000:250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0",
+          "epoch_id": "epoch:1|sample:1023|t:0.001000000|decision:Accepted|sats:Gps-03:L1:Ca:26555559.218:-0.250000:-250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0:gps-03-l1-ca-e0000000000-s000000000000;Gps-07:L1:Ca:26557101.380:-0.125000:-125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0:gps-07-l1-ca-e0000000000-s000000000000;Gps-11:L1:Ca:26562843.884:0.000000:0.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0:gps-11-l1-ca-e0000000000-s000000000000;Gps-19:L1:Ca:26559974.027:0.125000:125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0:gps-19-l1-ca-e0000000000-s000000000000;Gps-23:L1:Ca:26555538.805:0.250000:250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0:gps-23-l1-ca-e0000000000-s000000000000",
           "epoch_index": 1,
           "sample_index": 1023,
           "observation_status": "Accepted",
@@ -555,7 +595,7 @@
         },
         {
           "artifact_id": "obs-epoch-0000000002",
-          "epoch_id": "epoch:2|sample:2046|t:0.002000000|decision:Accepted|sats:Gps-03:L1:Ca:26555559.194:-0.500000:-250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-07:L1:Ca:26557101.368:-0.250000:-125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-11:L1:Ca:26562843.884:0.000000:0.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-19:L1:Ca:26559974.039:0.250000:125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-23:L1:Ca:26555538.829:0.500000:250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0",
+          "epoch_id": "epoch:2|sample:2046|t:0.002000000|decision:Accepted|sats:Gps-03:L1:Ca:26555559.194:-0.500000:-250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0:gps-03-l1-ca-e0000000000-s000000000000;Gps-07:L1:Ca:26557101.368:-0.250000:-125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0:gps-07-l1-ca-e0000000000-s000000000000;Gps-11:L1:Ca:26562843.884:0.000000:0.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0:gps-11-l1-ca-e0000000000-s000000000000;Gps-19:L1:Ca:26559974.039:0.250000:125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0:gps-19-l1-ca-e0000000000-s000000000000;Gps-23:L1:Ca:26555538.829:0.500000:250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0:gps-23-l1-ca-e0000000000-s000000000000",
           "epoch_index": 2,
           "sample_index": 2046,
           "observation_status": "Accepted",

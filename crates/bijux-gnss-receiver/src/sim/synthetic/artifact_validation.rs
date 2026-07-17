@@ -98,12 +98,16 @@ fn truth_coverage_issue(
     SyntheticTruthCoverageIssue { sat, epoch_index, code: code.into() }
 }
 
-fn tracked_signal_band(track: &crate::pipeline::tracking::TrackingResult) -> Option<SignalBand> {
-    track.epochs.first().map(|epoch| epoch.signal_band)
+fn tracked_signal_id(track: &crate::pipeline::tracking::TrackingResult) -> Option<SigId> {
+    track.epochs.first().map(|epoch| SigId {
+        sat: track.sat,
+        band: epoch.signal_band,
+        code: epoch.signal_code,
+    })
 }
 
-fn expected_signal_id(sat: SatId, signal_band: Option<SignalBand>) -> SigId {
-    let code = match (sat.constellation, signal_band.unwrap_or(SignalBand::Unknown)) {
+fn inferred_signal_code(sat: SatId, signal_band: SignalBand) -> SignalCode {
+    match (sat.constellation, signal_band) {
         (Constellation::Gps, SignalBand::L1) => SignalCode::Ca,
         (Constellation::Gps, SignalBand::L2) => SignalCode::L2C,
         (Constellation::Gps, SignalBand::L5) => SignalCode::L5I,
@@ -111,8 +115,30 @@ fn expected_signal_id(sat: SatId, signal_band: Option<SignalBand>) -> SigId {
         (Constellation::Beidou, SignalBand::B1) => SignalCode::B1I,
         (Constellation::Glonass, SignalBand::L1) => SignalCode::Unknown,
         _ => SignalCode::Unknown,
+    }
+}
+
+fn expected_signal_id(sat_truth: &SyntheticSignalParams) -> SigId {
+    let code = if sat_truth.signal_code != SignalCode::Unknown {
+        sat_truth.signal_code
+    } else {
+        inferred_signal_code(sat_truth.sat, sat_truth.signal_band)
     };
-    SigId { sat, band: signal_band.unwrap_or(SignalBand::Unknown), code }
+    SigId { sat: sat_truth.sat, band: sat_truth.signal_band, code }
+}
+
+fn track_matches_truth_signal(
+    track: &crate::pipeline::tracking::TrackingResult,
+    sat_truth: &SyntheticSignalParams,
+) -> bool {
+    let Some(signal_id) = tracked_signal_id(track) else {
+        return false;
+    };
+    signal_id.sat == sat_truth.sat
+        && signal_id.band == sat_truth.signal_band
+        && (sat_truth.signal_code == SignalCode::Unknown
+            || signal_id.code == sat_truth.signal_code
+            || signal_id.code == inferred_signal_code(sat_truth.sat, sat_truth.signal_band))
 }
 
 fn acquisition_truth_coverage_issues(
@@ -244,13 +270,10 @@ pub fn validate_truth_guided_observation_table(
         .satellites
         .iter()
         .map(|sat_truth| {
-            let matching_track = tracks.iter().find(|track| track.sat == sat_truth.sat);
-            let expected_band = matching_track.and_then(tracked_signal_band);
-            let signal_id = expected_band
-                .map(|band| expected_signal_id(sat_truth.sat, Some(band)))
-                .unwrap_or_else(|| expected_signal_id(sat_truth.sat, None));
-            let observed_rows =
-                comparable_signal_band_observations(&observations, sat_truth.sat, expected_band);
+            let matching_track = tracks.iter().find(|track| track_matches_truth_signal(track, sat_truth));
+            let signal_id =
+                matching_track.and_then(tracked_signal_id).unwrap_or_else(|| expected_signal_id(sat_truth));
+            let observed_rows = comparable_signal_observations(&observations, signal_id);
             let expected_doppler_hz = sat_truth.doppler_hz + truth.receiver_clock_frequency_bias_hz;
             let mut notes = Vec::new();
             if matching_track.is_none() {

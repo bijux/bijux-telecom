@@ -1,5 +1,6 @@
 #![allow(missing_docs)]
 
+use std::env;
 use std::fs;
 use std::path::Path;
 
@@ -14,6 +15,9 @@ use bijux_gnss_receiver::api::{
 use serde_json::Value;
 
 use observation_truth_table::build_observation_truth_fixture;
+
+const REGENERATE_OBSERVATION_TRUTH_FIXTURE_ENV: &str =
+    "BIJUX_REGENERATE_OBSERVATION_TRUTH_FIXTURE";
 
 #[test]
 fn observation_truth_table_matches_reference_fixture() {
@@ -35,6 +39,9 @@ fn observation_truth_table_matches_reference_fixture() {
         &fixture.reference,
         10,
     );
+    if env::var_os(REGENERATE_OBSERVATION_TRUTH_FIXTURE_ENV).is_some() {
+        write_truth_table_fixture("truth_table_reference.json", &report);
+    }
     let expected = load_truth_table_fixture("truth_table_reference.json");
 
     assert_json_close(
@@ -50,6 +57,13 @@ fn load_truth_table_fixture(fixture_file: &str) -> SyntheticObservationTruthTabl
         .join(format!("tests/data/observations/{fixture_file}"));
     let contents = fs::read_to_string(path).expect("truth table fixture");
     serde_json::from_str(&contents).expect("valid truth table fixture")
+}
+
+fn write_truth_table_fixture(fixture_file: &str, report: &SyntheticObservationTruthTableReport) {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join(format!("tests/data/observations/{fixture_file}"));
+    let serialized = serde_json::to_string_pretty(report).expect("serialize truth table fixture");
+    fs::write(path, serialized).expect("write truth table fixture");
 }
 
 fn assert_json_close(actual: &Value, expected: &Value, tolerance: f64, path: &str) {
