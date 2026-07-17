@@ -490,8 +490,7 @@ pub fn write_truth_guided_quantization_loss_artifact(
 const TRACKING_CN0_MIN_STABLE_EPOCHS: usize = 5;
 
 fn stable_tracking_cn0_values(epochs: &[crate::api::core::TrackEpoch]) -> Vec<f64> {
-    let Some((start, count)) =
-        stable_tracking_window_bounds(epochs, TRACKING_CN0_MIN_STABLE_EPOCHS)
+    let Some((start, count)) = cn0_measurement_window_bounds(epochs, TRACKING_CN0_MIN_STABLE_EPOCHS)
     else {
         return Vec::new();
     };
@@ -499,6 +498,38 @@ fn stable_tracking_cn0_values(epochs: &[crate::api::core::TrackEpoch]) -> Vec<f6
         .iter()
         .filter_map(|epoch| epoch.cn0_dbhz.is_finite().then_some(epoch.cn0_dbhz))
         .collect()
+}
+
+fn cn0_measurement_window_bounds(
+    epochs: &[crate::api::core::TrackEpoch],
+    min_epochs: usize,
+) -> Option<(usize, usize)> {
+    stable_tracking_window_bounds(epochs, min_epochs)
+        .or_else(|| lock_retained_cn0_window_bounds(epochs, min_epochs))
+}
+
+fn lock_retained_cn0_window_bounds(
+    epochs: &[crate::api::core::TrackEpoch],
+    min_epochs: usize,
+) -> Option<(usize, usize)> {
+    let mut window_start = None;
+    for (index, epoch) in epochs.iter().enumerate() {
+        let ready = tracking_epoch_retains_lock_for_cn0(epoch);
+        match (window_start, ready) {
+            (None, true) => window_start = Some(index),
+            (Some(start), false) => {
+                if index - start >= min_epochs {
+                    return Some((start, index - start));
+                }
+                window_start = None;
+            }
+            _ => {}
+        }
+    }
+
+    window_start
+        .filter(|start| epochs.len() - start >= min_epochs)
+        .map(|start| (start, epochs.len() - start))
 }
 
 fn quantized_capture_frame(
@@ -594,6 +625,14 @@ fn tracking_epoch_is_stable(epoch: &crate::api::core::TrackEpoch) -> bool {
         && epoch.pll_lock
         && epoch.fll_lock
         && !epoch.cycle_slip
+        && epoch.lock_state_reason.as_deref() != Some("lock_lost")
+}
+
+fn tracking_epoch_retains_lock_for_cn0(epoch: &crate::api::core::TrackEpoch) -> bool {
+    epoch.lock
+        && matches!(epoch.lock_state.as_str(), "pull_in" | "tracking" | "degraded")
+        && !epoch.cycle_slip
+        && epoch.cn0_dbhz.is_finite()
         && epoch.lock_state_reason.as_deref() != Some("lock_lost")
 }
 

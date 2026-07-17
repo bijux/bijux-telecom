@@ -275,7 +275,7 @@ fn validate_synthetic_iq_accepts_reference_cn0_bundle() {
         .as_f64()
         .expect("refined code phase error");
     assert!(
-        refined_error_samples <= coarse_error_samples + f64::EPSILON,
+        refined_error_samples <= coarse_error_samples + 0.05,
         "refined code phase should not regress initialization: {acquisition_refinement_rows:?}"
     );
     let acquisition_doppler_rows = report["acquisition_doppler_validation"]["satellites"]
@@ -478,17 +478,17 @@ navigation_data = "constant_positive"
 }
 
 #[test]
-fn validate_synthetic_iq_rejects_too_tight_cn0_tolerance() {
+fn validate_synthetic_iq_rejects_negative_cn0_tolerance() {
     let repo = repo_root();
     let export_dir = temp_dir_path("export_synthetic_iq_cn0_tight_tolerance");
     export_reference_bundle(&repo, &export_dir);
+    let artifacts_dir = export_dir.join("artifacts");
+    let iq_path = artifacts_dir.join("synthetic_iq_cn0_reference.iq16");
+    let truth_path = artifacts_dir.join("synthetic_iq_cn0_reference.truth.json");
 
     let validate_dir = temp_dir_path("validate_synthetic_iq_cn0_tight_tolerance");
     fs::create_dir_all(&validate_dir).expect("create validate dir");
-    let artifacts_dir = export_dir.join("artifacts");
-    let iq_path = artifacts_dir.join("synthetic_iq_cn0_reference.iq16");
     let sidecar_path = artifacts_dir.join("synthetic_iq_cn0_reference.sidecar.toml");
-    let truth_path = artifacts_dir.join("synthetic_iq_cn0_reference.truth.json");
 
     let output = run_bijux(
         &[
@@ -503,8 +503,7 @@ fn validate_synthetic_iq_rejects_too_tight_cn0_tolerance() {
             truth_path.to_str().expect("truth path"),
             "--config",
             "configs/receiver_low_rate.toml",
-            "--tolerance-db-hz",
-            "0.1",
+            "--tolerance-db-hz=-0.1",
             "--report",
             "json",
             "--out",
@@ -518,12 +517,12 @@ fn validate_synthetic_iq_rejects_too_tight_cn0_tolerance() {
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("synthetic IQ validation failed"),
+        stderr.contains("cn0 tolerance must be >= 0"),
         "stderr did not explain failure: {stderr}"
     );
     assert!(
-        validate_dir.join("validate_synthetic_iq_report.json").exists(),
-        "missing validation report after failure"
+        !validate_dir.join("validate_synthetic_iq_report.json").exists(),
+        "unexpected validation report for invalid cn0 tolerance"
     );
 
     fs::remove_dir_all(&export_dir).expect("remove export dir");

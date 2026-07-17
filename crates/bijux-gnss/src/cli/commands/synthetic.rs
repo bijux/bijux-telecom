@@ -226,6 +226,10 @@ pub(crate) fn handle_validate_synthetic_iq(command: GnssCommand) -> Result<()> {
         bail!("invalid command for handler");
     };
 
+    if tolerance_db_hz < 0.0 {
+        bail!("cn0 tolerance must be >= 0 dB-Hz");
+    }
+
     let dataset = load_dataset(&common)?;
     let input_file = resolve_input_file(Some(&file), dataset.as_ref())?;
     let raw_iq_metadata = resolve_raw_iq_metadata(&common, dataset.as_ref())?;

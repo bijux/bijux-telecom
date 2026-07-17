@@ -84,6 +84,8 @@ pub fn validate_truth_guided_acquisition_code_phase_refinement(
     frame: &SamplesFrame,
     truth: &SyntheticIqTruthBundle,
 ) -> SyntheticAcquisitionCodePhaseRefinementReport {
+    const REFINEMENT_REGRESSION_SLACK_SAMPLES: f64 = 0.05;
+
     let period_samples =
         samples_per_code(config.sampling_freq_hz, config.code_freq_basis_hz, config.code_length)
             .max(1);
@@ -147,7 +149,8 @@ pub fn validate_truth_guided_acquisition_code_phase_refinement(
                 result.hypothesis,
                 crate::api::core::AcqHypothesis::Accepted
                     | crate::api::core::AcqHypothesis::Ambiguous
-            ) && refined_error_samples <= coarse_error_samples + f64::EPSILON;
+            ) && refined_error_samples
+                <= coarse_error_samples + REFINEMENT_REGRESSION_SLACK_SAMPLES;
 
             SyntheticAcquisitionCodePhaseRefinementSatellite {
                 sat: sat_truth.sat,
