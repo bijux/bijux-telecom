@@ -2,6 +2,7 @@
 
 mod directories;
 mod identity;
+mod paths;
 mod provenance;
 mod records;
 
@@ -32,7 +33,7 @@ pub fn run_dir(
     command: &str,
     dataset: Option<&crate::datasets::DatasetEntry>,
 ) -> Result<std::path::PathBuf, bijux_gnss_receiver::api::core::InputError> {
-    directories::context::run_dir(args, command, dataset)
+    paths::run_dir(args, command, dataset)
 }
 
 /// Resolve artifacts directory path.
@@ -41,7 +42,7 @@ pub fn artifacts_dir(
     command: &str,
     dataset: Option<&crate::datasets::DatasetEntry>,
 ) -> Result<std::path::PathBuf, bijux_gnss_receiver::api::core::InputError> {
-    directories::context::artifacts_dir(args, command, dataset)
+    paths::artifacts_dir(args, command, dataset)
 }
 
 /// Append a run history entry.
