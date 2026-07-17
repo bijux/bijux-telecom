@@ -5,8 +5,9 @@ use bijux_gnss_receiver::api::ReceiverConfig;
 use serde::Serialize;
 
 use crate::datasets::DatasetEntry;
-use crate::hash::{git_hash, hash_config};
+use crate::hash::hash_config;
 
+use super::build_metadata::build_metadata;
 use crate::run_layout::directories::context::{resolve_run_context, RunContextArgs};
 use crate::run_layout::identity::{
     dataset_hash, run_id, RUN_LAYOUT_SCHEMA_VERSION, RUN_REPORT_SCHEMA_VERSION,
@@ -61,20 +62,23 @@ pub fn write_run_report(
 ) -> Result<RunReport, InputError> {
     let config_hash = hash_config(args.config, profile)?;
     let dataset_hash = dataset.map(dataset_hash).transpose()?;
-    let build_version = env!("CARGO_PKG_VERSION");
+    let build_metadata = build_metadata();
     let report = RunReport {
         schema_version: RUN_REPORT_SCHEMA_VERSION,
-        run_id: run_id(&config_hash, dataset_hash.as_deref(), build_version),
+        run_id: run_id(
+            &config_hash,
+            dataset_hash.as_deref(),
+            &build_metadata.build_version,
+        ),
         config_hash,
         dataset_id: dataset.map(|entry| entry.id.clone()),
         dataset_hash,
-        git_hash: git_hash().unwrap_or_else(|| "unknown".to_string()),
-        build_profile: std::env::var("BIJUX_BUILD_PROFILE").unwrap_or_else(|_| "dev".to_string()),
-        toolchain: std::env::var("BIJUX_BUILD_RUSTC").unwrap_or_else(|_| "unknown".to_string()),
-        build_version: build_version.to_string(),
-        build_git: std::env::var("BIJUX_BUILD_GIT_SHA").unwrap_or_else(|_| "unknown".to_string()),
-        build_timestamp: std::env::var("BIJUX_BUILD_TIMESTAMP")
-            .unwrap_or_else(|_| "unknown".to_string()),
+        git_hash: build_metadata.git_hash,
+        build_profile: build_metadata.build_profile,
+        toolchain: build_metadata.toolchain,
+        build_version: build_metadata.build_version,
+        build_git: build_metadata.build_git,
+        build_timestamp: build_metadata.build_timestamp,
         layout_schema_version: RUN_LAYOUT_SCHEMA_VERSION,
         replay_scope: replay_scope(args),
         front_end_provenance: front_end_provenance(args, profile, dataset)?,
