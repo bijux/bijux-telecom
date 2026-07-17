@@ -1,7 +1,7 @@
 ---
 title: Module Map
 audience: mixed
-type: explanation
+type: architecture
 status: canonical
 owner: bijux-gnss-core-docs
 last_reviewed: 2026-07-17
@@ -17,15 +17,17 @@ own.
 
 | code area | primary ownership |
 | --- | --- |
-| `src/api.rs` | curated downstream surface |
-| `src/artifact/` | versioned artifact envelopes, payload versions, and validation traits |
+| `src/lib.rs` and `src/api.rs` | private-to-public boundary and curated downstream surface |
+| `src/artifact.rs` plus `src/artifact/` | artifact namespace entry, versioned envelopes, payload versions, and validation traits |
 | `src/config.rs` | schema versioning and validation-report shape |
-| `src/diagnostic/` and `src/error.rs` | diagnostic codes, severity, and canonical error families |
+| `src/conventions.rs` | repository-wide constants and shared domain conventions that do not belong to one record family |
+| `src/diagnostic/` and `src/error.rs` | diagnostic codes, severity, event summaries, and canonical error families |
 | `src/ids.rs` | constellation, satellite, signal, and registry identities |
 | `src/time.rs` | GPS, UTC, TAI, receiver-sample time, and leap-second meaning |
 | `src/units.rs` and `src/geo.rs` | strong physical units and geodetic coordinate types |
 | `src/observation/` and `src/observation_quality.rs` | acquisition, tracking, observation, differencing, and quality records |
 | `src/nav_solution.rs` | solution epochs, residuals, inter-system bias, and lifecycle-state records |
+| `src/stats.rs` | shared statistical summaries used as contract-level supporting records |
 | `src/support_matrix.rs` | support inventory records shared across runtime, infra, and CLI |
 
 ## Why This Map Exists
@@ -38,3 +40,4 @@ usually deepen that family rather than create a new vague top-level concept.
 
 - `crates/bijux-gnss-core/docs/CONTRACT_MAP.md`
 - `crates/bijux-gnss-core/src/lib.rs`
+- `crates/bijux-gnss-core/src/conventions.rs`

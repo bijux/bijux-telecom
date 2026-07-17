@@ -1,7 +1,7 @@
 ---
 title: Package Overview
 audience: mixed
-type: explanation
+type: foundation
 status: canonical
 owner: bijux-gnss-core-docs
 last_reviewed: 2026-07-17
@@ -12,6 +12,10 @@ last_reviewed: 2026-07-17
 `bijux-gnss-core` exists to make GNSS meaning durable before downstream crates
 add signal processing, navigation inference, runtime orchestration, or
 repository persistence.
+
+The crate is foundational because it is restrictive, not because it is broad.
+It should collect only the record families that more than one downstream owner
+must share without reinterpretation.
 
 ## Role Model
 
@@ -27,6 +31,17 @@ flowchart LR
 If a downstream crate needs to exchange a GNSS record with another crate or
 persist one inside a stable artifact envelope, this package is usually where
 that meaning should already be defined.
+
+The durable centers of gravity are:
+
+- `src/ids.rs`, `src/time.rs`, `src/units.rs`, and `src/geo.rs` for canonical
+  identity, time, and physical meaning
+- `src/observation/`, `src/observation_quality.rs`, and
+  `src/nav_solution.rs` for exchanged runtime records
+- `src/artifact.rs`, `src/artifact/`, and `src/config.rs` for versioned
+  artifact and validation-report contracts
+- `src/diagnostic/`, `src/error.rs`, and `src/support_matrix.rs` for shared
+  failure, reporting, and support inventory semantics
 
 ## Boundary Verdict
 
@@ -57,6 +72,8 @@ or command behavior, it has crossed the boundary.
 ## First Proof Check
 
 - `crates/bijux-gnss-core/src/api.rs`
+- `crates/bijux-gnss-core/src/config.rs`
+- `crates/bijux-gnss-core/src/diagnostic/codes.rs`
 - `crates/bijux-gnss-core/src/artifact/`
 - `crates/bijux-gnss-core/src/observation/`
 - `crates/bijux-gnss-core/src/nav_solution.rs`

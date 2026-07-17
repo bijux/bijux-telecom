@@ -39,4 +39,6 @@ become a shortcut for moving local behavior into core.
 If the proposed work sounds more like behavior than cross-package meaning, the
 burden is on the change to prove that core is the right owner. Update this
 page when recurring review arguments reveal a new boundary pressure worth
-making durable.
+making durable. If the next proof surface is a stage scheduler, solver tuning
+rule, filesystem policy, or command wording change, the owner is almost
+certainly not `bijux-gnss-core`.
