@@ -29,11 +29,8 @@ fn slow_roster_is_sorted_unique_and_resolves_to_test_functions() -> anyhow::Resu
         "slow roster entries must resolve to known test functions: {missing:?}"
     );
 
-    let duplicated_named_slow = roster
-        .iter()
-        .filter(|entry| entry.contains("slow__"))
-        .cloned()
-        .collect::<Vec<_>>();
+    let duplicated_named_slow =
+        roster.iter().filter(|entry| entry.contains("slow__")).cloned().collect::<Vec<_>>();
     assert!(
         duplicated_named_slow.is_empty(),
         "slow roster must not duplicate slow__-prefixed tests: {duplicated_named_slow:?}"
@@ -67,7 +64,8 @@ fn collect_from_directory(path: &Path, names: &mut BTreeSet<String>) -> anyhow::
             collect_from_directory(&entry_path, names)?;
             continue;
         }
-        if file_type.is_file() && entry_path.extension().and_then(|ext| ext.to_str()) == Some("rs") {
+        if file_type.is_file() && entry_path.extension().and_then(|ext| ext.to_str()) == Some("rs")
+        {
             let content = fs::read_to_string(&entry_path)?;
             record_test_function_names(&content, names);
         }
