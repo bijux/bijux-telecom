@@ -3,6 +3,7 @@ use super::*;
 mod ca_code;
 mod doctor;
 mod filesystem_support;
+mod guidance_dispatch;
 mod navigation_decode;
 mod operator_guidance;
 mod quality_dispatch;

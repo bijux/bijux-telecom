@@ -50,155 +50,23 @@ pub(crate) fn handle_diagnostics(command: GnssCommand) -> Result<()> {
             quality_dispatch::handle_export_bundle(common, run_dir, out_dir)?
         }
         DiagnosticsCommand::MachineCatalog { common } => {
-            let _ = runtime_config_from_env(&common, None);
-            let report = machine_catalog_report();
-            match common.report {
-                ReportFormat::Table => print_machine_catalog_table(&report),
-                ReportFormat::Json => emit_report(&common, "diagnostics_machine_catalog", &report)?,
-            }
-            write_diagnostics_report_artifact(
-                &common,
-                "diagnostics_machine_catalog",
-                &report,
-                "diagnostics_machine_catalog_report.schema.json",
-            )?;
-            write_manifest(
-                &common,
-                "diagnostics_machine_catalog",
-                &ReceiverConfig::default(),
-                None,
-                &report,
-            )?;
+            guidance_dispatch::handle_machine_catalog(common)?
         }
-        DiagnosticsCommand::ApiParity { common } => {
-            let _ = runtime_config_from_env(&common, None);
-            let report = api_parity_report();
-            match common.report {
-                ReportFormat::Table => print_api_parity_table(&report),
-                ReportFormat::Json => emit_report(&common, "diagnostics_api_parity", &report)?,
-            }
-            write_diagnostics_report_artifact(
-                &common,
-                "diagnostics_api_parity",
-                &report,
-                "diagnostics_api_parity_report.schema.json",
-            )?;
-            write_manifest(
-                &common,
-                "diagnostics_api_parity",
-                &ReceiverConfig::default(),
-                None,
-                &report,
-            )?;
-        }
+        DiagnosticsCommand::ApiParity { common } => guidance_dispatch::handle_api_parity(common)?,
         DiagnosticsCommand::ExpertGuide { common } => {
-            let _ = runtime_config_from_env(&common, None);
-            let report = expert_guide_report();
-            match common.report {
-                ReportFormat::Table => print_expert_guide_table(&report),
-                ReportFormat::Json => emit_report(&common, "diagnostics_expert_guide", &report)?,
-            }
-            write_diagnostics_report_artifact(
-                &common,
-                "diagnostics_expert_guide",
-                &report,
-                "diagnostics_expert_guide_report.schema.json",
-            )?;
-            write_manifest(
-                &common,
-                "diagnostics_expert_guide",
-                &ReceiverConfig::default(),
-                None,
-                &report,
-            )?;
+            guidance_dispatch::handle_expert_guide(common)?
         }
         DiagnosticsCommand::HistoryBrowse { common, root_dir, limit } => {
-            let _ = runtime_config_from_env(&common, None);
-            let report = history_browse_report(&root_dir, limit)?;
-            match common.report {
-                ReportFormat::Table => print_history_browse_table(&report),
-                ReportFormat::Json => emit_report(&common, "diagnostics_history_browse", &report)?,
-            }
-            write_diagnostics_report_artifact(
-                &common,
-                "diagnostics_history_browse",
-                &report,
-                "diagnostics_history_browse_report.schema.json",
-            )?;
-            write_manifest(
-                &common,
-                "diagnostics_history_browse",
-                &ReceiverConfig::default(),
-                None,
-                &report,
-            )?;
+            guidance_dispatch::handle_history_browse(common, root_dir, limit)?
         }
         DiagnosticsCommand::RouteExplain { common, topic } => {
-            let _ = runtime_config_from_env(&common, None);
-            let report = route_explain_report(topic);
-            match common.report {
-                ReportFormat::Table => print_route_explain_table(&report),
-                ReportFormat::Json => emit_report(&common, "diagnostics_route_explain", &report)?,
-            }
-            write_diagnostics_report_artifact(
-                &common,
-                "diagnostics_route_explain",
-                &report,
-                "diagnostics_route_explain_report.schema.json",
-            )?;
-            write_manifest(
-                &common,
-                "diagnostics_route_explain",
-                &ReceiverConfig::default(),
-                None,
-                &report,
-            )?;
+            guidance_dispatch::handle_route_explain(common, topic)?
         }
         DiagnosticsCommand::OperatorWorkflow { common, profile } => {
-            let _ = runtime_config_from_env(&common, None);
-            let report = operator_workflow_report(profile);
-            match common.report {
-                ReportFormat::Table => print_operator_workflow_table(&report),
-                ReportFormat::Json => {
-                    emit_report(&common, "diagnostics_operator_workflow", &report)?
-                }
-            }
-            write_diagnostics_report_artifact(
-                &common,
-                "diagnostics_operator_workflow",
-                &report,
-                "diagnostics_operator_workflow_report.schema.json",
-            )?;
-            write_manifest(
-                &common,
-                "diagnostics_operator_workflow",
-                &ReceiverConfig::default(),
-                None,
-                &report,
-            )?;
+            guidance_dispatch::handle_operator_workflow(common, profile)?
         }
         DiagnosticsCommand::OperatorErgonomics { common, run_dir } => {
-            let _ = runtime_config_from_env(&common, None);
-            let report = operator_ergonomics_report(&run_dir)?;
-            match common.report {
-                ReportFormat::Table => print_operator_ergonomics_table(&report),
-                ReportFormat::Json => {
-                    emit_report(&common, "diagnostics_operator_ergonomics", &report)?
-                }
-            }
-            write_diagnostics_report_artifact(
-                &common,
-                "diagnostics_operator_ergonomics",
-                &report,
-                "diagnostics_operator_ergonomics_report.schema.json",
-            )?;
-            write_manifest(
-                &common,
-                "diagnostics_operator_ergonomics",
-                &ReceiverConfig::default(),
-                None,
-                &report,
-            )?;
+            guidance_dispatch::handle_operator_ergonomics(common, run_dir)?
         }
         DiagnosticsCommand::AuditTrail { common, run_dir } => {
             let _ = runtime_config_from_env(&common, None);
