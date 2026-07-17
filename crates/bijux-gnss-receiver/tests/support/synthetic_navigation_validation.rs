@@ -13,7 +13,8 @@ pub fn repo_root() -> PathBuf {
         .to_path_buf()
 }
 
-pub fn bounded_navigation_validation_fixture() -> (ReceiverConfig, SyntheticNavigationValidationScenario) {
+pub fn bounded_navigation_validation_fixture(
+) -> (ReceiverConfig, SyntheticNavigationValidationScenario) {
     let repo = repo_root();
     let mut config: ReceiverConfig = toml::from_str(
         &fs::read_to_string(repo.join("configs/receiver_low_rate.toml"))

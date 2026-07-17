@@ -1,8 +1,7 @@
 #![allow(missing_docs)]
 
 use bijux_gnss_receiver::api::{
-    signal::FrontEndFilterSpec,
-    sim::validate_synthetic_navigation_run,
+    signal::FrontEndFilterSpec, sim::validate_synthetic_navigation_run,
 };
 
 #[path = "support/synthetic_navigation_validation.rs"]

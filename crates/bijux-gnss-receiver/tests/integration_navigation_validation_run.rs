@@ -2,7 +2,9 @@
 
 use bijux_gnss_receiver::api::{
     signal::FrontEndFilterSpec,
-    sim::{validate_synthetic_navigation_run, SyntheticClosureStageKind, SyntheticClosureStageStatus},
+    sim::{
+        validate_synthetic_navigation_run, SyntheticClosureStageKind, SyntheticClosureStageStatus,
+    },
 };
 
 #[path = "support/synthetic_navigation_validation.rs"]
@@ -63,8 +65,7 @@ fn synthetic_navigation_validation_run_builds_run_level_accuracy_artifact() {
 fn synthetic_navigation_validation_run_carries_source_and_receiver_front_end_delay() {
     let (mut config, mut scenario) = bounded_navigation_validation_fixture();
     let source_front_end_filter = FrontEndFilterSpec::LowPass { cutoff_hz: 400_000.0, taps: 17 };
-    let receiver_front_end_filter =
-        FrontEndFilterSpec::LowPass { cutoff_hz: 350_000.0, taps: 21 };
+    let receiver_front_end_filter = FrontEndFilterSpec::LowPass { cutoff_hz: 350_000.0, taps: 21 };
     let combined_sample_delay_samples = source_front_end_filter.group_delay_samples() as u64
         + receiver_front_end_filter.group_delay_samples() as u64;
 
