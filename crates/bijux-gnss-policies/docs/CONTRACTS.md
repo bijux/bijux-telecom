@@ -25,6 +25,9 @@ The test suite and guardrail modules together own contracts for:
 - restrictions on unmanaged ad hoc warning/error logging
 - requirements for crate-local guardrail tests and workspace structure
 
+The active guardrail families and their responsibilities are enumerated in
+[GUARDRAILS.md](GUARDRAILS.md).
+
 ## Reporting contract
 
 `src/bin/purity_report.rs` owns a read-only reporting workflow over workspace crate purity

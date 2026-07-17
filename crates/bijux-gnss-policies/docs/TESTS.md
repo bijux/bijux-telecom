@@ -23,6 +23,7 @@
 - architecture decisions remain executable, not aspirational
 - new crates do not quietly break the dependency DAG
 - policy drift becomes visible in review instead of appearing months later as architectural debt
+- guardrail configuration stays aligned with the checks wired through `check(crate_root, config)`
 
 ## Verification
 

@@ -1,34 +1,51 @@
 # bijux-gnss-policies
 
-## What this crate does
-`bijux-gnss-policies` owns the shared guardrail checks that keep the GNSS workspace structurally
-coherent. It validates dependency direction, public API discipline, source-tree shape, and policy
-conformance across the repository’s crates.
+`bijux-gnss-policies` owns executable structural policy for the GNSS repository.
 
-## Why this crate exists
-Architecture standards decay quickly when they live only in conversations. This crate turns the
-workspace’s structural expectations into code that can run in tests and in maintainer workflows.
+## Scope
 
-## Public entrypoint
-The curated downstream surface is `bijux_gnss_policies::api`, which exposes the guardrail runner,
-configuration, and error/result types.
+This crate owns:
 
-## Ownership boundary
-This crate owns repository policy checks. It does not own product behavior, runtime plumbing, or
-scientific semantics. The crate boundary is documented in [docs/BOUNDARY.md](docs/BOUNDARY.md).
+- crate-local guardrail execution through `check(crate_root, config)`
+- typed guardrail configuration for source-tree and public-surface rules
+- workspace policy tests for dependency direction, import layering, and repository structure
+- read-only purity reporting for maintainers
 
-## Source layout
+This crate does not own product runtime behavior, GNSS scientific semantics, or general repository
+automation that is unrelated to architecture policy.
 
-- `src/guardrails/` contains the actual policy checks and configuration.
-- `src/api.rs` defines the stable downstream entrypoint.
-- `src/bin/purity_report.rs` is a repository report binary over workspace crate structure.
-- `tests/` contains workspace-level policy suites and snapshots.
+## Public surface
 
-The module and test layout is documented in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+`bijux_gnss_policies::api` is the deliberate library surface. It exposes the guardrail runner,
+configuration, and canonical error/result types without exposing internal rule-module layout.
 
-## Documentation map
-This crate keeps one root README and crate-specific docs under `docs/`:
+## Source map
+
+- `src/guardrails/` owns source-tree, API-surface, and content-policy checks.
+- `src/api.rs` is the curated downstream entrypoint.
+- `src/bin/purity_report.rs` owns read-only reporting over workspace crate purity characteristics.
+- `tests/` owns repository-wide structural assertions and policy snapshots.
+
+## Documentation
+
+The crate root intentionally contains only this README. Durable crate documentation lives under
+`docs/`:
+
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - [docs/BOUNDARY.md](docs/BOUNDARY.md)
+- [docs/CONTRACTS.md](docs/CONTRACTS.md)
+- [docs/GUARDRAILS.md](docs/GUARDRAILS.md)
+- [docs/PUBLIC_API.md](docs/PUBLIC_API.md)
+- [docs/TESTS.md](docs/TESTS.md)
 
-Repository work is governed by [../../README.md](../../README.md).
+## Verification
+
+Run from the repository root when changing this crate:
+
+```sh
+cargo test -p bijux-gnss-policies --test integration_dep_rules
+cargo test -p bijux-gnss-policies --test integration_workspace
+cargo test -p bijux-gnss-policies --test integration_policy_snapshot
+```
+
+Repository-wide expectations are documented in [../../README.md](../../README.md).
