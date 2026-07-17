@@ -91,7 +91,8 @@ fn check_pub_use_locations(files: &[PathBuf]) -> Result<()> {
         }
 
         let is_api_file = path.file_name().and_then(|segment| segment.to_str()) == Some("api.rs");
-        let is_library_root = path.file_name().and_then(|segment| segment.to_str()) == Some("lib.rs");
+        let is_library_root =
+            path.file_name().and_then(|segment| segment.to_str()) == Some("lib.rs");
         let content = fs::read_to_string(path)?;
 
         for (index, line) in content.lines().enumerate() {

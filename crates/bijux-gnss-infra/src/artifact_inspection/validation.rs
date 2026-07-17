@@ -11,8 +11,8 @@ use super::artifact_type::ArtifactKind;
 use super::ArtifactValidationResult;
 
 mod acquisition;
-mod observation;
 mod navigation;
+mod observation;
 mod schema_policy;
 mod tracking;
 

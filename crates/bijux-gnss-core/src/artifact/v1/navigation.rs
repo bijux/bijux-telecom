@@ -1,6 +1,6 @@
 use super::validate_receiver_sample_trace;
-use crate::artifact::{ArtifactPayloadValidate, ArtifactV1};
 use crate::api::{DiagnosticEvent, DiagnosticSeverity, NavSolutionEpoch, SolutionStatus};
+use crate::artifact::{ArtifactPayloadValidate, ArtifactV1};
 
 /// Navigation solution artifact v1.
 pub type NavSolutionEpochV1 = ArtifactV1<NavSolutionEpoch>;
@@ -67,9 +67,7 @@ impl ArtifactPayloadValidate for NavSolutionEpoch {
             self.horizontal_error_ellipse_minor_axis_m,
         ];
         if horizontal_error_ellipse.iter().flatten().any(|value| !value.0.is_finite())
-            || self
-                .horizontal_error_ellipse_azimuth_deg
-                .is_some_and(|value| !value.is_finite())
+            || self.horizontal_error_ellipse_azimuth_deg.is_some_and(|value| !value.is_finite())
         {
             events.push(DiagnosticEvent::new(
                 DiagnosticSeverity::Error,
@@ -299,10 +297,7 @@ impl ArtifactPayloadValidate for NavSolutionEpoch {
                 ));
             }
             if summary.post_fit_sat_count > 0
-                && accepted_residual_counts
-                    .get(&summary.constellation)
-                    .copied()
-                    .unwrap_or(0)
+                && accepted_residual_counts.get(&summary.constellation).copied().unwrap_or(0)
                     != summary.post_fit_sat_count
             {
                 events.push(DiagnosticEvent::new(

@@ -46,7 +46,8 @@ pub(crate) fn check_mod_only_dirs(src_dir: &Path) -> Result<()> {
         for child in fs::read_dir(entry.path())? {
             let child = child?;
             let path = child.path();
-            if path.is_file() && path.extension().and_then(|segment| segment.to_str()) == Some("rs") {
+            if path.is_file() && path.extension().and_then(|segment| segment.to_str()) == Some("rs")
+            {
                 if let Some(name) = path.file_name().and_then(|segment| segment.to_str()) {
                     rs_files.push(name.to_string());
                 }

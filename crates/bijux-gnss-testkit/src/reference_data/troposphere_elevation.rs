@@ -9,9 +9,9 @@ use bijux_gnss_nav::api::{
 };
 use serde::{Deserialize, Serialize};
 
+use super::station_truth::PublicStationTruth;
 use crate::reference_models::coordinates::elevation_azimuth_deg;
 use crate::reference_models::gps_broadcast::satellite_state_from_observation;
-use super::station_truth::PublicStationTruth;
 
 pub const LOW_ELEVATION_CEILING_DEG: f64 = 20.0;
 pub const MID_ELEVATION_CEILING_DEG: f64 = 45.0;

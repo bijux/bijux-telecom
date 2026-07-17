@@ -1,9 +1,9 @@
 use super::validate_receiver_sample_trace;
-use crate::artifact::{ArtifactPayloadValidate, ArtifactV1};
 use crate::api::{
     ArtifactValidate, Constellation, DiagnosticEvent, DiagnosticSeverity, ObsDecisionArtifact,
     ObsEpoch, SigId, SignalBand, SignalCode,
 };
+use crate::artifact::{ArtifactPayloadValidate, ArtifactV1};
 
 /// Observation epoch artifact v1.
 pub type ObsEpochV1 = ArtifactV1<ObsEpoch>;

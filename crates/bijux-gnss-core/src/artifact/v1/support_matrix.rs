@@ -1,5 +1,5 @@
-use crate::artifact::{ArtifactPayloadValidate, ArtifactV1};
 use crate::api::{DiagnosticEvent, DiagnosticSeverity, SupportMatrix};
+use crate::artifact::{ArtifactPayloadValidate, ArtifactV1};
 
 /// Support matrix artifact v1.
 pub type SupportMatrixV1 = ArtifactV1<SupportMatrix>;

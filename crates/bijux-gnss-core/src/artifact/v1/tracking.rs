@@ -1,6 +1,6 @@
 use super::validate_receiver_sample_trace;
-use crate::artifact::{ArtifactPayloadValidate, ArtifactV1};
 use crate::api::{DiagnosticEvent, DiagnosticSeverity, TrackEpoch, TrackTransition};
+use crate::artifact::{ArtifactPayloadValidate, ArtifactV1};
 
 /// Tracking epoch artifact v1.
 pub type TrackEpochV1 = ArtifactV1<TrackEpoch>;

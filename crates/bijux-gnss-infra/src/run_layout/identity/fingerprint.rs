@@ -13,11 +13,7 @@ pub(crate) fn dataset_hash(
     Ok(hex::encode(hasher.finalize()))
 }
 
-pub(crate) fn run_id(
-    config_hash: &str,
-    dataset_hash: Option<&str>,
-    build_version: &str,
-) -> String {
+pub(crate) fn run_id(config_hash: &str, dataset_hash: Option<&str>, build_version: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(config_hash.as_bytes());
     if let Some(dataset_hash) = dataset_hash {

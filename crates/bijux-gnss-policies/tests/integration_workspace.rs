@@ -84,7 +84,8 @@ fn workspace_uses_crate_local_fuzz_packages() {
 #[test]
 fn workspace_bijux_binary_belongs_to_bijux_gnss_package() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap().parent().unwrap();
-    let split_command_package_manifest = root.join("crates").join("bijux-gnss-cli").join("Cargo.toml");
+    let split_command_package_manifest =
+        root.join("crates").join("bijux-gnss-cli").join("Cargo.toml");
     assert!(
         !split_command_package_manifest.exists(),
         "split command package should not exist: {}",

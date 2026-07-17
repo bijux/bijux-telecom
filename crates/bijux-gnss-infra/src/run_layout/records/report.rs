@@ -65,11 +65,7 @@ pub fn write_run_report(
     let build_metadata = build_metadata();
     let report = RunReport {
         schema_version: RUN_REPORT_SCHEMA_VERSION,
-        run_id: run_id(
-            &config_hash,
-            dataset_hash.as_deref(),
-            &build_metadata.build_version,
-        ),
+        run_id: run_id(&config_hash, dataset_hash.as_deref(), &build_metadata.build_version),
         config_hash,
         dataset_id: dataset.map(|entry| entry.id.clone()),
         dataset_hash,

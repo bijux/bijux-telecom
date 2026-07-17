@@ -1,6 +1,6 @@
 use super::validate_receiver_sample_trace;
-use crate::artifact::{ArtifactPayloadValidate, ArtifactV1};
 use crate::api::{DiagnosticEvent, DiagnosticSeverity};
+use crate::artifact::{ArtifactPayloadValidate, ArtifactV1};
 
 use crate::api::{AcqExplain, AcqResult};
 
@@ -113,12 +113,7 @@ impl ArtifactPayloadValidate for AcqResult {
                 }
             }
         }
-        events.extend(validate_receiver_sample_trace(
-            self.source_time,
-            "acquisition",
-            None,
-            None,
-        ));
+        events.extend(validate_receiver_sample_trace(self.source_time, "acquisition", None, None));
         events
     }
 }

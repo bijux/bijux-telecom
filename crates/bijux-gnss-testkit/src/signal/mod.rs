@@ -4,8 +4,7 @@ pub mod acquisition;
 pub mod synthesis;
 
 pub use acquisition::{
-    expected_acquisition_code_phase_samples_f64,
-    gps_l1ca_expected_acquisition_code_phase_samples,
+    expected_acquisition_code_phase_samples_f64, gps_l1ca_expected_acquisition_code_phase_samples,
     gps_l1ca_expected_acquisition_code_phase_samples_f64, samples_per_code,
     wrapped_code_phase_error_samples_f64,
 };
