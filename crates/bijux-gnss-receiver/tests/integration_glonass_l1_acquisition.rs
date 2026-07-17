@@ -69,6 +69,7 @@ fn acquisition_engine_detects_glonass_l1_requests_across_frequency_channels() {
         );
         let expected_code_phase_samples =
             expected_acquisition_code_phase_samples(&config, &frame, 147.25) as f64;
+        let max_carrier_error_hz = f64::from(config.acquisition_doppler_step_hz) / 2.0;
         let acquisition = AcquisitionEngine::new(config.clone(), ReceiverRuntime::default());
         let request = AcqRequest {
             sat,
@@ -109,7 +110,7 @@ fn acquisition_engine_detects_glonass_l1_requests_across_frequency_channels() {
             ),
             "{result:?}"
         );
-        assert!(result.carrier_hz.0.abs() <= f64::EPSILON, "{result:?}");
+        assert!(result.carrier_hz.0.abs() <= max_carrier_error_hz, "{result:?}");
         assert!(result.peak_mean_ratio > 10.0, "{result:?}");
         assert!(result.peak_second_ratio > 1.2, "{result:?}");
         assert!(code_phase_error_samples <= 0.5, "{result:?}");

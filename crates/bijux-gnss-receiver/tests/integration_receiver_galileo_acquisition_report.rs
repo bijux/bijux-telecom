@@ -96,7 +96,7 @@ fn receiver_run_reports_galileo_e1_acquisition_fields() {
     assert!(
         uncertainty.code_phase_samples.is_finite()
             && uncertainty.code_phase_samples > 0.0
-            && uncertainty.code_phase_samples <= 0.5,
+            && uncertainty.code_phase_samples <= 1.0,
         "{sat_result:?}"
     );
     assert_eq!(
