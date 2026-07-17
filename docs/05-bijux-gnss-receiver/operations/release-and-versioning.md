@@ -26,3 +26,13 @@ movement.
 - changed port or runtime-sink behavior
 - changed validation-report or synthetic receiver evidence that downstream
   crates present to users
+
+## First Proof Check
+
+Inspect `crates/bijux-gnss-receiver/docs/PUBLIC_API.md`,
+`crates/bijux-gnss-receiver/docs/RUNTIME.md`,
+`crates/bijux-gnss-receiver/docs/ARTIFACTS.md`,
+`crates/bijux-gnss-receiver/docs/REFERENCE_VALIDATION.md`, and
+`crates/bijux-gnss-receiver/src/api.rs`. Then inspect the most relevant stage,
+artifact, or validation tests to confirm any claimed release safety still
+matches public runtime meaning.

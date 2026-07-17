@@ -31,3 +31,11 @@ grows.
 
 If a change moves public runtime meaning, the docs and proof obligations must
 move with it.
+
+## First Proof Check
+
+Inspect `crates/bijux-gnss-receiver/docs/PUBLIC_API.md`,
+`crates/bijux-gnss-receiver/docs/RUNTIME.md`,
+`crates/bijux-gnss-receiver/docs/PIPELINE.md`, and the most relevant runtime
+integration tests to confirm the invariants named here still have checked
+runtime proof.

@@ -44,3 +44,10 @@ artifact framework or a replacement for lower-level truth ownership.
 - `crates/bijux-gnss-receiver/tests/integration_synthetic.rs`
 - `crates/bijux-gnss-receiver/docs/REFERENCE_VALIDATION.md`
 - `crates/bijux-gnss-receiver/docs/SIMULATION.md`
+
+## Protecting Proof
+
+Inspect the validation and simulation source families above together with the
+named integration tests before changing runtime proof contracts. Those surfaces
+show whether receiver validation still proves receiver behavior rather than
+quietly drifting into repository artifact policy.

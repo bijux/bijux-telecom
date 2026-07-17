@@ -30,3 +30,12 @@ Use this page to choose the right public starting point.
   artifact contracts, then stage contracts
 - "I need runtime-side validation against reference truth":
   validation and simulation contracts
+
+## Protecting Proof
+
+Inspect `crates/bijux-gnss-receiver/src/api.rs`,
+`crates/bijux-gnss-receiver/docs/PUBLIC_API.md`,
+`crates/bijux-gnss-receiver/docs/RUNTIME.md`,
+`crates/bijux-gnss-receiver/docs/PORTS.md`, and
+`crates/bijux-gnss-receiver/docs/REFERENCE_VALIDATION.md` to confirm these
+reader routes still match real public runtime entrypoints.

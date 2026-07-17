@@ -30,3 +30,10 @@ workflow assumptions.
 - `crates/bijux-gnss-receiver/src/ports/`
 - `crates/bijux-gnss-receiver/src/io/data.rs`
 - `crates/bijux-gnss-receiver/docs/PORTS.md`
+
+## Protecting Proof
+
+Inspect the port source families above together with
+`crates/bijux-gnss-receiver/docs/PORTS.md` and the most relevant port or file
+sample integration tests to confirm these seams still carry runtime inputs and
+outputs without absorbing repository or command policy.

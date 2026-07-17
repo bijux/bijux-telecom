@@ -37,3 +37,14 @@ This page describes the recurring edit patterns in `bijux-gnss-receiver`.
 - explain whether the runtime behavior changed or the proof expectation changed
 - run the relevant validation-report or synthetic test families
 - avoid broadening tolerances just to make a runtime proof green
+
+## First Proof Check
+
+Read `crates/bijux-gnss-receiver/docs/RUNTIME.md`,
+`crates/bijux-gnss-receiver/docs/PIPELINE.md`,
+`crates/bijux-gnss-receiver/docs/PORTS.md`,
+`crates/bijux-gnss-receiver/docs/ARTIFACTS.md`,
+`crates/bijux-gnss-receiver/docs/REFERENCE_VALIDATION.md`,
+`crates/bijux-gnss-receiver/docs/SIMULATION.md`, and
+`crates/bijux-gnss-receiver/docs/TESTS.md` before editing. Those surfaces map
+a proposed change to the right runtime owner and proof family.

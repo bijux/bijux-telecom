@@ -39,3 +39,10 @@ or navigation science used inside them still belongs to lower crates.
 - `crates/bijux-gnss-receiver/tests/integration_observations_*.rs`
 - `crates/bijux-gnss-receiver/tests/integration_navigation_*.rs`
 - `crates/bijux-gnss-receiver/docs/PIPELINE.md`
+
+## Protecting Proof
+
+Inspect the stage source family above together with `PIPELINE.md` and the
+matching acquisition, tracking, observation, or navigation integration tests
+before changing any stage contract. Those proofs show whether a change remains
+stage-local or moves public runtime meaning.

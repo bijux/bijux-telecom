@@ -31,3 +31,13 @@ count.
 
 A one-line threshold change in acquisition acceptance or validation policy can
 be riskier than a larger refactor isolated inside one stage subsystem.
+
+## First Proof Check
+
+Use `crates/bijux-gnss-receiver/docs/PUBLIC_API.md`,
+`crates/bijux-gnss-receiver/docs/RUNTIME.md`,
+`crates/bijux-gnss-receiver/docs/PIPELINE.md`,
+`crates/bijux-gnss-receiver/docs/TESTS.md`, and
+`crates/bijux-gnss-receiver/docs/REFERENCE_VALIDATION.md` as the review map.
+Then inspect the changed runtime family and its matching proof tests so review
+depth follows runtime contract risk rather than file count.

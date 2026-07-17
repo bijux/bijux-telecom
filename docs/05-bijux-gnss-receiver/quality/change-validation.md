@@ -31,3 +31,12 @@ Use the smallest honest validation set that proves the changed runtime intent.
 - only running unit-like tests for a public artifact or validation behavior
 - accepting green tests without checking whether the affected runtime family was
   actually exercised
+
+## First Proof Check
+
+Use `crates/bijux-gnss-receiver/docs/TESTS.md`,
+`crates/bijux-gnss-receiver/docs/PIPELINE.md`,
+`crates/bijux-gnss-receiver/docs/RUNTIME.md`, and
+`crates/bijux-gnss-receiver/docs/REFERENCE_VALIDATION.md` as the validation
+map. Then inspect the changed source family so the proof set stays tied to real
+runtime intent.

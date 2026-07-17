@@ -32,3 +32,11 @@ tracking, observation building, or runtime-side validation cost.
 Receiver profiling proves runtime cost at the staged execution boundary. Once
 the question becomes repository benchmark baselines, threshold policy, or
 publication of benchmark evidence, hand off to `07-bijux-gnss-dev`.
+
+## First Proof Check
+
+Inspect `crates/bijux-gnss-receiver/src/pipeline/`,
+`crates/bijux-gnss-receiver/docs/PIPELINE.md`,
+`crates/bijux-gnss-receiver/docs/RUNTIME.md`, and the most relevant runtime
+bench or stage-heavy tests before changing performance claims. That is where
+runtime cost is actually owned.

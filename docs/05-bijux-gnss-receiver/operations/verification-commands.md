@@ -34,3 +34,12 @@ cargo test -p bijux-gnss-receiver --test integration_observations_measurement_qu
 - use tracking tests for loop, channel, or reacquisition changes
 - use observation tests before wider navigation tests when possible
 - use validation or synthetic tests directly when runtime proof logic changes
+
+## First Proof Check
+
+Use `crates/bijux-gnss-receiver/docs/TESTS.md`,
+`crates/bijux-gnss-receiver/docs/PIPELINE.md`,
+`crates/bijux-gnss-receiver/docs/RUNTIME.md`, and
+`crates/bijux-gnss-receiver/docs/REFERENCE_VALIDATION.md` as the verification
+map. Then inspect the changed source family so the proof set stays aligned with
+the actual runtime surface that moved.

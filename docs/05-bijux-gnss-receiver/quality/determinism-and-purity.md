@@ -26,3 +26,11 @@ runtime owner that most directly depends on those constraints.
 The receiver owns the staged execution path where purity and determinism
 pressure becomes operationally meaningful. Shared record meaning may still live
 in core, but runtime discipline belongs here.
+
+## First Proof Check
+
+Inspect `crates/bijux-gnss-receiver/docs/TESTS.md`,
+`crates/bijux-gnss-receiver/docs/RUNTIME.md`, and the deterministic or
+reproducibility-oriented runtime tests before changing purity claims. Those
+proofs show whether determinism is still being defended at the staged execution
+boundary.

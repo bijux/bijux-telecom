@@ -36,3 +36,11 @@ These contracts define the top-level receiver boundary.
 - `crates/bijux-gnss-receiver/tests/integration_basic.rs`
 - `crates/bijux-gnss-receiver/tests/integration_receiver_support_matrix_inventory.rs`
 - `crates/bijux-gnss-receiver/docs/RUNTIME.md`
+
+## Protecting Proof
+
+Inspect the runtime source family above together with
+`crates/bijux-gnss-receiver/docs/RUNTIME.md`,
+`crates/bijux-gnss-receiver/tests/integration_basic.rs`, and
+`crates/bijux-gnss-receiver/tests/integration_receiver_support_matrix_inventory.rs`
+to confirm the top-level runtime boundary still matches checked public proof.

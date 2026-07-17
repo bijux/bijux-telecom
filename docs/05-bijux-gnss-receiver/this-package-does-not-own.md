@@ -39,3 +39,13 @@ ledger.
 Without an explicit refusal list, readers can mistake runtime centrality for
 permission to absorb every adjacent concern. Update this page when new review
 pressure keeps trying to move neighboring ownership into the runtime crate.
+
+## First Neighbor Proof Check
+
+Inspect [01-bijux-gnss](../01-bijux-gnss/),
+[03-bijux-gnss-infra](../03-bijux-gnss-infra/),
+[04-bijux-gnss-nav](../04-bijux-gnss-nav/),
+[06-bijux-gnss-signal](../06-bijux-gnss-signal/), and
+[02-bijux-gnss-core](../02-bijux-gnss-core/) before widening receiver
+ownership. That check is what keeps runtime centrality from hardening into
+dishonest cross-owner sprawl.

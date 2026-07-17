@@ -32,3 +32,10 @@ infrastructure persists or indexes it.
 
 - `crates/bijux-gnss-receiver/src/artifacts.rs`
 - `crates/bijux-gnss-receiver/docs/ARTIFACTS.md`
+
+## Protecting Proof
+
+Inspect `crates/bijux-gnss-receiver/src/artifacts.rs`,
+`crates/bijux-gnss-receiver/docs/ARTIFACTS.md`, and the artifact-facing
+integration tests to confirm runtime artifacts still describe in-memory
+receiver meaning before persistence policy begins.

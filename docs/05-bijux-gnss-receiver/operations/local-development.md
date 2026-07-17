@@ -33,3 +33,11 @@ from the test name that happened to fail first.
 - `crates/bijux-gnss-receiver/README.md`
 - `crates/bijux-gnss-receiver/docs/`
 - `crates/bijux-gnss-receiver/tests/`
+
+## First Proof Check
+
+Inspect `crates/bijux-gnss-receiver/docs/TESTS.md`,
+`crates/bijux-gnss-receiver/docs/PIPELINE.md`,
+`crates/bijux-gnss-receiver/docs/RUNTIME.md`, and the owning source family
+before editing. That route keeps local work tied to actual runtime meaning
+instead of to whichever broad integration test failed first.

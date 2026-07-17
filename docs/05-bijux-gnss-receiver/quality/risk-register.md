@@ -29,3 +29,11 @@ This page records the main trust risks in `bijux-gnss-receiver`.
 - choose validation by runtime family, not by convenience
 - keep artifact and validation meaning documented and explicit
 - maintain the refusal ledger in [This Package Does Not Own](../this-package-does-not-own.md)
+
+## First Proof Check
+
+Inspect `crates/bijux-gnss-receiver/docs/PUBLIC_API.md`,
+`crates/bijux-gnss-receiver/docs/TESTS.md`,
+`crates/bijux-gnss-receiver/tests/integration_basic.rs`, and the most relevant
+artifact, validation, or stage-focused integration tests to confirm the main
+runtime risk routes documented here still have active proof.
