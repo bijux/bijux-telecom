@@ -106,11 +106,13 @@ fn default_operating_envelope_config_for_signal(
     signal_code: SignalCode,
     glonass_frequency_channel: Option<GlonassFrequencyChannel>,
 ) -> ReceiverPipelineConfig {
-    let mut config = ReceiverPipelineConfig::default();
-    config.acquisition_doppler_search_hz = 1_500;
-    config.channels = 4;
-    config.tracking_budget_ms = 100.0;
-    config.tracking_over_budget_action = "continue".to_string();
+    let mut config = ReceiverPipelineConfig {
+        acquisition_doppler_search_hz: 1_500,
+        channels: 4,
+        tracking_budget_ms: 100.0,
+        tracking_over_budget_action: "continue".to_string(),
+        ..ReceiverPipelineConfig::default()
+    };
 
     match (sat.constellation, signal_band, signal_code) {
         (bijux_gnss_core::api::Constellation::Gps, SignalBand::L1, SignalCode::Ca) => {

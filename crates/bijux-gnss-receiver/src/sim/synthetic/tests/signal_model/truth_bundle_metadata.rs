@@ -246,13 +246,16 @@ fn truth_bundle_records_separate_receiver_oscillator_effect_series() {
     let frame =
         generate_l1_ca_multi_with_receiver_oscillator(&config, &scenario, &receiver_oscillator);
     let bundle = build_quantized_capture_bundle_with_receiver_oscillator(
-        &scenario.id,
-        &scenario,
-        &frame,
-        IqQuantization::Float32,
-        "2026-07-13T00:00:00Z",
-        Some("receiver oscillator truth bundle".to_string()),
-        &receiver_oscillator,
+        super::super::SyntheticQuantizedCaptureRequest {
+            scenario_id: &scenario.id,
+            scenario: &scenario,
+            frame: &frame,
+            quantization: IqQuantization::Float32,
+            capture_start_utc: "2026-07-13T00:00:00Z",
+            notes: Some("receiver oscillator truth bundle".to_string()),
+            receiver_oscillator_model: &receiver_oscillator,
+            source_front_end_filter: None,
+        },
     );
 
     assert_eq!(bundle.truth.receiver_oscillator_model, receiver_oscillator);
@@ -286,12 +289,12 @@ fn truth_bundle_records_separate_receiver_oscillator_effect_series() {
         .sampling_clock_time_error_s
         .last()
         .expect("sampling clock truth point");
-    let expected_time_error_s =
-        last_sampling_clock_point.time_s * receiver_oscillator.sampling_clock_fractional_error
-            + 0.5
-                * receiver_oscillator.sampling_clock_fractional_drift_per_s
-                * last_sampling_clock_point.time_s
-                * last_sampling_clock_point.time_s;
+    let expected_time_error_s = last_sampling_clock_point.time_s
+        * receiver_oscillator.sampling_clock_fractional_error
+        + 0.5
+            * receiver_oscillator.sampling_clock_fractional_drift_per_s
+            * last_sampling_clock_point.time_s
+            * last_sampling_clock_point.time_s;
     assert!(
         (last_sampling_clock_point.value - expected_time_error_s).abs() <= 1.0e-12,
         "{last_sampling_clock_point:?}"

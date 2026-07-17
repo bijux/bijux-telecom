@@ -151,11 +151,11 @@ fn carrier_phase_arc_bias_cycles_by_start_sample(
         .collect()
 }
 
-fn comparable_signal_band_observations<'a>(
-    observations: &'a [ObsEpoch],
+fn comparable_signal_band_observations(
+    observations: &[ObsEpoch],
     sat: SatId,
     signal_band: Option<bijux_gnss_core::api::SignalBand>,
-) -> Vec<ObservedSatelliteRow<'a>> {
+) -> Vec<ObservedSatelliteRow<'_>> {
     observations
         .iter()
         .filter(|epoch| epoch.valid)

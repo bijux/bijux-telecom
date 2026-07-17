@@ -308,7 +308,7 @@ pub fn validate_truth_guided_assisted_acquisition_bounds(
     let satellites = requests
         .iter()
         .copied()
-        .zip(results.into_iter())
+        .zip(results)
         .map(|(request, result)| {
             let signal_code = if request.signal_code != crate::api::core::SignalCode::Unknown {
                 request.signal_code

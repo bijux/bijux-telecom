@@ -92,9 +92,8 @@ fn timestamp_summary(
     let mut values = Vec::with_capacity(epochs.len());
 
     for epoch in epochs {
-        let monotonic = previous_sample_index
-            .map(|previous| epoch.sample_index > previous)
-            .unwrap_or(true);
+        let monotonic =
+            previous_sample_index.map(|previous| epoch.sample_index > previous).unwrap_or(true);
         previous_sample_index = Some(epoch.sample_index);
         let source_time_valid = epoch.source_time.validate().is_ok()
             && epoch.source_time.sample_index == epoch.sample_index;
@@ -225,9 +224,8 @@ fn secondary_code_phase_summary(
     epochs: &[bijux_gnss_core::api::TrackEpoch],
     required_epoch_count: usize,
 ) -> Option<SyntheticTrackingNumericalStateSummary> {
-    let signal_has_secondary_code = epochs
-        .iter()
-        .any(|epoch| epoch.tracking_provenance.contains("secondary_code=true"));
+    let signal_has_secondary_code =
+        epochs.iter().any(|epoch| epoch.tracking_provenance.contains("secondary_code=true"));
     if !signal_has_secondary_code {
         return None;
     }
@@ -243,8 +241,8 @@ fn secondary_code_phase_summary(
         {
             let phase_periods_f64 = phase_periods as f64;
             if phase_periods_f64.is_finite()
-                && phase_periods_f64 >= 0.0
-                && phase_periods_f64 <= TRACKING_NUMERICAL_SECONDARY_CODE_PHASE_BOUND_PERIODS
+                && (0.0..=TRACKING_NUMERICAL_SECONDARY_CODE_PHASE_BOUND_PERIODS)
+                    .contains(&phase_periods_f64)
             {
                 valid_epoch_count += 1;
             }
@@ -259,12 +257,7 @@ fn secondary_code_phase_summary(
         }
     }
 
-    Some(bounded_summary_with_step(
-        values,
-        valid_epoch_count,
-        required_epoch_count,
-        max_abs_step,
-    ))
+    Some(bounded_summary_with_step(values, valid_epoch_count, required_epoch_count, max_abs_step))
 }
 
 fn bounded_summary(

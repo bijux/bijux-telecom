@@ -77,7 +77,8 @@ pub fn validate_truth_guided_composite_component_recovery(
         })
         .collect::<Vec<_>>();
 
-    let Some(coefficients) = recover_truth_guided_component_coefficients(frame, &predicted_components)
+    let Some(coefficients) =
+        recover_truth_guided_component_coefficients(frame, &predicted_components)
     else {
         return SyntheticCompositeComponentRecoveryReport {
             scenario_id: truth.scenario_id.clone(),
@@ -102,8 +103,8 @@ pub fn validate_truth_guided_composite_component_recovery(
                         signal_code: sat_truth.signal_code,
                         truth_output_signal_amplitude,
                         recovered_output_signal_amplitude: f64::NAN,
-                        truth_output_signal_power_per_complex_sample:
-                            truth_output_signal_amplitude * truth_output_signal_amplitude,
+                        truth_output_signal_power_per_complex_sample: truth_output_signal_amplitude
+                            * truth_output_signal_amplitude,
                         recovered_output_signal_power_per_complex_sample: f64::NAN,
                         power_error_db: f64::NAN,
                         truth_carrier_phase_rad: sat_truth.carrier_phase_rad,
@@ -136,9 +137,10 @@ pub fn validate_truth_guided_composite_component_recovery(
                 truth_output_signal_power_per_complex_sample
                     * recovered_coefficient_magnitude
                     * recovered_coefficient_magnitude;
-            let power_error_db =
-                power_error_db(recovered_output_signal_power_per_complex_sample,
-                    truth_output_signal_power_per_complex_sample);
+            let power_error_db = power_error_db(
+                recovered_output_signal_power_per_complex_sample,
+                truth_output_signal_power_per_complex_sample,
+            );
             let recovered_carrier_phase_rad =
                 wrapped_phase_rad(sat_truth.carrier_phase_rad + recovered_coefficient_phase_rad);
             let phase_error_rad =
@@ -207,11 +209,9 @@ fn recover_truth_guided_component_coefficients(
 }
 
 fn complex_inner_product(lhs: &[Complex<f32>], rhs: &[Complex<f32>]) -> Complex<f64> {
-    lhs.iter()
-        .zip(rhs.iter())
-        .fold(Complex::new(0.0_f64, 0.0_f64), |sum, (left, right)| {
-            sum + complex32_to_64(left.conj()) * complex32_to_64(*right)
-        })
+    lhs.iter().zip(rhs.iter()).fold(Complex::new(0.0_f64, 0.0_f64), |sum, (left, right)| {
+        sum + complex32_to_64(left.conj()) * complex32_to_64(*right)
+    })
 }
 
 fn solve_complex_linear_system(
@@ -243,8 +243,10 @@ fn solve_complex_linear_system(
                 continue;
             }
             rhs[row] -= factor * pivot_rhs;
-            for column in pivot_index..dimension {
-                matrix[row][column] -= factor * pivot_row[column];
+            for (column, pivot_value) in
+                pivot_row.iter().enumerate().take(dimension).skip(pivot_index)
+            {
+                matrix[row][column] -= factor * *pivot_value;
             }
         }
     }
@@ -252,8 +254,8 @@ fn solve_complex_linear_system(
     let mut solution = vec![Complex::new(0.0_f64, 0.0_f64); dimension];
     for row in (0..dimension).rev() {
         let mut sum = rhs[row];
-        for column in row + 1..dimension {
-            sum -= matrix[row][column] * solution[column];
+        for (column, solution_value) in solution.iter().enumerate().take(dimension).skip(row + 1) {
+            sum -= matrix[row][column] * *solution_value;
         }
         let pivot = matrix[row][row];
         if pivot.norm_sqr() <= f64::EPSILON {
@@ -277,12 +279,12 @@ fn composite_recovery_residual_rms(
         .iter()
         .enumerate()
         .map(|(sample_index, measured)| {
-            let reconstructed = predicted_components
-                .iter()
-                .zip(coefficients.iter())
-                .fold(Complex::new(0.0_f64, 0.0_f64), |sum, (component, coefficient)| {
+            let reconstructed = predicted_components.iter().zip(coefficients.iter()).fold(
+                Complex::new(0.0_f64, 0.0_f64),
+                |sum, (component, coefficient)| {
                     sum + *coefficient * complex32_to_64(component.iq[sample_index])
-                });
+                },
+            );
             let residual = complex32_to_64(*measured) - reconstructed;
             residual.norm_sqr()
         })
