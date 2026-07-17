@@ -29,11 +29,14 @@ hardwiring one repository or command environment.
 
 ## Stage And Validation Seams
 
-- `ReceiverEngine` and `Receiver` as top-level runtime seams
+- `ReceiverEngine` and `Receiver` in `src/engine/engine.rs` and
+  `src/engine/receiver.rs` as top-level runtime seams
 - `Navigation` and `NavigationFilter` as receiver-owned adapters over
-  nav-owned science
+  nav-owned science through `src/pipeline/navigation.rs` and
+  `src/pipeline/navigation_filter.rs`
 - runtime-side validation and synthetic helpers that expose receiver behavior
-  without turning the crate into a repository tool
+  through `src/reference_validation.rs`, `src/validation_report.rs`, and
+  `src/sim/synthetic/` without turning the crate into a repository tool
 
 ## Boundary Rule
 

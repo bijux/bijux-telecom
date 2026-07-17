@@ -25,6 +25,9 @@ by runtime role rather than internal file layout.
 - runtime records and helpers with durable receiver meaning
 - stage, port, or validation seams that callers are expected to implement or
   consume
+- the strongest exported families today are receiver configuration and runtime
+  types, stage-entry and artifact surfaces, validation-report helpers, and
+  curated lower-owner re-exports that keep the receiver boundary usable
 
 ## What Should Stay Out
 

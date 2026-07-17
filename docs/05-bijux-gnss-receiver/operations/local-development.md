@@ -14,8 +14,9 @@ from the test name that happened to fail first.
 
 ## Good Local Loop
 
-- find the owning family in `engine`, `pipeline`, `ports`, `artifacts`,
-  `reference_validation`, `validation_report`, or `sim`
+- find the owning family in `src/engine/`, `src/pipeline/`, `src/ports/`,
+  `src/artifacts.rs`, `src/reference_validation.rs`,
+  `src/validation_report.rs`, or `src/sim/`
 - update the crate-local docs if runtime meaning moves
 - run targeted tests for that family before touching wider suites
 - inspect `src/api.rs` if the change affects something public

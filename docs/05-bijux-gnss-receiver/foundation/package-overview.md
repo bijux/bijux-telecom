@@ -26,16 +26,18 @@ validation evidence.
 
 ## Major Runtime Families
 
-- `engine/` owns configuration, validation, runtime state, logging, metrics,
-  support-matrix handling, and top-level receiver composition
-- `pipeline/` owns acquisition, tracking, observations, optional navigation,
-  and handoff reporting between stages
-- `ports/` and `io/` own the runtime-facing source, sink, and clock seams
-- `artifacts.rs`, `reference_validation.rs`, `covariance_realism.rs`, and
-  `validation_report.rs` own receiver-boundary outputs and runtime-side
+- `src/engine/` owns configuration, validation, runtime state, logging,
+  metrics, support-matrix handling, and top-level receiver composition
+- `src/pipeline/` owns acquisition, tracking, observations, optional
+  navigation, and handoff reporting between stages
+- `src/ports/` and `src/io/` own the runtime-facing source, sink, and clock
+  seams
+- `src/artifacts.rs`, `src/reference_validation.rs`,
+  `src/covariance_realism.rs`, `src/validation_helpers.rs`, and
+  `src/validation_report.rs` own receiver-boundary outputs and runtime-side
   validation helpers
-- `sim/` owns synthetic signal generation and receiver-boundary execution used
-  for tests and validation
+- `src/sim/` owns synthetic signal generation and receiver-boundary execution
+  used for tests and validation
 
 ## Why This Package Is Heavy
 
@@ -46,6 +48,8 @@ and optional navigation behavior into one runtime that other crates can trust.
 ## Closest Code Proof
 
 - `crates/bijux-gnss-receiver/src/api.rs`
+- `crates/bijux-gnss-receiver/src/engine/receiver_config.rs`
 - `crates/bijux-gnss-receiver/src/engine/engine.rs`
 - `crates/bijux-gnss-receiver/src/pipeline/mod.rs`
+- `crates/bijux-gnss-receiver/src/validation_report.rs`
 - `crates/bijux-gnss-receiver/src/sim/synthetic.rs`

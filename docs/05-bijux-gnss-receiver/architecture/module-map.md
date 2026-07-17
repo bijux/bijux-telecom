@@ -21,12 +21,16 @@ that owns them.
 ## Runtime Composition
 
 - `src/engine/receiver_config.rs`, `receiver_config_defaults.rs`, and
-  `receiver_config_validation.rs` own configuration shape, defaults, and schema
-  validation
+  `receiver_config_validation.rs` plus the nested
+  `src/engine/receiver_config/` family own configuration shape, defaults, and
+  schema validation
 - `src/engine/runtime.rs` owns runtime sinks and side-effectful controls
-- `src/engine/engine.rs` and `receiver.rs` own top-level execution entrypoints
-- `src/engine/logging.rs`, `metrics.rs`, `diagnostics.rs`, and
-  `support_matrix.rs` own runtime instrumentation and support reporting
+- `src/engine/engine.rs` and `src/engine/receiver.rs` own top-level execution
+  entrypoints
+- `src/engine/logging.rs`, `src/engine/metrics.rs`,
+  `src/engine/diagnostics.rs`, `src/engine/signal_selection.rs`, and
+  `src/engine/support_matrix.rs` own runtime instrumentation, signal
+  selection, and support reporting
 
 ## Stage Pipeline
 
@@ -38,6 +42,9 @@ that owns them.
   residuals, quality, timing, and lock-state interpretation
 - `src/pipeline/navigation.rs` and `navigation_filter.rs` own receiver-side
   navigation-stage adapters over nav-owned science
+- `src/pipeline/acquisition_assistance.rs`, `acquisition_components.rs`,
+  `acquisition_symbol_hypotheses.rs`, `doppler.rs`, `hatch.rs`, and
+  `signal_capabilities.rs` own cross-stage helpers that remain receiver-owned
 - `src/pipeline/observation_validation.rs` owns carrier-smoothed code
   validation at the receiver boundary
 
@@ -51,7 +58,7 @@ that owns them.
 - `src/artifacts.rs` owns `RunArtifacts` helpers
 - `src/reference_validation.rs` owns runtime-side reference alignment and
   comparison helpers
-- `src/validation_report.rs`, `validation_helpers.rs`, and
+- `src/validation_report.rs`, `src/validation_helpers.rs`, and
   `src/validation_report/tests/` own validation-report assembly and supporting
   evidence
 - `src/covariance_realism.rs` owns covariance realism summaries when `nav` is
