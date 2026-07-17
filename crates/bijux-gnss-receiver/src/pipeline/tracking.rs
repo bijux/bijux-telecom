@@ -1,6 +1,6 @@
 #![allow(missing_docs)]
 
-use std::collections::VecDeque;
+use std::collections::{BTreeMap, VecDeque};
 
 use num_complex::Complex;
 use serde::{Deserialize, Serialize};

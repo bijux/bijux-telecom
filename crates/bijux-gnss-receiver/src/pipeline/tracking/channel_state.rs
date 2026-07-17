@@ -331,8 +331,7 @@ fn update_discriminator_instability_epochs(
         .is_some_and(|ratio| ratio >= DISCRIMINATOR_INSTABILITY_MIN_PROMPT_POWER_RATIO);
     let unstable = matches!(from_state, ChannelState::Tracking | ChannelState::Degraded)
         && strong_prompt
-        && !raw_pll_lock
-        && !raw_fll_lock
+        && (!raw_pll_lock || !raw_fll_lock)
         && !cycle_slip
         && !anti_false_lock;
     if unstable {

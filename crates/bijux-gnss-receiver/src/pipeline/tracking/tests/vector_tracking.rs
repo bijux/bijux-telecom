@@ -129,8 +129,23 @@ fn vector_tracking_state_reports_latest_common_frequency_estimate() {
 
     assert_eq!(estimate.support_count, 2);
     assert_eq!(estimate.sample_index, 120);
-    assert!((estimate.estimated_frequency_error_hz - 5.0).abs() < 1.0e-9);
+    assert!((estimate.estimated_frequency_error_hz - 4.5).abs() < 1.0e-9);
     assert!(estimate.supporting_channels.iter().all(|channel| channel.frequency_error_hz >= 4.0));
+}
+
+#[test]
+fn vector_tracking_state_stabilizes_common_frequency_support_from_recent_history() {
+    let mut state = super::VectorTrackingState::default();
+    state.record(vector_measurement(0, 100, 45.0, 2.0, 0.10, 0.0), 1_000.0);
+    state.record(vector_measurement(0, 110, 45.0, 2.5, 0.10, 0.0), 1_000.0);
+    state.record(vector_measurement(0, 120, 45.0, 8.0, 0.10, 0.0), 1_000.0);
+    state.record(vector_measurement(1, 118, 45.0, 2.0, 0.10, 0.0), 1_000.0);
+
+    let estimate = state.common_frequency_estimate(1_000.0).expect("common frequency estimate");
+
+    assert_eq!(estimate.support_count, 2);
+    assert!((estimate.estimated_frequency_error_hz - 2.25).abs() < 1.0e-9, "{estimate:?}");
+    assert!(estimate.max_supporting_residual_hz <= 0.25, "{estimate:?}");
 }
 
 #[test]

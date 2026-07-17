@@ -96,7 +96,7 @@ impl VectorTrackingState {
         let latest_sample_index =
             self.measurements.iter().map(|measurement| measurement.sample_index).max()?;
         common_tracking_frequency_estimate(
-            &self.latest_measurements_for(latest_sample_index, sample_rate_hz),
+            &self.stabilized_common_frequency_support(latest_sample_index, sample_rate_hz),
         )
     }
 
@@ -122,6 +122,32 @@ impl VectorTrackingState {
             latest_by_channel.push(measurement);
         }
         latest_by_channel
+    }
+
+    fn stabilized_common_frequency_support(
+        &self,
+        sample_index: u64,
+        sample_rate_hz: f64,
+    ) -> Vec<VectorTrackingMeasurement> {
+        let history_samples = vector_tracking_history_samples(sample_rate_hz);
+        let mut measurements_by_channel = BTreeMap::<u8, Vec<VectorTrackingMeasurement>>::new();
+        for measurement in self.measurements.iter().copied() {
+            if measurement.sample_index > sample_index {
+                continue;
+            }
+            if sample_index.saturating_sub(measurement.sample_index) > history_samples {
+                continue;
+            }
+            if !vector_tracking_measurement_is_usable(measurement) {
+                continue;
+            }
+            measurements_by_channel.entry(measurement.channel_id).or_default().push(measurement);
+        }
+
+        measurements_by_channel
+            .into_values()
+            .filter_map(stabilized_common_frequency_measurement)
+            .collect()
     }
 }
 
@@ -268,6 +294,16 @@ fn common_tracking_frequency_estimate(
     })
 }
 
+fn stabilized_common_frequency_measurement(
+    measurements: Vec<VectorTrackingMeasurement>,
+) -> Option<VectorTrackingMeasurement> {
+    let mut measurements = measurements;
+    let mut latest = measurements.pop()?;
+    let median_frequency_error_hz = median_measurement_frequency_error_hz(&measurements, latest)?;
+    latest.fll_error_hz = median_frequency_error_hz;
+    Some(latest)
+}
+
 fn median_common_tracking_frequency_error_hz(
     support: &[CommonTrackingFrequencySignalEstimate],
 ) -> Option<f64> {
@@ -276,6 +312,26 @@ fn median_common_tracking_frequency_error_hz(
         .map(|signal| signal.frequency_error_hz)
         .filter(|value| value.is_finite())
         .collect::<Vec<_>>();
+    if values.is_empty() {
+        return None;
+    }
+    values.sort_by(f64::total_cmp);
+    let middle = values.len() / 2;
+    if values.len() % 2 == 0 {
+        Some((values[middle - 1] + values[middle]) / 2.0)
+    } else {
+        Some(values[middle])
+    }
+}
+
+fn median_measurement_frequency_error_hz(
+    measurements: &[VectorTrackingMeasurement],
+    latest: VectorTrackingMeasurement,
+) -> Option<f64> {
+    let mut values =
+        measurements.iter().map(|measurement| measurement.fll_error_hz).collect::<Vec<_>>();
+    values.push(latest.fll_error_hz);
+    values.retain(|value| value.is_finite());
     if values.is_empty() {
         return None;
     }

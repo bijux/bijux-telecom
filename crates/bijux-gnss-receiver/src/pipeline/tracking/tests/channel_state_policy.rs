@@ -553,3 +553,18 @@ fn update_discriminator_instability_epochs_requires_strong_prompt() {
     );
     assert_eq!(reset, 0);
 }
+
+#[test]
+fn update_discriminator_instability_epochs_accumulates_when_either_carrier_lock_breaks() {
+    let epochs = super::update_discriminator_instability_epochs(
+        1,
+        ChannelState::Tracking,
+        Some(0.7),
+        true,
+        false,
+        false,
+        false,
+    );
+
+    assert_eq!(epochs, 2);
+}
