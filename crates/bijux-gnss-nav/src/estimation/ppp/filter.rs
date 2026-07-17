@@ -31,7 +31,10 @@ use crate::formats::precise_products::{
     ProductDiagnostics, ProductsProvider,
 };
 use crate::linalg::Matrix;
-use crate::models::antenna::{ReceiverAntennaCalibrations, SatelliteAntennaCalibrations};
+use crate::models::antenna::{
+    AntennaPhaseGeometry, AntennaRangeGeometry, DualFrequencySignal, ReceiverAntennaCalibrations,
+    SatelliteAntennaCalibrations,
+};
 use crate::models::atmosphere::SaastamoinenModel;
 use crate::models::celestial::approximate_sun_position_ecef_m;
 use crate::orbits::gps::{
@@ -289,6 +292,11 @@ impl PppFilter {
             let phase_bias_cycles = self.phase_bias.phase_bias_cycles(sat.signal_id).unwrap_or(0.0);
             let ionosphere_scale = ppp_ionosphere_delay_scale(sat.metadata.signal);
             let sat_pos_m = [state.x_m, state.y_m, state.z_m];
+            let antenna_geometry = AntennaPhaseGeometry {
+                range: AntennaRangeGeometry { gps_time: obs.gps_time(), receiver_pos_m, sat_pos_m },
+                elevation_deg: el,
+                azimuth_deg: Some(az),
+            };
             let mut phase_corr = corr.clone();
             phase_corr.phase_windup_cycles = phase_windup_cycles_for_satellite(
                 &mut self.phase_windup,
@@ -319,19 +327,25 @@ impl PppFilter {
                         sat_pos_m,
                         sat_clock_s: clock_bias_s,
                         antenna_range_correction_m: iono_free_antenna_range_correction_m(
-                            self.config.satellite_antenna_calibrations.as_ref(),
-                            self.config.receiver_antenna_type.as_deref(),
-                            self.config.receiver_antenna_calibrations.as_ref(),
-                            sat.signal_id.sat,
-                            iono_free.band_1,
-                            iono_free.f1_hz,
-                            iono_free.band_2,
-                            iono_free.f2_hz,
-                            obs.gps_time(),
-                            sat_pos_m,
-                            receiver_pos_m,
-                            el,
-                            Some(az),
+                            IonoFreeAntennaCorrectionRequest {
+                                satellite_calibrations: self
+                                    .config
+                                    .satellite_antenna_calibrations
+                                    .as_ref(),
+                                receiver_antenna_type: self.config.receiver_antenna_type.as_deref(),
+                                receiver_calibrations: self
+                                    .config
+                                    .receiver_antenna_calibrations
+                                    .as_ref(),
+                                sat: sat.signal_id.sat,
+                                signal: DualFrequencySignal {
+                                    primary_band: iono_free.band_1,
+                                    primary_frequency_hz: iono_free.f1_hz,
+                                    secondary_band: iono_free.band_2,
+                                    secondary_frequency_hz: iono_free.f2_hz,
+                                },
+                                geometry: antenna_geometry,
+                            },
                         ),
                         sigma_m: iono_free
                             .code_sigma_m
@@ -353,19 +367,28 @@ impl PppFilter {
                             sat_pos_m,
                             sat_clock_s: clock_bias_s,
                             antenna_range_correction_m: iono_free_antenna_range_correction_m(
-                                self.config.satellite_antenna_calibrations.as_ref(),
-                                self.config.receiver_antenna_type.as_deref(),
-                                self.config.receiver_antenna_calibrations.as_ref(),
-                                sat.signal_id.sat,
-                                iono_free.band_1,
-                                iono_free.f1_hz,
-                                iono_free.band_2,
-                                iono_free.f2_hz,
-                                obs.gps_time(),
-                                sat_pos_m,
-                                receiver_pos_m,
-                                el,
-                                Some(az),
+                                IonoFreeAntennaCorrectionRequest {
+                                    satellite_calibrations: self
+                                        .config
+                                        .satellite_antenna_calibrations
+                                        .as_ref(),
+                                    receiver_antenna_type: self
+                                        .config
+                                        .receiver_antenna_type
+                                        .as_deref(),
+                                    receiver_calibrations: self
+                                        .config
+                                        .receiver_antenna_calibrations
+                                        .as_ref(),
+                                    sat: sat.signal_id.sat,
+                                    signal: DualFrequencySignal {
+                                        primary_band: iono_free.band_1,
+                                        primary_frequency_hz: iono_free.f1_hz,
+                                        secondary_band: iono_free.band_2,
+                                        secondary_frequency_hz: iono_free.f2_hz,
+                                    },
+                                    geometry: antenna_geometry,
+                                },
                             ),
                             sigma_cycles: ppp_iono_free_phase_sigma_cycles(
                                 iono_free.phase_sigma_cycles,
@@ -389,16 +412,20 @@ impl PppFilter {
                     sat_pos_m,
                     sat_clock_s: clock_bias_s,
                     antenna_range_correction_m: single_frequency_antenna_range_correction_m(
-                        self.config.satellite_antenna_calibrations.as_ref(),
-                        self.config.receiver_antenna_type.as_deref(),
-                        self.config.receiver_antenna_calibrations.as_ref(),
-                        sat.signal_id.sat,
-                        sat.signal_id.band,
-                        obs.gps_time(),
-                        sat_pos_m,
-                        receiver_pos_m,
-                        el,
-                        Some(az),
+                        SingleFrequencyAntennaCorrectionRequest {
+                            satellite_calibrations: self
+                                .config
+                                .satellite_antenna_calibrations
+                                .as_ref(),
+                            receiver_antenna_type: self.config.receiver_antenna_type.as_deref(),
+                            receiver_calibrations: self
+                                .config
+                                .receiver_antenna_calibrations
+                                .as_ref(),
+                            sat: sat.signal_id.sat,
+                            band: sat.signal_id.band,
+                            geometry: antenna_geometry,
+                        },
                     ),
                     sigma_m,
                     troposphere_mapping,
@@ -419,16 +446,20 @@ impl PppFilter {
                         sat_pos_m,
                         sat_clock_s: clock_bias_s,
                         antenna_range_correction_m: single_frequency_antenna_range_correction_m(
-                            self.config.satellite_antenna_calibrations.as_ref(),
-                            self.config.receiver_antenna_type.as_deref(),
-                            self.config.receiver_antenna_calibrations.as_ref(),
-                            sat.signal_id.sat,
-                            sat.signal_id.band,
-                            obs.gps_time(),
-                            sat_pos_m,
-                            receiver_pos_m,
-                            el,
-                            Some(az),
+                            SingleFrequencyAntennaCorrectionRequest {
+                                satellite_calibrations: self
+                                    .config
+                                    .satellite_antenna_calibrations
+                                    .as_ref(),
+                                receiver_antenna_type: self.config.receiver_antenna_type.as_deref(),
+                                receiver_calibrations: self
+                                    .config
+                                    .receiver_antenna_calibrations
+                                    .as_ref(),
+                                sat: sat.signal_id.sat,
+                                band: sat.signal_id.band,
+                                geometry: antenna_geometry,
+                            },
                         ),
                         sigma_cycles: ppp_phase_sigma_cycles(
                             sat,
@@ -510,17 +541,7 @@ impl PppFilter {
             self.ekf.x[self.indices.pos[1]],
             self.ekf.x[self.indices.pos[2]],
         ];
-        let (
-            position_covariance_ecef_m2,
-            sigma_e_m,
-            sigma_n_m,
-            sigma_u_m,
-            horizontal_error_ellipse_major_axis_m,
-            horizontal_error_ellipse_minor_axis_m,
-            horizontal_error_ellipse_azimuth_deg,
-            sigma_h,
-            sigma_v,
-        ) = estimate_position_uncertainty(&self.ekf, &self.indices.pos, pos);
+        let uncertainty = estimate_position_uncertainty(&self.ekf, &self.indices.pos, pos);
         let ztd_m = self.ekf.x.get(self.indices.ztd).copied().unwrap_or(0.0);
         let ztd_sigma_m = if self.indices.ztd < self.ekf.p.rows() {
             let variance = self.ekf.p[(self.indices.ztd, self.indices.ztd)];
@@ -536,12 +557,12 @@ impl PppFilter {
         self.update_convergence(
             t_rx_s,
             pos,
-            sigma_h,
-            sigma_v,
+            uncertainty.sigma_h_m,
+            uncertainty.sigma_v_m,
             ppp_convergence_evidence(
-                position_covariance_ecef_m2,
-                sigma_h,
-                sigma_v,
+                uncertainty.covariance_ecef_m2,
+                uncertainty.sigma_h_m,
+                uncertainty.sigma_v_m,
                 self.ekf.health.innovation_rms,
                 self.health.nis_mean,
             ),
@@ -556,13 +577,15 @@ impl PppFilter {
             ztd_m,
             ztd_sigma_m,
             troposphere_source: self.config.troposphere_source(),
-            position_covariance_ecef_m2,
-            sigma_e_m,
-            sigma_n_m,
-            sigma_u_m,
-            horizontal_error_ellipse_major_axis_m,
-            horizontal_error_ellipse_minor_axis_m,
-            horizontal_error_ellipse_azimuth_deg,
+            position_covariance_ecef_m2: uncertainty.covariance_ecef_m2,
+            sigma_e_m: uncertainty.sigma_e_m,
+            sigma_n_m: uncertainty.sigma_n_m,
+            sigma_u_m: uncertainty.sigma_u_m,
+            horizontal_error_ellipse_major_axis_m: uncertainty
+                .horizontal_error_ellipse_major_axis_m,
+            horizontal_error_ellipse_minor_axis_m: uncertainty
+                .horizontal_error_ellipse_minor_axis_m,
+            horizontal_error_ellipse_azimuth_deg: uncertainty.horizontal_error_ellipse_azimuth_deg,
             clock_bias_s: self.ekf.x[self.indices.clock_bias],
             constellation_clock_state_count: self.indices.isb.len(),
             slant_ionosphere_state_count: self.indices.iono.len(),
@@ -570,8 +593,8 @@ impl PppFilter {
             lifecycle_events: self.health.lifecycle_events.clone(),
             stochastic_evidence,
             rms_m: self.ekf.health.innovation_rms,
-            sigma_h_m: sigma_h,
-            sigma_v_m: sigma_v,
+            sigma_h_m: uncertainty.sigma_h_m,
+            sigma_v_m: uncertainty.sigma_v_m,
             innovation_rms: self.ekf.health.innovation_rms,
             convergence: self.health.convergence.clone(),
             residuals,
@@ -1465,86 +1488,63 @@ fn phase_windup_cycles_for_satellite(
         .unwrap_or(0.0)
 }
 
-fn single_frequency_antenna_range_correction_m(
-    satellite_calibrations: Option<&SatelliteAntennaCalibrations>,
-    receiver_antenna_type: Option<&str>,
-    receiver_calibrations: Option<&ReceiverAntennaCalibrations>,
+#[derive(Clone, Copy)]
+struct SingleFrequencyAntennaCorrectionRequest<'a> {
+    satellite_calibrations: Option<&'a SatelliteAntennaCalibrations>,
+    receiver_antenna_type: Option<&'a str>,
+    receiver_calibrations: Option<&'a ReceiverAntennaCalibrations>,
     sat: SatId,
     band: SignalBand,
-    gps_time: Option<bijux_gnss_core::api::GpsTime>,
-    sat_pos_m: [f64; 3],
-    receiver_pos_m: [f64; 3],
-    elevation_deg: f64,
-    azimuth_deg: Option<f64>,
+    geometry: AntennaPhaseGeometry,
+}
+
+#[derive(Clone, Copy)]
+struct IonoFreeAntennaCorrectionRequest<'a> {
+    satellite_calibrations: Option<&'a SatelliteAntennaCalibrations>,
+    receiver_antenna_type: Option<&'a str>,
+    receiver_calibrations: Option<&'a ReceiverAntennaCalibrations>,
+    sat: SatId,
+    signal: DualFrequencySignal,
+    geometry: AntennaPhaseGeometry,
+}
+
+fn single_frequency_antenna_range_correction_m(
+    request: SingleFrequencyAntennaCorrectionRequest<'_>,
 ) -> f64 {
-    satellite_calibrations
+    request
+        .satellite_calibrations
         .and_then(|calibrations| {
             calibrations.range_correction_with_phase_variation_m(
-                sat,
-                band,
-                gps_time,
-                sat_pos_m,
-                receiver_pos_m,
-                elevation_deg,
-                azimuth_deg,
+                request.sat,
+                request.band,
+                request.geometry,
             )
         })
         .unwrap_or(0.0)
         + single_frequency_receiver_antenna_range_correction_m(
-            receiver_antenna_type,
-            receiver_calibrations,
-            band,
-            gps_time,
-            receiver_pos_m,
-            sat_pos_m,
-            elevation_deg,
-            azimuth_deg,
+            request.receiver_antenna_type,
+            request.receiver_calibrations,
+            request.band,
+            request.geometry,
         )
 }
 
-fn iono_free_antenna_range_correction_m(
-    satellite_calibrations: Option<&SatelliteAntennaCalibrations>,
-    receiver_antenna_type: Option<&str>,
-    receiver_calibrations: Option<&ReceiverAntennaCalibrations>,
-    sat: SatId,
-    band_1: SignalBand,
-    f1_hz: f64,
-    band_2: SignalBand,
-    f2_hz: f64,
-    gps_time: Option<bijux_gnss_core::api::GpsTime>,
-    sat_pos_m: [f64; 3],
-    receiver_pos_m: [f64; 3],
-    elevation_deg: f64,
-    azimuth_deg: Option<f64>,
-) -> f64 {
-    satellite_calibrations
+fn iono_free_antenna_range_correction_m(request: IonoFreeAntennaCorrectionRequest<'_>) -> f64 {
+    request
+        .satellite_calibrations
         .and_then(|calibrations| {
             calibrations.iono_free_range_correction_with_phase_variation_m(
-                sat,
-                band_1,
-                f1_hz,
-                band_2,
-                f2_hz,
-                gps_time,
-                sat_pos_m,
-                receiver_pos_m,
-                elevation_deg,
-                azimuth_deg,
+                request.sat,
+                request.signal,
+                request.geometry,
             )
         })
         .unwrap_or(0.0)
         + iono_free_receiver_antenna_range_correction_m(
-            receiver_antenna_type,
-            receiver_calibrations,
-            band_1,
-            f1_hz,
-            band_2,
-            f2_hz,
-            gps_time,
-            receiver_pos_m,
-            sat_pos_m,
-            elevation_deg,
-            azimuth_deg,
+            request.receiver_antenna_type,
+            request.receiver_calibrations,
+            request.signal,
+            request.geometry,
         )
 }
 
@@ -1552,11 +1552,7 @@ fn single_frequency_receiver_antenna_range_correction_m(
     receiver_antenna_type: Option<&str>,
     calibrations: Option<&ReceiverAntennaCalibrations>,
     band: SignalBand,
-    gps_time: Option<bijux_gnss_core::api::GpsTime>,
-    receiver_pos_m: [f64; 3],
-    sat_pos_m: [f64; 3],
-    elevation_deg: f64,
-    azimuth_deg: Option<f64>,
+    geometry: AntennaPhaseGeometry,
 ) -> f64 {
     let Some(receiver_antenna_type) = receiver_antenna_type else {
         return 0.0;
@@ -1566,11 +1562,7 @@ fn single_frequency_receiver_antenna_range_correction_m(
             calibrations.range_correction_with_phase_variation_m(
                 receiver_antenna_type,
                 band,
-                gps_time,
-                receiver_pos_m,
-                sat_pos_m,
-                elevation_deg,
-                azimuth_deg,
+                geometry,
             )
         })
         .unwrap_or(0.0)
@@ -1579,15 +1571,8 @@ fn single_frequency_receiver_antenna_range_correction_m(
 fn iono_free_receiver_antenna_range_correction_m(
     receiver_antenna_type: Option<&str>,
     calibrations: Option<&ReceiverAntennaCalibrations>,
-    band_1: SignalBand,
-    f1_hz: f64,
-    band_2: SignalBand,
-    f2_hz: f64,
-    gps_time: Option<bijux_gnss_core::api::GpsTime>,
-    receiver_pos_m: [f64; 3],
-    sat_pos_m: [f64; 3],
-    elevation_deg: f64,
-    azimuth_deg: Option<f64>,
+    signal: DualFrequencySignal,
+    geometry: AntennaPhaseGeometry,
 ) -> f64 {
     let Some(receiver_antenna_type) = receiver_antenna_type else {
         return 0.0;
@@ -1596,15 +1581,8 @@ fn iono_free_receiver_antenna_range_correction_m(
         .and_then(|calibrations| {
             calibrations.iono_free_range_correction_with_phase_variation_m(
                 receiver_antenna_type,
-                band_1,
-                f1_hz,
-                band_2,
-                f2_hz,
-                gps_time,
-                receiver_pos_m,
-                sat_pos_m,
-                elevation_deg,
-                azimuth_deg,
+                signal,
+                geometry,
             )
         })
         .unwrap_or(0.0)

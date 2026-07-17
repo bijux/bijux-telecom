@@ -198,6 +198,28 @@ pub struct ReceiverAntennaCalibrations {
     pub entries: Vec<ReceiverAntennaCalibration>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct AntennaRangeGeometry {
+    pub gps_time: Option<GpsTime>,
+    pub receiver_pos_m: [f64; 3],
+    pub sat_pos_m: [f64; 3],
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct AntennaPhaseGeometry {
+    pub range: AntennaRangeGeometry,
+    pub elevation_deg: f64,
+    pub azimuth_deg: Option<f64>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct DualFrequencySignal {
+    pub primary_band: SignalBand,
+    pub primary_frequency_hz: f64,
+    pub secondary_band: SignalBand,
+    pub secondary_frequency_hz: f64,
+}
+
 impl SatelliteAntennaCalibrations {
     pub fn phase_center_offset(
         &self,
@@ -261,30 +283,34 @@ impl SatelliteAntennaCalibrations {
         &self,
         sat: SatId,
         band: SignalBand,
-        gps_time: Option<GpsTime>,
-        sat_pos_m: [f64; 3],
-        receiver_pos_m: [f64; 3],
+        geometry: AntennaRangeGeometry,
     ) -> Option<f64> {
-        let offset = self.phase_center_offset(sat, band, gps_time)?;
-        let gps_time = gps_time?;
+        let offset = self.phase_center_offset(sat, band, geometry.gps_time)?;
+        let gps_time = geometry.gps_time?;
         let sun_pos_m = approximate_sun_position_ecef_m(gps_time);
-        Some(satellite_antenna_range_correction_m(sat_pos_m, receiver_pos_m, sun_pos_m, offset))
+        Some(satellite_antenna_range_correction_m(
+            geometry.sat_pos_m,
+            geometry.receiver_pos_m,
+            sun_pos_m,
+            offset,
+        ))
     }
 
     pub fn range_correction_with_phase_variation_m(
         &self,
         sat: SatId,
         band: SignalBand,
-        gps_time: Option<GpsTime>,
-        sat_pos_m: [f64; 3],
-        receiver_pos_m: [f64; 3],
-        elevation_deg: f64,
-        azimuth_deg: Option<f64>,
+        geometry: AntennaPhaseGeometry,
     ) -> Option<f64> {
-        let offset_correction_m =
-            self.range_correction_m(sat, band, gps_time, sat_pos_m, receiver_pos_m)?;
+        let offset_correction_m = self.range_correction_m(sat, band, geometry.range)?;
         let phase_variation_m = self
-            .phase_center_variation_m(sat, band, gps_time, elevation_deg, azimuth_deg)
+            .phase_center_variation_m(
+                sat,
+                band,
+                geometry.range.gps_time,
+                geometry.elevation_deg,
+                geometry.azimuth_deg,
+            )
             .unwrap_or(0.0);
         Some(offset_correction_m + phase_variation_m)
     }
@@ -292,53 +318,35 @@ impl SatelliteAntennaCalibrations {
     pub fn iono_free_range_correction_m(
         &self,
         sat: SatId,
-        band_1: SignalBand,
-        f1_hz: f64,
-        band_2: SignalBand,
-        f2_hz: f64,
-        gps_time: Option<GpsTime>,
-        sat_pos_m: [f64; 3],
-        receiver_pos_m: [f64; 3],
+        signal: DualFrequencySignal,
+        geometry: AntennaRangeGeometry,
     ) -> Option<f64> {
-        let correction_1 =
-            self.range_correction_m(sat, band_1, gps_time, sat_pos_m, receiver_pos_m)?;
-        let correction_2 =
-            self.range_correction_m(sat, band_2, gps_time, sat_pos_m, receiver_pos_m)?;
-        iono_free_linear_combination_m(correction_1, f1_hz, correction_2, f2_hz)
+        let correction_1 = self.range_correction_m(sat, signal.primary_band, geometry)?;
+        let correction_2 = self.range_correction_m(sat, signal.secondary_band, geometry)?;
+        iono_free_linear_combination_m(
+            correction_1,
+            signal.primary_frequency_hz,
+            correction_2,
+            signal.secondary_frequency_hz,
+        )
     }
 
     pub fn iono_free_range_correction_with_phase_variation_m(
         &self,
         sat: SatId,
-        band_1: SignalBand,
-        f1_hz: f64,
-        band_2: SignalBand,
-        f2_hz: f64,
-        gps_time: Option<GpsTime>,
-        sat_pos_m: [f64; 3],
-        receiver_pos_m: [f64; 3],
-        elevation_deg: f64,
-        azimuth_deg: Option<f64>,
+        signal: DualFrequencySignal,
+        geometry: AntennaPhaseGeometry,
     ) -> Option<f64> {
-        let correction_1 = self.range_correction_with_phase_variation_m(
-            sat,
-            band_1,
-            gps_time,
-            sat_pos_m,
-            receiver_pos_m,
-            elevation_deg,
-            azimuth_deg,
-        )?;
-        let correction_2 = self.range_correction_with_phase_variation_m(
-            sat,
-            band_2,
-            gps_time,
-            sat_pos_m,
-            receiver_pos_m,
-            elevation_deg,
-            azimuth_deg,
-        )?;
-        iono_free_linear_combination_m(correction_1, f1_hz, correction_2, f2_hz)
+        let correction_1 =
+            self.range_correction_with_phase_variation_m(sat, signal.primary_band, geometry)?;
+        let correction_2 =
+            self.range_correction_with_phase_variation_m(sat, signal.secondary_band, geometry)?;
+        iono_free_linear_combination_m(
+            correction_1,
+            signal.primary_frequency_hz,
+            correction_2,
+            signal.secondary_frequency_hz,
+        )
     }
 }
 
@@ -411,28 +419,31 @@ impl ReceiverAntennaCalibrations {
         &self,
         antenna_type: &str,
         band: SignalBand,
-        gps_time: Option<GpsTime>,
-        receiver_pos_m: [f64; 3],
-        sat_pos_m: [f64; 3],
+        geometry: AntennaRangeGeometry,
     ) -> Option<f64> {
-        let offset = self.phase_center_offset(antenna_type, band, gps_time)?;
-        Some(receiver_antenna_range_correction_m(receiver_pos_m, sat_pos_m, offset))
+        let offset = self.phase_center_offset(antenna_type, band, geometry.gps_time)?;
+        Some(receiver_antenna_range_correction_m(
+            geometry.receiver_pos_m,
+            geometry.sat_pos_m,
+            offset,
+        ))
     }
 
     pub fn range_correction_with_phase_variation_m(
         &self,
         antenna_type: &str,
         band: SignalBand,
-        gps_time: Option<GpsTime>,
-        receiver_pos_m: [f64; 3],
-        sat_pos_m: [f64; 3],
-        elevation_deg: f64,
-        azimuth_deg: Option<f64>,
+        geometry: AntennaPhaseGeometry,
     ) -> Option<f64> {
-        let offset_correction_m =
-            self.range_correction_m(antenna_type, band, gps_time, receiver_pos_m, sat_pos_m)?;
+        let offset_correction_m = self.range_correction_m(antenna_type, band, geometry.range)?;
         let phase_variation_m = self
-            .phase_center_variation_m(antenna_type, band, gps_time, elevation_deg, azimuth_deg)
+            .phase_center_variation_m(
+                antenna_type,
+                band,
+                geometry.range.gps_time,
+                geometry.elevation_deg,
+                geometry.azimuth_deg,
+            )
             .unwrap_or(0.0);
         Some(offset_correction_m + phase_variation_m)
     }
@@ -440,53 +451,42 @@ impl ReceiverAntennaCalibrations {
     pub fn iono_free_range_correction_m(
         &self,
         antenna_type: &str,
-        band_1: SignalBand,
-        f1_hz: f64,
-        band_2: SignalBand,
-        f2_hz: f64,
-        gps_time: Option<GpsTime>,
-        receiver_pos_m: [f64; 3],
-        sat_pos_m: [f64; 3],
+        signal: DualFrequencySignal,
+        geometry: AntennaRangeGeometry,
     ) -> Option<f64> {
-        let correction_1 =
-            self.range_correction_m(antenna_type, band_1, gps_time, receiver_pos_m, sat_pos_m)?;
+        let correction_1 = self.range_correction_m(antenna_type, signal.primary_band, geometry)?;
         let correction_2 =
-            self.range_correction_m(antenna_type, band_2, gps_time, receiver_pos_m, sat_pos_m)?;
-        iono_free_linear_combination_m(correction_1, f1_hz, correction_2, f2_hz)
+            self.range_correction_m(antenna_type, signal.secondary_band, geometry)?;
+        iono_free_linear_combination_m(
+            correction_1,
+            signal.primary_frequency_hz,
+            correction_2,
+            signal.secondary_frequency_hz,
+        )
     }
 
     pub fn iono_free_range_correction_with_phase_variation_m(
         &self,
         antenna_type: &str,
-        band_1: SignalBand,
-        f1_hz: f64,
-        band_2: SignalBand,
-        f2_hz: f64,
-        gps_time: Option<GpsTime>,
-        receiver_pos_m: [f64; 3],
-        sat_pos_m: [f64; 3],
-        elevation_deg: f64,
-        azimuth_deg: Option<f64>,
+        signal: DualFrequencySignal,
+        geometry: AntennaPhaseGeometry,
     ) -> Option<f64> {
         let correction_1 = self.range_correction_with_phase_variation_m(
             antenna_type,
-            band_1,
-            gps_time,
-            receiver_pos_m,
-            sat_pos_m,
-            elevation_deg,
-            azimuth_deg,
+            signal.primary_band,
+            geometry,
         )?;
         let correction_2 = self.range_correction_with_phase_variation_m(
             antenna_type,
-            band_2,
-            gps_time,
-            receiver_pos_m,
-            sat_pos_m,
-            elevation_deg,
-            azimuth_deg,
+            signal.secondary_band,
+            geometry,
         )?;
-        iono_free_linear_combination_m(correction_1, f1_hz, correction_2, f2_hz)
+        iono_free_linear_combination_m(
+            correction_1,
+            signal.primary_frequency_hz,
+            correction_2,
+            signal.secondary_frequency_hz,
+        )
     }
 }
 
@@ -1054,29 +1054,33 @@ mod tests {
         let satellite_correction = satellite_calibrations
             .iono_free_range_correction_with_phase_variation_m(
                 sat,
-                SignalBand::L1,
-                10.0,
-                SignalBand::L2,
-                5.0,
-                gps_time,
-                sat_pos_m,
-                receiver_pos_m,
-                85.0,
-                None,
+                DualFrequencySignal {
+                    primary_band: SignalBand::L1,
+                    primary_frequency_hz: 10.0,
+                    secondary_band: SignalBand::L2,
+                    secondary_frequency_hz: 5.0,
+                },
+                AntennaPhaseGeometry {
+                    range: AntennaRangeGeometry { gps_time, receiver_pos_m, sat_pos_m },
+                    elevation_deg: 85.0,
+                    azimuth_deg: None,
+                },
             )
             .expect("satellite iono-free phase variation correction");
         let receiver_correction = receiver_calibrations
             .iono_free_range_correction_with_phase_variation_m(
                 "aoad/m_t none",
-                SignalBand::L1,
-                10.0,
-                SignalBand::L2,
-                5.0,
-                gps_time,
-                receiver_pos_m,
-                sat_pos_m,
-                85.0,
-                None,
+                DualFrequencySignal {
+                    primary_band: SignalBand::L1,
+                    primary_frequency_hz: 10.0,
+                    secondary_band: SignalBand::L2,
+                    secondary_frequency_hz: 5.0,
+                },
+                AntennaPhaseGeometry {
+                    range: AntennaRangeGeometry { gps_time, receiver_pos_m, sat_pos_m },
+                    elevation_deg: 85.0,
+                    azimuth_deg: None,
+                },
             )
             .expect("receiver iono-free phase variation correction");
 

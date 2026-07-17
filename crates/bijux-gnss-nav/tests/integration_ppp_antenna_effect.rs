@@ -1,6 +1,6 @@
 #![allow(missing_docs)]
 
-use bijux_gnss_nav::api::sat_state_gps_l1ca_from_observation;
+use bijux_gnss_nav::api::{sat_state_gps_l1ca_from_observation, AntennaRangeGeometry};
 use bijux_gnss_testkit::antenna::{gps_l1_ppp_antenna_effect_case, GpsL1PppAntennaEffectCase};
 
 #[test]
@@ -40,9 +40,11 @@ fn ppp_code_residual_rms_m(case: &GpsL1PppAntennaEffectCase, antenna_enabled: bo
                     .range_correction_m(
                         sat.signal_id.sat,
                         sat.signal_id.band,
-                        Some(case.receive_gps_time),
-                        sat_ecef_m,
-                        case.receiver_ecef_m,
+                        AntennaRangeGeometry {
+                            gps_time: Some(case.receive_gps_time),
+                            receiver_pos_m: case.receiver_ecef_m,
+                            sat_pos_m: sat_ecef_m,
+                        },
                     )
                     .expect("PPP satellite antenna correction");
                 modeled_m += case
@@ -50,9 +52,11 @@ fn ppp_code_residual_rms_m(case: &GpsL1PppAntennaEffectCase, antenna_enabled: bo
                     .range_correction_m(
                         &case.receiver_antenna_type,
                         sat.signal_id.band,
-                        Some(case.receive_gps_time),
-                        case.receiver_ecef_m,
-                        sat_ecef_m,
+                        AntennaRangeGeometry {
+                            gps_time: Some(case.receive_gps_time),
+                            receiver_pos_m: case.receiver_ecef_m,
+                            sat_pos_m: sat_ecef_m,
+                        },
                     )
                     .expect("PPP receiver antenna correction");
             }

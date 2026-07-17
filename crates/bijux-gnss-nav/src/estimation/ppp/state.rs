@@ -6,21 +6,23 @@ use crate::estimation::uncertainty::{
     position_covariance_ecef_m2,
 };
 
+pub struct PositionUncertaintyEstimate {
+    pub covariance_ecef_m2: Option<[[f64; 3]; 3]>,
+    pub sigma_e_m: Option<f64>,
+    pub sigma_n_m: Option<f64>,
+    pub sigma_u_m: Option<f64>,
+    pub horizontal_error_ellipse_major_axis_m: Option<f64>,
+    pub horizontal_error_ellipse_minor_axis_m: Option<f64>,
+    pub horizontal_error_ellipse_azimuth_deg: Option<f64>,
+    pub sigma_h_m: Option<f64>,
+    pub sigma_v_m: Option<f64>,
+}
+
 pub fn estimate_position_uncertainty(
     ekf: &Ekf,
     pos_idx: &[usize; 3],
     receiver_ecef_m: [f64; 3],
-) -> (
-    Option<[[f64; 3]; 3]>,
-    Option<f64>,
-    Option<f64>,
-    Option<f64>,
-    Option<f64>,
-    Option<f64>,
-    Option<f64>,
-    Option<f64>,
-    Option<f64>,
-) {
+) -> PositionUncertaintyEstimate {
     let covariance = position_covariance_ecef_m2(&ekf.p, pos_idx);
     let (sigma_e_m, sigma_n_m, sigma_u_m) = covariance
         .and_then(|covariance| covariance_enu_standard_deviations_m(receiver_ecef_m, covariance))
@@ -42,15 +44,15 @@ pub fn estimate_position_uncertainty(
         .and_then(|covariance| covariance_horizontal_vertical(receiver_ecef_m, covariance))
         .map(|(sigma_h, sigma_v)| (Some(sigma_h), Some(sigma_v)))
         .unwrap_or((None, None));
-    (
-        covariance,
+    PositionUncertaintyEstimate {
+        covariance_ecef_m2: covariance,
         sigma_e_m,
         sigma_n_m,
         sigma_u_m,
         horizontal_error_ellipse_major_axis_m,
         horizontal_error_ellipse_minor_axis_m,
         horizontal_error_ellipse_azimuth_deg,
-        sigma_h,
-        sigma_v,
-    )
+        sigma_h_m: sigma_h,
+        sigma_v_m: sigma_v,
+    }
 }

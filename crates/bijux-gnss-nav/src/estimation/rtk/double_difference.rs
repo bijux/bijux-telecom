@@ -6,7 +6,10 @@ use bijux_gnss_core::api::{
 };
 use serde::{Deserialize, Serialize};
 
-use super::antenna::{modeled_pseudorange_with_antenna_corrections_m, RtkAntennaCorrectionConfig};
+use super::antenna::{
+    modeled_pseudorange_with_antenna_corrections_m, AntennaAwarePseudorangeRequest,
+    RtkAntennaCorrectionConfig,
+};
 use super::single_difference::{
     RtkEpochAlignmentEvidence, RtkSingleDifferenceCovarianceEvidence,
     RtkSingleDifferenceObservation,
@@ -480,52 +483,66 @@ pub fn rtk_double_difference_residual_metrics_with_antenna_corrections(
             Some(GpsTime { week: reference_ephemeris.week, tow_s: rover_receive_time_s });
         let base_reference_gps_time =
             Some(GpsTime { week: reference_ephemeris.week, tow_s: base_receive_time_s });
-        let modeled_signal_m = modeled_pseudorange_with_antenna_corrections_m(
-            rover_ecef_m,
-            [rover_signal_satellite.x_m, rover_signal_satellite.y_m, rover_signal_satellite.z_m],
-            rover_signal_satellite.clock_correction.bias_s,
-            observation.sig.sat,
-            observation.sig.band,
-            rover_signal_gps_time,
-            antenna_corrections.and_then(|config| config.rover_antenna_type.as_deref()),
-            antenna_corrections,
-        ) - modeled_pseudorange_with_antenna_corrections_m(
-            base_ecef_m,
-            [base_signal_satellite.x_m, base_signal_satellite.y_m, base_signal_satellite.z_m],
-            base_signal_satellite.clock_correction.bias_s,
-            observation.sig.sat,
-            observation.sig.band,
-            base_signal_gps_time,
-            antenna_corrections.and_then(|config| config.base_antenna_type.as_deref()),
-            antenna_corrections,
-        );
-        let modeled_reference_m = modeled_pseudorange_with_antenna_corrections_m(
-            rover_ecef_m,
-            [
-                rover_reference_satellite.x_m,
-                rover_reference_satellite.y_m,
-                rover_reference_satellite.z_m,
-            ],
-            rover_reference_satellite.clock_correction.bias_s,
-            observation.ref_sig.sat,
-            observation.ref_sig.band,
-            rover_reference_gps_time,
-            antenna_corrections.and_then(|config| config.rover_antenna_type.as_deref()),
-            antenna_corrections,
-        ) - modeled_pseudorange_with_antenna_corrections_m(
-            base_ecef_m,
-            [
-                base_reference_satellite.x_m,
-                base_reference_satellite.y_m,
-                base_reference_satellite.z_m,
-            ],
-            base_reference_satellite.clock_correction.bias_s,
-            observation.ref_sig.sat,
-            observation.ref_sig.band,
-            base_reference_gps_time,
-            antenna_corrections.and_then(|config| config.base_antenna_type.as_deref()),
-            antenna_corrections,
-        );
+        let modeled_signal_m =
+            modeled_pseudorange_with_antenna_corrections_m(AntennaAwarePseudorangeRequest {
+                receiver_ecef_m: rover_ecef_m,
+                sat_ecef_m: [
+                    rover_signal_satellite.x_m,
+                    rover_signal_satellite.y_m,
+                    rover_signal_satellite.z_m,
+                ],
+                sat_clock_bias_s: rover_signal_satellite.clock_correction.bias_s,
+                sat: observation.sig.sat,
+                band: observation.sig.band,
+                gps_time: rover_signal_gps_time,
+                receiver_antenna_type: antenna_corrections
+                    .and_then(|config| config.rover_antenna_type.as_deref()),
+                corrections: antenna_corrections,
+            }) - modeled_pseudorange_with_antenna_corrections_m(AntennaAwarePseudorangeRequest {
+                receiver_ecef_m: base_ecef_m,
+                sat_ecef_m: [
+                    base_signal_satellite.x_m,
+                    base_signal_satellite.y_m,
+                    base_signal_satellite.z_m,
+                ],
+                sat_clock_bias_s: base_signal_satellite.clock_correction.bias_s,
+                sat: observation.sig.sat,
+                band: observation.sig.band,
+                gps_time: base_signal_gps_time,
+                receiver_antenna_type: antenna_corrections
+                    .and_then(|config| config.base_antenna_type.as_deref()),
+                corrections: antenna_corrections,
+            });
+        let modeled_reference_m =
+            modeled_pseudorange_with_antenna_corrections_m(AntennaAwarePseudorangeRequest {
+                receiver_ecef_m: rover_ecef_m,
+                sat_ecef_m: [
+                    rover_reference_satellite.x_m,
+                    rover_reference_satellite.y_m,
+                    rover_reference_satellite.z_m,
+                ],
+                sat_clock_bias_s: rover_reference_satellite.clock_correction.bias_s,
+                sat: observation.ref_sig.sat,
+                band: observation.ref_sig.band,
+                gps_time: rover_reference_gps_time,
+                receiver_antenna_type: antenna_corrections
+                    .and_then(|config| config.rover_antenna_type.as_deref()),
+                corrections: antenna_corrections,
+            }) - modeled_pseudorange_with_antenna_corrections_m(AntennaAwarePseudorangeRequest {
+                receiver_ecef_m: base_ecef_m,
+                sat_ecef_m: [
+                    base_reference_satellite.x_m,
+                    base_reference_satellite.y_m,
+                    base_reference_satellite.z_m,
+                ],
+                sat_clock_bias_s: base_reference_satellite.clock_correction.bias_s,
+                sat: observation.ref_sig.sat,
+                band: observation.ref_sig.band,
+                gps_time: base_reference_gps_time,
+                receiver_antenna_type: antenna_corrections
+                    .and_then(|config| config.base_antenna_type.as_deref()),
+                corrections: antenna_corrections,
+            });
         let modeled_code_m = modeled_signal_m - modeled_reference_m;
         residuals_m.push(observation.code_m - modeled_code_m);
         predicted_variances_m2.push(observation.code_variance_m2.max(1.0e-6));
@@ -1314,16 +1331,16 @@ mod tests {
         let range_m = geometric_range_m(receiver_ecef_m, sat_ecef_m);
         let travel_time_s = range_m / 299_792_458.0;
         (
-            modeled_pseudorange_with_antenna_corrections_m(
+            modeled_pseudorange_with_antenna_corrections_m(AntennaAwarePseudorangeRequest {
                 receiver_ecef_m,
                 sat_ecef_m,
                 sat_clock_bias_s,
                 sat,
-                SignalBand::L1,
-                Some(receive_gps_time),
-                antenna_type,
-                Some(config),
-            ),
+                band: SignalBand::L1,
+                gps_time: Some(receive_gps_time),
+                receiver_antenna_type: antenna_type,
+                corrections: Some(config),
+            }),
             ObsSignalTiming {
                 signal_travel_time_s: Seconds(travel_time_s),
                 transmit_gps_time: receive_gps_time.offset_seconds(-travel_time_s),

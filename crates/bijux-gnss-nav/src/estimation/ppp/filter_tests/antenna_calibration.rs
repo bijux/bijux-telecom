@@ -1,5 +1,41 @@
 use super::*;
 
+fn antenna_range_geometry(
+    gps_time: Option<bijux_gnss_core::api::GpsTime>,
+    receiver_pos_m: [f64; 3],
+    sat_pos_m: [f64; 3],
+) -> AntennaRangeGeometry {
+    AntennaRangeGeometry { gps_time, receiver_pos_m, sat_pos_m }
+}
+
+fn antenna_phase_geometry(
+    gps_time: Option<bijux_gnss_core::api::GpsTime>,
+    receiver_pos_m: [f64; 3],
+    sat_pos_m: [f64; 3],
+    elevation_deg: f64,
+    azimuth_deg: Option<f64>,
+) -> AntennaPhaseGeometry {
+    AntennaPhaseGeometry {
+        range: antenna_range_geometry(gps_time, receiver_pos_m, sat_pos_m),
+        elevation_deg,
+        azimuth_deg,
+    }
+}
+
+fn dual_frequency_signal(
+    primary_band: SignalBand,
+    primary_frequency_hz: f64,
+    secondary_band: SignalBand,
+    secondary_frequency_hz: f64,
+) -> DualFrequencySignal {
+    DualFrequencySignal {
+        primary_band,
+        primary_frequency_hz,
+        secondary_band,
+        secondary_frequency_hz,
+    }
+}
+
 #[test]
 fn ppp_filter_uses_satellite_antenna_calibration_for_single_frequency_range() {
     let sat = SatId { constellation: Constellation::Gps, prn: 7 };
@@ -21,20 +57,21 @@ fn ppp_filter_uses_satellite_antenna_calibration_for_single_frequency_range() {
     };
 
     let expected = calibrations
-        .range_correction_m(sat, SignalBand::L1, gps_time, sat_pos_m, receiver_pos_m)
+        .range_correction_m(
+            sat,
+            SignalBand::L1,
+            antenna_range_geometry(gps_time, receiver_pos_m, sat_pos_m),
+        )
         .expect("single-frequency antenna correction");
-    let actual = single_frequency_antenna_range_correction_m(
-        Some(&calibrations),
-        None,
-        None,
-        sat,
-        SignalBand::L1,
-        gps_time,
-        sat_pos_m,
-        receiver_pos_m,
-        85.0,
-        None,
-    );
+    let actual =
+        single_frequency_antenna_range_correction_m(SingleFrequencyAntennaCorrectionRequest {
+            satellite_calibrations: Some(&calibrations),
+            receiver_antenna_type: None,
+            receiver_calibrations: None,
+            sat,
+            band: SignalBand::L1,
+            geometry: antenna_phase_geometry(gps_time, receiver_pos_m, sat_pos_m, 85.0, None),
+        });
 
     assert!(actual.abs() > 1.0e-6);
     assert!((actual - expected).abs() < 1.0e-12);
@@ -79,18 +116,15 @@ fn ppp_filter_includes_phase_variation_for_single_frequency_antenna_range() {
         }],
     };
 
-    let actual = single_frequency_antenna_range_correction_m(
-        Some(&satellite_calibrations),
-        Some(receiver_antenna_type),
-        Some(&receiver_calibrations),
-        sat,
-        SignalBand::L1,
-        gps_time,
-        sat_pos_m,
-        receiver_pos_m,
-        85.0,
-        None,
-    );
+    let actual =
+        single_frequency_antenna_range_correction_m(SingleFrequencyAntennaCorrectionRequest {
+            satellite_calibrations: Some(&satellite_calibrations),
+            receiver_antenna_type: Some(receiver_antenna_type),
+            receiver_calibrations: Some(&receiver_calibrations),
+            sat,
+            band: SignalBand::L1,
+            geometry: antenna_phase_geometry(gps_time, receiver_pos_m, sat_pos_m, 85.0, None),
+        });
 
     assert!((actual - 0.08).abs() < 1.0e-12);
 }
@@ -120,30 +154,28 @@ fn ppp_filter_uses_satellite_antenna_calibration_for_iono_free_range() {
     let expected = calibrations
         .iono_free_range_correction_m(
             sat,
+            dual_frequency_signal(
+                SignalBand::L1,
+                l1.carrier_hz.value(),
+                SignalBand::L2,
+                l2.carrier_hz.value(),
+            ),
+            antenna_range_geometry(gps_time, receiver_pos_m, sat_pos_m),
+        )
+        .expect("iono-free antenna correction");
+    let actual = iono_free_antenna_range_correction_m(IonoFreeAntennaCorrectionRequest {
+        satellite_calibrations: Some(&calibrations),
+        receiver_antenna_type: None,
+        receiver_calibrations: None,
+        sat,
+        signal: dual_frequency_signal(
             SignalBand::L1,
             l1.carrier_hz.value(),
             SignalBand::L2,
             l2.carrier_hz.value(),
-            gps_time,
-            sat_pos_m,
-            receiver_pos_m,
-        )
-        .expect("iono-free antenna correction");
-    let actual = iono_free_antenna_range_correction_m(
-        Some(&calibrations),
-        None,
-        None,
-        sat,
-        SignalBand::L1,
-        l1.carrier_hz.value(),
-        SignalBand::L2,
-        l2.carrier_hz.value(),
-        gps_time,
-        sat_pos_m,
-        receiver_pos_m,
-        85.0,
-        None,
-    );
+        ),
+        geometry: antenna_phase_geometry(gps_time, receiver_pos_m, sat_pos_m, 85.0, None),
+    });
 
     assert!(actual.abs() > 1.0e-6);
     assert!((actual - expected).abs() < 1.0e-12);
@@ -205,46 +237,40 @@ fn ppp_filter_includes_phase_variation_for_iono_free_antenna_range() {
     let expected = satellite_calibrations
         .iono_free_range_correction_with_phase_variation_m(
             sat,
-            SignalBand::L1,
-            l1.carrier_hz.value(),
-            SignalBand::L2,
-            l2.carrier_hz.value(),
-            gps_time,
-            sat_pos_m,
-            receiver_pos_m,
-            85.0,
-            None,
+            dual_frequency_signal(
+                SignalBand::L1,
+                l1.carrier_hz.value(),
+                SignalBand::L2,
+                l2.carrier_hz.value(),
+            ),
+            antenna_phase_geometry(gps_time, receiver_pos_m, sat_pos_m, 85.0, None),
         )
         .expect("satellite antenna correction")
         + receiver_calibrations
             .iono_free_range_correction_with_phase_variation_m(
                 receiver_antenna_type,
-                SignalBand::L1,
-                l1.carrier_hz.value(),
-                SignalBand::L2,
-                l2.carrier_hz.value(),
-                gps_time,
-                receiver_pos_m,
-                sat_pos_m,
-                85.0,
-                None,
+                dual_frequency_signal(
+                    SignalBand::L1,
+                    l1.carrier_hz.value(),
+                    SignalBand::L2,
+                    l2.carrier_hz.value(),
+                ),
+                antenna_phase_geometry(gps_time, receiver_pos_m, sat_pos_m, 85.0, None),
             )
             .expect("receiver antenna correction");
-    let actual = iono_free_antenna_range_correction_m(
-        Some(&satellite_calibrations),
-        Some(receiver_antenna_type),
-        Some(&receiver_calibrations),
+    let actual = iono_free_antenna_range_correction_m(IonoFreeAntennaCorrectionRequest {
+        satellite_calibrations: Some(&satellite_calibrations),
+        receiver_antenna_type: Some(receiver_antenna_type),
+        receiver_calibrations: Some(&receiver_calibrations),
         sat,
-        SignalBand::L1,
-        l1.carrier_hz.value(),
-        SignalBand::L2,
-        l2.carrier_hz.value(),
-        gps_time,
-        sat_pos_m,
-        receiver_pos_m,
-        85.0,
-        None,
-    );
+        signal: dual_frequency_signal(
+            SignalBand::L1,
+            l1.carrier_hz.value(),
+            SignalBand::L2,
+            l2.carrier_hz.value(),
+        ),
+        geometry: antenna_phase_geometry(gps_time, receiver_pos_m, sat_pos_m, 85.0, None),
+    });
 
     assert!(expected.abs() > 1.0e-6);
     assert!((actual - expected).abs() < 1.0e-12);
@@ -273,23 +299,18 @@ fn ppp_filter_uses_receiver_antenna_calibration_for_single_frequency_range() {
         .range_correction_m(
             receiver_antenna_type,
             SignalBand::L1,
-            gps_time,
-            receiver_pos_m,
-            sat_pos_m,
+            antenna_range_geometry(gps_time, receiver_pos_m, sat_pos_m),
         )
         .expect("single-frequency receiver antenna correction");
-    let actual = single_frequency_antenna_range_correction_m(
-        None,
-        Some(receiver_antenna_type),
-        Some(&calibrations),
-        SatId { constellation: Constellation::Gps, prn: 7 },
-        SignalBand::L1,
-        gps_time,
-        sat_pos_m,
-        receiver_pos_m,
-        85.0,
-        None,
-    );
+    let actual =
+        single_frequency_antenna_range_correction_m(SingleFrequencyAntennaCorrectionRequest {
+            satellite_calibrations: None,
+            receiver_antenna_type: Some(receiver_antenna_type),
+            receiver_calibrations: Some(&calibrations),
+            sat: SatId { constellation: Constellation::Gps, prn: 7 },
+            band: SignalBand::L1,
+            geometry: antenna_phase_geometry(gps_time, receiver_pos_m, sat_pos_m, 85.0, None),
+        });
 
     assert!(actual.abs() > 1.0e-6);
     assert!((actual - expected).abs() < 1.0e-12);
@@ -319,30 +340,28 @@ fn ppp_filter_uses_receiver_antenna_calibration_for_iono_free_range() {
     let expected = calibrations
         .iono_free_range_correction_m(
             receiver_antenna_type,
+            dual_frequency_signal(
+                SignalBand::L1,
+                l1.carrier_hz.value(),
+                SignalBand::L2,
+                l2.carrier_hz.value(),
+            ),
+            antenna_range_geometry(gps_time, receiver_pos_m, sat_pos_m),
+        )
+        .expect("iono-free receiver antenna correction");
+    let actual = iono_free_antenna_range_correction_m(IonoFreeAntennaCorrectionRequest {
+        satellite_calibrations: None,
+        receiver_antenna_type: Some(receiver_antenna_type),
+        receiver_calibrations: Some(&calibrations),
+        sat: SatId { constellation: Constellation::Gps, prn: 7 },
+        signal: dual_frequency_signal(
             SignalBand::L1,
             l1.carrier_hz.value(),
             SignalBand::L2,
             l2.carrier_hz.value(),
-            gps_time,
-            receiver_pos_m,
-            sat_pos_m,
-        )
-        .expect("iono-free receiver antenna correction");
-    let actual = iono_free_antenna_range_correction_m(
-        None,
-        Some(receiver_antenna_type),
-        Some(&calibrations),
-        SatId { constellation: Constellation::Gps, prn: 7 },
-        SignalBand::L1,
-        l1.carrier_hz.value(),
-        SignalBand::L2,
-        l2.carrier_hz.value(),
-        gps_time,
-        sat_pos_m,
-        receiver_pos_m,
-        85.0,
-        None,
-    );
+        ),
+        geometry: antenna_phase_geometry(gps_time, receiver_pos_m, sat_pos_m, 85.0, None),
+    });
 
     assert!(actual.abs() > 1.0e-6);
     assert!((actual - expected).abs() < 1.0e-12);
@@ -378,30 +397,24 @@ fn ppp_filter_receiver_antenna_type_selects_matching_calibration() {
         ],
     };
 
-    let aoad = single_frequency_antenna_range_correction_m(
-        None,
-        Some("AOAD/M_T NONE"),
-        Some(&calibrations),
-        SatId { constellation: Constellation::Gps, prn: 7 },
-        SignalBand::L1,
-        gps_time,
-        sat_pos_m,
-        receiver_pos_m,
-        85.0,
-        None,
-    );
-    let trimble = single_frequency_antenna_range_correction_m(
-        None,
-        Some("TRM57971.00 NONE"),
-        Some(&calibrations),
-        SatId { constellation: Constellation::Gps, prn: 7 },
-        SignalBand::L1,
-        gps_time,
-        sat_pos_m,
-        receiver_pos_m,
-        85.0,
-        None,
-    );
+    let aoad =
+        single_frequency_antenna_range_correction_m(SingleFrequencyAntennaCorrectionRequest {
+            satellite_calibrations: None,
+            receiver_antenna_type: Some("AOAD/M_T NONE"),
+            receiver_calibrations: Some(&calibrations),
+            sat: SatId { constellation: Constellation::Gps, prn: 7 },
+            band: SignalBand::L1,
+            geometry: antenna_phase_geometry(gps_time, receiver_pos_m, sat_pos_m, 85.0, None),
+        });
+    let trimble =
+        single_frequency_antenna_range_correction_m(SingleFrequencyAntennaCorrectionRequest {
+            satellite_calibrations: None,
+            receiver_antenna_type: Some("TRM57971.00 NONE"),
+            receiver_calibrations: Some(&calibrations),
+            sat: SatId { constellation: Constellation::Gps, prn: 7 },
+            band: SignalBand::L1,
+            geometry: antenna_phase_geometry(gps_time, receiver_pos_m, sat_pos_m, 85.0, None),
+        });
 
     assert!((trimble - aoad).abs() > 1.0e-6);
 }

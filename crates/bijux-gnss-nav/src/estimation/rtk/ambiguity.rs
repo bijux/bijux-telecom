@@ -1101,9 +1101,7 @@ fn reference_switch_transform_from_ids(
     }
     let old_index_by_sig =
         ids.iter().enumerate().map(|(index, id)| (id.sig, index)).collect::<BTreeMap<_, _>>();
-    let Some(&new_ref_old_index) = old_index_by_sig.get(&new_ref_sig) else {
-        return None;
-    };
+    let &new_ref_old_index = old_index_by_sig.get(&new_ref_sig)?;
 
     let mut output_signals = ids.iter().map(|id| id.sig).collect::<Vec<_>>();
     output_signals.push(old_ref_sig);
@@ -1626,8 +1624,8 @@ fn integer_matrix_mul(left: &[Vec<i64>], right: &[Vec<i64>]) -> Vec<Vec<i64>> {
     for row in 0..rows {
         for col in 0..cols {
             let mut sum = 0_i64;
-            for index in 0..inner {
-                sum += left[row][index] * right[index][col];
+            for (index, right_row) in right.iter().enumerate().take(inner) {
+                sum += left[row][index] * right_row[col];
             }
             out[row][col] = sum;
         }

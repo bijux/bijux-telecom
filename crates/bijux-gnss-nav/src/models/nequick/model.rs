@@ -409,10 +409,10 @@ impl NequickParameters {
         let b1_bottom_km = 0.5 * (hm_f1_km - hm_e_km);
         let be_top_km = b1_bottom_km.max(7.0);
         let be_bottom_km = 5.0;
-        let amplitudes = layer_amplitudes(
+        let amplitudes = layer_amplitudes(LayerAmplitudeInputs {
             nm_e,
             nm_f1,
-            fo_f1,
+            fo_f1_mhz: fo_f1,
             nm_f2,
             hm_f2_km,
             hm_f1_km,
@@ -420,7 +420,7 @@ impl NequickParameters {
             b2_bottom_km,
             b1_bottom_km,
             be_top_km,
-        );
+        });
 
         Self {
             month: time.month,
@@ -632,10 +632,10 @@ fn fo_f2_mhz(
     for band in 1..LEGENDRE_GRADES.len() {
         let cosine_term = latitude_power * sc_l[2 * band - 1];
         let sine_term = latitude_power * sc_l[2 * band - 2];
-        for order in 0..LEGENDRE_GRADES[band] {
-            frequency += modip_powers[order] * cosine_term * cf2[coefficient_index];
+        for modip_power in modip_powers.iter().take(LEGENDRE_GRADES[band]) {
+            frequency += modip_power * cosine_term * cf2[coefficient_index];
             coefficient_index += 1;
-            frequency += modip_powers[order] * sine_term * cf2[coefficient_index];
+            frequency += modip_power * sine_term * cf2[coefficient_index];
             coefficient_index += 1;
         }
         latitude_power *= cos_latitude;
@@ -669,10 +669,10 @@ fn m_f2_factor(
     for band in 1..LEGENDRE_GRADES.len() {
         let cosine_term = latitude_power * sc_l[2 * band - 1];
         let sine_term = latitude_power * sc_l[2 * band - 2];
-        for order in 0..LEGENDRE_GRADES[band] {
-            factor += modip_powers[order] * cosine_term * cm3[coefficient_index];
+        for modip_power in modip_powers.iter().take(LEGENDRE_GRADES[band]) {
+            factor += modip_power * cosine_term * cm3[coefficient_index];
             coefficient_index += 1;
-            factor += modip_powers[order] * sine_term * cm3[coefficient_index];
+            factor += modip_power * sine_term * cm3[coefficient_index];
             coefficient_index += 1;
         }
         latitude_power *= cos_latitude;
@@ -703,7 +703,7 @@ fn fo_f1_mhz(fo_e_mhz: f64, fo_f2_mhz: f64) -> f64 {
     }
 }
 
-fn layer_amplitudes(
+struct LayerAmplitudeInputs {
     nm_e: f64,
     nm_f1: f64,
     fo_f1_mhz: f64,
@@ -714,23 +714,29 @@ fn layer_amplitudes(
     b2_bottom_km: f64,
     b1_bottom_km: f64,
     be_top_km: f64,
-) -> [f64; 3] {
-    let a1 = 4.0 * nm_f2;
-    if fo_f1_mhz < 0.5 {
-        [a1, 0.0, 4.0 * (nm_e - epstein(a1, hm_f2_km, b2_bottom_km, hm_e_km))]
+}
+
+fn layer_amplitudes(inputs: LayerAmplitudeInputs) -> [f64; 3] {
+    let a1 = 4.0 * inputs.nm_f2;
+    if inputs.fo_f1_mhz < 0.5 {
+        [
+            a1,
+            0.0,
+            4.0 * (inputs.nm_e - epstein(a1, inputs.hm_f2_km, inputs.b2_bottom_km, inputs.hm_e_km)),
+        ]
     } else {
         let mut a2 = 0.0;
-        let mut a3 = 4.0 * nm_e;
+        let mut a3 = 4.0 * inputs.nm_e;
         for _ in 0..5 {
             a2 = 4.0
-                * (nm_f1
-                    - epstein(a1, hm_f2_km, b2_bottom_km, hm_f1_km)
-                    - epstein(a3, hm_e_km, be_top_km, hm_f1_km));
-            a2 = join(a2, 0.8 * nm_f1, 1.0, a2 - 0.8 * nm_f1);
+                * (inputs.nm_f1
+                    - epstein(a1, inputs.hm_f2_km, inputs.b2_bottom_km, inputs.hm_f1_km)
+                    - epstein(a3, inputs.hm_e_km, inputs.be_top_km, inputs.hm_f1_km));
+            a2 = join(a2, 0.8 * inputs.nm_f1, 1.0, a2 - 0.8 * inputs.nm_f1);
             a3 = 4.0
-                * (nm_e
-                    - epstein(a2, hm_f1_km, b1_bottom_km, hm_e_km)
-                    - epstein(a1, hm_f2_km, b2_bottom_km, hm_e_km));
+                * (inputs.nm_e
+                    - epstein(a2, inputs.hm_f1_km, inputs.b1_bottom_km, inputs.hm_e_km)
+                    - epstein(a1, inputs.hm_f2_km, inputs.b2_bottom_km, inputs.hm_e_km));
         }
         [a1, a2, join(a3, 0.05, 60.0, a3 - 0.005)]
     }

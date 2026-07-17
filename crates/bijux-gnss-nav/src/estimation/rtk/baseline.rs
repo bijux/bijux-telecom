@@ -684,16 +684,16 @@ fn covariance_ecef_to_enu(
     let mut rotated = [[0.0; 3]; 3];
     for row in 0..3 {
         for col in 0..3 {
-            for inner in 0..3 {
-                rotated[row][col] += rotation[row][inner] * covariance_ecef_m2[inner][col];
+            for (inner, covariance_row) in covariance_ecef_m2.iter().enumerate() {
+                rotated[row][col] += rotation[row][inner] * covariance_row[col];
             }
         }
     }
     let mut covariance_enu_m2 = [[0.0; 3]; 3];
     for row in 0..3 {
-        for col in 0..3 {
-            for inner in 0..3 {
-                covariance_enu_m2[row][col] += rotated[row][inner] * rotation[col][inner];
+        for (col, rotation_row) in rotation.iter().enumerate() {
+            for (inner, rotated_value) in rotated[row].iter().enumerate() {
+                covariance_enu_m2[row][col] += rotated_value * rotation_row[inner];
             }
         }
     }

@@ -1,7 +1,10 @@
 use bijux_gnss_core::api::{GpsTime, SatId, SignalBand};
 
 use crate::estimation::position::solver::geodesy::elevation_azimuth_deg;
-use crate::models::antenna::{ReceiverAntennaCalibrations, SatelliteAntennaCalibrations};
+use crate::models::antenna::{
+    AntennaPhaseGeometry, AntennaRangeGeometry, ReceiverAntennaCalibrations,
+    SatelliteAntennaCalibrations,
+};
 
 /// Antenna calibrations used to evaluate RTK residuals against antenna-aware geometry.
 #[derive(Debug, Clone, Default)]
@@ -26,25 +29,30 @@ impl RtkAntennaCorrectionConfig {
     }
 }
 
+#[derive(Clone, Copy)]
+pub(crate) struct AntennaAwarePseudorangeRequest<'a> {
+    pub receiver_ecef_m: [f64; 3],
+    pub sat_ecef_m: [f64; 3],
+    pub sat_clock_bias_s: f64,
+    pub sat: SatId,
+    pub band: SignalBand,
+    pub gps_time: Option<GpsTime>,
+    pub receiver_antenna_type: Option<&'a str>,
+    pub corrections: Option<&'a RtkAntennaCorrectionConfig>,
+}
+
 pub(crate) fn modeled_pseudorange_with_antenna_corrections_m(
-    receiver_ecef_m: [f64; 3],
-    sat_ecef_m: [f64; 3],
-    sat_clock_bias_s: f64,
-    sat: SatId,
-    band: SignalBand,
-    gps_time: Option<GpsTime>,
-    receiver_antenna_type: Option<&str>,
-    corrections: Option<&RtkAntennaCorrectionConfig>,
+    request: AntennaAwarePseudorangeRequest<'_>,
 ) -> f64 {
-    modeled_pseudorange_m(receiver_ecef_m, sat_ecef_m, sat_clock_bias_s)
+    modeled_pseudorange_m(request.receiver_ecef_m, request.sat_ecef_m, request.sat_clock_bias_s)
         + antenna_range_correction_m(
-            sat,
-            band,
-            gps_time,
-            receiver_ecef_m,
-            sat_ecef_m,
-            receiver_antenna_type,
-            corrections,
+            request.sat,
+            request.band,
+            request.gps_time,
+            request.receiver_ecef_m,
+            request.sat_ecef_m,
+            request.receiver_antenna_type,
+            request.corrections,
         )
 }
 
@@ -68,34 +76,27 @@ fn antenna_range_correction_m(
         sat_ecef_m[1],
         sat_ecef_m[2],
     );
+    let geometry = AntennaPhaseGeometry {
+        range: AntennaRangeGeometry {
+            gps_time,
+            receiver_pos_m: receiver_ecef_m,
+            sat_pos_m: sat_ecef_m,
+        },
+        elevation_deg,
+        azimuth_deg: Some(azimuth_deg),
+    };
 
     let satellite_correction_m = corrections
         .satellite_calibrations
         .as_ref()
         .and_then(|calibrations| {
-            calibrations.range_correction_with_phase_variation_m(
-                sat,
-                band,
-                gps_time,
-                sat_ecef_m,
-                receiver_ecef_m,
-                elevation_deg,
-                Some(azimuth_deg),
-            )
+            calibrations.range_correction_with_phase_variation_m(sat, band, geometry)
         })
         .unwrap_or(0.0);
     let receiver_correction_m = receiver_antenna_type
         .and_then(|antenna_type| {
             corrections.receiver_calibrations.as_ref().and_then(|calibrations| {
-                calibrations.range_correction_with_phase_variation_m(
-                    antenna_type,
-                    band,
-                    gps_time,
-                    receiver_ecef_m,
-                    sat_ecef_m,
-                    elevation_deg,
-                    Some(azimuth_deg),
-                )
+                calibrations.range_correction_with_phase_variation_m(antenna_type, band, geometry)
             })
         })
         .unwrap_or(0.0);
@@ -124,7 +125,10 @@ mod tests {
 
     use bijux_gnss_core::api::{Constellation, GpsTime, SatId, SignalBand};
 
-    use super::{modeled_pseudorange_m, modeled_pseudorange_with_antenna_corrections_m};
+    use super::{
+        modeled_pseudorange_m, modeled_pseudorange_with_antenna_corrections_m,
+        AntennaAwarePseudorangeRequest,
+    };
     use crate::models::antenna::{
         AntennaPhaseCenterVariation, ReceiverAntennaCalibration, ReceiverAntennaCalibrations,
         ReceiverPhaseCenterOffset, SatelliteAntennaCalibration, SatelliteAntennaCalibrations,
@@ -168,16 +172,17 @@ mod tests {
         };
 
         let uncorrected = modeled_pseudorange_m(receiver_ecef_m, sat_ecef_m, 0.0);
-        let corrected = modeled_pseudorange_with_antenna_corrections_m(
-            receiver_ecef_m,
-            sat_ecef_m,
-            0.0,
-            sat,
-            SignalBand::L1,
-            gps_time,
-            config.rover_antenna_type.as_deref(),
-            Some(&config),
-        );
+        let corrected =
+            modeled_pseudorange_with_antenna_corrections_m(AntennaAwarePseudorangeRequest {
+                receiver_ecef_m,
+                sat_ecef_m,
+                sat_clock_bias_s: 0.0,
+                sat,
+                band: SignalBand::L1,
+                gps_time,
+                receiver_antenna_type: config.rover_antenna_type.as_deref(),
+                corrections: Some(&config),
+            });
 
         assert!((corrected - uncorrected).abs() > 1.0e-6);
     }
@@ -225,16 +230,17 @@ mod tests {
         };
 
         let uncorrected = modeled_pseudorange_m(receiver_ecef_m, sat_ecef_m, 0.0);
-        let corrected = modeled_pseudorange_with_antenna_corrections_m(
-            receiver_ecef_m,
-            sat_ecef_m,
-            0.0,
-            sat,
-            SignalBand::L1,
-            gps_time,
-            config.rover_antenna_type.as_deref(),
-            Some(&config),
-        );
+        let corrected =
+            modeled_pseudorange_with_antenna_corrections_m(AntennaAwarePseudorangeRequest {
+                receiver_ecef_m,
+                sat_ecef_m,
+                sat_clock_bias_s: 0.0,
+                sat,
+                band: SignalBand::L1,
+                gps_time,
+                receiver_antenna_type: config.rover_antenna_type.as_deref(),
+                corrections: Some(&config),
+            });
 
         assert!((corrected - uncorrected).abs() > 1.0e-6);
     }
