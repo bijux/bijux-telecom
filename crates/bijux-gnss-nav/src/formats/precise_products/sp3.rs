@@ -456,12 +456,28 @@ fn interpolate_record_state(records: &[Sp3Record], t_s: f64) -> Option<Sp3State>
     }
 
     let clock_bias_s = optional_lagrange(&support, t_s, |record| record.clock_bias_s);
-    let velocity_mps = Some([
-        optional_lagrange(&support, t_s, |record| record.velocity_mps.map(|velocity| velocity[0]))?,
-        optional_lagrange(&support, t_s, |record| record.velocity_mps.map(|velocity| velocity[1]))?,
-        optional_lagrange(&support, t_s, |record| record.velocity_mps.map(|velocity| velocity[2]))?,
-    ]);
-    let clock_rate_s_per_s = optional_lagrange(&support, t_s, |record| record.clock_rate_s_per_s);
+    let velocity_mps = support
+        .iter()
+        .all(|record| record.velocity_mps.is_some())
+        .then(|| {
+            Some([
+                optional_lagrange(&support, t_s, |record| {
+                    record.velocity_mps.map(|velocity| velocity[0])
+                })?,
+                optional_lagrange(&support, t_s, |record| {
+                    record.velocity_mps.map(|velocity| velocity[1])
+                })?,
+                optional_lagrange(&support, t_s, |record| {
+                    record.velocity_mps.map(|velocity| velocity[2])
+                })?,
+            ])
+        })
+        .flatten();
+    let clock_rate_s_per_s = support
+        .iter()
+        .all(|record| record.clock_rate_s_per_s.is_some())
+        .then(|| optional_lagrange(&support, t_s, |record| record.clock_rate_s_per_s))
+        .flatten();
 
     Some(Sp3State {
         epoch_s: t_s,
