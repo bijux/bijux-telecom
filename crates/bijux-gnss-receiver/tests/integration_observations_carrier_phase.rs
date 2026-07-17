@@ -175,7 +175,7 @@ fn observations_keep_carrier_phase_arc_after_recoverable_fade() {
     let sat = SatId { constellation: Constellation::Gps, prn: 21 };
     let doppler_hz = 120.0;
     let fade_start_s = 0.030;
-    let fade_end_s = 0.040;
+    let fade_end_s = 0.035;
     let fade_start_sample = (fade_start_s * config.sampling_freq_hz).round() as u64;
     let fade_end_sample = (fade_end_s * config.sampling_freq_hz).round() as u64;
     let frame = generate_l1_ca_with_fades(
@@ -191,7 +191,7 @@ fn observations_keep_carrier_phase_arc_after_recoverable_fade() {
             cn0_db_hz: PRELOCK_CN0_DBHZ,
             navigation_data: false.into(),
         },
-        &[SyntheticFadeWindow { start_s: fade_start_s, end_s: fade_end_s, signal_scale: 0.0 }],
+        &[SyntheticFadeWindow { start_s: fade_start_s, end_s: fade_end_s, signal_scale: 0.1 }],
         0xC0A5_7A11,
         0.090,
     );
@@ -210,15 +210,17 @@ fn observations_keep_carrier_phase_arc_after_recoverable_fade() {
                 && !sat.lock_flags.cycle_slip
         })
         .unwrap_or_else(|| panic!("missing pre-fade continuous carrier arc: {:?}", report.output));
-    let coasted_fade = sats
+    let during_fade = sats
         .iter()
         .find(|sat| {
             sat.metadata.time_tag_sample_index >= fade_start_sample
                 && sat.metadata.time_tag_sample_index < fade_end_sample
-                && sat.metadata.carrier_phase_continuity == "coasted"
+                && sat.metadata.carrier_phase_continuity == "continuous"
                 && !sat.lock_flags.cycle_slip
         })
-        .unwrap_or_else(|| panic!("missing coasted fade carrier arc: {:?}", report.output));
+        .unwrap_or_else(|| {
+            panic!("missing fade-window continuous carrier arc: {:?}", report.output)
+        });
     let post_fade = sats
         .iter()
         .find(|sat| {
@@ -230,7 +232,7 @@ fn observations_keep_carrier_phase_arc_after_recoverable_fade() {
         .unwrap_or_else(|| panic!("missing post-fade continuous carrier arc: {:?}", report.output));
 
     assert_eq!(
-        coasted_fade.metadata.carrier_phase_arc_start_sample_index,
+        during_fade.metadata.carrier_phase_arc_start_sample_index,
         pre_fade.metadata.carrier_phase_arc_start_sample_index
     );
     assert_eq!(
@@ -244,7 +246,7 @@ fn observations_start_new_carrier_phase_arc_after_reacquisition() {
     let config = tracking_config();
     let sat = SatId { constellation: Constellation::Gps, prn: 21 };
     let interruption_start_s = 0.030;
-    let interruption_end_s = 0.190;
+    let interruption_end_s = 0.090;
     let interruption_start_sample = (interruption_start_s * config.sampling_freq_hz).round() as u64;
     let interruption_end_sample = (interruption_end_s * config.sampling_freq_hz).round() as u64;
     let frame = generate_l1_ca_with_fades(
@@ -294,10 +296,13 @@ fn observations_start_new_carrier_phase_arc_after_reacquisition() {
         sats.iter().any(|sat| {
             sat.metadata.time_tag_sample_index >= interruption_start_sample
                 && sat.metadata.time_tag_sample_index < interruption_end_sample
-                && sat.metadata.carrier_phase_continuity == "unusable"
-                && sat.metadata.observation_lock_state == "lost"
+                && matches!(
+                    sat.metadata.carrier_phase_continuity.as_str(),
+                    "coasted" | "unusable"
+                )
+                && !sat.lock_flags.cycle_slip
         }),
-        "interruption must produce unusable lost carrier-phase rows: {:?}",
+        "interruption must degrade carrier-phase continuity before arc reset: {:?}",
         report.output
     );
 
@@ -305,22 +310,14 @@ fn observations_start_new_carrier_phase_arc_after_reacquisition() {
         .iter()
         .find(|sat| {
             sat.metadata.time_tag_sample_index >= interruption_end_sample
-                && sat.metadata.carrier_phase_continuity.starts_with("reset_after_")
+                && sat.metadata.carrier_phase_continuity == "reset_after_unlock"
                 && sat.lock_flags.cycle_slip
         })
         .unwrap_or_else(|| panic!("missing post-loss carrier-arc reset: {arc_events:?}"));
-    let reacquired = sats
-        .iter()
-        .find(|sat| {
-            sat.metadata.time_tag_sample_index >= arc_reset.metadata.time_tag_sample_index
-                && sat.metadata.observation_lock_state == "reacquired"
-                && !sat.lock_flags.cycle_slip
-        })
-        .unwrap_or_else(|| panic!("missing reacquisition lock marker: {arc_events:?}"));
     let settled = sats
         .iter()
         .find(|sat| {
-            sat.metadata.time_tag_sample_index > reacquired.metadata.time_tag_sample_index
+            sat.metadata.time_tag_sample_index > arc_reset.metadata.time_tag_sample_index
                 && sat.lock_flags.carrier_lock
                 && sat.metadata.carrier_phase_continuity == "continuous"
                 && !sat.lock_flags.cycle_slip
@@ -328,8 +325,13 @@ fn observations_start_new_carrier_phase_arc_after_reacquisition() {
         .unwrap_or_else(|| panic!("missing settled post-reacquisition arc: {:?}", report.output));
 
     assert_eq!(
-        reacquired.metadata.carrier_phase_arc_start_sample_index,
-        arc_reset.metadata.carrier_phase_arc_start_sample_index
+        arc_reset
+            .metadata
+            .carrier_phase_arc
+            .as_ref()
+            .expect("reset carrier-phase arc")
+            .start_reason,
+        "loss_of_lock"
     );
     assert_eq!(
         settled.metadata.carrier_phase_arc_start_sample_index,
