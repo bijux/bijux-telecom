@@ -18,7 +18,7 @@ use bijux_gnss_nav::api::{
     RtkSingleDifferenceCovarianceEvidence,
 };
 use bijux_gnss_signal::api::{glonass_l1_carrier_hz, signal_id_wavelength_m};
-use bijux_gnss_testkit::rtk_baseline::clean_gps_l1_short_baseline_case;
+use bijux_gnss_testkit::reference_data::rtk_baseline::clean_gps_l1_short_baseline_case;
 
 fn enu_to_ecef(base_ecef_m: [f64; 3], enu_m: [f64; 3]) -> [f64; 3] {
     let (lat_deg, lon_deg, _alt_m) =

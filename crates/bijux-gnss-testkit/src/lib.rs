@@ -10,4 +10,3 @@ pub mod fixture_loading;
 pub mod front_end;
 pub mod position_truth;
 pub mod reference_data;
-pub mod rtk_baseline;

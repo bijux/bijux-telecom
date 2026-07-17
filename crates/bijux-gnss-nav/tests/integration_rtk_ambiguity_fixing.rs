@@ -21,7 +21,7 @@ use bijux_gnss_nav::api::{
     RtkGlonassInterFrequencyBiasEvidence, RtkGlonassInterFrequencyBiasStatus,
     RtkIntegerAmbiguityCandidate, RtkPartialAmbiguitySelectionCriterion, RtkRatioTestFixer,
 };
-use bijux_gnss_testkit::rtk_baseline::clean_gps_l1_short_baseline_case;
+use bijux_gnss_testkit::reference_data::rtk_baseline::clean_gps_l1_short_baseline_case;
 
 fn gps_l1_id(prn: u8) -> RtkDoubleDifferenceAmbiguityId {
     let sig = gps_l1_sig(prn);

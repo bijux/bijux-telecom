@@ -3,7 +3,7 @@
 use bijux_gnss_receiver::api::{
     evaluate_rtk_fixed_baseline_guard, BaselineSolution, RtkFixedBaselineGuardPolicy,
 };
-use bijux_gnss_testkit::rtk_baseline::{
+use bijux_gnss_testkit::reference_data::rtk_baseline::{
     clean_gps_l1_short_baseline_case, multipath_gps_l1_short_baseline_case,
     noisy_gps_l1_short_baseline_case,
 };

@@ -22,7 +22,7 @@ use bijux_gnss_receiver::api::{
     RtkGlonassInterFrequencyBiasEvidence, RtkGlonassInterFrequencyBiasStatus,
     RtkIntegerAmbiguityCandidate, RtkPartialAmbiguitySelectionCriterion, RtkRatioTestFixer,
 };
-use bijux_gnss_testkit::rtk_baseline::clean_gps_l1_short_baseline_case;
+use bijux_gnss_testkit::reference_data::rtk_baseline::clean_gps_l1_short_baseline_case;
 
 #[test]
 fn receiver_reports_failed_status_for_real_rtk_float_solution() {

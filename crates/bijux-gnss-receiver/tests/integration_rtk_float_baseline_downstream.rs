@@ -8,7 +8,7 @@ use bijux_gnss_receiver::api::{
     solve_float_baseline_dd_with_satellite_states, DdObservation, RtkConstellationTimeScale,
     RtkDoubleDifferenceSatelliteStates, RtkSatelliteStateEvidence,
 };
-use bijux_gnss_testkit::rtk_baseline::{
+use bijux_gnss_testkit::reference_data::rtk_baseline::{
     centimeter_level_rtk_baseline_budget, clean_gps_l1_short_baseline_case, rtk_baseline_accuracy,
     GpsL1RtkBaselineCase,
 };

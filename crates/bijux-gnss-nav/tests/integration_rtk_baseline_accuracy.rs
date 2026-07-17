@@ -1,7 +1,7 @@
 #![allow(missing_docs)]
 
 use bijux_gnss_nav::api::rtk_float_baseline_from_double_differences;
-use bijux_gnss_testkit::rtk_baseline::{
+use bijux_gnss_testkit::reference_data::rtk_baseline::{
     centimeter_level_rtk_baseline_budget, clean_gps_l1_short_baseline_case, rtk_baseline_accuracy,
 };
 

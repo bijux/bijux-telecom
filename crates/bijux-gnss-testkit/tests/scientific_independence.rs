@@ -32,7 +32,7 @@ fn truth_fixtures_do_not_call_nav_geometry_or_differencing_helpers() {
         "src/reference_data/station_truth.rs",
         "src/reference_data/troposphere_elevation.rs",
         "src/antenna_validation.rs",
-        "src/rtk_baseline.rs",
+        "src/reference_data/rtk_baseline.rs",
     ] {
         let source = fixture_source(relative_path);
         for forbidden in forbidden_fragments {
