@@ -47,3 +47,11 @@ decision here instead of letting the boundary blur.
 - if the strongest sentence being defended is about solution truth, runtime
   acceptability, dataset persistence, or command policy, the signal crate is
   the wrong owner even when signal math appears in the implementation
+
+## First Neighbor Proof Check
+
+- `../05-bijux-gnss-receiver/index.md`
+- `../03-bijux-gnss-infra/index.md`
+- `../04-bijux-gnss-nav/index.md`
+- `../01-bijux-gnss/index.md`
+- `../02-bijux-gnss-core/index.md`

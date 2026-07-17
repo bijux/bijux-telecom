@@ -39,3 +39,9 @@ signal logic is assembled here, and higher-level policy stays above this crate.
 Any change that would reverse the dependency direction by pulling a higher
 layer into `bijux-gnss-signal` is an architectural regression, even if the
 helper itself appears useful.
+
+## First Proof Check
+
+- `crates/bijux-gnss-signal/Cargo.toml`
+- `crates/bijux-gnss-signal/src/api.rs`
+- `crates/bijux-gnss-signal/tests/integration_guardrails.rs`

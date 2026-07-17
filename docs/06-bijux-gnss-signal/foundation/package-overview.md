@@ -38,3 +38,6 @@ DSP, sample contracts, and signal-layer validation.
 - `crates/bijux-gnss-signal/src/codes/mod.rs`
 - `crates/bijux-gnss-signal/src/dsp/mod.rs`
 - `crates/bijux-gnss-signal/src/obs_validation.rs`
+- `crates/bijux-gnss-signal/docs/CATALOG.md`
+- `crates/bijux-gnss-signal/docs/CODE_FAMILIES.md`
+- `crates/bijux-gnss-signal/docs/DSP.md`

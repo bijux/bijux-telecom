@@ -21,3 +21,9 @@ should claim.
 - its public facade is large enough that export creep must be watched
 - reference data can become persuasive too quickly unless changes are explained
   with real technical reasoning
+
+## First Proof Check
+
+- `crates/bijux-gnss-signal/docs/TESTS.md`
+- `crates/bijux-gnss-signal/tests/integration_signal_component_registry.rs`
+- `crates/bijux-gnss-signal/tests/integration_signal_spectrum_cboc.rs`

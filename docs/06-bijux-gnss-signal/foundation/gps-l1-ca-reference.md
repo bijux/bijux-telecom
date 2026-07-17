@@ -24,9 +24,10 @@ receiver behavior.
 ## Repository Ownership
 
 - spreading-code generation and correlation helpers live in
-  `crates/bijux-gnss-signal/src/codes/`
+  `crates/bijux-gnss-signal/src/codes/ca_code.rs`
 - reusable sampling and replica logic live in
-  `crates/bijux-gnss-signal/src/dsp/`
+  `crates/bijux-gnss-signal/src/dsp/replica.rs` and
+  `crates/bijux-gnss-signal/src/dsp/signal.rs`
 - receiver acquisition and tracking defaults belong to
   `bijux-gnss-receiver`
 - navigation decode and orbit use belong to `bijux-gnss-nav`
@@ -37,3 +38,9 @@ Use this page when the question is the stable signal profile itself. Leave for
 `../interfaces/signal-model-assumptions.md` when the question becomes what the
 repository currently proves about synthetic generation, correlation, or sampled
 phase behavior.
+
+## First Proof Check
+
+- `crates/bijux-gnss-signal/src/codes/ca_code.rs`
+- `crates/bijux-gnss-signal/tests/integration_ca_code_reference.rs`
+- `crates/bijux-gnss-signal/tests/integration_ca_code_long_duration_phase.rs`

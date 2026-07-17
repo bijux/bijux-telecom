@@ -96,7 +96,10 @@ flowchart LR
   [`crates/bijux-gnss-signal/src/raw_iq.rs`](../../crates/bijux-gnss-signal/src/raw_iq.rs),
   [`crates/bijux-gnss-signal/src/obs_validation.rs`](../../crates/bijux-gnss-signal/src/obs_validation.rs)
 - proof tests:
-  [`crates/bijux-gnss-signal/tests/`](../../crates/bijux-gnss-signal/tests)
+  [`crates/bijux-gnss-signal/tests/integration_signal_component_registry.rs`](../../crates/bijux-gnss-signal/tests/integration_signal_component_registry.rs),
+  [`crates/bijux-gnss-signal/tests/integration_nco_long_duration_phase.rs`](../../crates/bijux-gnss-signal/tests/integration_nco_long_duration_phase.rs),
+  [`crates/bijux-gnss-signal/tests/integration_raw_iq_metadata.rs`](../../crates/bijux-gnss-signal/tests/integration_raw_iq_metadata.rs),
+  [`crates/bijux-gnss-signal/tests/prop_obs_epoch_validation.rs`](../../crates/bijux-gnss-signal/tests/prop_obs_epoch_validation.rs)
 
 ## Support Crates That Matter Here
 
@@ -160,8 +163,10 @@ flowchart LR
 ## First Proof Check
 
 - `crates/bijux-gnss-signal/src/catalog.rs`
-- `crates/bijux-gnss-signal/src/codes/`
-- `crates/bijux-gnss-signal/src/dsp/`
+- `crates/bijux-gnss-signal/src/codes/ca_code.rs`
+- `crates/bijux-gnss-signal/src/codes/galileo_e5.rs`
+- `crates/bijux-gnss-signal/src/dsp/nco.rs`
+- `crates/bijux-gnss-signal/src/dsp/replica.rs`
 - `crates/bijux-gnss-signal/src/raw_iq.rs`
 - `crates/bijux-gnss-signal/src/samples.rs`
 - `crates/bijux-gnss-signal/src/obs_validation.rs`

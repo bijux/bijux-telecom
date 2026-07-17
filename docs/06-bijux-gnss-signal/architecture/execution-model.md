@@ -39,3 +39,11 @@ The same helper should be usable from:
 
 If a helper can work only inside one receiver execution context, it probably
 belongs in `bijux-gnss-receiver`, not here.
+
+## First Proof Check
+
+- `crates/bijux-gnss-signal/src/api.rs`
+- `crates/bijux-gnss-signal/src/dsp/local_code.rs`
+- `crates/bijux-gnss-signal/src/dsp/nco.rs`
+- `crates/bijux-gnss-signal/src/dsp/replica.rs`
+- `crates/bijux-gnss-signal/src/obs_validation.rs`

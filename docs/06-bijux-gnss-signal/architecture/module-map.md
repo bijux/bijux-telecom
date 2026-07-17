@@ -59,3 +59,10 @@ stage:
 - `quality.rs` and `spectrum.rs` for front-end and spectral analysis
 - `tracking.rs` and `dsp/tracking/` for loop and discriminator primitives
 - `math.rs` for shared numeric helpers used by DSP modules
+
+## First Proof Check
+
+- `crates/bijux-gnss-signal/src/lib.rs`
+- `crates/bijux-gnss-signal/src/api.rs`
+- `crates/bijux-gnss-signal/src/codes/mod.rs`
+- `crates/bijux-gnss-signal/src/dsp/mod.rs`
