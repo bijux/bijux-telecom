@@ -1,4 +1,6 @@
-fn read_tracking_dump(path: &Path) -> Result<Vec<TrackingRow>> {
+use super::*;
+
+pub(crate) fn read_tracking_dump(path: &Path) -> Result<Vec<TrackingRow>> {
     let data = fs::read_to_string(path)?;
     if let Ok(report) = serde_json::from_str::<TrackingReport>(&data) {
         return Ok(report.epochs);
@@ -22,7 +24,7 @@ fn read_tracking_dump(path: &Path) -> Result<Vec<TrackingRow>> {
     Ok(rows)
 }
 
-fn tracking_row_from_epoch(epoch: TrackEpoch) -> TrackingRow {
+pub(crate) fn tracking_row_from_epoch(epoch: TrackEpoch) -> TrackingRow {
     TrackingRow {
         epoch_idx: epoch.epoch.index,
         sample_index: epoch.sample_index,
@@ -55,7 +57,7 @@ fn tracking_row_from_epoch(epoch: TrackEpoch) -> TrackingRow {
     }
 }
 
-fn read_obs_epochs(path: &Path) -> Result<Vec<ObsEpoch>> {
+pub(crate) fn read_obs_epochs(path: &Path) -> Result<Vec<ObsEpoch>> {
     let data = fs::read_to_string(path)?;
     let mut epochs = Vec::new();
     for line in data.lines() {
@@ -78,7 +80,7 @@ fn read_obs_epochs(path: &Path) -> Result<Vec<ObsEpoch>> {
 }
 
 #[derive(serde::Deserialize)]
-struct NavDecodeEphemerisReportInput {
+pub(crate) struct NavDecodeEphemerisReportInput {
     sat: SatId,
     #[serde(default)]
     reference_week: Option<u32>,
@@ -88,7 +90,7 @@ struct NavDecodeEphemerisReportInput {
     ephemerides: Vec<GpsEphemeris>,
 }
 
-fn ephemerides_from_nav_decode_report(
+pub(crate) fn ephemerides_from_nav_decode_report(
     report: NavDecodeEphemerisReportInput,
 ) -> Result<Vec<GpsEphemeris>> {
     if !report.decoded_subframes.is_empty() {
@@ -114,7 +116,7 @@ fn ephemerides_from_nav_decode_report(
     Ok(Vec::new())
 }
 
-fn read_nav_decode_ephemerides(data: &str) -> Result<Option<Vec<GpsEphemeris>>> {
+pub(crate) fn read_nav_decode_ephemerides(data: &str) -> Result<Option<Vec<GpsEphemeris>>> {
     if !data.contains("\"decoded_subframes\"") || !data.contains("\"sat\"") {
         return Ok(None);
     }
@@ -132,7 +134,7 @@ fn read_nav_decode_ephemerides(data: &str) -> Result<Option<Vec<GpsEphemeris>>> 
     Ok(Some(ephemerides_from_nav_decode_report(report)?))
 }
 
-fn read_broadcast_navigation_data(
+pub(crate) fn read_broadcast_navigation_data(
     path: &Path,
 ) -> Result<bijux_gnss_infra::api::nav::GpsBroadcastNavigationData> {
     let data = fs::read_to_string(path)?;
@@ -179,11 +181,11 @@ fn read_broadcast_navigation_data(
     Ok(bijux_gnss_infra::api::nav::GpsBroadcastNavigationData { ephemerides, klobuchar: None })
 }
 
-fn read_ephemeris(path: &Path) -> Result<Vec<GpsEphemeris>> {
+pub(crate) fn read_ephemeris(path: &Path) -> Result<Vec<GpsEphemeris>> {
     Ok(read_broadcast_navigation_data(path)?.ephemerides)
 }
 
-fn read_reference_epochs(path: &Path) -> Result<Vec<ValidationReferenceEpoch>> {
+pub(crate) fn read_reference_epochs(path: &Path) -> Result<Vec<ValidationReferenceEpoch>> {
     let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("");
     let data = fs::read_to_string(path)?;
     let mut epochs = Vec::new();
@@ -236,7 +238,9 @@ fn read_reference_epochs(path: &Path) -> Result<Vec<ValidationReferenceEpoch>> {
     Ok(epochs)
 }
 
-fn read_nav_solutions(path: &Path) -> Result<Vec<bijux_gnss_infra::api::core::NavSolutionEpoch>> {
+pub(crate) fn read_nav_solutions(
+    path: &Path,
+) -> Result<Vec<bijux_gnss_infra::api::core::NavSolutionEpoch>> {
     let data = fs::read_to_string(path)?;
     let mut epochs = Vec::new();
     for line in data.lines() {
@@ -252,7 +256,7 @@ fn read_nav_solutions(path: &Path) -> Result<Vec<bijux_gnss_infra::api::core::Na
     Ok(epochs)
 }
 
-fn write_ephemeris(
+pub(crate) fn write_ephemeris(
     common: &CommonArgs,
     ephs: &[GpsEphemeris],
     profile: &ReceiverConfig,

@@ -4,7 +4,9 @@ include!("cli/mod.rs");
 include!("cli/args_commands.rs");
 include!("cli/args.rs");
 include!("cli/report.rs");
-include!("cli/output.rs");
+#[path = "cli/command_support/mod.rs"]
+mod command_support;
+use command_support::*;
 include!("cli/commands/ingest.rs");
 include!("cli/commands/run_pipeline.rs");
 include!("cli/commands/synthetic.rs");

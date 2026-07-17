@@ -1,6 +1,8 @@
-const TRACKING_HISTORY_CODE_PERIODS: usize = 80;
+use super::*;
 
-struct SampleWindowSource<S> {
+pub(crate) const TRACKING_HISTORY_CODE_PERIODS: usize = 80;
+
+pub(crate) struct SampleWindowSource<S> {
     inner: S,
     remaining_samples: usize,
 }
@@ -43,7 +45,7 @@ where
     }
 }
 
-fn tracking_window_sample_count(
+pub(crate) fn tracking_window_sample_count(
     config: &ReceiverPipelineConfig,
     metadata: &RawIqMetadata,
 ) -> usize {
@@ -51,7 +53,7 @@ fn tracking_window_sample_count(
         .saturating_mul(TRACKING_HISTORY_CODE_PERIODS)
 }
 
-fn load_acquisition_frame(
+pub(crate) fn load_acquisition_frame(
     path: &Path,
     config: &ReceiverPipelineConfig,
     metadata: &RawIqMetadata,
@@ -61,7 +63,7 @@ fn load_acquisition_frame(
     load_frame_window(path, config, metadata, code_periods)
 }
 
-fn load_tracking_frame(
+pub(crate) fn load_tracking_frame(
     path: &Path,
     config: &ReceiverPipelineConfig,
     metadata: &RawIqMetadata,
@@ -85,7 +87,7 @@ fn load_tracking_frame(
     Ok(frame)
 }
 
-fn open_tracking_window_source(
+pub(crate) fn open_tracking_window_source(
     path: &Path,
     config: &ReceiverPipelineConfig,
     metadata: &RawIqMetadata,
@@ -95,11 +97,11 @@ fn open_tracking_window_source(
     Ok(SampleWindowSource::new(source, tracking_window_sample_count(config, metadata)))
 }
 
-fn acquisition_code_periods(coherent_ms: u32, noncoherent: u32) -> usize {
+pub(crate) fn acquisition_code_periods(coherent_ms: u32, noncoherent: u32) -> usize {
     coherent_ms.saturating_mul(noncoherent).max(1) as usize
 }
 
-fn load_frame_window(
+pub(crate) fn load_frame_window(
     path: &Path,
     config: &ReceiverPipelineConfig,
     metadata: &RawIqMetadata,

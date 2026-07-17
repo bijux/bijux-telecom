@@ -1,4 +1,6 @@
-fn write_experiment_run(
+use super::*;
+
+pub(crate) fn write_experiment_run(
     out_dir: &Path,
     idx: usize,
     result: &ExperimentRunResult,

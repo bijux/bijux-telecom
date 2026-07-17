@@ -1,3 +1,5 @@
+use super::*;
+
 #[derive(Debug, Serialize)]
 struct NavSolutionOutput {
     schema_version: u32,
@@ -49,7 +51,7 @@ struct ReceiverSampleTraceOutput {
     receiver_time_s: f64,
 }
 
-fn write_nav_solution_outputs(
+pub(crate) fn write_nav_solution_outputs(
     out_dir: &Path,
     solutions: &[bijux_gnss_infra::api::core::NavSolutionEpoch],
 ) -> Result<()> {

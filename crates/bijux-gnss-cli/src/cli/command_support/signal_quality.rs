@@ -1,9 +1,11 @@
+use super::*;
+
 const SIGNAL_QUALITY_NOISE_FLOOR_BINS: usize = 256;
 const SIGNAL_QUALITY_MAX_CENTERED_POWER: f64 = 4.0;
 const SIGNAL_QUALITY_NOISE_FLOOR_PERCENTILE: f64 = 0.2;
 const SIGNAL_QUALITY_NOISE_FLOOR_POWER_EPSILON: f64 = 1e-12;
 
-fn build_signal_quality_report(
+pub(crate) fn build_signal_quality_report(
     metadata: &RawIqMetadata,
     front_end_metrics: bijux_gnss_infra::api::signal::IqFrontEndMetrics,
     estimated_noise_floor_db: f64,
@@ -20,7 +22,7 @@ fn build_signal_quality_report(
     }
 }
 
-fn measure_signal_quality_from_samples(
+pub(crate) fn measure_signal_quality_from_samples(
     metadata: &RawIqMetadata,
     samples: &[bijux_gnss_infra::api::core::Sample],
 ) -> RawIqSignalQualityReport {
@@ -34,7 +36,7 @@ fn measure_signal_quality_from_samples(
     build_signal_quality_report(metadata, front_end_metrics, estimated_noise_floor_db)
 }
 
-fn measure_signal_quality_from_raw_iq(
+pub(crate) fn measure_signal_quality_from_raw_iq(
     path: &Path,
     metadata: &RawIqMetadata,
     max_samples: usize,
@@ -59,7 +61,7 @@ fn measure_signal_quality_from_raw_iq(
     Ok(build_signal_quality_report(metadata, front_end_metrics, estimated_noise_floor_db))
 }
 
-fn estimate_noise_floor_from_raw_iq(
+pub(crate) fn estimate_noise_floor_from_raw_iq(
     path: &Path,
     metadata: &RawIqMetadata,
     max_samples: usize,
@@ -101,7 +103,7 @@ fn estimate_noise_floor_from_raw_iq(
     Ok(10.0 * noise_floor_power.log10())
 }
 
-fn noise_floor_histogram_bin(centered_power: f64) -> usize {
+pub(crate) fn noise_floor_histogram_bin(centered_power: f64) -> usize {
     if centered_power <= 0.0 {
         return 0;
     }
@@ -112,7 +114,11 @@ fn noise_floor_histogram_bin(centered_power: f64) -> usize {
     (normalized * (SIGNAL_QUALITY_NOISE_FLOOR_BINS - 1) as f64).floor() as usize
 }
 
-fn histogram_percentile_power(histogram: &[u64], sample_count: usize, percentile: f64) -> f64 {
+pub(crate) fn histogram_percentile_power(
+    histogram: &[u64],
+    sample_count: usize,
+    percentile: f64,
+) -> f64 {
     if sample_count == 0 {
         return SIGNAL_QUALITY_NOISE_FLOOR_POWER_EPSILON;
     }
@@ -130,7 +136,7 @@ fn histogram_percentile_power(histogram: &[u64], sample_count: usize, percentile
     SIGNAL_QUALITY_MAX_CENTERED_POWER
 }
 
-fn write_signal_quality_report(
+pub(crate) fn write_signal_quality_report(
     common: &CommonArgs,
     command: &str,
     signal_quality: &RawIqSignalQualityReport,
@@ -142,7 +148,11 @@ fn write_signal_quality_report(
     Ok(())
 }
 
-fn emit_report<T: Serialize>(common: &CommonArgs, command: &str, report: &T) -> Result<()> {
+pub(crate) fn emit_report<T: Serialize>(
+    common: &CommonArgs,
+    command: &str,
+    report: &T,
+) -> Result<()> {
     let summary = serde_json::to_value(report)?;
     let dataset = load_dataset(common).ok().flatten();
     let run_dir = run_dir(common, command, dataset.as_ref())?;

@@ -1,11 +1,13 @@
-fn load_config(common: &CommonArgs) -> Result<ReceiverConfig> {
+use super::*;
+
+pub(crate) fn load_config(common: &CommonArgs) -> Result<ReceiverConfig> {
     match &common.config {
         Some(path) => load_config_from_path(path),
         None => Ok(ReceiverConfig::default()),
     }
 }
 
-fn load_config_from_path(path: &Path) -> Result<ReceiverConfig> {
+pub(crate) fn load_config_from_path(path: &Path) -> Result<ReceiverConfig> {
     let contents = fs::read_to_string(path)
         .with_context(|| format!("failed to read config {}", path.display()))?;
     let profile: ReceiverConfig = toml::from_str(&contents)
@@ -20,7 +22,7 @@ fn load_config_from_path(path: &Path) -> Result<ReceiverConfig> {
     Ok(profile)
 }
 
-fn load_dataset(common: &CommonArgs) -> Result<Option<DatasetEntry>> {
+pub(crate) fn load_dataset(common: &CommonArgs) -> Result<Option<DatasetEntry>> {
     let Some(id) = &common.dataset else {
         if common.unregistered_dataset {
             return Ok(None);
@@ -42,7 +44,10 @@ fn load_dataset(common: &CommonArgs) -> Result<Option<DatasetEntry>> {
     Ok(Some(entry))
 }
 
-fn resolve_input_file(file: Option<&PathBuf>, dataset: Option<&DatasetEntry>) -> Result<PathBuf> {
+pub(crate) fn resolve_input_file(
+    file: Option<&PathBuf>,
+    dataset: Option<&DatasetEntry>,
+) -> Result<PathBuf> {
     if let Some(file) = file {
         return Ok(file.clone());
     }
@@ -55,7 +60,7 @@ fn resolve_input_file(file: Option<&PathBuf>, dataset: Option<&DatasetEntry>) ->
     ))
 }
 
-fn resolve_raw_iq_metadata(
+pub(crate) fn resolve_raw_iq_metadata(
     common: &CommonArgs,
     dataset: Option<&DatasetEntry>,
 ) -> Result<RawIqMetadata> {
@@ -65,7 +70,7 @@ fn resolve_raw_iq_metadata(
     Ok(metadata)
 }
 
-fn apply_raw_iq_metadata(
+pub(crate) fn apply_raw_iq_metadata(
     profile: &mut ReceiverConfig,
     metadata: &RawIqMetadata,
     sampling_hz: Option<f64>,
@@ -81,7 +86,7 @@ fn apply_raw_iq_metadata(
     Ok(())
 }
 
-fn enforce_locked_capture_value(
+pub(crate) fn enforce_locked_capture_value(
     field: &str,
     cli_value: Option<f64>,
     metadata_value: f64,

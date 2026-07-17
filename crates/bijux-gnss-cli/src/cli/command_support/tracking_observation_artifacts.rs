@@ -1,4 +1,6 @@
-fn write_track_timeseries_for_command(
+use super::*;
+
+pub(crate) fn write_track_timeseries_for_command(
     common: &CommonArgs,
     command: &str,
     report: &TrackingReport,
@@ -68,7 +70,7 @@ fn write_track_timeseries_for_command(
     Ok(())
 }
 
-fn write_track_timeseries(
+pub(crate) fn write_track_timeseries(
     common: &CommonArgs,
     report: &TrackingReport,
     profile: &ReceiverConfig,
@@ -78,7 +80,7 @@ fn write_track_timeseries(
 }
 
 #[cfg(test)]
-fn write_obs_timeseries_for_command(
+pub(crate) fn write_obs_timeseries_for_command(
     common: &CommonArgs,
     command: &str,
     config: &ReceiverPipelineConfig,
@@ -102,7 +104,7 @@ fn write_obs_timeseries_for_command(
     write_observation_artifacts_for_command(common, command, &obs_report.output, profile, dataset)
 }
 
-fn write_observation_artifacts_for_command(
+pub(crate) fn write_observation_artifacts_for_command(
     common: &CommonArgs,
     command: &str,
     observation_artifacts: &bijux_gnss_infra::api::receiver::ObservationPipelineArtifacts,
@@ -187,7 +189,11 @@ fn write_observation_artifacts_for_command(
     Ok(observation_artifacts)
 }
 
-fn dual_frequency_pair_observed(obs: &[ObsEpoch], band_1: SignalBand, band_2: SignalBand) -> bool {
+pub(crate) fn dual_frequency_pair_observed(
+    obs: &[ObsEpoch],
+    band_1: SignalBand,
+    band_2: SignalBand,
+) -> bool {
     for epoch in obs {
         let mut bands_by_sat = std::collections::BTreeMap::<SatId, (bool, bool)>::new();
         for satellite in &epoch.sats {
@@ -206,7 +212,9 @@ fn dual_frequency_pair_observed(obs: &[ObsEpoch], band_1: SignalBand, band_2: Si
     false
 }
 
-fn supported_observed_dual_frequency_pairs(obs: &[ObsEpoch]) -> Vec<(SignalBand, SignalBand)> {
+pub(crate) fn supported_observed_dual_frequency_pairs(
+    obs: &[ObsEpoch],
+) -> Vec<(SignalBand, SignalBand)> {
     bijux_gnss_infra::api::signal::supported_dual_frequency_band_pairs()
         .iter()
         .copied()
@@ -292,7 +300,7 @@ pub(crate) fn write_melbourne_wubbena_diagnostics(out_dir: &Path, obs: &[ObsEpoc
     Ok(())
 }
 
-fn write_carrier_smoothed_code_validation(
+pub(crate) fn write_carrier_smoothed_code_validation(
     out_dir: &Path,
     observation_artifacts: &bijux_gnss_infra::api::receiver::ObservationPipelineArtifacts,
 ) -> Result<()> {
@@ -310,7 +318,7 @@ fn write_carrier_smoothed_code_validation(
 }
 
 #[cfg(test)]
-fn write_obs_timeseries(
+pub(crate) fn write_obs_timeseries(
     common: &CommonArgs,
     config: &ReceiverPipelineConfig,
     tracks: &[bijux_gnss_infra::api::receiver::TrackingResult],
@@ -329,7 +337,7 @@ fn write_obs_timeseries(
     )
 }
 
-fn write_tracking_timing_for_command(
+pub(crate) fn write_tracking_timing_for_command(
     common: &CommonArgs,
     command: &str,
     tracks: &[bijux_gnss_infra::api::receiver::TrackingResult],
@@ -353,13 +361,13 @@ fn write_tracking_timing_for_command(
 }
 
 #[derive(Debug, Clone, Serialize)]
-struct ObservationResidualEpochV1 {
+pub(crate) struct ObservationResidualEpochV1 {
     header: ArtifactHeaderV1,
     payload: bijux_gnss_infra::api::receiver::ObservationResidualEpochReport,
 }
 
 #[derive(Debug, Clone, Serialize)]
-struct ObservationMeasurementQualityEpochV1 {
+pub(crate) struct ObservationMeasurementQualityEpochV1 {
     header: ArtifactHeaderV1,
     payload: bijux_gnss_infra::api::receiver::ObservationMeasurementQualityEpochReport,
 }

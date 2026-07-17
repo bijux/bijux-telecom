@@ -1,10 +1,20 @@
-include!("output/config_resolution.rs");
-include!("output/signal_quality.rs");
-include!("output/sample_windows.rs");
-include!("output/experiment_artifacts.rs");
-include!("output/navigation_artifacts.rs");
-include!("output/tracking_observation_artifacts.rs");
-include!("output/artifact_io.rs");
+use super::*;
+
+mod artifact_io;
+mod config_resolution;
+mod experiment_artifacts;
+mod navigation_artifacts;
+mod sample_windows;
+mod signal_quality;
+mod tracking_observation_artifacts;
+
+pub(crate) use artifact_io::*;
+pub(crate) use config_resolution::*;
+pub(crate) use experiment_artifacts::*;
+pub(crate) use navigation_artifacts::*;
+pub(crate) use sample_windows::*;
+pub(crate) use signal_quality::*;
+pub(crate) use tracking_observation_artifacts::*;
 
 #[cfg(test)]
 mod tests {
@@ -27,9 +37,7 @@ mod tests {
         write_rinex_broadcast_navigation, write_rinex_nav, BiasSinexProvider,
         GpsBroadcastNavigationData, GpsEphemeris, KlobucharCoefficients,
     };
-    use bijux_gnss_signal::api::{
-        signal_registry, signal_spec_gps_l1_ca, signal_spec_gps_l2_py,
-    };
+    use bijux_gnss_signal::api::{signal_registry, signal_spec_gps_l1_ca, signal_spec_gps_l2_py};
     use std::fs;
     use std::path::{Path, PathBuf};
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -1157,8 +1165,7 @@ mod tests {
                 && covariance["code_phase_m2"].as_f64().is_some_and(|value| value > 0.0)
                 && covariance["carrier_phase_m2"].as_f64().is_some_and(|value| value > 0.0)
                 && covariance["doppler_hz2"].as_f64().is_some_and(|value| value > 0.0)
-                && covariance["code_carrier_m2"].as_f64()
-                    == covariance["carrier_code_m2"].as_f64()
+                && covariance["code_carrier_m2"].as_f64() == covariance["carrier_code_m2"].as_f64()
                 && covariance["carrier_doppler_m_hz"].as_f64()
                     == covariance["doppler_carrier_hz_m"].as_f64()
         }));
