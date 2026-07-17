@@ -1,7 +1,6 @@
 //! Public API for bijux-gnss-core.
 
-pub use crate::artifact::v1::acq::AcqResultV1;
-pub use crate::artifact::v1::acq_explain::AcqExplainV1;
+pub use crate::artifact::v1::acquisition::{AcqExplainV1, AcqResultV1};
 pub use crate::artifact::v1::nav::NavSolutionEpochV1;
 pub use crate::artifact::v1::obs::ObsEpochV1;
 pub use crate::artifact::v1::obs_decision::ObsDecisionV1;
