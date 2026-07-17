@@ -2079,5 +2079,5 @@ fn parse_three_floats(field: &str, label: &str) -> Result<(f64, f64, f64), Parse
 }
 
 #[cfg(test)]
-#[path = "rinex_obs/tests.rs"]
+#[path = "tests.rs"]
 mod tests;

@@ -24,6 +24,7 @@ pub mod lnav_bits;
 pub mod lnav_decode;
 pub mod precise_products;
 pub mod rinex;
+#[path = "rinex_observation/mod.rs"]
 pub mod rinex_obs;
 #[path = "precise_products/sp3.rs"]
 pub mod sp3;
