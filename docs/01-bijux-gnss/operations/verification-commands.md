@@ -38,3 +38,11 @@ cargo test -p bijux-gnss --test integration_raw_iq_front_end_metrics
 - use artifact or raw-IQ reporting tests when output wording or summary shape
   changed
 - use facade-adjacent tests only when the Rust surface truly changed
+
+## First Proof Check
+
+Use `crates/bijux-gnss/docs/TESTS.md`,
+`crates/bijux-gnss/docs/WORKFLOWS.md`, and
+`crates/bijux-gnss/docs/VALIDATION.md` as the verification map. Then inspect
+the changed CLI path under `crates/bijux-gnss/src/cli/` so the proof set stays
+aligned with the actual command family that moved.

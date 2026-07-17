@@ -29,3 +29,11 @@ Use this page to choose the right public starting point.
   validation contracts, then reporting contracts
 - "I need to know whether this Rust export belongs here":
   facade contracts
+
+## Protecting Proof
+
+Inspect `crates/bijux-gnss/docs/COMMANDS.md`,
+`crates/bijux-gnss/docs/WORKFLOWS.md`,
+`crates/bijux-gnss/docs/VALIDATION.md`, and `crates/bijux-gnss/src/lib.rs`.
+Then inspect the matching CLI source under `crates/bijux-gnss/src/cli/` to
+confirm these entry routes still reflect real public starting points.

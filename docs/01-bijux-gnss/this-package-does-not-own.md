@@ -39,3 +39,13 @@ the command crate unless the ownership model itself changes.
 Update this page when the same rejected ownership pressure keeps returning or
 when the command boundary genuinely changes. Do not delete refusals just
 because a command happens to call into the neighboring owner more often.
+
+## First Neighbor Proof Check
+
+Inspect [03-bijux-gnss-infra](../03-bijux-gnss-infra/),
+[05-bijux-gnss-receiver](../05-bijux-gnss-receiver/),
+[04-bijux-gnss-nav](../04-bijux-gnss-nav/),
+[06-bijux-gnss-signal](../06-bijux-gnss-signal/), and
+[02-bijux-gnss-core](../02-bijux-gnss-core/) before widening the command
+crate. That check is what keeps public entrypoint convenience from hardening
+into dishonest cross-owner behavior.

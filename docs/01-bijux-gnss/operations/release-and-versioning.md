@@ -26,3 +26,13 @@ only file movement.
 - changed operator-facing output meaning
 - changed validation or report publication paths
 - changed facade exports in `src/lib.rs`
+
+## First Proof Check
+
+Inspect `crates/bijux-gnss/docs/COMMANDS.md`,
+`crates/bijux-gnss/docs/REPORTING.md`,
+`crates/bijux-gnss/docs/VALIDATION.md`, and
+`crates/bijux-gnss/src/lib.rs`. Then inspect
+`crates/bijux-gnss/src/cli/` and the most relevant workflow integration tests
+to confirm that any claimed release safety still matches real command
+semantics, output meaning, and facade behavior.

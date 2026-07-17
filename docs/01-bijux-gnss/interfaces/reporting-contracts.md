@@ -28,3 +28,11 @@ repository meaning.
 
 - `crates/bijux-gnss/src/cli/report.rs`
 - `crates/bijux-gnss/docs/REPORTING.md`
+
+## Protecting Proof
+
+Inspect `crates/bijux-gnss/src/cli/report.rs`,
+`crates/bijux-gnss/docs/REPORTING.md`, and the reporting-facing workflow tests
+under `crates/bijux-gnss/tests/` such as raw-IQ metrics, validation, and
+synthetic export flows. Those proofs confirm that command-boundary reporting is
+still presenting lower-owner results without redefining their meaning.

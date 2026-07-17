@@ -27,3 +27,11 @@ that carry command meaning, not only test convenience.
 This crate proves that the public entrypoint still assembles workflows
 correctly. Loose fixture hygiene can make the command suite look broad while
 weakening what it actually proves.
+
+## First Proof Check
+
+Inspect `crates/bijux-gnss/docs/TESTS.md`,
+`crates/bijux-gnss/docs/WORKFLOWS.md`, and the workflow-facing integration
+tests under `crates/bijux-gnss/tests/`, especially validation, export, and
+raw-IQ reporting families. Those surfaces show whether a fixture change is
+preserving public command meaning or merely teaching tests to accept drift.
