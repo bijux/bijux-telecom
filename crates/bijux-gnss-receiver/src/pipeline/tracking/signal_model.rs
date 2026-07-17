@@ -356,8 +356,7 @@ fn prompt_center_primary_code_period_index(
 struct TrackingEpochCorrelation {
     primary: CorrelatorOutput,
     double_delta_outer: Option<CorrelatorOutput>,
-    carrier_prompt: Complex<f32>,
-    carrier_prompt_source: CarrierPromptSource,
+    pilot_prompt: Option<Complex<f32>>,
     data_prompt: Option<Complex<f32>>,
     secondary_code_prompt_period_index: usize,
     subcarrier_ambiguity_guard: Option<SubcarrierAmbiguityGuard>,
@@ -997,14 +996,6 @@ fn select_carrier_prompt(
     } else {
         (primary_prompt, CarrierPromptSource::Primary)
     }
-}
-
-pub(crate) fn supports_tracking_signal(
-    sat: SatId,
-    signal_band: SignalBand,
-    signal_code: SignalCode,
-) -> bool {
-    supports_tracking_signal_with_channel(sat, signal_band, signal_code, None)
 }
 
 pub(crate) fn supports_tracking_signal_with_channel(

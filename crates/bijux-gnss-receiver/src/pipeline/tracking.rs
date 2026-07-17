@@ -328,12 +328,6 @@ impl Tracking {
                 .prompt
             }
         });
-        let (carrier_prompt, carrier_prompt_source) = select_carrier_prompt(
-            primary.prompt,
-            pilot_prompt,
-            signal_model.aiding_mode,
-            requires_dedicated_pilot_carrier(signal_model),
-        );
         let secondary_code_prompt_period_index = prompt_center_primary_code_period_index(
             epoch_primary_code_period_index,
             base_chip_phase,
@@ -344,8 +338,7 @@ impl Tracking {
         TrackingEpochCorrelation {
             primary,
             double_delta_outer,
-            carrier_prompt,
-            carrier_prompt_source,
+            pilot_prompt,
             data_prompt,
             secondary_code_prompt_period_index,
             subcarrier_ambiguity_guard,
@@ -1027,12 +1020,25 @@ impl Tracking {
         }
 
         let primary_correlator = correlation.primary;
-        let carrier_prompt = correlation.carrier_prompt;
+        let pilot_secondary_code_ready =
+            signal_model.carrier_phase_transition_source() != TrackingPhaseTransitionSource::SecondaryCode
+                || state.secondary_code_sync.is_some_and(|sync| sync.accepted);
+        let (carrier_prompt, carrier_prompt_source) = if pilot_secondary_code_ready {
+            select_carrier_prompt(
+                primary_correlator.prompt,
+                correlation.pilot_prompt,
+                signal_model.aiding_mode,
+                requires_dedicated_pilot_carrier(signal_model),
+            )
+        } else {
+            (primary_correlator.prompt, CarrierPromptSource::Primary)
+        };
+        let secondary_code_prompt = correlation.pilot_prompt.unwrap_or(carrier_prompt);
         update_secondary_code_synchronization(
             signal_model,
             state,
             correlation.secondary_code_prompt_period_index,
-            carrier_prompt,
+            secondary_code_prompt,
         );
         let dll_err = tracking_dll_discriminator(&correlation);
         let dll_err =
@@ -1371,7 +1377,7 @@ impl Tracking {
             signal_model,
             correlation.data_prompt,
             carrier_prompt,
-            correlation.carrier_prompt_source,
+            carrier_prompt_source,
             phase_decision.nav_bit_phase_offset_cycles,
             tracking_state_locked && dll_lock && (pll_lock || fll_lock),
         );

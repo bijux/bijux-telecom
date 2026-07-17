@@ -811,10 +811,11 @@ fn constellation_supports_slot_only_acquisition(constellation: Constellation) ->
 
 fn tracking_signal_supported(acq: &AcqResult) -> bool {
     matches!(acq.hypothesis, AcqHypothesis::Accepted | AcqHypothesis::Ambiguous)
-        && crate::pipeline::tracking::supports_tracking_signal(
+        && crate::pipeline::tracking::supports_tracking_signal_with_channel(
             acq.sat,
             acq.signal_band,
             acq.signal_code,
+            acq.glonass_frequency_channel,
         )
 }
 
