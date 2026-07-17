@@ -80,6 +80,21 @@ flowchart LR
 - command-facing regression surfaces:
   [`crates/bijux-gnss/tests`](../../crates/bijux-gnss/tests)
 
+## Sections In This Handbook
+
+- [Foundation](foundation/) for role, scope, ownership, repository fit, and
+  command-boundary vocabulary
+- [Architecture](architecture/) for CLI composition, runtime setup, support
+  helpers, reporting, and dependency direction
+- [Interfaces](interfaces/) for binary, command, reporting, facade, and
+  compatibility contracts
+- [Operations](operations/) for safe change sequence, verification, fixture
+  care, and review scope
+- [Quality](quality/) for invariants, proof strategy, limitations, risk, and
+  change validation
+- [This Package Does Not Own](this-package-does-not-own.md) for the explicit
+  refusal ledger
+
 ## Start Here When
 
 - the question is about command names, flags, or output shape
@@ -117,3 +132,10 @@ flowchart LR
 - `crates/bijux-gnss/src/cli/report.rs`
 - `crates/bijux-gnss/docs/COMMANDS.md`
 - `crates/bijux-gnss/docs/WORKFLOWS.md`
+
+## Design Pressure
+
+If `bijux-gnss` starts carrying receiver internals, repository persistence, or
+reimplemented signal and navigation science because those surfaces are needed
+"near the command," the CLI boundary becomes a catch-all instead of a durable
+owner.
