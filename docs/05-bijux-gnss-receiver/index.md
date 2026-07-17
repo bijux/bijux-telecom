@@ -10,15 +10,15 @@ last_reviewed: 2026-07-17
 # bijux-gnss-receiver
 
 `bijux-gnss-receiver` owns GNSS receiver runtime orchestration for
-`bijux-telecom`. This is the crate where configuration becomes a concrete run,
-where acquisition, tracking, observations, and optional navigation stages are
+`bijux-telecom`. This crate is where configuration becomes a concrete run,
+where acquisition, tracking, observation, and optional navigation stages are
 scheduled, and where receiver-boundary artifacts are emitted before
 repository-side persistence takes over.
 
-This package is the operational center of the product, but it should still
-stay honest about what it does not own. It composes signal primitives,
-navigation science, shared contracts, and infrastructure adapters. It should
-not quietly absorb them.
+This package is the operational center of the product, but it still has to be
+strict about ownership. It composes signal primitives, navigation science,
+shared contracts, and repository-facing neighbors. It should not quietly absorb
+them.
 
 ```mermaid
 flowchart LR
@@ -32,9 +32,20 @@ flowchart LR
     core --> receiver
     signal --> receiver
     nav --> receiver
-    receiver --> infra
     gnss --> receiver
+    receiver --> infra
 ```
+
+## Read These First
+
+- open [Foundation](foundation/) when the question is why receiver runtime owns
+  this behavior at all
+- open [Interfaces](interfaces/) when the issue is already about ports,
+  artifacts, engine types, or stage-facing public contracts
+- open [Architecture](architecture/) when the question is structural: where
+  engine, pipeline, ports, artifacts, validation, and simulation live in code
+- open [Quality](quality/) when ownership is clear and the question becomes
+  whether the proof bar is strong enough
 
 ## Why This Package Exists
 
@@ -49,10 +60,9 @@ flowchart LR
 ## What It Owns
 
 - receiver configuration and runtime state
-- acquisition, tracking, observations, and optional navigation-stage
-  execution
-- receiver ports for clocks, sources, and sinks
-- in-memory artifacts and receiver-boundary validation helpers
+- acquisition, tracking, observations, and optional navigation-stage execution
+- receiver ports for clocks, sample sources, and artifact sinks
+- in-memory receiver artifacts and runtime-side validation helpers
 - synthetic receiver execution helpers exposed from the receiver surface
 
 ## What It Refuses
@@ -61,7 +71,7 @@ flowchart LR
 - persisted run layout, dataset history, and repository artifact inspection
   owned by `bijux-gnss-infra`
 - reusable signal and DSP primitives owned by `bijux-gnss-signal`
-- standalone navigation algorithms and correction families owned by
+- standalone navigation algorithms, corrections, and estimators owned by
   `bijux-gnss-nav`
 - shared IDs, time systems, units, and versioned envelope contracts owned by
   `bijux-gnss-core`
@@ -70,10 +80,12 @@ flowchart LR
 
 - crate README:
   [`crates/bijux-gnss-receiver/README.md`](../../crates/bijux-gnss-receiver/README.md)
-- package docs:
+- crate-local docs:
   [`crates/bijux-gnss-receiver/docs/ARCHITECTURE.md`](../../crates/bijux-gnss-receiver/docs/ARCHITECTURE.md),
   [`crates/bijux-gnss-receiver/docs/PIPELINE.md`](../../crates/bijux-gnss-receiver/docs/PIPELINE.md),
   [`crates/bijux-gnss-receiver/docs/RUNTIME.md`](../../crates/bijux-gnss-receiver/docs/RUNTIME.md),
+  [`crates/bijux-gnss-receiver/docs/ARTIFACTS.md`](../../crates/bijux-gnss-receiver/docs/ARTIFACTS.md),
+  [`crates/bijux-gnss-receiver/docs/PORTS.md`](../../crates/bijux-gnss-receiver/docs/PORTS.md),
   [`crates/bijux-gnss-receiver/docs/SIMULATION.md`](../../crates/bijux-gnss-receiver/docs/SIMULATION.md)
 - source roots:
   [`crates/bijux-gnss-receiver/src/engine`](../../crates/bijux-gnss-receiver/src/engine),
@@ -83,10 +95,25 @@ flowchart LR
 - proof tests:
   [`crates/bijux-gnss-receiver/tests`](../../crates/bijux-gnss-receiver/tests)
 
+## Sections In This Handbook
+
+- [Foundation](foundation/) for role, scope, ownership, repository fit, and
+  receiver vocabulary
+- [Architecture](architecture/) for engine, pipeline, ports, artifacts,
+  simulation, and dependency direction
+- [Interfaces](interfaces/) for public API, runtime contracts, stage contracts,
+  port contracts, and compatibility expectations
+- [Operations](operations/) for safe change sequence, verification, fixture
+  care, and review scope
+- [Quality](quality/) for invariants, proof strategy, limitations, risk, and
+  change validation
+- [This Package Does Not Own](this-package-does-not-own.md) for the explicit
+  refusal ledger
+
 ## Start Here When
 
 - the question is about how a receiver run is assembled or staged
-- the issue is acquisition, tracking, observation, or navigation execution
+- the issue is acquisition, tracking, observations, or navigation execution
   order
 - the reader needs to understand runtime budgets, ports, or emitted receiver
   artifacts
@@ -125,3 +152,10 @@ flowchart LR
 - `crates/bijux-gnss-receiver/src/reference_validation.rs`
 - `crates/bijux-gnss-receiver/src/sim/`
 - `crates/bijux-gnss-receiver/docs/PIPELINE.md`
+
+## Design Pressure
+
+If `bijux-gnss-receiver` starts carrying command policy, repository layout, or
+reimplemented signal or navigation science because those surfaces are needed
+"near the runtime," the receiver boundary becomes a catch-all instead of a
+durable owner.
