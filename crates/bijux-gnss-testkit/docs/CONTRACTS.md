@@ -28,6 +28,8 @@ higher-level crates use to validate acquisition, observation, and navigation beh
 
 The independence and visibility rules behind those helpers are described in
 [TRUTH_MODELS.md](TRUTH_MODELS.md).
+The antenna and signal-specific test surfaces are described in [ANTENNA.md](ANTENNA.md) and
+[SIGNAL.md](SIGNAL.md).
 
 ## Independence contract
 
