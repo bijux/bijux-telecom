@@ -123,6 +123,7 @@ Minimum supported Rust version: `1.78.0`.
 - `docs/CLI.md`
 
 ## Workspace Layout
+- `bijux-gnss` owns the public facade library and the `bijux` binary entrypoint, so top-level command wiring lives with the package users actually install.
 - Domain crates such as `bijux-gnss-infra`, `bijux-gnss-nav`, and `bijux-gnss-receiver` own their production code and any crate-specific fuzzing surfaces.
 - Fuzz harnesses live under `crates/<owner>/fuzz/` so parser and config fuzzing stays attached to the crate that owns the surface being exercised.
 - `bijux-gnss-policies` remains a standalone crate because it is shared governance code consumed across the workspace.

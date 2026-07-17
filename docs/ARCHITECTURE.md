@@ -3,14 +3,14 @@
 This document defines the high-level layering and boundary rules for bijux-gnss.
 
 ## Layers (Top to Bottom)
-1. CLI
+1. Command entrypoint (`crates/bijux-gnss/src/main.rs` and `crates/bijux-gnss/src/cli/`)
 2. Infra tooling
 3. Receiver pipeline
 4. Signal processing
 5. Core domain
 
 Dependencies are allowed only "down" the stack:
-- CLI -> infra, receiver, core, signal, nav
+- Command entrypoint -> infra, receiver, core, signal, nav
 - Infra -> receiver, core, signal, nav (no CLI)
 - Receiver -> signal, core, nav (no infra/CLI)
 - Signal -> core (no receiver/infra/CLI)
