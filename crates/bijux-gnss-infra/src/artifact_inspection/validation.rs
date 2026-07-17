@@ -11,6 +11,7 @@ use super::artifact_type::ArtifactKind;
 use super::ArtifactValidationResult;
 
 mod observation;
+mod tracking;
 
 /// Validate an artifact file and return diagnostics.
 pub fn artifact_validate(
@@ -26,7 +27,7 @@ pub fn artifact_validate(
         .ok_or_else(|| InputError { message: "unsupported artifact type".to_string() })?;
     let diagnostics = match kind {
         ArtifactKind::Acq => validate_acq_artifact(&data)?,
-        ArtifactKind::Track => validate_track_artifact(&data)?,
+        ArtifactKind::Track => tracking::validate_track_artifact(&data)?,
         ArtifactKind::Obs => observation::validate_obs_artifact(&data)?,
         ArtifactKind::Pvt => validate_nav_artifact(&data)?,
     };
@@ -36,30 +37,6 @@ pub fn artifact_validate(
 
 fn validate_acq_artifact(data: &str) -> Result<Vec<DiagnosticEvent>, InputError> {
     validate_wrapped_payloads::<AcqResultV1>(data, "acq")
-}
-
-fn validate_track_artifact(data: &str) -> Result<Vec<DiagnosticEvent>, InputError> {
-    let mut last_sample_index: Option<u64> = None;
-    let mut events = Vec::new();
-    for line in data.lines() {
-        if line.trim().is_empty() {
-            continue;
-        }
-        let wrapped: TrackEpochV1 = serde_json::from_str(line).map_err(map_err)?;
-        validate_schema_version(wrapped.header.schema_version, "track")?;
-        if let Some(prev) = last_sample_index {
-            if wrapped.payload.sample_index < prev {
-                events.push(DiagnosticEvent::new(
-                    DiagnosticSeverity::Error,
-                    "GNSS_TRACK_SAMPLE_NON_MONOTONIC",
-                    "track sample index is not monotonic",
-                ));
-            }
-        }
-        last_sample_index = Some(wrapped.payload.sample_index);
-        events.extend(wrapped.payload.validate_payload());
-    }
-    Ok(events)
 }
 
 fn validate_nav_artifact(data: &str) -> Result<Vec<DiagnosticEvent>, InputError> {
