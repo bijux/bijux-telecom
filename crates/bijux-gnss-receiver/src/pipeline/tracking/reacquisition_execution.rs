@@ -57,7 +57,10 @@ impl Tracking {
             signal_model: &channel.signal_model,
             carrier_hz: seed.carrier_hz,
             code_phase_samples: seed.code_phase_samples,
-            acquisition_cn0_proxy_dbhz: seed.cn0_dbhz,
+            acquisition_cn0_proxy_dbhz: reacquisition_tracking_cn0_proxy_dbhz(
+                channel.state.lock_reference_cn0_dbhz,
+                seed.cn0_dbhz,
+            ),
             signal_delay_alignment: channel.state.signal_delay_alignment.clone(),
             subcarrier_code_phase_refined: channel.state.subcarrier_code_phase_refined,
             tracking_params: channel.tracking_params,
@@ -222,4 +225,11 @@ struct ReacquisitionSearchRequest<'a> {
     lock_reference_cn0_dbhz: f64,
     min_prompt_power: f32,
     acquisition_uncertainty: Option<&'a AcqUncertainty>,
+}
+
+fn reacquisition_tracking_cn0_proxy_dbhz(lock_reference_cn0_dbhz: f64, seed_cn0_dbhz: f64) -> f64 {
+    if lock_reference_cn0_dbhz.is_finite() && lock_reference_cn0_dbhz > 0.0 {
+        return lock_reference_cn0_dbhz;
+    }
+    seed_cn0_dbhz
 }

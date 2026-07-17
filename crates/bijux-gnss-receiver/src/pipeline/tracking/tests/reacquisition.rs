@@ -397,6 +397,17 @@ fn reacquisition_selection_accepts_cn0_floor_without_prompt_fallback() {
 }
 
 #[test]
+fn reacquisition_tracking_cn0_proxy_prefers_trusted_lock_reference() {
+    assert_eq!(super::reacquisition_tracking_cn0_proxy_dbhz(58.0, 76.0), 58.0);
+}
+
+#[test]
+fn reacquisition_tracking_cn0_proxy_falls_back_to_seed_when_reference_is_unusable() {
+    assert_eq!(super::reacquisition_tracking_cn0_proxy_dbhz(f64::NAN, 44.0), 44.0);
+    assert_eq!(super::reacquisition_tracking_cn0_proxy_dbhz(0.0, 44.0), 44.0);
+}
+
+#[test]
 fn stable_reacquisition_tracking_epoch_rejects_large_doppler_uncertainty() {
     let mut epoch = track_epoch_with_state(0, true, "tracking", Some("carrier_converged"));
     epoch.dll_lock = true;
