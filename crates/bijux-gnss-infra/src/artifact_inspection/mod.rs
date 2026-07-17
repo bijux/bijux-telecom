@@ -1,7 +1,7 @@
 //! Artifact validation and explanation helpers.
 
 mod explanation;
-mod kind;
+mod artifact_type;
 mod validation;
 
 #[cfg(test)]

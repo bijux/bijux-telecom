@@ -7,7 +7,7 @@ use bijux_gnss_receiver::api::core::{
     DiagnosticEvent, DiagnosticSeverity, InputError, NavSolutionEpochV1, ObsEpochV1, TrackEpochV1,
 };
 
-use super::kind::ArtifactKind;
+use super::artifact_type::ArtifactKind;
 use super::ArtifactValidationResult;
 
 /// Validate an artifact file and return diagnostics.

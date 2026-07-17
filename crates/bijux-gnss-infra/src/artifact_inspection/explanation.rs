@@ -7,7 +7,7 @@ use bijux_gnss_receiver::api::core::{
     NavSolutionEpochV1, ObsEpochV1, TrackEpochV1,
 };
 
-use super::kind::ArtifactKind;
+use super::artifact_type::ArtifactKind;
 use super::{artifact_validate, ArtifactExplainResult};
 
 /// Explain an artifact file and return header and diagnostics summary information.
