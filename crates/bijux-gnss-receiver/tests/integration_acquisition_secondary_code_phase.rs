@@ -10,7 +10,7 @@ use bijux_gnss_receiver::api::{
 };
 use bijux_gnss_signal::api::{
     default_signal_carrier_hz_for_signal, sample_modulated_replica_at_sample_index,
-    ReplicaCodeModel,
+    ReplicaCodeModel, ReplicaSampleIndexRequest,
 };
 
 const WIDEBAND_PRIMARY_PERIOD_SAMPLES: usize = 10_230;
@@ -149,14 +149,16 @@ fn galileo_qpsk_acquisition_frame(
         .map(|sample_offset| {
             sample_modulated_replica_at_sample_index(
                 &model,
-                config.sampling_freq_hz,
-                0.0,
-                0.25,
-                carrier_hz,
-                0.0,
-                start_sample_index + sample_offset as u64,
-                1,
-                1.0,
+                ReplicaSampleIndexRequest {
+                    sample_rate_hz: config.sampling_freq_hz,
+                    initial_code_phase_chips: 0.0,
+                    initial_carrier_phase_radians: 0.25,
+                    initial_carrier_hz: carrier_hz,
+                    carrier_rate_hz_per_s: 0.0,
+                    sample_index: start_sample_index + sample_offset as u64,
+                    data_bit: 1,
+                    amplitude: 1.0,
+                },
             )
             .expect("Galileo QPSK sample")
         })

@@ -11,6 +11,7 @@ Signal generation + helpers
 - `advance_code_phase_chips`: wrapped chip-phase advance helper for chunked generation.
 - `advance_code_phase_seconds`: wrapped chip-phase advance helper for elapsed-time validation.
 - `sample_modulated_replica_at_sample_index`: absolute sample-index replica helper.
+- `sample_modulated_replica_at_time`: elapsed-time replica helper.
 - `wipeoff_carrier`: absolute-time-aware carrier wipeoff helper.
 - `code_value_at_phase`: chip lookup at a wrapped chip phase.
 - `LocalCodeModel::sample_block`: chunk-stable local-code block sampler.
@@ -18,6 +19,9 @@ Signal generation + helpers
 
 Types
 - `CodeSamplePosition`: absolute sample-index code timing state.
+- `ReplicaSampleIndexRequest`: indexed replica sampling request.
+- `ReplicaSampleTimeRequest`: elapsed-time replica sampling request.
+- `ReplicaBlockRequest`: contiguous replica block sampling request.
 - `Prn`: PRN identifier.
 - `SamplesFrame`: sample buffer type.
 

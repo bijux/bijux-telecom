@@ -2,7 +2,7 @@
 
 use bijux_gnss_signal::api::{
     sample_gps_l2c_time_multiplexed, sample_modulated_replica_at_time, ReplicaCodeModel,
-    GPS_L2C_TIME_MULTIPLEXED_CODE_RATE_HZ,
+    ReplicaSampleTimeRequest, GPS_L2C_TIME_MULTIPLEXED_CODE_RATE_HZ,
 };
 
 #[test]
@@ -15,13 +15,15 @@ fn gps_l2c_replica_model_matches_public_multiplex_samples() {
         .map(|chip_index| {
             sample_modulated_replica_at_time(
                 &model,
-                0.0,
-                0.0,
-                0.0,
-                0.0,
-                chip_index as f64 / GPS_L2C_TIME_MULTIPLEXED_CODE_RATE_HZ,
-                1,
-                1.0,
+                ReplicaSampleTimeRequest {
+                    initial_code_phase_chips: 0.0,
+                    initial_carrier_phase_radians: 0.0,
+                    initial_carrier_hz: 0.0,
+                    carrier_rate_hz_per_s: 0.0,
+                    elapsed_s: chip_index as f64 / GPS_L2C_TIME_MULTIPLEXED_CODE_RATE_HZ,
+                    data_bit: 1,
+                    amplitude: 1.0,
+                },
             )
             .expect("replica sample")
             .re
@@ -51,13 +53,15 @@ fn sample_replica_chips(model: &ReplicaCodeModel, data_bit: i8) -> Vec<f32> {
         .map(|chip_index| {
             sample_modulated_replica_at_time(
                 model,
-                0.0,
-                0.0,
-                0.0,
-                0.0,
-                chip_index as f64 / GPS_L2C_TIME_MULTIPLEXED_CODE_RATE_HZ,
-                data_bit,
-                1.0,
+                ReplicaSampleTimeRequest {
+                    initial_code_phase_chips: 0.0,
+                    initial_carrier_phase_radians: 0.0,
+                    initial_carrier_hz: 0.0,
+                    carrier_rate_hz_per_s: 0.0,
+                    elapsed_s: chip_index as f64 / GPS_L2C_TIME_MULTIPLEXED_CODE_RATE_HZ,
+                    data_bit,
+                    amplitude: 1.0,
+                },
             )
             .expect("replica sample")
             .re

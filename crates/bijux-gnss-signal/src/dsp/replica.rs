@@ -14,12 +14,14 @@ pub use carrier_trajectory::{
 pub use code_model::ReplicaCodeModel;
 pub use modulation::{
     sample_modulated_replica_at_sample_index, sample_modulated_replica_at_time,
-    signal_amplitude_from_cn0_db_hz,
-};
-pub use signal_identity::{
-    default_signal_carrier_hz, default_signal_carrier_hz_for_band, default_signal_carrier_hz_for_signal,
+    signal_amplitude_from_cn0_db_hz, ReplicaBlockRequest, ReplicaSampleIndexRequest,
+    ReplicaSampleTimeRequest,
 };
 pub(crate) use signal_identity::default_signal_code_for_band;
+pub use signal_identity::{
+    default_signal_carrier_hz, default_signal_carrier_hz_for_band,
+    default_signal_carrier_hz_for_signal,
+};
 
 /// Complex noise power implied by unit-variance I and Q components.
 pub const UNIT_VARIANCE_COMPLEX_NOISE_POWER: f64 = 2.0;
@@ -31,7 +33,8 @@ mod tests {
         carrier_phase_radians_at_time_with_jerk, default_signal_carrier_hz,
         default_signal_carrier_hz_for_band, sample_modulated_replica_at_sample_index,
         sample_modulated_replica_at_time, signal_amplitude_from_cn0_db_hz,
-        wipeoff_carrier_with_linear_rate, AcquisitionSignalModel, ReplicaCodeModel,
+        wipeoff_carrier_with_linear_rate, AcquisitionSignalModel, ReplicaBlockRequest,
+        ReplicaCodeModel, ReplicaSampleIndexRequest, ReplicaSampleTimeRequest,
         UNIT_VARIANCE_COMPLEX_NOISE_POWER,
     };
     use crate::catalog::resolved_signal_registry_entry;
@@ -164,8 +167,19 @@ mod tests {
     #[test]
     fn sample_modulated_replica_at_time_matches_unity_carrier_and_code_origin() {
         let model = ReplicaCodeModel::gps_l1_ca(1).expect("valid GPS PRN");
-        let sample = sample_modulated_replica_at_time(&model, 0.0, 0.0, 0.0, 0.0, 0.0, 1, 2.0)
-            .expect("valid replica");
+        let sample = sample_modulated_replica_at_time(
+            &model,
+            ReplicaSampleTimeRequest {
+                initial_code_phase_chips: 0.0,
+                initial_carrier_phase_radians: 0.0,
+                initial_carrier_hz: 0.0,
+                carrier_rate_hz_per_s: 0.0,
+                elapsed_s: 0.0,
+                data_bit: 1,
+                amplitude: 2.0,
+            },
+        )
+        .expect("valid replica");
         assert!((sample.norm() - 2.0).abs() < 1.0e-6, "sample={sample:?}");
     }
 
@@ -177,19 +191,30 @@ mod tests {
         let elapsed_s = sample_index as f64 / sample_rate_hz;
 
         let by_time = sample_modulated_replica_at_time(
-            &model, 137.625, 0.125, 4_100.0, 2.5, elapsed_s, -1, 0.75,
+            &model,
+            ReplicaSampleTimeRequest {
+                initial_code_phase_chips: 137.625,
+                initial_carrier_phase_radians: 0.125,
+                initial_carrier_hz: 4_100.0,
+                carrier_rate_hz_per_s: 2.5,
+                elapsed_s,
+                data_bit: -1,
+                amplitude: 0.75,
+            },
         )
         .expect("elapsed-time replica");
         let by_index = sample_modulated_replica_at_sample_index(
             &model,
-            sample_rate_hz,
-            137.625,
-            0.125,
-            4_100.0,
-            2.5,
-            sample_index,
-            -1,
-            0.75,
+            ReplicaSampleIndexRequest {
+                sample_rate_hz,
+                initial_code_phase_chips: 137.625,
+                initial_carrier_phase_radians: 0.125,
+                initial_carrier_hz: 4_100.0,
+                carrier_rate_hz_per_s: 2.5,
+                sample_index,
+                data_bit: -1,
+                amplitude: 0.75,
+            },
         )
         .expect("sample-index replica");
 
@@ -201,20 +226,32 @@ mod tests {
         let model = ReplicaCodeModel::gps_l2c_time_multiplexed(38).expect("valid GPS L2C PRN");
         let sample_rate_hz = 4_000_000.0;
         let block = model
-            .sample_block(sample_rate_hz, 137.625, 0.125, 4_100.0, 2.5, 0, 1, 0.75, 64)
+            .sample_block(ReplicaBlockRequest {
+                sample_rate_hz,
+                initial_code_phase_chips: 137.625,
+                initial_carrier_phase_radians: 0.125,
+                initial_carrier_hz: 4_100.0,
+                carrier_rate_hz_per_s: 2.5,
+                start_sample_index: 0,
+                data_bit: 1,
+                amplitude: 0.75,
+                sample_count: 64,
+            })
             .expect("replica block");
         let iterated = (0..64_u64)
             .map(|sample_index| {
                 sample_modulated_replica_at_sample_index(
                     &model,
-                    sample_rate_hz,
-                    137.625,
-                    0.125,
-                    4_100.0,
-                    2.5,
-                    sample_index,
-                    1,
-                    0.75,
+                    ReplicaSampleIndexRequest {
+                        sample_rate_hz,
+                        initial_code_phase_chips: 137.625,
+                        initial_carrier_phase_radians: 0.125,
+                        initial_carrier_hz: 4_100.0,
+                        carrier_rate_hz_per_s: 2.5,
+                        sample_index,
+                        data_bit: 1,
+                        amplitude: 0.75,
+                    },
                 )
                 .expect("single-sample replica")
             })
@@ -541,8 +578,19 @@ mod tests {
     #[test]
     fn gps_l5_i_replica_uses_half_power_component_scaling() {
         let model = ReplicaCodeModel::gps_l5_i(7).expect("valid GPS L5-I PRN");
-        let sample = sample_modulated_replica_at_time(&model, 0.0, 0.0, 0.0, 0.0, 0.0, 1, 1.0)
-            .expect("valid replica");
+        let sample = sample_modulated_replica_at_time(
+            &model,
+            ReplicaSampleTimeRequest {
+                initial_code_phase_chips: 0.0,
+                initial_carrier_phase_radians: 0.0,
+                initial_carrier_hz: 0.0,
+                carrier_rate_hz_per_s: 0.0,
+                elapsed_s: 0.0,
+                data_bit: 1,
+                amplitude: 1.0,
+            },
+        )
+        .expect("valid replica");
 
         assert!((sample.norm() - std::f32::consts::FRAC_1_SQRT_2).abs() < 1.0e-6, "{sample:?}");
     }
@@ -550,8 +598,19 @@ mod tests {
     #[test]
     fn gps_l5_q_replica_uses_half_power_component_scaling() {
         let model = ReplicaCodeModel::gps_l5_q(7).expect("valid GPS L5-Q PRN");
-        let sample = sample_modulated_replica_at_time(&model, 0.0, 0.0, 0.0, 0.0, 0.0, -1, 1.0)
-            .expect("valid replica");
+        let sample = sample_modulated_replica_at_time(
+            &model,
+            ReplicaSampleTimeRequest {
+                initial_code_phase_chips: 0.0,
+                initial_carrier_phase_radians: 0.0,
+                initial_carrier_hz: 0.0,
+                carrier_rate_hz_per_s: 0.0,
+                elapsed_s: 0.0,
+                data_bit: -1,
+                amplitude: 1.0,
+            },
+        )
+        .expect("valid replica");
 
         assert!((sample.norm() - std::f32::consts::FRAC_1_SQRT_2).abs() < 1.0e-6, "{sample:?}");
     }
@@ -561,38 +620,44 @@ mod tests {
         let model = ReplicaCodeModel::beidou_b1i(11).expect("valid BeiDou B1I PRN");
         let first_epoch = sample_modulated_replica_at_sample_index(
             &model,
-            2_046_000.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0,
-            1,
-            1.0,
+            ReplicaSampleIndexRequest {
+                sample_rate_hz: 2_046_000.0,
+                initial_code_phase_chips: 0.0,
+                initial_carrier_phase_radians: 0.0,
+                initial_carrier_hz: 0.0,
+                carrier_rate_hz_per_s: 0.0,
+                sample_index: 0,
+                data_bit: 1,
+                amplitude: 1.0,
+            },
         )
         .expect("first D1 epoch");
         let nh_flipped_epoch = sample_modulated_replica_at_sample_index(
             &model,
-            2_046_000.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            5 * 2046,
-            1,
-            1.0,
+            ReplicaSampleIndexRequest {
+                sample_rate_hz: 2_046_000.0,
+                initial_code_phase_chips: 0.0,
+                initial_carrier_phase_radians: 0.0,
+                initial_carrier_hz: 0.0,
+                carrier_rate_hz_per_s: 0.0,
+                sample_index: 5 * 2046,
+                data_bit: 1,
+                amplitude: 1.0,
+            },
         )
         .expect("NH-flipped epoch");
         let next_data_symbol_epoch = sample_modulated_replica_at_sample_index(
             &model,
-            2_046_000.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            (BEIDOU_D1_PRIMARY_EPOCHS_PER_SYMBOL * 2046) as u64,
-            -1,
-            1.0,
+            ReplicaSampleIndexRequest {
+                sample_rate_hz: 2_046_000.0,
+                initial_code_phase_chips: 0.0,
+                initial_carrier_phase_radians: 0.0,
+                initial_carrier_hz: 0.0,
+                carrier_rate_hz_per_s: 0.0,
+                sample_index: (BEIDOU_D1_PRIMARY_EPOCHS_PER_SYMBOL * 2046) as u64,
+                data_bit: -1,
+                amplitude: 1.0,
+            },
         )
         .expect("next data-symbol epoch");
 
@@ -617,8 +682,19 @@ mod tests {
     #[test]
     fn galileo_e5a_replica_uses_half_power_component_scaling() {
         let model = ReplicaCodeModel::galileo_e5a(11).expect("valid Galileo E5a PRN");
-        let sample = sample_modulated_replica_at_time(&model, 0.0, 0.0, 0.0, 0.0, 0.0, 1, 1.0)
-            .expect("valid replica");
+        let sample = sample_modulated_replica_at_time(
+            &model,
+            ReplicaSampleTimeRequest {
+                initial_code_phase_chips: 0.0,
+                initial_carrier_phase_radians: 0.0,
+                initial_carrier_hz: 0.0,
+                carrier_rate_hz_per_s: 0.0,
+                elapsed_s: 0.0,
+                data_bit: 1,
+                amplitude: 1.0,
+            },
+        )
+        .expect("valid replica");
 
         assert!((sample.norm() - std::f32::consts::FRAC_1_SQRT_2).abs() < 1.0e-6, "{sample:?}");
     }
@@ -626,8 +702,19 @@ mod tests {
     #[test]
     fn galileo_e5a_qpsk_replica_uses_full_signal_power_scaling() {
         let model = ReplicaCodeModel::galileo_e5a_qpsk(11).expect("valid Galileo E5a PRN");
-        let sample = sample_modulated_replica_at_time(&model, 0.0, 0.0, 0.0, 0.0, 0.0, 1, 1.0)
-            .expect("valid replica");
+        let sample = sample_modulated_replica_at_time(
+            &model,
+            ReplicaSampleTimeRequest {
+                initial_code_phase_chips: 0.0,
+                initial_carrier_phase_radians: 0.0,
+                initial_carrier_hz: 0.0,
+                carrier_rate_hz_per_s: 0.0,
+                elapsed_s: 0.0,
+                data_bit: 1,
+                amplitude: 1.0,
+            },
+        )
+        .expect("valid replica");
 
         assert!((sample.norm() - 1.0).abs() < 1.0e-6, "{sample:?}");
     }
@@ -635,8 +722,19 @@ mod tests {
     #[test]
     fn galileo_e5b_replica_uses_half_power_component_scaling() {
         let model = ReplicaCodeModel::galileo_e5b(11).expect("valid Galileo E5b PRN");
-        let sample = sample_modulated_replica_at_time(&model, 0.0, 0.0, 0.0, 0.0, 0.0, 1, 1.0)
-            .expect("valid replica");
+        let sample = sample_modulated_replica_at_time(
+            &model,
+            ReplicaSampleTimeRequest {
+                initial_code_phase_chips: 0.0,
+                initial_carrier_phase_radians: 0.0,
+                initial_carrier_hz: 0.0,
+                carrier_rate_hz_per_s: 0.0,
+                elapsed_s: 0.0,
+                data_bit: 1,
+                amplitude: 1.0,
+            },
+        )
+        .expect("valid replica");
 
         assert!((sample.norm() - std::f32::consts::FRAC_1_SQRT_2).abs() < 1.0e-6, "{sample:?}");
     }
@@ -644,8 +742,19 @@ mod tests {
     #[test]
     fn galileo_e5b_qpsk_replica_uses_full_signal_power_scaling() {
         let model = ReplicaCodeModel::galileo_e5b_qpsk(11).expect("valid Galileo E5b PRN");
-        let sample = sample_modulated_replica_at_time(&model, 0.0, 0.0, 0.0, 0.0, 0.0, 1, 1.0)
-            .expect("valid replica");
+        let sample = sample_modulated_replica_at_time(
+            &model,
+            ReplicaSampleTimeRequest {
+                initial_code_phase_chips: 0.0,
+                initial_carrier_phase_radians: 0.0,
+                initial_carrier_hz: 0.0,
+                carrier_rate_hz_per_s: 0.0,
+                elapsed_s: 0.0,
+                data_bit: 1,
+                amplitude: 1.0,
+            },
+        )
+        .expect("valid replica");
 
         assert!((sample.norm() - 1.0).abs() < 1.0e-6, "{sample:?}");
     }

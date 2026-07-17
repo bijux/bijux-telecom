@@ -9,10 +9,11 @@ use super::{
     lock_detector_distributions, lock_detector_probability_summary, normalize_dll_discriminator,
     phase_lock_loop_coefficients, predict_code_phase_samples, wrap_phase_cycles_signed,
     wrap_phase_radians_positive, wrapped_phase_delta_cycles, CarrierTrackingLoopInput,
-    CodeLoopInput, LockDetectorCalibrationInput, LockDetectorProbabilityInput,
-    TrackingAdaptationInput, TrackingAdaptationState, TrackingLoopProfile, TrackingLoopProfileKind,
-    TrackingQualityClass, TrackingUncertaintyInputs, DYNAMIC_STRESS_INTEGRATION_MS,
-    MAX_TRACKING_ADAPTATION_PENDING_EPOCHS, WEAK_SIGNAL_INTEGRATION_MS,
+    CodeLoopInput, EarlyPromptLateCorrelatorInput, LockDetectorCalibrationInput,
+    LockDetectorProbabilityInput, TrackingAdaptationInput, TrackingAdaptationState,
+    TrackingLoopProfile, TrackingLoopProfileKind, TrackingQualityClass, TrackingUncertaintyInputs,
+    DYNAMIC_STRESS_INTEGRATION_MS, MAX_TRACKING_ADAPTATION_PENDING_EPOCHS,
+    WEAK_SIGNAL_INTEGRATION_MS,
 };
 use std::collections::VecDeque;
 

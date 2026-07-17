@@ -898,13 +898,15 @@ fn subcarrier_ambiguity_guard(
     let mut strongest_alternate_offset_chips = 0.0_f64;
     for offset_chips in SUBCARRIER_AMBIGUITY_GUARD_OFFSETS_CHIPS {
         let alternate = correlate_early_prompt_late(
-            samples,
-            sample_rate_hz,
-            carrier_freq_hz,
-            carrier_phase_offset_radians(carrier_phase_cycles),
-            base_chip_phase + offset_chips,
-            tracked_chips_per_sample,
-            0.0,
+            EarlyPromptLateCorrelatorInput {
+                samples,
+                sample_rate_hz,
+                carrier_hz: carrier_freq_hz,
+                carrier_phase_offset_radians: carrier_phase_offset_radians(carrier_phase_cycles),
+                base_chip_phase: base_chip_phase + offset_chips,
+                chips_per_sample: tracked_chips_per_sample,
+                early_late_spacing_chips: 0.0,
+            },
             |chip_phase| signal_model.value_at_phase(chip_phase, epoch_primary_code_period_index),
         )
         .prompt;

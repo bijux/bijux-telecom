@@ -37,8 +37,9 @@ use bijux_gnss_signal::api::{
     resolved_signal_registry_entry, shared_path_code_rate_hz,
     update_windowed_tracking_cn0_estimate as signal_update_windowed_tracking_cn0_estimate,
     wrap_code_phase_samples, wrap_phase_cycles_signed, wrapped_code_phase_delta_samples,
-    wrapped_phase_delta_cycles, LocalCodeModel, LockDetectorCalibrationInput,
-    LockDetectorThresholds, TrackingAdaptationInput as SignalTrackingAdaptationInput,
+    wrapped_phase_delta_cycles, EarlyPromptLateCorrelatorInput, LocalCodeModel,
+    LockDetectorCalibrationInput, LockDetectorThresholds,
+    TrackingAdaptationInput as SignalTrackingAdaptationInput,
     TrackingAdaptationState as SignalTrackingAdaptationState,
     TrackingLoopProfile as SignalTrackingLoopProfile, TrackingQualityClass,
     TrackingUncertaintyInputs as SignalTrackingUncertaintyInputs,
@@ -202,27 +203,26 @@ impl Tracking {
             primary_code_period_samples,
         );
         let base_chip_phase = epoch_start_code_phase_samples * nominal_chips_per_sample;
-        let primary = correlate_early_prompt_late(
+        let correlator_input = EarlyPromptLateCorrelatorInput {
             samples,
             sample_rate_hz,
-            carrier_freq_hz,
-            carrier_phase_offset_radians(carrier_phase_cycles),
+            carrier_hz: carrier_freq_hz,
+            carrier_phase_offset_radians: carrier_phase_offset_radians(carrier_phase_cycles),
             base_chip_phase,
-            tracked_chips_per_sample,
+            chips_per_sample: tracked_chips_per_sample,
             early_late_spacing_chips,
-            |chip_phase| signal_model.value_at_phase(chip_phase, epoch_primary_code_period_index),
-        );
+        };
+        let primary = correlate_early_prompt_late(correlator_input, |chip_phase| {
+            signal_model.value_at_phase(chip_phase, epoch_primary_code_period_index)
+        });
         let double_delta_outer = (code_discriminator_mode(signal_model)
             == CodeDiscriminatorMode::DoubleDeltaEarlyPromptLate)
             .then(|| {
                 correlate_early_prompt_late(
-                    samples,
-                    sample_rate_hz,
-                    carrier_freq_hz,
-                    carrier_phase_offset_radians(carrier_phase_cycles),
-                    base_chip_phase,
-                    tracked_chips_per_sample,
-                    early_late_spacing_chips * 2.0,
+                    EarlyPromptLateCorrelatorInput {
+                        early_late_spacing_chips: early_late_spacing_chips * 2.0,
+                        ..correlator_input
+                    },
                     |chip_phase| {
                         signal_model.value_at_phase(chip_phase, epoch_primary_code_period_index)
                     },
@@ -241,13 +241,10 @@ impl Tracking {
         );
         let pilot_prompt = signal_model.pilot_component.as_ref().map(|component| {
             correlate_early_prompt_late(
-                samples,
-                sample_rate_hz,
-                carrier_freq_hz,
-                carrier_phase_offset_radians(carrier_phase_cycles),
-                base_chip_phase,
-                tracked_chips_per_sample,
-                0.0,
+                EarlyPromptLateCorrelatorInput {
+                    early_late_spacing_chips: 0.0,
+                    ..correlator_input
+                },
                 |chip_phase| {
                     component.sample_value_from_primary_phase(
                         chip_phase,
@@ -263,13 +260,10 @@ impl Tracking {
                 primary.prompt
             } else {
                 correlate_early_prompt_late(
-                    samples,
-                    sample_rate_hz,
-                    carrier_freq_hz,
-                    carrier_phase_offset_radians(carrier_phase_cycles),
-                    base_chip_phase,
-                    tracked_chips_per_sample,
-                    0.0,
+                    EarlyPromptLateCorrelatorInput {
+                        early_late_spacing_chips: 0.0,
+                        ..correlator_input
+                    },
                     |chip_phase| {
                         component.sample_value_from_primary_phase(
                             chip_phase,

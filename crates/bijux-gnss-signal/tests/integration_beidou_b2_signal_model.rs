@@ -2,7 +2,7 @@ use bijux_gnss_core::api::{Constellation, SatId, SignalBand, SignalCode, BEIDOU_
 use bijux_gnss_signal::api::{
     default_local_code_model_for_signal, default_signal_carrier_hz_for_signal,
     generate_beidou_b1i_code, generate_beidou_b2i_code, sample_modulated_replica_at_time,
-    AcquisitionSignalModel, ReplicaCodeModel,
+    AcquisitionSignalModel, ReplicaCodeModel, ReplicaSampleTimeRequest,
 };
 
 #[test]
@@ -49,9 +49,19 @@ fn beidou_b2i_replica_samples_supported_power_on_b2_carrier() {
         default_signal_carrier_hz_for_signal(sat, Some(SignalBand::B2), SignalCode::B2I, None)
             .expect("carrier result")
             .expect("BeiDou B2I carrier");
-    let sample =
-        sample_modulated_replica_at_time(&model, 0.0, 0.0, carrier_hz.value(), 0.0, 0.0, 1, 1.0)
-            .expect("BeiDou B2I sample");
+    let sample = sample_modulated_replica_at_time(
+        &model,
+        ReplicaSampleTimeRequest {
+            initial_code_phase_chips: 0.0,
+            initial_carrier_phase_radians: 0.0,
+            initial_carrier_hz: carrier_hz.value(),
+            carrier_rate_hz_per_s: 0.0,
+            elapsed_s: 0.0,
+            data_bit: 1,
+            amplitude: 1.0,
+        },
+    )
+    .expect("BeiDou B2I sample");
 
     assert!((sample.norm() - 1.0).abs() < 1.0e-6, "{sample:?}");
 }

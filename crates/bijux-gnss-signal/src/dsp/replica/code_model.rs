@@ -30,7 +30,10 @@ use crate::error::SignalError;
 use bijux_gnss_core::api::{Constellation, SatId, SignalBand, SignalCode};
 use num_complex::Complex;
 
-use super::{default_signal_code_for_band, sample_modulated_replica_at_sample_index};
+use super::{
+    default_signal_code_for_band, sample_modulated_replica_at_sample_index, ReplicaBlockRequest,
+    ReplicaSampleIndexRequest,
+};
 
 /// Reusable spreading-code models for synthesized signal replicas.
 #[derive(Debug, Clone, PartialEq)]
@@ -404,28 +407,22 @@ impl ReplicaCodeModel {
     /// Sample a replica block from an absolute sample origin without chunk-boundary drift.
     pub fn sample_block(
         &self,
-        sample_rate_hz: f64,
-        initial_code_phase_chips: f64,
-        initial_carrier_phase_radians: f64,
-        initial_carrier_hz: f64,
-        carrier_rate_hz_per_s: f64,
-        start_sample_index: u64,
-        data_bit: i8,
-        amplitude: f32,
-        sample_count: usize,
+        request: ReplicaBlockRequest,
     ) -> Result<Vec<Complex<f32>>, SignalError> {
-        let mut samples = Vec::with_capacity(sample_count);
-        for sample_offset in 0..sample_count {
+        let mut samples = Vec::with_capacity(request.sample_count);
+        for sample_offset in 0..request.sample_count {
             samples.push(sample_modulated_replica_at_sample_index(
                 self,
-                sample_rate_hz,
-                initial_code_phase_chips,
-                initial_carrier_phase_radians,
-                initial_carrier_hz,
-                carrier_rate_hz_per_s,
-                start_sample_index + sample_offset as u64,
-                data_bit,
-                amplitude,
+                ReplicaSampleIndexRequest {
+                    sample_rate_hz: request.sample_rate_hz,
+                    initial_code_phase_chips: request.initial_code_phase_chips,
+                    initial_carrier_phase_radians: request.initial_carrier_phase_radians,
+                    initial_carrier_hz: request.initial_carrier_hz,
+                    carrier_rate_hz_per_s: request.carrier_rate_hz_per_s,
+                    sample_index: request.start_sample_index + sample_offset as u64,
+                    data_bit: request.data_bit,
+                    amplitude: request.amplitude,
+                },
             )?);
         }
         Ok(samples)

@@ -71,11 +71,14 @@ where
     for epoch in 0..epochs {
         let measurement = measurement_at_epoch(epoch);
         let mut next_state = [0.0; 3];
-        for row in 0..dimension {
-            next_state[row] = correction_gains[row] * measurement;
-            for column in 0..dimension {
-                next_state[row] += transition[row][column] * state[column];
-            }
+        for (row, next_state_value) in next_state.iter_mut().enumerate().take(dimension) {
+            *next_state_value = correction_gains[row] * measurement;
+            *next_state_value += transition[row]
+                .iter()
+                .zip(state.iter())
+                .take(dimension)
+                .map(|(transition_value, state_value)| transition_value * state_value)
+                .sum::<f64>();
         }
         state = next_state;
         response.push(state);

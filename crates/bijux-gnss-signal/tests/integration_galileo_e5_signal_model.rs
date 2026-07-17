@@ -4,6 +4,7 @@ use bijux_gnss_signal::api::{
     galileo_e5a_q_secondary_code, galileo_e5b_i_secondary_code, galileo_e5b_q_secondary_code,
     generate_galileo_e5a_i_code, generate_galileo_e5a_q_code, generate_galileo_e5b_i_code,
     generate_galileo_e5b_q_code, sample_modulated_replica_at_time, ReplicaCodeModel,
+    ReplicaSampleTimeRequest,
 };
 
 fn first_24_chips_hex(code: &[i8]) -> String {
@@ -86,8 +87,19 @@ fn galileo_e5a_public_replica_samples_supported_data_component_power() {
         .expect("replica result")
         .expect("Galileo E5a replica");
 
-    let sample = sample_modulated_replica_at_time(&model, 0.0, 0.0, 0.0, 0.0, 0.0, 1, 1.0)
-        .expect("Galileo E5a sample");
+    let sample = sample_modulated_replica_at_time(
+        &model,
+        ReplicaSampleTimeRequest {
+            initial_code_phase_chips: 0.0,
+            initial_carrier_phase_radians: 0.0,
+            initial_carrier_hz: 0.0,
+            carrier_rate_hz_per_s: 0.0,
+            elapsed_s: 0.0,
+            data_bit: 1,
+            amplitude: 1.0,
+        },
+    )
+    .expect("Galileo E5a sample");
 
     assert!((sample.norm() - std::f32::consts::FRAC_1_SQRT_2).abs() < 1.0e-6, "{sample:?}");
 }
@@ -99,8 +111,19 @@ fn galileo_e5b_public_replica_samples_supported_data_component_power() {
         .expect("replica result")
         .expect("Galileo E5b replica");
 
-    let sample = sample_modulated_replica_at_time(&model, 0.0, 0.0, 0.0, 0.0, 0.0, 1, 1.0)
-        .expect("Galileo E5b sample");
+    let sample = sample_modulated_replica_at_time(
+        &model,
+        ReplicaSampleTimeRequest {
+            initial_code_phase_chips: 0.0,
+            initial_carrier_phase_radians: 0.0,
+            initial_carrier_hz: 0.0,
+            carrier_rate_hz_per_s: 0.0,
+            elapsed_s: 0.0,
+            data_bit: 1,
+            amplitude: 1.0,
+        },
+    )
+    .expect("Galileo E5b sample");
 
     assert!((sample.norm() - std::f32::consts::FRAC_1_SQRT_2).abs() < 1.0e-6, "{sample:?}");
 }

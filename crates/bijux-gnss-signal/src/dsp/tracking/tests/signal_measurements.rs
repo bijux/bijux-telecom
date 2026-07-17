@@ -101,8 +101,18 @@ fn wrapped_phase_delta_cycles_chooses_shortest_signed_delta() {
 fn correlate_early_prompt_late_accumulates_constant_prompt_signal() {
     let samples = vec![Complex::new(1.0, 0.0); 8];
 
-    let correlation =
-        correlate_early_prompt_late(&samples, 4_000.0, 0.0, 0.0, 0.0, 0.25, 0.5, |_| 1.0);
+    let correlation = correlate_early_prompt_late(
+        EarlyPromptLateCorrelatorInput {
+            samples: &samples,
+            sample_rate_hz: 4_000.0,
+            carrier_hz: 0.0,
+            carrier_phase_offset_radians: 0.0,
+            base_chip_phase: 0.0,
+            chips_per_sample: 0.25,
+            early_late_spacing_chips: 0.5,
+        },
+        |_| 1.0,
+    );
 
     assert_eq!(correlation.early, Complex::new(8.0, 0.0));
     assert_eq!(correlation.prompt, Complex::new(8.0, 0.0));
@@ -122,13 +132,15 @@ fn correlate_early_prompt_late_wipes_off_known_carrier_rotation() {
         .collect::<Vec<_>>();
 
     let correlation = correlate_early_prompt_late(
-        &samples,
-        sample_rate_hz,
-        carrier_hz,
-        0.0,
-        0.0,
-        0.25,
-        0.5,
+        EarlyPromptLateCorrelatorInput {
+            samples: &samples,
+            sample_rate_hz,
+            carrier_hz,
+            carrier_phase_offset_radians: 0.0,
+            base_chip_phase: 0.0,
+            chips_per_sample: 0.25,
+            early_late_spacing_chips: 0.5,
+        },
         |_| 1.0,
     );
 

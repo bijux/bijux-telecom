@@ -131,7 +131,8 @@ pub use crate::dsp::replica::{
     default_signal_carrier_hz_for_band, default_signal_carrier_hz_for_signal,
     sample_modulated_replica_at_sample_index, sample_modulated_replica_at_time,
     signal_amplitude_from_cn0_db_hz, wipeoff_carrier_with_linear_rate, AcquisitionSignalModel,
-    ReplicaCodeModel, UNIT_VARIANCE_COMPLEX_NOISE_POWER,
+    ReplicaBlockRequest, ReplicaCodeModel, ReplicaSampleIndexRequest, ReplicaSampleTimeRequest,
+    UNIT_VARIANCE_COMPLEX_NOISE_POWER,
 };
 /// Absolute sample-index timing helpers for chunk-stable generation.
 pub use crate::dsp::sample_timing::{code_sample_position_at_index, CodeSamplePosition};
@@ -168,11 +169,11 @@ pub use crate::dsp::tracking::{
     update_windowed_tracking_cn0_estimate, wrap_phase_cycles_signed, wrap_phase_radians_positive,
     wrapped_phase_delta_cycles, CarrierTrackingLoopInput, CarrierTrackingLoopUpdate, CodeLoopInput,
     CodeLoopUpdate, DelayLockLoopCoefficients, EarlyPromptLateCorrelation,
-    FirstOrderLoopCoefficients, LockDetectorCalibrationInput, LockDetectorDistributions,
-    LockDetectorProbabilityInput, LockDetectorProbabilitySummary, LockDetectorThresholds,
-    PhaseLockLoopCoefficients, TrackingAdaptationDecision, TrackingAdaptationInput,
-    TrackingAdaptationState, TrackingLoopProfile, TrackingLoopProfileKind, TrackingQualityClass,
-    TrackingUncertaintyInputs,
+    EarlyPromptLateCorrelatorInput, FirstOrderLoopCoefficients, LockDetectorCalibrationInput,
+    LockDetectorDistributions, LockDetectorProbabilityInput, LockDetectorProbabilitySummary,
+    LockDetectorThresholds, PhaseLockLoopCoefficients, TrackingAdaptationDecision,
+    TrackingAdaptationInput, TrackingAdaptationState, TrackingLoopProfile, TrackingLoopProfileKind,
+    TrackingQualityClass, TrackingUncertaintyInputs,
 };
 /// Error types.
 pub use crate::error::SignalError;

@@ -195,13 +195,15 @@ impl Tracking {
         let base_chip_phase =
             epoch_start_code_phase_samples * signal_model.nominal_chips_per_sample(sample_rate_hz);
         correlate_early_prompt_late(
-            &frame.iq,
-            sample_rate_hz,
-            carrier_freq_hz,
-            carrier_phase_offset_radians(carrier_phase_cycles),
-            base_chip_phase,
-            tracked_chips_per_sample,
-            early_late_spacing_chips,
+            EarlyPromptLateCorrelatorInput {
+                samples: &frame.iq,
+                sample_rate_hz,
+                carrier_hz: carrier_freq_hz,
+                carrier_phase_offset_radians: carrier_phase_offset_radians(carrier_phase_cycles),
+                base_chip_phase,
+                chips_per_sample: tracked_chips_per_sample,
+                early_late_spacing_chips,
+            },
             |chip_phase| signal_model.value_at_phase(chip_phase, primary_code_period_index),
         )
     }

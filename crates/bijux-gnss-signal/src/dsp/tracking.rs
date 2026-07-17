@@ -76,6 +76,25 @@ pub struct EarlyPromptLateCorrelation {
     pub early_late_noise_weight_energy: f64,
 }
 
+/// Inputs for one early/prompt/late correlation interval.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct EarlyPromptLateCorrelatorInput<'a> {
+    /// Complex baseband samples for the coherent interval.
+    pub samples: &'a [Complex<f32>],
+    /// Receiver sample rate in Hz.
+    pub sample_rate_hz: f64,
+    /// Carrier frequency in Hz used for wipeoff.
+    pub carrier_hz: f64,
+    /// Carrier phase offset in radians at the interval start.
+    pub carrier_phase_offset_radians: f64,
+    /// Prompt replica chip phase at the interval start.
+    pub base_chip_phase: f64,
+    /// Replica chip advance per sample.
+    pub chips_per_sample: f64,
+    /// Early/late spacing in chips.
+    pub early_late_spacing_chips: f64,
+}
+
 /// Pure DLL update inputs for one coherent tracking interval.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct CodeLoopInput {
@@ -441,7 +460,7 @@ fn tracking_loop_profile(
 }
 
 fn weak_signal_integration_ms(base_integration_ms: u32) -> u32 {
-    base_integration_ms.max(WEAK_SIGNAL_INTEGRATION_MS).min(10)
+    base_integration_ms.clamp(WEAK_SIGNAL_INTEGRATION_MS, 10)
 }
 
 fn requested_tracking_loop_profile(
@@ -530,25 +549,19 @@ pub fn wrapped_phase_delta_cycles(next_phase_cycles: f64, previous_phase_cycles:
 
 /// Correlate one coherent interval against early, prompt, and late replicas.
 pub fn correlate_early_prompt_late<F>(
-    samples: &[Complex<f32>],
-    sample_rate_hz: f64,
-    carrier_hz: f64,
-    carrier_phase_offset_radians: f64,
-    base_chip_phase: f64,
-    chips_per_sample: f64,
-    early_late_spacing_chips: f64,
+    input: EarlyPromptLateCorrelatorInput<'_>,
     code_value_at_phase: F,
 ) -> EarlyPromptLateCorrelation
 where
     F: Fn(f64) -> f32,
 {
-    if !sample_rate_hz.is_finite()
-        || sample_rate_hz <= 0.0
-        || !carrier_hz.is_finite()
-        || !carrier_phase_offset_radians.is_finite()
-        || !base_chip_phase.is_finite()
-        || !chips_per_sample.is_finite()
-        || !early_late_spacing_chips.is_finite()
+    if !input.sample_rate_hz.is_finite()
+        || input.sample_rate_hz <= 0.0
+        || !input.carrier_hz.is_finite()
+        || !input.carrier_phase_offset_radians.is_finite()
+        || !input.base_chip_phase.is_finite()
+        || !input.chips_per_sample.is_finite()
+        || !input.early_late_spacing_chips.is_finite()
     {
         return EarlyPromptLateCorrelation {
             early: Complex::new(0.0, 0.0),
@@ -558,21 +571,22 @@ where
         };
     }
 
-    let mut carrier_nco = Nco::with_phase(carrier_hz, sample_rate_hz, carrier_phase_offset_radians);
+    let mut carrier_nco =
+        Nco::with_phase(input.carrier_hz, input.sample_rate_hz, input.carrier_phase_offset_radians);
     let mut early = Complex::new(0.0f32, 0.0f32);
     let mut prompt = Complex::new(0.0f32, 0.0f32);
     let mut late = Complex::new(0.0f32, 0.0f32);
     let mut early_late_noise_weight_energy = 0.0f64;
 
-    for (sample_index, sample) in samples.iter().enumerate() {
+    for (sample_index, sample) in input.samples.iter().enumerate() {
         let (sin, cos) = carrier_nco.next_sin_cos();
         let mixed_sample = *sample * Complex::new(cos as f32, -sin as f32);
-        let chip_phase = base_chip_phase + sample_index as f64 * chips_per_sample;
+        let chip_phase = input.base_chip_phase + sample_index as f64 * input.chips_per_sample;
         let early_code =
-            Complex::new(code_value_at_phase(chip_phase - early_late_spacing_chips), 0.0);
+            Complex::new(code_value_at_phase(chip_phase - input.early_late_spacing_chips), 0.0);
         let prompt_code = Complex::new(code_value_at_phase(chip_phase), 0.0);
         let late_code =
-            Complex::new(code_value_at_phase(chip_phase + early_late_spacing_chips), 0.0);
+            Complex::new(code_value_at_phase(chip_phase + input.early_late_spacing_chips), 0.0);
         let noise_weight = early_code - late_code;
         early_late_noise_weight_energy += noise_weight.norm_sqr() as f64;
 
@@ -656,19 +670,17 @@ fn loop_observer_gains(
     let desired_matrix =
         evaluate_matrix_polynomial(transition_transpose, characteristic, dimension);
     let mut gain = [0.0; 3];
-    for column in 0..dimension {
-        let mut projected = 0.0;
-        for index in 0..dimension {
-            projected +=
-                controllability_inverse[dimension - 1][index] * desired_matrix[index][column];
-        }
-        gain[column] = projected;
+    for (column, gain_value) in gain.iter_mut().enumerate().take(dimension) {
+        *gain_value = controllability_inverse[dimension - 1]
+            .iter()
+            .zip(desired_matrix.iter())
+            .take(dimension)
+            .map(|(inverse, desired_row)| inverse * desired_row[column])
+            .sum();
     }
 
     let mut correction_gains = [0.0; 3];
-    for index in 0..dimension {
-        correction_gains[index] = gain[index];
-    }
+    correction_gains[..dimension].copy_from_slice(&gain[..dimension]);
     correction_gains
 }
 
@@ -687,11 +699,14 @@ fn loop_noise_bandwidth_hz(
     for epoch in 0..LOOP_FILTER_IMPULSE_RESPONSE_EPOCHS {
         let input = if epoch == 0 { 1.0 } else { 0.0 };
         let mut next_state = [0.0; 3];
-        for row in 0..dimension {
-            next_state[row] = correction_gains[row] * input;
-            for column in 0..dimension {
-                next_state[row] += corrected_transition[row][column] * state[column];
-            }
+        for (row, next_state_value) in next_state.iter_mut().enumerate().take(dimension) {
+            *next_state_value = correction_gains[row] * input;
+            *next_state_value += corrected_transition[row]
+                .iter()
+                .zip(state.iter())
+                .take(dimension)
+                .map(|(transition_value, state_value)| transition_value * state_value)
+                .sum::<f64>();
         }
         state = next_state;
         let output = state[0];
@@ -723,10 +738,9 @@ fn corrected_loop_transition(
     let output = loop_output_matrix();
     let mut corrected = [[0.0; 3]; 3];
 
-    for row in 0..dimension {
-        for column in 0..dimension {
-            corrected[row][column] =
-                transition[row][column] - correction_gains[row] * output[column];
+    for (row, corrected_row) in corrected.iter_mut().enumerate().take(dimension) {
+        for (column, corrected_value) in corrected_row.iter_mut().enumerate().take(dimension) {
+            *corrected_value = transition[row][column] - correction_gains[row] * output[column];
         }
     }
 
@@ -795,8 +809,8 @@ fn controllability_matrix(
     let mut controllability = [[0.0; 3]; 3];
     let mut column = input;
     for column_index in 0..dimension {
-        for row in 0..dimension {
-            controllability[row][column_index] = column[row];
+        for (row, controllability_row) in controllability.iter_mut().enumerate().take(dimension) {
+            controllability_row[column_index] = column[row];
         }
         column = multiply_square_matrix_vector(transition, column, dimension);
     }
@@ -809,10 +823,13 @@ fn multiply_square_matrix_vector(
     dimension: usize,
 ) -> [f64; 3] {
     let mut result = [0.0; 3];
-    for row in 0..dimension {
-        for column in 0..dimension {
-            result[row] += matrix[row][column] * vector[column];
-        }
+    for (row, result_value) in result.iter_mut().enumerate().take(dimension) {
+        *result_value = matrix[row]
+            .iter()
+            .zip(vector.iter())
+            .take(dimension)
+            .map(|(matrix_value, vector_value)| matrix_value * vector_value)
+            .sum();
     }
     result
 }
@@ -823,11 +840,14 @@ fn multiply_square_matrices(
     dimension: usize,
 ) -> [[f64; 3]; 3] {
     let mut result = [[0.0; 3]; 3];
-    for row in 0..dimension {
-        for column in 0..dimension {
-            for index in 0..dimension {
-                result[row][column] += left[row][index] * right[index][column];
-            }
+    for (row, result_row) in result.iter_mut().enumerate().take(dimension) {
+        for (column, result_value) in result_row.iter_mut().enumerate().take(dimension) {
+            *result_value = left[row]
+                .iter()
+                .take(dimension)
+                .enumerate()
+                .map(|(index, left_value)| left_value * right[index][column])
+                .sum();
         }
     }
     result
@@ -839,9 +859,9 @@ fn add_square_matrices(
     dimension: usize,
 ) -> [[f64; 3]; 3] {
     let mut result = [[0.0; 3]; 3];
-    for row in 0..dimension {
-        for column in 0..dimension {
-            result[row][column] = left[row][column] + right[row][column];
+    for (row, result_row) in result.iter_mut().enumerate().take(dimension) {
+        for (column, result_value) in result_row.iter_mut().enumerate().take(dimension) {
+            *result_value = left[row][column] + right[row][column];
         }
     }
     result
@@ -849,9 +869,9 @@ fn add_square_matrices(
 
 fn scale_square_matrix(matrix: [[f64; 3]; 3], scale: f64, dimension: usize) -> [[f64; 3]; 3] {
     let mut result = [[0.0; 3]; 3];
-    for row in 0..dimension {
-        for column in 0..dimension {
-            result[row][column] = matrix[row][column] * scale;
+    for (row, result_row) in result.iter_mut().enumerate().take(dimension) {
+        for (column, result_value) in result_row.iter_mut().enumerate().take(dimension) {
+            *result_value = matrix[row][column] * scale;
         }
     }
     result
@@ -859,9 +879,9 @@ fn scale_square_matrix(matrix: [[f64; 3]; 3], scale: f64, dimension: usize) -> [
 
 fn transpose_square_matrix(matrix: [[f64; 3]; 3], dimension: usize) -> [[f64; 3]; 3] {
     let mut transpose = [[0.0; 3]; 3];
-    for row in 0..dimension {
-        for column in 0..dimension {
-            transpose[column][row] = matrix[row][column];
+    for (row, matrix_row) in matrix.iter().enumerate().take(dimension) {
+        for (column, matrix_value) in matrix_row.iter().enumerate().take(dimension) {
+            transpose[column][row] = *matrix_value;
         }
     }
     transpose
@@ -869,26 +889,26 @@ fn transpose_square_matrix(matrix: [[f64; 3]; 3], dimension: usize) -> [[f64; 3]
 
 fn identity_square_matrix(dimension: usize) -> [[f64; 3]; 3] {
     let mut identity = [[0.0; 3]; 3];
-    for index in 0..dimension {
-        identity[index][index] = 1.0;
+    for (index, identity_row) in identity.iter_mut().enumerate().take(dimension) {
+        identity_row[index] = 1.0;
     }
     identity
 }
 
 fn invert_square_matrix(matrix: [[f64; 3]; 3], dimension: usize) -> Option<[[f64; 3]; 3]> {
     let mut augmented = [[0.0; 6]; 3];
-    for row in 0..dimension {
-        for column in 0..dimension {
-            augmented[row][column] = matrix[row][column];
-        }
-        augmented[row][dimension + row] = 1.0;
+    for (row, augmented_row) in augmented.iter_mut().enumerate().take(dimension) {
+        augmented_row[..dimension].copy_from_slice(&matrix[row][..dimension]);
+        augmented_row[dimension + row] = 1.0;
     }
 
     for pivot_index in 0..dimension {
         let mut best_pivot_row = pivot_index;
         let mut best_pivot_abs = augmented[pivot_index][pivot_index].abs();
-        for row in (pivot_index + 1)..dimension {
-            let pivot_abs = augmented[row][pivot_index].abs();
+        for (row, augmented_row) in
+            augmented.iter().enumerate().take(dimension).skip(pivot_index + 1)
+        {
+            let pivot_abs = augmented_row[pivot_index].abs();
             if pivot_abs > best_pivot_abs {
                 best_pivot_abs = pivot_abs;
                 best_pivot_row = row;
@@ -902,8 +922,8 @@ fn invert_square_matrix(matrix: [[f64; 3]; 3], dimension: usize) -> Option<[[f64
         }
 
         let pivot = augmented[pivot_index][pivot_index];
-        for column in pivot_index..(dimension * 2) {
-            augmented[pivot_index][column] /= pivot;
+        for pivot_value in augmented[pivot_index][pivot_index..(dimension * 2)].iter_mut() {
+            *pivot_value /= pivot;
         }
         for row in 0..dimension {
             if row == pivot_index {
@@ -913,17 +933,18 @@ fn invert_square_matrix(matrix: [[f64; 3]; 3], dimension: usize) -> Option<[[f64
             if factor.abs() <= f64::EPSILON {
                 continue;
             }
-            for column in pivot_index..(dimension * 2) {
-                augmented[row][column] -= factor * augmented[pivot_index][column];
+            let pivot_row = augmented[pivot_index];
+            for (offset, value) in
+                augmented[row][pivot_index..(dimension * 2)].iter_mut().enumerate()
+            {
+                *value -= factor * pivot_row[pivot_index + offset];
             }
         }
     }
 
     let mut inverse = [[0.0; 3]; 3];
-    for row in 0..dimension {
-        for column in 0..dimension {
-            inverse[row][column] = augmented[row][dimension + column];
-        }
+    for (row, inverse_row) in inverse.iter_mut().enumerate().take(dimension) {
+        inverse_row[..dimension].copy_from_slice(&augmented[row][dimension..(dimension * 2)]);
     }
     Some(inverse)
 }
