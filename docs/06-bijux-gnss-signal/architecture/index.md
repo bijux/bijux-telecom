@@ -12,12 +12,26 @@ last_reviewed: 2026-07-17
 Open this section when the question is where signal behavior lives in code and
 why the source tree is partitioned the way it is.
 
-## What This Section Covers
+## Read These First
 
-- the module map from `catalog.rs` through `codes/`, `dsp/`, and contract files
-- dependency direction inside the crate
-- the runtime-neutral execution model for reusable signal math
-- integration seams between code families, DSP primitives, and validation
+- open [Module Map](module-map.md) first when the question is simply where a
+  behavior lives
+- open [Execution Model](execution-model.md) when the issue is whether a helper
+  is still runtime-neutral
+- open [Integration Seams](integration-seams.md) when the question crosses
+  catalog, codes, DSP, and validation
+
+## Pages In This Section
+
+- [Module Map](module-map.md)
+- [Dependency Direction](dependency-direction.md)
+- [Execution Model](execution-model.md)
+- [State And Persistence](state-and-persistence.md)
+- [Integration Seams](integration-seams.md)
+- [Error Model](error-model.md)
+- [Extensibility Model](extensibility-model.md)
+- [Code Navigation](code-navigation.md)
+- [Architecture Risks](architecture-risks.md)
 
 ## First Code Roots
 
@@ -27,3 +41,11 @@ why the source tree is partitioned the way it is.
 - `crates/bijux-gnss-signal/src/raw_iq.rs`
 - `crates/bijux-gnss-signal/src/samples.rs`
 - `crates/bijux-gnss-signal/src/obs_validation.rs`
+- `crates/bijux-gnss-signal/src/error.rs`
+
+## Leave This Section When
+
+- leave for [Interfaces](../interfaces/) when the question is what callers may
+  rely on rather than how the code is partitioned
+- leave for [Quality](../quality/) when the structure is clear and the next
+  question is whether the proof surface is strong enough
