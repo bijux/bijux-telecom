@@ -1,27 +1,5 @@
 use super::*;
 
-fn publish_diagnostics_report<T, F>(
-    common: &CommonArgs,
-    command: &str,
-    report: &T,
-    schema_name: &str,
-    print_table: F,
-) -> Result<()>
-where
-    T: serde::Serialize,
-    F: FnOnce(&T),
-{
-    let _ = runtime_config_from_env(common, None);
-    match common.report {
-        ReportFormat::Table => print_table(report),
-        ReportFormat::Json => emit_report(common, command, report)?,
-    }
-    let report_value = serde_json::to_value(report)?;
-    write_diagnostics_report_artifact(common, command, &report_value, schema_name)?;
-    write_manifest(common, command, &ReceiverConfig::default(), None, report)?;
-    Ok(())
-}
-
 pub(crate) fn handle_diagnostics(command: GnssCommand) -> Result<()> {
     let GnssCommand::Diagnostics { command } = command else {
         bail!("invalid command for handler");
@@ -29,25 +7,9 @@ pub(crate) fn handle_diagnostics(command: GnssCommand) -> Result<()> {
 
     match command {
         DiagnosticsCommand::OperatorMap { common } => {
-            let report = operator_map_report();
-            publish_diagnostics_report(
-                &common,
-                "diagnostics_operator_map",
-                &report,
-                "diagnostics_operator_map_report.schema.json",
-                print_operator_map_table,
-            )?;
+            workflow_dispatch::handle_operator_map(common)?
         }
-        DiagnosticsCommand::Workflow { common } => {
-            let report = workflow_map_report();
-            publish_diagnostics_report(
-                &common,
-                "diagnostics_workflow",
-                &report,
-                "diagnostics_workflow_report.schema.json",
-                print_workflow_table,
-            )?;
-        }
+        DiagnosticsCommand::Workflow { common } => workflow_dispatch::handle_workflow(common)?,
         DiagnosticsCommand::Summarize { common, run_dir, top } => {
             let events = summarize_run_diagnostics(&run_dir)?;
             let summary = bijux_gnss_infra::api::core::aggregate_diagnostics(&events);
@@ -67,17 +29,22 @@ pub(crate) fn handle_diagnostics(command: GnssCommand) -> Result<()> {
                     })
                 ),
             });
-            publish_diagnostics_report(
+            report_publishing::publish_diagnostics_report(
                 &common,
                 "diagnostics_summarize",
                 &report,
                 "diagnostics_summary_report.schema.json",
-                |report| print_diagnostics_summary_table(report.get("entries").and_then(|v| v.as_array()), top),
+                |report| {
+                    print_diagnostics_summary_table(
+                        report.get("entries").and_then(|value| value.as_array()),
+                        top,
+                    )
+                },
             )?;
         }
         DiagnosticsCommand::Explain { common, run_dir } => {
             let summary = explain_run_scope(&run_dir)?;
-            publish_diagnostics_report(
+            report_publishing::publish_diagnostics_report(
                 &common,
                 "diagnostics_explain",
                 &summary,
@@ -87,7 +54,7 @@ pub(crate) fn handle_diagnostics(command: GnssCommand) -> Result<()> {
         }
         DiagnosticsCommand::VerifyRepro { common, run_dir } => {
             let report = verify_repro_bundle(&run_dir)?;
-            publish_diagnostics_report(
+            report_publishing::publish_diagnostics_report(
                 &common,
                 "diagnostics_verify_repro",
                 &report,
@@ -97,7 +64,7 @@ pub(crate) fn handle_diagnostics(command: GnssCommand) -> Result<()> {
         }
         DiagnosticsCommand::Compare { common, baseline_run_dir, candidate_run_dir } => {
             let report = compare_run_evidence(&baseline_run_dir, &candidate_run_dir)?;
-            publish_diagnostics_report(
+            report_publishing::publish_diagnostics_report(
                 &common,
                 "diagnostics_compare",
                 &report,
@@ -107,7 +74,7 @@ pub(crate) fn handle_diagnostics(command: GnssCommand) -> Result<()> {
         }
         DiagnosticsCommand::ReplayAudit { common, baseline_run_dir, candidate_run_dir } => {
             let report = replay_audit_report(&baseline_run_dir, &candidate_run_dir)?;
-            publish_diagnostics_report(
+            report_publishing::publish_diagnostics_report(
                 &common,
                 "diagnostics_replay_audit",
                 &report,
@@ -118,7 +85,8 @@ pub(crate) fn handle_diagnostics(command: GnssCommand) -> Result<()> {
         DiagnosticsCommand::AdvancedGate { common, run_dir, mode, strict } => {
             let _ = runtime_config_from_env(&common, None);
             let report = advanced_gate_report(&run_dir, mode)?;
-            let passed = report.get("gate_passed").and_then(|v| v.as_bool()).unwrap_or(false);
+            let passed =
+                report.get("gate_passed").and_then(|value| value.as_bool()).unwrap_or(false);
             if strict && !passed {
                 return Err(classified_error(
                     CliErrorClass::UnsupportedScience,
@@ -129,7 +97,7 @@ pub(crate) fn handle_diagnostics(command: GnssCommand) -> Result<()> {
                     ),
                 ));
             }
-            publish_diagnostics_report(
+            report_publishing::publish_diagnostics_report(
                 &common,
                 "diagnostics_advanced_gate",
                 &report,
@@ -139,7 +107,7 @@ pub(crate) fn handle_diagnostics(command: GnssCommand) -> Result<()> {
         }
         DiagnosticsCommand::ArtifactInventory { common, run_dir } => {
             let report = artifact_inventory_report(&run_dir)?;
-            publish_diagnostics_report(
+            report_publishing::publish_diagnostics_report(
                 &common,
                 "diagnostics_artifact_inventory",
                 &report,
@@ -149,7 +117,7 @@ pub(crate) fn handle_diagnostics(command: GnssCommand) -> Result<()> {
         }
         DiagnosticsCommand::DebugPlan { common, run_dir } => {
             let report = debug_plan_report(&run_dir)?;
-            publish_diagnostics_report(
+            report_publishing::publish_diagnostics_report(
                 &common,
                 "diagnostics_debug_plan",
                 &report,
@@ -159,7 +127,7 @@ pub(crate) fn handle_diagnostics(command: GnssCommand) -> Result<()> {
         }
         DiagnosticsCommand::BenchmarkSummary { common, run_dir } => {
             let report = benchmark_summary_report(&run_dir)?;
-            publish_diagnostics_report(
+            report_publishing::publish_diagnostics_report(
                 &common,
                 "diagnostics_benchmark_summary",
                 &report,
@@ -170,7 +138,8 @@ pub(crate) fn handle_diagnostics(command: GnssCommand) -> Result<()> {
         DiagnosticsCommand::MediumGate { common, run_dir, strict } => {
             let _ = runtime_config_from_env(&common, None);
             let report = medium_gate_report(&run_dir)?;
-            let passed = report.get("gate_passed").and_then(|v| v.as_bool()).unwrap_or(false);
+            let passed =
+                report.get("gate_passed").and_then(|value| value.as_bool()).unwrap_or(false);
             if strict && !passed {
                 return Err(classified_error(
                     CliErrorClass::UnsupportedScience,
