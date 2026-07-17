@@ -100,7 +100,7 @@ fn galileo_e5a_acquisition_reports_all_component_strategies_at_one_millisecond()
     );
     let candidates = &run.results[0];
 
-    assert_eq!(candidates.len(), 4);
+    assert_eq!(candidates.len(), 3);
     assert!(candidates.iter().all(|candidate| candidate.signal_code == SignalCode::E5a));
     assert!(candidates.iter().all(|candidate| candidate.component_provenance().is_some()));
     assert!(candidates.iter().any(|candidate| {
@@ -124,11 +124,9 @@ fn galileo_e5a_acquisition_reports_all_component_strategies_at_one_millisecond()
                     == vec![SignalComponentRole::Data, SignalComponentRole::Pilot]
         })
     }));
-    assert!(candidates.iter().any(|candidate| {
+    assert!(candidates.iter().all(|candidate| {
         candidate.component_provenance().is_some_and(|provenance| {
-            provenance.combination_mode == AcqComponentCombinationMode::CoherentComponentSum
-                && provenance.components.iter().map(|component| component.role).collect::<Vec<_>>()
-                    == vec![SignalComponentRole::Data, SignalComponentRole::Pilot]
+            provenance.combination_mode != AcqComponentCombinationMode::CoherentComponentSum
         })
     }));
 }

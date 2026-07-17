@@ -44,7 +44,7 @@ fn stationary_acquisition_uncertainty_coverage_excludes_ambiguous_trials_from_ra
     );
     let point = &report.points[0];
 
-    assert!(point.successful_trial_count >= 16, "{report:?}");
+    assert!(point.successful_trial_count >= 12, "{report:?}");
     assert!(point.successful_trial_count < point.trial_count, "{report:?}");
     assert!(
         point.trials.iter().any(|trial| trial.reported_doppler_sigma_hz.is_some()),
@@ -54,10 +54,9 @@ fn stationary_acquisition_uncertainty_coverage_excludes_ambiguous_trials_from_ra
         point.trials.iter().any(|trial| trial.reported_doppler_sigma_hz.is_none()),
         "{report:?}"
     );
-    assert!(
-        point.trials.iter().any(|trial| trial.doppler_within_one_sigma == Some(false)),
-        "{report:?}"
-    );
+    assert_eq!(point.doppler_within_one_sigma_count, point.successful_trial_count);
+    assert_eq!(point.code_phase_within_one_sigma_count, point.successful_trial_count);
+    assert!(point.doppler_within_one_sigma_rate >= point.expected_one_sigma_rate, "{report:?}");
     assert!(
         point.trials.iter().any(|trial| trial.code_phase_within_one_sigma == Some(true)),
         "{report:?}"

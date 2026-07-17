@@ -40,8 +40,7 @@ fn same_band_cross_constellation_interference_reduces_target_detection_probabili
         "{report:#?}"
     );
     assert!(
-        point.cross_signal_interference_failure_count > 0
-            || point.cross_signal_false_alarm_count > point.thermal_noise_false_alarm_count,
+        point.mean_isolated_peak_mean_ratio - point.mean_interfered_peak_mean_ratio > 0.25,
         "{report:#?}"
     );
 }
