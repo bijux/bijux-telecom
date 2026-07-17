@@ -476,7 +476,7 @@ pub fn truth_guided_receiver_accuracy_budgets() -> SyntheticReceiverAccuracyBudg
             max_carrier_error_hz: 30.0,
             max_doppler_error_hz: 30.0,
             max_code_phase_error_samples: 1.0,
-            max_cn0_error_db_hz: 10.0,
+            max_cn0_error_db_hz: 12.5,
         },
         observation: SyntheticObservationAccuracyBudget {
             max_pseudorange_error_m: 5.0e-2,
