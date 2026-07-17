@@ -390,24 +390,24 @@ pub(crate) fn handle_run(command: GnssCommand) -> Result<()> {
 
 #[cfg(test)]
 mod pvt_tests {
-    include!("run_pipeline/tests/fixtures.rs");
+    include!("run_pipeline_tests/fixtures.rs");
 
-    include!("run_pipeline/tests/experiment_artifacts.rs");
+    include!("run_pipeline_tests/experiment_artifacts.rs");
 
-    include!("run_pipeline/tests/pvt_command_harness.rs");
+    include!("run_pipeline_tests/pvt_command_harness.rs");
 
-    include!("run_pipeline/tests/pvt_solution_output.rs");
+    include!("run_pipeline_tests/pvt_solution_output.rs");
 
-    include!("run_pipeline/tests/pvt_navigation_sources.rs");
+    include!("run_pipeline_tests/pvt_navigation_sources.rs");
 
-    include!("run_pipeline/tests/pvt_profile_harness.rs");
+    include!("run_pipeline_tests/pvt_profile_harness.rs");
 
-    include!("run_pipeline/tests/pvt_atmospheric_harness.rs");
+    include!("run_pipeline_tests/pvt_atmospheric_harness.rs");
 
-    include!("run_pipeline/tests/pvt_geometry_refusals.rs");
+    include!("run_pipeline_tests/pvt_geometry_refusals.rs");
 
-    include!("run_pipeline/tests/pvt_measurement_model.rs");
+    include!("run_pipeline_tests/pvt_measurement_model.rs");
 
-    include!("run_pipeline/tests/pvt_atmospheric_corrections.rs");
+    include!("run_pipeline_tests/pvt_atmospheric_corrections.rs");
 
 }
