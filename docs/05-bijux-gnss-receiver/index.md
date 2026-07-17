@@ -95,6 +95,16 @@ flowchart LR
 - proof tests:
   [`crates/bijux-gnss-receiver/tests`](../../crates/bijux-gnss-receiver/tests)
 
+## Support Crates That Matter Here
+
+- `bijux-gnss-policies` guards runtime-boundary and public-surface structure;
+  inspect it when a receiver change also changes repository rules about crate
+  shape or exposed surfaces.
+- `bijux-gnss-testkit` provides the deterministic reference truth and
+  scenarios that receiver validation and simulation prove against; inspect it
+  when a runtime claim depends on synthetic captures, observation truth, or
+  independent scientific helpers.
+
 ## Sections In This Handbook
 
 - [Foundation](foundation/) for role, scope, ownership, repository fit, and

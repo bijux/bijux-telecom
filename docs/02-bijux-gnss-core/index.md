@@ -93,6 +93,15 @@ flowchart LR
 - proof tests:
   [`crates/bijux-gnss-core/tests`](../../crates/bijux-gnss-core/tests)
 
+## Support Crates That Matter Here
+
+- `bijux-gnss-policies` helps defend core dependency direction and public API
+  guardrails; inspect it when a contract-layer change also changes repository
+  structure expectations.
+- `bijux-gnss-testkit` is not a production owner here, but it is an important
+  stress consumer of shared GNSS contracts; inspect it when a core change is
+  justified by test truth, reference models, or cross-crate fixture reuse.
+
 ## Sections In This Handbook
 
 - [Foundation](foundation/) for role, scope, ownership, repository fit, and

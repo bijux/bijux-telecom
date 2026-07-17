@@ -97,6 +97,15 @@ flowchart LR
 - proof tests:
   [`crates/bijux-gnss-nav/tests`](../../crates/bijux-gnss-nav/tests)
 
+## Support Crates That Matter Here
+
+- `bijux-gnss-policies` helps keep navigation science from quietly turning into
+  a repository bucket or public-surface dumping ground; inspect it when a nav
+  change also modifies guardrail expectations.
+- `bijux-gnss-testkit` is the main shared truth supplier for reference-backed
+  navigation checks; inspect it when a scientific claim depends on benchmark
+  fixtures, independent models, or deterministic validation scenarios.
+
 ## Sections In This Handbook
 
 - [Foundation](foundation/) for role, scope, ownership, repository fit, and

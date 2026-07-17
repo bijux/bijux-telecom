@@ -98,6 +98,15 @@ flowchart LR
 - proof tests:
   [`crates/bijux-gnss-signal/tests/`](../../crates/bijux-gnss-signal/tests)
 
+## Support Crates That Matter Here
+
+- `bijux-gnss-policies` protects the rule that signal code stays reusable
+  substrate rather than turning into receiver policy or repository glue;
+  inspect it when a signal change also changes crate-shape expectations.
+- `bijux-gnss-testkit` is not the owner of reusable signal APIs, but it is a
+  heavy consumer of deterministic signal truth; inspect it when a signal claim
+  is being defended through shared fixtures or independent validation helpers.
+
 ## Sections In This Handbook
 
 - [Foundation](foundation/) for scope, ownership, repository fit, dependency

@@ -88,6 +88,16 @@ flowchart LR
 - proof tests:
   [`crates/bijux-gnss-dev/tests/`](../../crates/bijux-gnss-dev/tests)
 
+## Support Crates That Matter Here
+
+- `bijux-gnss-policies` is the main adjacent support crate for maintainer work:
+  it owns reusable repository guardrails while `bijux-gnss-dev` owns
+  maintainer command workflows and evidence handling.
+- `bijux-gnss-testkit` is not a maintainer-workflow owner, but benchmark and
+  validation evidence in this crate can still depend on shared truth assets
+  from it; inspect it when maintenance evidence is only meaningful relative to
+  deterministic scientific fixtures.
+
 ## Sections In This Handbook
 
 - [Foundation](foundation/) for role, scope, ownership, repository fit, and

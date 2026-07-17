@@ -88,6 +88,15 @@ flowchart LR
 - proof tests:
   [`crates/bijux-gnss-infra/tests`](../../crates/bijux-gnss-infra/tests)
 
+## Support Crates That Matter Here
+
+- `bijux-gnss-policies` guards infra-facing repository layout and public-surface
+  discipline; inspect it when an infrastructure change also changes how the
+  workspace structure is validated.
+- `bijux-gnss-testkit` does not own repository persistence, but it can provide
+  the truth data that infra validation workflows consume; inspect it when
+  persisted evidence is being judged against shared scientific fixtures.
+
 ## Sections In This Handbook
 
 - [Foundation](foundation/) for role, scope, ownership, repository fit, and

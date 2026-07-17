@@ -80,6 +80,15 @@ flowchart LR
 - command-facing regression surfaces:
   [`crates/bijux-gnss/tests`](../../crates/bijux-gnss/tests)
 
+## Support Crates That Matter Here
+
+- `bijux-gnss-policies` guards the repository structure around the public
+  command crate; inspect it when a CLI change also changes workspace boundary
+  rules or public-surface guardrails.
+- `bijux-gnss-testkit` supplies deterministic shared truth for
+  command-facing integration flows; inspect it when a workflow claim depends on
+  synthetic truth, checked-in fixtures, or independent reference behavior.
+
 ## Sections In This Handbook
 
 - [Foundation](foundation/) for role, scope, ownership, repository fit, and
