@@ -33,3 +33,9 @@ The validation surface answers signal-compatibility questions and stops there.
 These contracts can report missing bands, invalid lock-state combinations, or
 non-monotonic epoch shapes. They do not decide whether a receiver run or
 navigation solution is scientifically acceptable overall.
+
+## Protecting Proof
+
+- `crates/bijux-gnss-signal/docs/VALIDATION.md`
+- `crates/bijux-gnss-signal/src/obs_validation.rs`
+- `crates/bijux-gnss-signal/tests/prop_obs_epoch_validation.rs`

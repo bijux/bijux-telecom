@@ -31,3 +31,9 @@ integration seams without importing receiver ownership.
 These traits should remain thin. If a proposed method needs scheduling policy,
 artifact metadata, or run-level lifecycle control, the trait has outgrown this
 crate.
+
+## Protecting Proof
+
+- `crates/bijux-gnss-signal/src/api.rs`
+- `crates/bijux-gnss-signal/docs/TRAITS.md`
+- `crates/bijux-gnss-signal/tests/integration_guardrails.rs`

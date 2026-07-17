@@ -38,6 +38,10 @@ public promise.
 
 ## Protecting Proof
 
+- `crates/bijux-gnss-signal/src/api.rs`
 - `crates/bijux-gnss-signal/docs/PUBLIC_API.md`
 - `crates/bijux-gnss-signal/docs/CATALOG.md`
+- `crates/bijux-gnss-signal/docs/DSP.md`
+- `crates/bijux-gnss-signal/docs/RAW_IQ.md`
+- `crates/bijux-gnss-signal/docs/TRAITS.md`
 - `crates/bijux-gnss-signal/docs/VALIDATION.md`

@@ -28,3 +28,15 @@ on it.
 - navigation-message interpretation does not belong here
 - hidden table modules remain implementation detail unless a durable external
   need appears
+
+## Protecting Proof
+
+- `crates/bijux-gnss-signal/docs/CODE_FAMILIES.md`
+- `crates/bijux-gnss-signal/src/codes/ca_code.rs`
+- `crates/bijux-gnss-signal/src/codes/gps_l2c.rs`
+- `crates/bijux-gnss-signal/src/codes/gps_l5.rs`
+- `crates/bijux-gnss-signal/src/codes/galileo_e1.rs`
+- `crates/bijux-gnss-signal/src/codes/galileo_e5.rs`
+- `crates/bijux-gnss-signal/tests/integration_ca_code_reference.rs`
+- `crates/bijux-gnss-signal/tests/integration_gps_l2c_multiplex.rs`
+- `crates/bijux-gnss-signal/tests/integration_galileo_e5_reference.rs`

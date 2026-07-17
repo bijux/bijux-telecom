@@ -14,6 +14,8 @@ behavior that many higher-level crates reuse.
 
 ## Main Proof Layers
 
+- guardrail tests such as `integration_guardrails.rs` that keep public surface
+  and crate-shape pressure honest
 - registry and reference tests such as
   `integration_gps_l5_registry.rs`,
   `integration_galileo_e5_reference.rs`, and
@@ -41,6 +43,8 @@ the others without creating blind spots.
 
 ## Protecting Proof
 
+- `crates/bijux-gnss-signal/docs/TESTS.md`
+- `crates/bijux-gnss-signal/tests/integration_guardrails.rs`
 - `crates/bijux-gnss-signal/tests/integration_signal_component_registry.rs`
 - `crates/bijux-gnss-signal/tests/integration_ca_code_reference.rs`
 - `crates/bijux-gnss-signal/tests/integration_nco_long_duration_phase.rs`

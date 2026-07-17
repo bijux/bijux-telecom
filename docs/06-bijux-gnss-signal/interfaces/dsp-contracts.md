@@ -32,3 +32,15 @@ The DSP surface publishes reusable signal math, not receiver-stage behavior.
 
 - that these helpers define receiver scheduling or artifact policy
 - that every internal numeric helper in `dsp/math.rs` is a public promise
+
+## Protecting Proof
+
+- `crates/bijux-gnss-signal/docs/DSP.md`
+- `crates/bijux-gnss-signal/src/dsp/front_end.rs`
+- `crates/bijux-gnss-signal/src/dsp/nco.rs`
+- `crates/bijux-gnss-signal/src/dsp/replica.rs`
+- `crates/bijux-gnss-signal/src/dsp/spectrum.rs`
+- `crates/bijux-gnss-signal/src/dsp/tracking.rs`
+- `crates/bijux-gnss-signal/tests/integration_nco_long_duration_phase.rs`
+- `crates/bijux-gnss-signal/tests/integration_replica_continuity.rs`
+- `crates/bijux-gnss-signal/tests/integration_signal_spectrum_cboc.rs`
