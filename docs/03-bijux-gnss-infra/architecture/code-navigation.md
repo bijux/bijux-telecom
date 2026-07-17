@@ -1,7 +1,7 @@
 ---
 title: Code Navigation
 audience: mixed
-type: explanation
+type: architecture
 status: canonical
 owner: bijux-gnss-infra-docs
 last_reviewed: 2026-07-17
@@ -16,10 +16,14 @@ Use this route when you need to inspect infra quickly.
 1. start at `src/api.rs` to see the curated infrastructure surface
 2. jump to the owning family:
    `src/datasets/registry.rs`, `src/datasets/raw_iq_metadata.rs`,
-   `src/run_layout.rs`, `src/artifact_inspection/`, `src/overrides/`,
-   `src/sweep.rs`, `src/hash/`, or `src/validate_reference.rs`
+   `src/run_layout.rs` and `src/run_layout/identity.rs`,
+   `src/artifact_inspection/` and `src/artifact_inspection/validation.rs`,
+   `src/overrides/receiver_profile.rs`, `src/experiments.rs`, `src/sweep.rs`,
+   `src/hash/provenance.rs`, or `src/validate_reference.rs`
 3. read the corresponding crate-local docs under
-   `crates/bijux-gnss-infra/docs/`
+   `crates/bijux-gnss-infra/docs/`, especially `PUBLIC_API.md`,
+   `DATASETS.md`, `RUN_LAYOUT.md`, `OVERRIDES.md`, `HASHING.md`,
+   `VALIDATION.md`, and `TESTS.md`
 4. confirm with the narrow infra tests and any relevant root handbook page
 
 ## Review Shortcut
@@ -35,4 +39,5 @@ first and an implementation-detail change second.
 - `crates/bijux-gnss-infra/src/datasets/raw_iq_metadata.rs`
 - `crates/bijux-gnss-infra/src/run_layout.rs`
 - `crates/bijux-gnss-infra/src/run_layout/`
+- `crates/bijux-gnss-infra/tests/integration_guardrails.rs`
 - `crates/bijux-gnss-infra/tests/integration_overrides.rs`

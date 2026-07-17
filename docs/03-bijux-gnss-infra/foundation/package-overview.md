@@ -1,7 +1,7 @@
 ---
 title: Package Overview
 audience: mixed
-type: explanation
+type: foundation
 status: canonical
 owner: bijux-gnss-infra-docs
 last_reviewed: 2026-07-17
@@ -11,6 +11,10 @@ last_reviewed: 2026-07-17
 
 `bijux-gnss-infra` exists to make repository-facing GNSS state typed,
 repeatable, and inspectable.
+
+Its job is not to be "the place where repository things go." Its job is to
+own the repository contracts that more product-facing crates should consume
+instead of reimplementing.
 
 ## Role Model
 
@@ -26,6 +30,19 @@ flowchart LR
 If the repository needs one stable interpretation of datasets, run identity,
 artifact persistence context, profile overrides, or provenance hashing, this is
 usually the crate that should own it.
+
+The durable centers of gravity are:
+
+- `src/datasets/registry.rs` plus `src/datasets/registry/` for dataset lookup
+  and entry parsing
+- `src/datasets/raw_iq_metadata.rs` plus `src/datasets/raw_iq_metadata/` for
+  sidecar loading, sample metadata, and capture validation
+- `src/run_layout.rs` plus `src/run_layout/` for run identity, directories,
+  persisted records, and provenance capture
+- `src/artifact_inspection/` and `src/validate_reference.rs` for repository
+  inspection and validation adapters
+- `src/overrides/`, `src/experiments.rs`, `src/sweep.rs`, and `src/hash/` for
+  typed experiment variation, override application, and provenance helpers
 
 ## Boundary Verdict
 
@@ -57,5 +74,6 @@ command UX, it has crossed the boundary.
 - `crates/bijux-gnss-infra/src/datasets/raw_iq_metadata.rs`
 - `crates/bijux-gnss-infra/src/run_layout.rs`
 - `crates/bijux-gnss-infra/src/run_layout/`
+- `crates/bijux-gnss-infra/src/overrides/receiver_profile.rs`
 - `crates/bijux-gnss-infra/src/sweep.rs`
 - `crates/bijux-gnss-infra/src/artifact_inspection/`

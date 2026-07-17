@@ -1,7 +1,7 @@
 ---
 title: API Surface
 audience: mixed
-type: explanation
+type: interfaces
 status: canonical
 owner: bijux-gnss-infra-docs
 last_reviewed: 2026-07-17
@@ -19,9 +19,16 @@ last_reviewed: 2026-07-17
   re-exports used for repository-facing convenience
 - re-exports are justified only when they strengthen the repository boundary
   instead of bypassing it
-- the strongest infra-owned families behind that surface are dataset
-  interpretation, run-layout records, artifact inspection, overrides, sweep
-  expansion, provenance capture, and validation adapters
+
+## Main Public Families
+
+- dataset interpretation and raw-IQ metadata helpers
+- run-layout identity, directories, persistence, history, and report helpers
+- artifact inspection and persisted validation helpers
+- override, experiment, and sweep-expansion helpers
+- provenance hashing and validation-reference adapters
+- curated lower-owner re-exports only where they improve the repository-facing
+  surface instead of leaking private module layout
 
 ## Why The Policy Exists
 
@@ -33,3 +40,5 @@ and ownership blurry.
 
 - `crates/bijux-gnss-infra/src/api.rs`
 - `crates/bijux-gnss-infra/README.md`
+- `crates/bijux-gnss-infra/docs/PUBLIC_API.md`
+- `crates/bijux-gnss-infra/docs/CONTRACTS.md`

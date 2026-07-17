@@ -1,7 +1,7 @@
 ---
 title: Test Strategy
 audience: mixed
-type: explanation
+type: quality
 status: canonical
 owner: bijux-gnss-infra-docs
 last_reviewed: 2026-07-17
@@ -15,8 +15,9 @@ carried partly by documentation and explicit module ownership.
 
 ## Main Test Families
 
-- override application tests
-- workspace guardrail and boundary tests
+- override application tests in `tests/integration_overrides.rs`
+- workspace guardrail and boundary tests in
+  `tests/integration_guardrails.rs`
 
 ## Strategy Rule
 
@@ -29,7 +30,8 @@ product owners.
 The crate has narrower automated coverage than the full breadth of its
 repository contract surface. That is not something to hide. It means dataset,
 run-layout, and validation-adapter changes need disciplined documentation and
-review, not just a green narrow test.
+review, not just a green narrow test. The strongest current proof is therefore
+mixed: narrow automated tests plus explicit checked-in contract docs.
 
 ## Protecting Proof
 
