@@ -339,11 +339,10 @@ fn covariance_ecef_to_enu(
     let mut covariance_enu = [[0.0_f64; 3]; 3];
     for row in 0..3 {
         for col in 0..3 {
-            for inner_row in 0..3 {
-                for inner_col in 0..3 {
-                    covariance_enu[row][col] += rotation[row][inner_row]
-                        * covariance_ecef_m2[inner_row][inner_col]
-                        * rotation[col][inner_col];
+            for (inner_row, covariance_row) in covariance_ecef_m2.iter().enumerate() {
+                for (inner_col, covariance_value) in covariance_row.iter().enumerate() {
+                    covariance_enu[row][col] +=
+                        rotation[row][inner_row] * covariance_value * rotation[col][inner_col];
                 }
             }
         }

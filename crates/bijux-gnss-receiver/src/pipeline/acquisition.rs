@@ -36,7 +36,7 @@ use bijux_gnss_signal::api::{measure_iq_front_end_metrics, AcquisitionSignalMode
 
 mod peak_metrics;
 
-use cache::CodeFftCache;
+use cache::{CodeFftCache, CodeFftRequest};
 use candidate_decision::{
     acquisition_decision, multipath_candidate_reason, multipath_suspect_decision,
     ranked_alternative_candidate_reason, selected_candidate_reason,
@@ -47,15 +47,15 @@ use candidate_decision::{
 };
 use candidate_failures::{
     acquisition_request_error_candidates, insufficient_frame_candidates,
-    unsupported_coherent_integration_candidates,
+    unsupported_coherent_integration_candidates, AcquisitionCandidateContext,
 };
 use candidate_ranking::competing_candidate_ratio;
 use candidate_refinement::refine_acquisition_candidates;
-use code_phase_profile::measure_code_phase_profile;
 #[cfg(test)]
 use code_phase_profile::{
     estimate_parabolic_code_phase_offset_samples, wrap_acquisition_code_phase_samples,
 };
+use code_phase_profile::{measure_code_phase_profile, CodePhaseProfileRequest};
 use correlation_accumulation::{
     accumulate_component_correlations, combine_component_accumulations,
 };
@@ -456,18 +456,21 @@ impl Acquisition {
             });
             let assumptions =
                 self.search_assumptions(frame.len(), request, &resolved_bounds, samples_per_code);
+            let candidate_context = AcquisitionCandidateContext {
+                sat,
+                signal_model: &signal_model,
+                signal_code,
+                glonass_frequency_channel: request.glonass_frequency_channel,
+                assumptions: &assumptions,
+                threshold_provenance: &requested_threshold_provenance,
+                intermediate_freq_hz: search_center_hz,
+                source_time: ReceiverSampleTrace::from_sample_time(frame.t0),
+            };
             if !acquisition_integration_ms_is_supported(request.coherent_ms) {
                 sat_evaluations.push(AcquisitionSatEvaluation {
                     sat,
                     candidates: unsupported_coherent_integration_candidates(
-                        sat,
-                        &signal_model,
-                        signal_code,
-                        request.glonass_frequency_channel,
-                        &assumptions,
-                        &requested_threshold_provenance,
-                        search_center_hz,
-                        ReceiverSampleTrace::from_sample_time(frame.t0),
+                        candidate_context,
                         request.coherent_ms,
                     ),
                     search_window_diagnostic: None,
@@ -480,14 +483,7 @@ impl Acquisition {
                     sat_evaluations.push(AcquisitionSatEvaluation {
                         sat,
                         candidates: unsupported_coherent_integration_candidates(
-                            sat,
-                            &signal_model,
-                            signal_code,
-                            request.glonass_frequency_channel,
-                            &assumptions,
-                            &requested_threshold_provenance,
-                            search_center_hz,
-                            ReceiverSampleTrace::from_sample_time(frame.t0),
+                            candidate_context,
                             request.coherent_ms,
                         ),
                         search_window_diagnostic: None,
@@ -502,14 +498,7 @@ impl Acquisition {
                 sat_evaluations.push(AcquisitionSatEvaluation {
                     sat,
                     candidates: insufficient_frame_candidates(
-                        sat,
-                        &signal_model,
-                        signal_code,
-                        request.glonass_frequency_channel,
-                        &assumptions,
-                        &requested_threshold_provenance,
-                        search_center_hz,
-                        ReceiverSampleTrace::from_sample_time(frame.t0),
+                        candidate_context,
                         frame.len(),
                         required,
                     ),
@@ -536,16 +525,14 @@ impl Acquisition {
             let component_ffts = strategy_components
                 .iter()
                 .map(|component| {
-                    self.code_fft(
-                        &signal_model,
+                    self.code_fft(CodeFftRequest {
+                        signal_model: &signal_model,
                         component,
                         sat,
                         signal_code,
                         samples_per_code,
-                        request.coherent_ms,
-                        request.noncoherent,
-                        fft.as_ref(),
-                    )
+                        fft: fft.as_ref(),
+                    })
                 })
                 .collect::<Vec<_>>();
             let mut grid_candidates = Vec::new();
@@ -680,15 +667,16 @@ impl Acquisition {
                 && !strategy_uses_data_sign_hypotheses(&strategies[0], coherent_periods)
             {
                 refine_acquisition_candidates(
-                    self,
-                    frame,
-                    &signal_model,
-                    sat,
+                    candidate_refinement::CandidateRefinementRequest {
+                        acquisition: self,
+                        frame,
+                        signal_model: &signal_model,
+                        grid_candidates: &grid_candidates,
+                        doppler_step_hz: request.doppler_step_hz.max(1),
+                        coherent_ms: request.coherent_ms,
+                        noncoherent: request.noncoherent,
+                    },
                     &mut candidates,
-                    &grid_candidates,
-                    request.doppler_step_hz.max(1),
-                    request.coherent_ms,
-                    request.noncoherent,
                 );
             }
             if candidates.is_empty() {
@@ -916,7 +904,7 @@ fn classify_delayed_secondary_peak(
     config: &ReceiverPipelineConfig,
     frame: &SamplesFrame,
     signal_model: &AcquisitionSignalModel,
-    sat: SatId,
+    _sat: SatId,
     carrier_hz: f64,
     doppler_rate_hz_per_s: f64,
     code_phase_samples: usize,
@@ -937,16 +925,15 @@ fn classify_delayed_secondary_peak(
     if !signal_model.supports_secondary_peak_multipath_screening() {
         return None;
     }
-    let correlation_profile = measure_code_phase_profile(
+    let correlation_profile = measure_code_phase_profile(CodePhaseProfileRequest {
         config,
         signal_model,
         frame,
-        sat,
         carrier_hz,
         doppler_rate_hz_per_s,
         coherent_ms,
         noncoherent,
-    )?;
+    })?;
     delayed_secondary_peak_diagnostic(
         &correlation_profile,
         code_phase_samples,

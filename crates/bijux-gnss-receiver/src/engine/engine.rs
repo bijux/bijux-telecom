@@ -806,10 +806,7 @@ fn acquisition_request_sats(requests: &[AcqRequest]) -> Vec<SatId> {
 }
 
 fn constellation_supports_slot_only_acquisition(constellation: Constellation) -> bool {
-    match constellation {
-        Constellation::Glonass => false,
-        _ => true,
-    }
+    !matches!(constellation, Constellation::Glonass)
 }
 
 fn tracking_signal_supported(acq: &AcqResult) -> bool {

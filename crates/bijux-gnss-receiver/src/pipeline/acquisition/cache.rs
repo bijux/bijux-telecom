@@ -13,6 +13,28 @@ use super::Acquisition;
 pub(super) const ACQUISITION_CACHE_MODEL_VERSION: u32 = 1;
 pub(super) const ACQUISITION_CACHE_POLICY_VERSION: u32 = 1;
 
+#[derive(Clone, Copy)]
+pub(super) struct CodeFftCacheKeyRequest<'a> {
+    pub(super) config: &'a ReceiverPipelineConfig,
+    pub(super) model: &'a AcquisitionSignalModel,
+    pub(super) component_role: SignalComponentRole,
+    pub(super) sat: SatId,
+    pub(super) signal_code: SignalCode,
+    pub(super) samples_per_code: usize,
+    pub(super) doppler_search_hz: i32,
+    pub(super) doppler_step_hz: i32,
+}
+
+#[derive(Clone, Copy)]
+pub(super) struct CodeFftRequest<'a> {
+    pub(super) signal_model: &'a AcquisitionSignalModel,
+    pub(super) component: &'a AcquisitionComponentPlan,
+    pub(super) sat: SatId,
+    pub(super) signal_code: SignalCode,
+    pub(super) samples_per_code: usize,
+    pub(super) fft: &'a dyn rustfft::Fft<f32>,
+}
+
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub(super) struct CodeFftCacheKey {
     sat: SatId,
@@ -31,28 +53,19 @@ pub(super) struct CodeFftCacheKey {
 }
 
 impl CodeFftCacheKey {
-    pub(super) fn from_runtime(
-        config: &ReceiverPipelineConfig,
-        model: &AcquisitionSignalModel,
-        component_role: SignalComponentRole,
-        sat: SatId,
-        signal_code: SignalCode,
-        samples_per_code: usize,
-        doppler_search_hz: i32,
-        doppler_step_hz: i32,
-    ) -> Self {
+    pub(super) fn from_runtime(request: CodeFftCacheKeyRequest<'_>) -> Self {
         Self {
-            sat,
-            signal_band: model.signal_band,
-            signal_code,
-            component_role_key: signal_component_role_key(component_role),
-            samples_per_code,
-            sampling_hz_bits: config.sampling_freq_hz.to_bits(),
-            if_hz_bits: config.intermediate_freq_hz.to_bits(),
-            code_hz_bits: model.code_rate_hz.to_bits(),
-            code_length: model.code_length,
-            doppler_search_hz,
-            doppler_step_hz,
+            sat: request.sat,
+            signal_band: request.model.signal_band,
+            signal_code: request.signal_code,
+            component_role_key: signal_component_role_key(request.component_role),
+            samples_per_code: request.samples_per_code,
+            sampling_hz_bits: request.config.sampling_freq_hz.to_bits(),
+            if_hz_bits: request.config.intermediate_freq_hz.to_bits(),
+            code_hz_bits: request.model.code_rate_hz.to_bits(),
+            code_length: request.model.code_length,
+            doppler_search_hz: request.doppler_search_hz,
+            doppler_step_hz: request.doppler_step_hz,
             model_version: ACQUISITION_CACHE_MODEL_VERSION,
             policy_version: ACQUISITION_CACHE_POLICY_VERSION,
         }
@@ -88,27 +101,17 @@ impl CacheMissReason {
 pub(super) type CodeFftCache = HashMap<CodeFftCacheKey, Vec<Complex<f32>>>;
 
 impl Acquisition {
-    pub(super) fn code_fft(
-        &self,
-        signal_model: &AcquisitionSignalModel,
-        component: &AcquisitionComponentPlan,
-        sat: SatId,
-        signal_code: SignalCode,
-        samples_per_code: usize,
-        _coherent_ms: u32,
-        _noncoherent: u32,
-        fft: &dyn rustfft::Fft<f32>,
-    ) -> Vec<Complex<f32>> {
-        let key = CodeFftCacheKey::from_runtime(
-            &self.config,
-            signal_model,
-            component.role,
-            sat,
-            signal_code,
-            samples_per_code,
-            self.doppler_search_hz,
-            self.doppler_step_hz,
-        );
+    pub(super) fn code_fft(&self, request: CodeFftRequest<'_>) -> Vec<Complex<f32>> {
+        let key = CodeFftCacheKey::from_runtime(CodeFftCacheKeyRequest {
+            config: &self.config,
+            model: request.signal_model,
+            component_role: request.component.role,
+            sat: request.sat,
+            signal_code: request.signal_code,
+            samples_per_code: request.samples_per_code,
+            doppler_search_hz: self.doppler_search_hz,
+            doppler_step_hz: self.doppler_step_hz,
+        });
         if let Some(cached) = self.cache.lock().ok().and_then(|m| m.get(&key).cloned()) {
             self.with_stats(|stats| {
                 stats.cache_hits = stats.cache_hits.saturating_add(1);
@@ -116,20 +119,21 @@ impl Acquisition {
             self.runtime.trace.record(TraceRecord {
                 name: "acquisition_code_fft_cache_hit",
                 fields: vec![
-                    ("constellation", format!("{:?}", sat.constellation)),
-                    ("prn", sat.prn.to_string()),
-                    ("signal_band", format!("{:?}", signal_model.signal_band)),
-                    ("signal_code", format!("{:?}", signal_code)),
-                    ("component_role", format!("{:?}", component.role)),
-                    ("samples_per_code", samples_per_code.to_string()),
+                    ("constellation", format!("{:?}", request.sat.constellation)),
+                    ("prn", request.sat.prn.to_string()),
+                    ("signal_band", format!("{:?}", request.signal_model.signal_band)),
+                    ("signal_code", format!("{:?}", request.signal_code)),
+                    ("component_role", format!("{:?}", request.component.role)),
+                    ("samples_per_code", request.samples_per_code.to_string()),
                 ],
             });
             return cached;
         }
 
         let miss_reason = self.cache.lock().ok().map_or(CacheMissReason::ColdStart, |cache| {
-            let has_same_satellite =
-                cache.keys().any(|cached| cached.matches_signal_period(sat, samples_per_code));
+            let has_same_satellite = cache
+                .keys()
+                .any(|cached| cached.matches_signal_period(request.sat, request.samples_per_code));
             if has_same_satellite {
                 CacheMissReason::IncompatibleAssumptions
             } else {
@@ -151,23 +155,24 @@ impl Acquisition {
         self.runtime.trace.record(TraceRecord {
             name: "acquisition_code_fft_cache_miss",
             fields: vec![
-                ("constellation", format!("{:?}", sat.constellation)),
-                ("prn", sat.prn.to_string()),
-                ("signal_band", format!("{:?}", signal_model.signal_band)),
-                ("signal_code", format!("{:?}", signal_code)),
-                ("component_role", format!("{:?}", component.role)),
-                ("samples_per_code", samples_per_code.to_string()),
+                ("constellation", format!("{:?}", request.sat.constellation)),
+                ("prn", request.sat.prn.to_string()),
+                ("signal_band", format!("{:?}", request.signal_model.signal_band)),
+                ("signal_code", format!("{:?}", request.signal_code)),
+                ("component_role", format!("{:?}", request.component.role)),
+                ("samples_per_code", request.samples_per_code.to_string()),
                 ("reason", miss_reason.as_str().to_string()),
                 ("model_version", ACQUISITION_CACHE_MODEL_VERSION.to_string()),
                 ("policy_version", ACQUISITION_CACHE_POLICY_VERSION.to_string()),
             ],
         });
-        let local_code = component
-            .sample_local_code_period(self.config.sampling_freq_hz, samples_per_code)
-            .unwrap_or_else(|_| vec![1.0; samples_per_code]);
+        let local_code = request
+            .component
+            .sample_local_code_period(self.config.sampling_freq_hz, request.samples_per_code)
+            .unwrap_or_else(|_| vec![1.0; request.samples_per_code]);
         let mut code_fft: Vec<Complex<f32>> =
             local_code.iter().map(|&x| Complex::new(x, 0.0)).collect();
-        fft.process(&mut code_fft);
+        request.fft.process(&mut code_fft);
         if let Ok(mut cache) = self.cache.lock() {
             cache.insert(key, code_fft.clone());
         }

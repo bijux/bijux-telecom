@@ -24,30 +24,26 @@ fn code_fft_cache_reuses_local_code_across_integration_profiles() {
     );
     let component = acquisition_component_plan_for_signal(sat, SignalBand::L1, SignalCode::Ca, 1);
 
-    acquisition.code_fft(
-        &signal_model,
-        &component,
+    acquisition.code_fft(CodeFftRequest {
+        signal_model: &signal_model,
+        component: &component,
         sat,
-        SignalCode::Ca,
+        signal_code: SignalCode::Ca,
         samples_per_code,
-        1,
-        1,
-        fft.as_ref(),
-    );
+        fft: fft.as_ref(),
+    });
     let after_first_profile = acquisition.stats_snapshot();
     assert_eq!(after_first_profile.cache_misses, 1);
     assert_eq!(after_first_profile.cache_hits, 0);
 
-    acquisition.code_fft(
-        &signal_model,
-        &component,
+    acquisition.code_fft(CodeFftRequest {
+        signal_model: &signal_model,
+        component: &component,
         sat,
-        SignalCode::Ca,
+        signal_code: SignalCode::Ca,
         samples_per_code,
-        1,
-        4,
-        fft.as_ref(),
-    );
+        fft: fft.as_ref(),
+    });
     let after_second_profile = acquisition.stats_snapshot();
     assert_eq!(after_second_profile.cache_misses, 1);
     assert_eq!(after_second_profile.cache_hits, 1);
@@ -87,45 +83,39 @@ fn code_fft_cache_separates_gps_l5_signal_codes() {
     let gps_l5_q_component =
         acquisition_component_plan_for_signal(sat, SignalBand::L5, SignalCode::L5Q, 1);
 
-    acquisition.code_fft(
-        &gps_l5_i,
-        &gps_l5_i_component,
+    acquisition.code_fft(CodeFftRequest {
+        signal_model: &gps_l5_i,
+        component: &gps_l5_i_component,
         sat,
-        SignalCode::L5I,
+        signal_code: SignalCode::L5I,
         samples_per_code,
-        1,
-        1,
-        fft.as_ref(),
-    );
+        fft: fft.as_ref(),
+    });
     let after_l5_i = acquisition.stats_snapshot();
     assert_eq!(after_l5_i.cache_misses, 1);
     assert_eq!(after_l5_i.cache_hits, 0);
 
-    acquisition.code_fft(
-        &gps_l5_q,
-        &gps_l5_q_component,
+    acquisition.code_fft(CodeFftRequest {
+        signal_model: &gps_l5_q,
+        component: &gps_l5_q_component,
         sat,
-        SignalCode::L5Q,
+        signal_code: SignalCode::L5Q,
         samples_per_code,
-        1,
-        1,
-        fft.as_ref(),
-    );
+        fft: fft.as_ref(),
+    });
     let after_l5_q = acquisition.stats_snapshot();
     assert_eq!(after_l5_q.cache_misses, 2);
     assert_eq!(after_l5_q.cache_hits, 0);
     assert_eq!(after_l5_q.cache_miss_incompatible, 1);
 
-    acquisition.code_fft(
-        &gps_l5_q,
-        &gps_l5_q_component,
+    acquisition.code_fft(CodeFftRequest {
+        signal_model: &gps_l5_q,
+        component: &gps_l5_q_component,
         sat,
-        SignalCode::L5Q,
+        signal_code: SignalCode::L5Q,
         samples_per_code,
-        1,
-        1,
-        fft.as_ref(),
-    );
+        fft: fft.as_ref(),
+    });
     let after_l5_q_reuse = acquisition.stats_snapshot();
     assert_eq!(after_l5_q_reuse.cache_misses, 2);
     assert_eq!(after_l5_q_reuse.cache_hits, 1);

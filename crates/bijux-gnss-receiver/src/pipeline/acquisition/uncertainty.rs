@@ -9,6 +9,7 @@ use super::likelihood_covariance::{
 };
 use super::likelihood_measurement::{
     measure_local_acquisition_likelihood_surface, measure_local_acquisition_likelihood_volume,
+    AcquisitionLikelihoodSurfaceRequest, AcquisitionLikelihoodVolumeRequest,
 };
 
 pub(super) fn estimate_acquisition_uncertainty(
@@ -27,19 +28,20 @@ pub(super) fn estimate_acquisition_uncertainty(
     }
     let code_phase_center_samples = candidate.resolved_code_phase_samples().round() as usize;
     let covariance = if doppler_rate_search_hz_per_s > 0 {
-        measure_local_acquisition_likelihood_volume(
-            config,
-            signal_model,
-            frame,
-            candidate.sat,
-            candidate.carrier_hz.0,
-            candidate.doppler_rate_hz_per_s,
-            code_phase_center_samples,
-            doppler_step_hz as f64,
-            doppler_rate_step_hz_per_s as f64,
-            coherent_ms,
-            noncoherent,
-        )
+        measure_local_acquisition_likelihood_volume(AcquisitionLikelihoodVolumeRequest {
+            surface: AcquisitionLikelihoodSurfaceRequest {
+                config,
+                signal_model,
+                frame,
+                coarse_carrier_hz: candidate.carrier_hz.0,
+                coarse_doppler_rate_hz_per_s: candidate.doppler_rate_hz_per_s,
+                coarse_code_phase_samples: code_phase_center_samples,
+                doppler_step_hz: doppler_step_hz as f64,
+                coherent_ms,
+                noncoherent,
+            },
+            doppler_rate_step_hz_per_s: doppler_rate_step_hz_per_s as f64,
+        })
         .and_then(|volume| {
             estimate_log_likelihood_covariance_3x3(
                 &volume,
@@ -53,18 +55,17 @@ pub(super) fn estimate_acquisition_uncertainty(
         None
     }
     .or_else(|| {
-        measure_local_acquisition_likelihood_surface(
+        measure_local_acquisition_likelihood_surface(AcquisitionLikelihoodSurfaceRequest {
             config,
             signal_model,
             frame,
-            candidate.sat,
-            candidate.carrier_hz.0,
-            candidate.doppler_rate_hz_per_s,
-            code_phase_center_samples,
-            doppler_step_hz as f64,
+            coarse_carrier_hz: candidate.carrier_hz.0,
+            coarse_doppler_rate_hz_per_s: candidate.doppler_rate_hz_per_s,
+            coarse_code_phase_samples: code_phase_center_samples,
+            doppler_step_hz: doppler_step_hz as f64,
             coherent_ms,
             noncoherent,
-        )
+        })
         .and_then(|surface| {
             estimate_log_likelihood_covariance_2x2(
                 &surface,

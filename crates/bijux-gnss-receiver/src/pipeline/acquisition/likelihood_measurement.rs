@@ -1,9 +1,9 @@
-use bijux_gnss_core::api::{SamplesFrame, SatId};
+use bijux_gnss_core::api::SamplesFrame;
 use bijux_gnss_signal::api::AcquisitionSignalModel;
 
 use crate::engine::receiver_config::ReceiverPipelineConfig;
 
-use super::code_phase_profile::measure_code_phase_profile;
+use super::code_phase_profile::{measure_code_phase_profile, CodePhaseProfileRequest};
 use super::likelihood_covariance::{
     LocalAcquisitionLikelihoodSurface, LocalAcquisitionLikelihoodVolume,
 };
@@ -12,49 +12,58 @@ const DOPPLER_OFFSET_LIMIT_BINS: f64 = 0.5;
 const CODE_PHASE_OFFSET_LIMIT_SAMPLES: f64 = 0.5;
 const LIKELIHOOD_CURVATURE_EPSILON: f64 = 1.0e-12;
 
+#[derive(Clone, Copy)]
+pub(super) struct AcquisitionLikelihoodSurfaceRequest<'a> {
+    pub(super) config: &'a ReceiverPipelineConfig,
+    pub(super) signal_model: &'a AcquisitionSignalModel,
+    pub(super) frame: &'a SamplesFrame,
+    pub(super) coarse_carrier_hz: f64,
+    pub(super) coarse_doppler_rate_hz_per_s: f64,
+    pub(super) coarse_code_phase_samples: usize,
+    pub(super) doppler_step_hz: f64,
+    pub(super) coherent_ms: u32,
+    pub(super) noncoherent: u32,
+}
+
+#[derive(Clone, Copy)]
+pub(super) struct AcquisitionLikelihoodVolumeRequest<'a> {
+    pub(super) surface: AcquisitionLikelihoodSurfaceRequest<'a>,
+    pub(super) doppler_rate_step_hz_per_s: f64,
+}
+
 pub(super) fn measure_local_acquisition_likelihood_surface(
-    config: &ReceiverPipelineConfig,
-    signal_model: &AcquisitionSignalModel,
-    frame: &SamplesFrame,
-    sat: SatId,
-    coarse_carrier_hz: f64,
-    coarse_doppler_rate_hz_per_s: f64,
-    coarse_code_phase_samples: usize,
-    doppler_step_hz: f64,
-    coherent_ms: u32,
-    noncoherent: u32,
+    request: AcquisitionLikelihoodSurfaceRequest<'_>,
 ) -> Option<LocalAcquisitionLikelihoodSurface> {
-    if !doppler_step_hz.is_finite() || doppler_step_hz <= f64::EPSILON {
+    if !request.doppler_step_hz.is_finite() || request.doppler_step_hz <= f64::EPSILON {
         return None;
     }
-    let samples_per_code = signal_model.samples_per_code(config.sampling_freq_hz);
+    let samples_per_code = request.signal_model.samples_per_code(request.config.sampling_freq_hz);
     if samples_per_code < 3 {
         return None;
     }
 
-    let center_index = coarse_code_phase_samples % samples_per_code;
+    let center_index = request.coarse_code_phase_samples % samples_per_code;
     let left_index = (center_index + samples_per_code - 1) % samples_per_code;
     let right_index = (center_index + 1) % samples_per_code;
     let mut values = [[0.0f32; 3]; 3];
 
     for (doppler_index, carrier_hz) in [
-        coarse_carrier_hz - doppler_step_hz,
-        coarse_carrier_hz,
-        coarse_carrier_hz + doppler_step_hz,
+        request.coarse_carrier_hz - request.doppler_step_hz,
+        request.coarse_carrier_hz,
+        request.coarse_carrier_hz + request.doppler_step_hz,
     ]
     .into_iter()
     .enumerate()
     {
-        let profile = measure_code_phase_profile(
-            config,
-            signal_model,
-            frame,
-            sat,
+        let profile = measure_code_phase_profile(CodePhaseProfileRequest {
+            config: request.config,
+            signal_model: request.signal_model,
+            frame: request.frame,
             carrier_hz,
-            coarse_doppler_rate_hz_per_s,
-            coherent_ms,
-            noncoherent,
-        )?;
+            doppler_rate_hz_per_s: request.coarse_doppler_rate_hz_per_s,
+            coherent_ms: request.coherent_ms,
+            noncoherent: request.noncoherent,
+        })?;
         values[doppler_index] = [profile[left_index], profile[center_index], profile[right_index]];
     }
 
@@ -75,57 +84,47 @@ pub(super) fn measure_local_acquisition_likelihood_surface(
 }
 
 pub(super) fn measure_local_acquisition_likelihood_volume(
-    config: &ReceiverPipelineConfig,
-    signal_model: &AcquisitionSignalModel,
-    frame: &SamplesFrame,
-    sat: SatId,
-    coarse_carrier_hz: f64,
-    coarse_doppler_rate_hz_per_s: f64,
-    coarse_code_phase_samples: usize,
-    doppler_step_hz: f64,
-    doppler_rate_step_hz_per_s: f64,
-    coherent_ms: u32,
-    noncoherent: u32,
+    request: AcquisitionLikelihoodVolumeRequest<'_>,
 ) -> Option<LocalAcquisitionLikelihoodVolume> {
-    if !doppler_step_hz.is_finite()
-        || doppler_step_hz <= f64::EPSILON
-        || !doppler_rate_step_hz_per_s.is_finite()
-        || doppler_rate_step_hz_per_s <= f64::EPSILON
+    if !request.surface.doppler_step_hz.is_finite()
+        || request.surface.doppler_step_hz <= f64::EPSILON
+        || !request.doppler_rate_step_hz_per_s.is_finite()
+        || request.doppler_rate_step_hz_per_s <= f64::EPSILON
     {
         return None;
     }
-    let samples_per_code = signal_model.samples_per_code(config.sampling_freq_hz);
+    let samples_per_code =
+        request.surface.signal_model.samples_per_code(request.surface.config.sampling_freq_hz);
     if samples_per_code < 3 {
         return None;
     }
 
-    let center_index = coarse_code_phase_samples % samples_per_code;
+    let center_index = request.surface.coarse_code_phase_samples % samples_per_code;
     let left_index = (center_index + samples_per_code - 1) % samples_per_code;
     let right_index = (center_index + 1) % samples_per_code;
     let mut values = [[[0.0f32; 3]; 3]; 3];
     let doppler_rates = [
-        coarse_doppler_rate_hz_per_s - doppler_rate_step_hz_per_s,
-        coarse_doppler_rate_hz_per_s,
-        coarse_doppler_rate_hz_per_s + doppler_rate_step_hz_per_s,
+        request.surface.coarse_doppler_rate_hz_per_s - request.doppler_rate_step_hz_per_s,
+        request.surface.coarse_doppler_rate_hz_per_s,
+        request.surface.coarse_doppler_rate_hz_per_s + request.doppler_rate_step_hz_per_s,
     ];
     let carriers = [
-        coarse_carrier_hz - doppler_step_hz,
-        coarse_carrier_hz,
-        coarse_carrier_hz + doppler_step_hz,
+        request.surface.coarse_carrier_hz - request.surface.doppler_step_hz,
+        request.surface.coarse_carrier_hz,
+        request.surface.coarse_carrier_hz + request.surface.doppler_step_hz,
     ];
 
     for (rate_index, doppler_rate_hz_per_s) in doppler_rates.into_iter().enumerate() {
         for (doppler_index, carrier_hz) in carriers.into_iter().enumerate() {
-            let profile = measure_code_phase_profile(
-                config,
-                signal_model,
-                frame,
-                sat,
+            let profile = measure_code_phase_profile(CodePhaseProfileRequest {
+                config: request.surface.config,
+                signal_model: request.surface.signal_model,
+                frame: request.surface.frame,
                 carrier_hz,
                 doppler_rate_hz_per_s,
-                coherent_ms,
-                noncoherent,
-            )?;
+                coherent_ms: request.surface.coherent_ms,
+                noncoherent: request.surface.noncoherent,
+            })?;
             values[rate_index][doppler_index] =
                 [profile[left_index], profile[center_index], profile[right_index]];
         }

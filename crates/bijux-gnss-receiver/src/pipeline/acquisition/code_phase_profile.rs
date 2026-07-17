@@ -1,4 +1,4 @@
-use bijux_gnss_core::api::{SamplesFrame, SatId};
+use bijux_gnss_core::api::SamplesFrame;
 use bijux_gnss_signal::api::{
     wipeoff_carrier, wipeoff_carrier_with_linear_rate, AcquisitionSignalModel, SignalError,
 };
@@ -10,6 +10,17 @@ use crate::engine::receiver_config::ReceiverPipelineConfig;
 const CODE_PHASE_REFINEMENT_MAX_OFFSET_SAMPLES: f64 = 0.5;
 const CODE_PHASE_REFINEMENT_EPSILON: f64 = 1.0e-12;
 const CODE_PHASE_REFINEMENT_MIN_ABS_OFFSET_SAMPLES: f64 = 0.05;
+
+#[derive(Clone, Copy)]
+pub(super) struct CodePhaseProfileRequest<'a> {
+    pub(super) config: &'a ReceiverPipelineConfig,
+    pub(super) signal_model: &'a AcquisitionSignalModel,
+    pub(super) frame: &'a SamplesFrame,
+    pub(super) carrier_hz: f64,
+    pub(super) doppler_rate_hz_per_s: f64,
+    pub(super) coherent_ms: u32,
+    pub(super) noncoherent: u32,
+}
 
 pub(super) fn wipeoff_search_carrier(
     samples: &[Complex<f32>],
@@ -39,44 +50,36 @@ pub(super) fn wipeoff_search_carrier(
     )
 }
 
-pub(super) fn measure_code_phase_profile(
-    config: &ReceiverPipelineConfig,
-    signal_model: &AcquisitionSignalModel,
-    frame: &SamplesFrame,
-    _sat: SatId,
-    carrier_hz: f64,
-    doppler_rate_hz_per_s: f64,
-    coherent_ms: u32,
-    noncoherent: u32,
-) -> Option<Vec<f32>> {
-    let samples_per_code = signal_model.samples_per_code(config.sampling_freq_hz);
-    let coherent_periods = signal_model.coherent_periods(coherent_ms)?;
+pub(super) fn measure_code_phase_profile(request: CodePhaseProfileRequest<'_>) -> Option<Vec<f32>> {
+    let samples_per_code = request.signal_model.samples_per_code(request.config.sampling_freq_hz);
+    let coherent_periods = request.signal_model.coherent_periods(request.coherent_ms)?;
     if samples_per_code == 0 {
         return None;
     }
     let mut planner = FftPlanner::<f32>::new();
     let fft = planner.plan_fft_forward(samples_per_code);
     let ifft = planner.plan_fft_inverse(samples_per_code);
-    let local_code = signal_model
-        .sampled_local_code_period(config.sampling_freq_hz, samples_per_code)
+    let local_code = request
+        .signal_model
+        .sampled_local_code_period(request.config.sampling_freq_hz, samples_per_code)
         .unwrap_or_else(|_| vec![1.0; samples_per_code]);
     let mut code_fft: Vec<Complex<f32>> =
         local_code.iter().map(|&x| Complex::new(x, 0.0)).collect();
     fft.process(&mut code_fft);
     let mut noncoherent_acc = vec![0.0f32; samples_per_code];
 
-    for nc in 0..noncoherent {
+    for nc in 0..request.noncoherent {
         let mut coherent_corr: Vec<Complex<f32>> = vec![Complex::zero(); samples_per_code];
         for c in 0..coherent_periods {
             let offset_period = (nc * coherent_periods + c) as usize;
             let start = offset_period * samples_per_code;
             let end = start + samples_per_code;
-            let block = &frame.iq[start..end];
+            let block = &request.frame.iq[start..end];
             let mixed = wipeoff_search_carrier(
                 block,
-                carrier_hz,
-                doppler_rate_hz_per_s,
-                config.sampling_freq_hz,
+                request.carrier_hz,
+                request.doppler_rate_hz_per_s,
+                request.config.sampling_freq_hz,
                 start as u64,
                 0.0,
             )

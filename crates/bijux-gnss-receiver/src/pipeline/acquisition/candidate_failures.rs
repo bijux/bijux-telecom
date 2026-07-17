@@ -11,30 +11,35 @@ use crate::pipeline::doppler::carrier_hz_from_doppler_hz;
 
 use super::signal_model::resolved_signal_code;
 
+#[derive(Clone, Copy)]
+pub(super) struct AcquisitionCandidateContext<'a> {
+    pub(super) sat: SatId,
+    pub(super) signal_model: &'a AcquisitionSignalModel,
+    pub(super) signal_code: SignalCode,
+    pub(super) glonass_frequency_channel: Option<GlonassFrequencyChannel>,
+    pub(super) assumptions: &'a AcqAssumptions,
+    pub(super) threshold_provenance: &'a AcqThresholdProvenance,
+    pub(super) intermediate_freq_hz: f64,
+    pub(super) source_time: ReceiverSampleTrace,
+}
+
 pub(super) fn insufficient_frame_candidates(
-    sat: SatId,
-    signal_model: &AcquisitionSignalModel,
-    signal_code: SignalCode,
-    glonass_frequency_channel: Option<GlonassFrequencyChannel>,
-    assumptions: &AcqAssumptions,
-    threshold_provenance: &AcqThresholdProvenance,
-    intermediate_freq_hz: f64,
-    source_time: ReceiverSampleTrace,
+    context: AcquisitionCandidateContext<'_>,
     available_samples: usize,
     required_samples: usize,
 ) -> Vec<AcqResult> {
     let candidate_reason = insufficient_frame_candidate_reason(available_samples, required_samples);
     vec![AcqResult {
-        sat,
-        signal_band: signal_model.signal_band,
-        signal_code,
-        glonass_frequency_channel,
-        source_time,
+        sat: context.sat,
+        signal_band: context.signal_model.signal_band,
+        signal_code: context.signal_code,
+        glonass_frequency_channel: context.glonass_frequency_channel,
+        source_time: context.source_time,
         candidate_rank: 1,
         is_primary_candidate: true,
         doppler_hz: Hertz(0.0),
-        doppler_rate_hz_per_s: assumptions.doppler_rate_center_hz_per_s,
-        carrier_hz: Hertz(intermediate_freq_hz),
+        doppler_rate_hz_per_s: context.assumptions.doppler_rate_center_hz_per_s,
+        carrier_hz: Hertz(context.intermediate_freq_hz),
         code_phase_samples: 0,
         peak: 0.0,
         second_peak: 0.0,
@@ -44,9 +49,9 @@ pub(super) fn insufficient_frame_candidates(
         cn0_proxy: 0.0,
         score: 0.0,
         hypothesis: AcqHypothesis::Deferred,
-        assumptions: Some(assumptions.clone()),
+        assumptions: Some(context.assumptions.clone()),
         evidence: Vec::new(),
-        threshold_provenance: Some(threshold_provenance.clone()),
+        threshold_provenance: Some(context.threshold_provenance.clone()),
         explain_selection_reason: Some(candidate_reason),
         doppler_refinement: None,
         code_phase_refinement: None,
@@ -126,27 +131,20 @@ pub(super) fn acquisition_request_error_candidates(
 }
 
 pub(super) fn zero_signal_candidate(
-    sat: SatId,
-    signal_model: &AcquisitionSignalModel,
-    signal_code: SignalCode,
-    glonass_frequency_channel: Option<GlonassFrequencyChannel>,
-    assumptions: &AcqAssumptions,
-    threshold_provenance: &AcqThresholdProvenance,
-    intermediate_freq_hz: f64,
-    source_time: ReceiverSampleTrace,
+    context: AcquisitionCandidateContext<'_>,
     zero_signal_reason: Option<&str>,
 ) -> AcqResult {
     AcqResult {
-        sat,
-        signal_band: signal_model.signal_band,
-        signal_code,
-        glonass_frequency_channel,
-        source_time,
+        sat: context.sat,
+        signal_band: context.signal_model.signal_band,
+        signal_code: context.signal_code,
+        glonass_frequency_channel: context.glonass_frequency_channel,
+        source_time: context.source_time,
         candidate_rank: 1,
         is_primary_candidate: true,
-        doppler_hz: Hertz(assumptions.doppler_center_hz),
-        doppler_rate_hz_per_s: assumptions.doppler_rate_center_hz_per_s,
-        carrier_hz: Hertz(intermediate_freq_hz),
+        doppler_hz: Hertz(context.assumptions.doppler_center_hz),
+        doppler_rate_hz_per_s: context.assumptions.doppler_rate_center_hz_per_s,
+        carrier_hz: Hertz(context.intermediate_freq_hz),
         code_phase_samples: 0,
         peak: 0.0,
         second_peak: 0.0,
@@ -156,9 +154,9 @@ pub(super) fn zero_signal_candidate(
         cn0_proxy: 0.0,
         score: 0.0,
         hypothesis: AcqHypothesis::Rejected,
-        assumptions: Some(assumptions.clone()),
+        assumptions: Some(context.assumptions.clone()),
         evidence: Vec::new(),
-        threshold_provenance: Some(threshold_provenance.clone()),
+        threshold_provenance: Some(context.threshold_provenance.clone()),
         explain_selection_reason: Some(zero_signal_candidate_reason(zero_signal_reason)),
         doppler_refinement: None,
         code_phase_refinement: None,
@@ -168,27 +166,10 @@ pub(super) fn zero_signal_candidate(
 }
 
 pub(super) fn unsupported_coherent_integration_candidates(
-    sat: SatId,
-    signal_model: &AcquisitionSignalModel,
-    signal_code: SignalCode,
-    glonass_frequency_channel: Option<GlonassFrequencyChannel>,
-    assumptions: &AcqAssumptions,
-    threshold_provenance: &AcqThresholdProvenance,
-    intermediate_freq_hz: f64,
-    source_time: ReceiverSampleTrace,
+    context: AcquisitionCandidateContext<'_>,
     coherent_ms: u32,
 ) -> Vec<AcqResult> {
-    vec![unsupported_coherent_integration_candidate(
-        sat,
-        signal_model,
-        signal_code,
-        glonass_frequency_channel,
-        assumptions,
-        threshold_provenance,
-        intermediate_freq_hz,
-        source_time,
-        coherent_ms,
-    )]
+    vec![unsupported_coherent_integration_candidate(context, coherent_ms)]
 }
 
 fn zero_signal_candidate_reason(zero_signal_reason: Option<&str>) -> String {
@@ -208,27 +189,20 @@ fn insufficient_frame_candidate_reason(
 }
 
 fn unsupported_coherent_integration_candidate(
-    sat: SatId,
-    signal_model: &AcquisitionSignalModel,
-    signal_code: SignalCode,
-    glonass_frequency_channel: Option<GlonassFrequencyChannel>,
-    assumptions: &AcqAssumptions,
-    threshold_provenance: &AcqThresholdProvenance,
-    intermediate_freq_hz: f64,
-    source_time: ReceiverSampleTrace,
+    context: AcquisitionCandidateContext<'_>,
     coherent_ms: u32,
 ) -> AcqResult {
     AcqResult {
-        sat,
-        signal_band: signal_model.signal_band,
-        signal_code,
-        glonass_frequency_channel,
-        source_time,
+        sat: context.sat,
+        signal_band: context.signal_model.signal_band,
+        signal_code: context.signal_code,
+        glonass_frequency_channel: context.glonass_frequency_channel,
+        source_time: context.source_time,
         candidate_rank: 1,
         is_primary_candidate: true,
-        doppler_hz: Hertz(assumptions.doppler_center_hz),
-        doppler_rate_hz_per_s: assumptions.doppler_rate_center_hz_per_s,
-        carrier_hz: Hertz(intermediate_freq_hz),
+        doppler_hz: Hertz(context.assumptions.doppler_center_hz),
+        doppler_rate_hz_per_s: context.assumptions.doppler_rate_center_hz_per_s,
+        carrier_hz: Hertz(context.intermediate_freq_hz),
         code_phase_samples: 0,
         peak: 0.0,
         second_peak: 0.0,
@@ -238,9 +212,9 @@ fn unsupported_coherent_integration_candidate(
         cn0_proxy: 0.0,
         score: 0.0,
         hypothesis: AcqHypothesis::Deferred,
-        assumptions: Some(assumptions.clone()),
+        assumptions: Some(context.assumptions.clone()),
         evidence: Vec::new(),
-        threshold_provenance: Some(threshold_provenance.clone()),
+        threshold_provenance: Some(context.threshold_provenance.clone()),
         explain_selection_reason: Some(unsupported_coherent_integration_candidate_reason(
             coherent_ms,
         )),

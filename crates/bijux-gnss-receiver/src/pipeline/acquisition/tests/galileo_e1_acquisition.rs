@@ -30,16 +30,15 @@ fn galileo_e1_cboc_profile_reports_side_peak_geometry() {
     );
     let signal_model =
         acquisition_signal_model_for_sat(&config, sat, SignalBand::E1, SignalCode::E1B, None);
-    let profile = measure_code_phase_profile(
-        &config,
-        &signal_model,
-        &frame,
-        sat,
-        signal_model.search_center_hz(config.intermediate_freq_hz),
-        0.0,
-        config.acquisition_integration_ms,
-        config.acquisition_noncoherent,
-    )
+    let profile = measure_code_phase_profile(CodePhaseProfileRequest {
+        config: &config,
+        signal_model: &signal_model,
+        frame: &frame,
+        carrier_hz: signal_model.search_center_hz(config.intermediate_freq_hz),
+        doppler_rate_hz_per_s: 0.0,
+        coherent_ms: config.acquisition_integration_ms,
+        noncoherent: config.acquisition_noncoherent,
+    })
     .expect("Galileo E1 correlation profile");
     let metrics = correlation_metrics(&profile);
     let diagnostic = delayed_secondary_peak_diagnostic(

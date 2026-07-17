@@ -4,7 +4,9 @@ use bijux_gnss_core::api::{
 
 use crate::engine::receiver_config::ReceiverPipelineConfig;
 
-use super::candidate_failures::{acquisition_request_error_candidates, zero_signal_candidate};
+use super::candidate_failures::{
+    acquisition_request_error_candidates, zero_signal_candidate, AcquisitionCandidateContext,
+};
 use super::signal_model::{
     acquisition_signal_model_for_request, request_search_center_hz, resolved_request_signal_code,
 };
@@ -95,14 +97,16 @@ pub(super) fn zero_signal_run(
             code_phase_search_mode: "full_code".to_string(),
         };
         let result = zero_signal_candidate(
-            sat,
-            &signal_model,
-            signal_code,
-            request.glonass_frequency_channel,
-            &assumptions,
-            &threshold_provenance,
-            search_center_hz,
-            source_time,
+            AcquisitionCandidateContext {
+                sat,
+                signal_model: &signal_model,
+                signal_code,
+                glonass_frequency_channel: request.glonass_frequency_channel,
+                assumptions: &assumptions,
+                threshold_provenance: &threshold_provenance,
+                intermediate_freq_hz: search_center_hz,
+                source_time,
+            },
             zero_signal_reason,
         );
         if emit_explanations {

@@ -7,7 +7,7 @@ use crate::pipeline::doppler::carrier_hz_from_doppler_hz;
 
 use crate::pipeline::acquisition::candidate_decision::selected_reason_for_candidate;
 
-use super::code_phase_profile::measure_code_phase_profile;
+use super::code_phase_profile::{measure_code_phase_profile, CodePhaseProfileRequest};
 use super::doppler_refinement::{
     find_best_candidate_by_carrier_hz_and_rate, find_candidate_by_carrier_hz,
 };
@@ -240,7 +240,7 @@ pub(super) fn assisted_code_phase_search_window_diagnostic(
     config: &ReceiverPipelineConfig,
     signal_model: &AcquisitionSignalModel,
     frame: &SamplesFrame,
-    sat: SatId,
+    _sat: SatId,
     carrier_hz: f64,
     doppler_rate_hz_per_s: f64,
     coherent_ms: u32,
@@ -253,16 +253,15 @@ pub(super) fn assisted_code_phase_search_window_diagnostic(
     {
         return None;
     }
-    let correlation_profile = measure_code_phase_profile(
+    let correlation_profile = measure_code_phase_profile(CodePhaseProfileRequest {
         config,
         signal_model,
         frame,
-        sat,
         carrier_hz,
         doppler_rate_hz_per_s,
         coherent_ms,
         noncoherent,
-    )?;
+    })?;
     code_phase_outside_search_range(
         &correlation_profile,
         resolved_bounds.code_phase_search_start_sample,
