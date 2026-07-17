@@ -6,3 +6,4 @@ pub const REFERENCE_COORDINATE_CSV_HEADER: &str =
 
 pub mod ppp_convergence;
 pub mod station_truth;
+pub mod troposphere_elevation;

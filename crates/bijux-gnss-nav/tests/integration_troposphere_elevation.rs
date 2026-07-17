@@ -11,7 +11,7 @@ use bijux_gnss_nav::api::{
     ecef_to_geodetic, elevation_azimuth_deg, sat_state_gps_l1ca_from_observation,
     NiellMappingFunction, SaastamoinenModel, TroposphereMeteorology, TroposphereModel,
 };
-use bijux_gnss_testkit::public_troposphere_elevation::{
+use bijux_gnss_testkit::reference_data::troposphere_elevation::{
     build_public_troposphere_elevation_report, PublicTroposphereElevationReport,
     LOW_ELEVATION_CEILING_DEG,
 };
