@@ -21,3 +21,6 @@ The workflow families and their composition boundary are described in [WORKFLOWS
 
 `src/lib.rs` owns a narrow package-level façade over the lower-level GNSS crates. That façade is a
 package convenience, not a new mixed-ownership domain.
+
+The façade boundary is described in [FACADE.md](FACADE.md), and operator-facing reporting ownership
+is described in [REPORTING.md](REPORTING.md).
