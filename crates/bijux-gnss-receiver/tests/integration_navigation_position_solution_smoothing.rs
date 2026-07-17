@@ -6,10 +6,11 @@ use bijux_gnss_core::api::{
     ObservationUncertaintyClass, ReceiverRole, ReceiverSampleTrace, SatId, Seconds, SigId,
     SignalBand, SignalCode, SignalSpec, SolutionStatus,
 };
-use bijux_gnss_nav::api::{geodetic_to_ecef, sat_state_gps_l1ca, GpsEphemeris};
+use bijux_gnss_nav::api::{geodetic_to_ecef, GpsEphemeris};
 use bijux_gnss_receiver::api::{
     Navigation, NavigationMotionClass, ReceiverPipelineConfig, ReceiverRuntime,
 };
+use bijux_gnss_testkit::position_truth::pseudorange_from_truth;
 
 fn make_eph(prn: u8, omega0: f64, m0: f64, t_ref_s: f64) -> GpsEphemeris {
     GpsEphemeris {
@@ -44,23 +45,7 @@ fn make_eph(prn: u8, omega0: f64, m0: f64, t_ref_s: f64) -> GpsEphemeris {
 }
 
 fn synthetic_pseudorange_m(eph: &GpsEphemeris, t_rx_s: f64, position_ecef: (f64, f64, f64)) -> f64 {
-    let c = 299_792_458.0;
-    let mut tau = 0.07;
-    let mut pseudorange_m = 0.0;
-    for _ in 0..10 {
-        let sat = sat_state_gps_l1ca(eph, t_rx_s - tau, tau);
-        let dx = position_ecef.0 - sat.x_m;
-        let dy = position_ecef.1 - sat.y_m;
-        let dz = position_ecef.2 - sat.z_m;
-        let range = (dx * dx + dy * dy + dz * dz).sqrt();
-        pseudorange_m = range - sat.clock_correction.bias_s * c;
-        let next_tau = pseudorange_m / c;
-        if (next_tau - tau).abs() < 1e-12 {
-            break;
-        }
-        tau = next_tau;
-    }
-    pseudorange_m
+    pseudorange_from_truth(eph, position_ecef, t_rx_s, 0.0)
 }
 
 fn make_obs_epoch(
@@ -207,6 +192,24 @@ fn path_length_m(solutions: &[bijux_gnss_core::api::NavSolutionEpoch]) -> f64 {
         .sum()
 }
 
+fn centroid_deviation_rms_m(solutions: &[bijux_gnss_core::api::NavSolutionEpoch]) -> f64 {
+    let count = solutions.len() as f64;
+    let centroid = solutions.iter().fold((0.0, 0.0, 0.0), |sum, solution| {
+        (sum.0 + solution.ecef_x_m.0, sum.1 + solution.ecef_y_m.0, sum.2 + solution.ecef_z_m.0)
+    });
+    let centroid = (centroid.0 / count, centroid.1 / count, centroid.2 / count);
+    let squared_deviation_sum = solutions
+        .iter()
+        .map(|solution| {
+            let dx = solution.ecef_x_m.0 - centroid.0;
+            let dy = solution.ecef_y_m.0 - centroid.1;
+            let dz = solution.ecef_z_m.0 - centroid.2;
+            dx * dx + dy * dy + dz * dz
+        })
+        .sum::<f64>();
+    (squared_deviation_sum / count).sqrt()
+}
+
 fn path_length_from_positions_m(positions_ecef_m: &[(f64, f64, f64)]) -> f64 {
     positions_ecef_m
         .windows(2)
@@ -219,6 +222,22 @@ fn path_length_from_positions_m(positions_ecef_m: &[(f64, f64, f64)]) -> f64 {
         .sum()
 }
 
+fn solution_decision_evidence(
+    label: &str,
+    solutions: &[bijux_gnss_core::api::NavSolutionEpoch],
+) -> String {
+    let first_solution = solutions.first().expect("solution evidence requires at least one row");
+    format!(
+        "{label}: count={} first_status={:?} first_decision={} first_reasons={:?} first_pdop={:.3} first_rms={:.3}",
+        solutions.len(),
+        first_solution.status,
+        first_solution.explain_decision,
+        first_solution.explain_reasons,
+        first_solution.pdop,
+        first_solution.rms_m.0
+    )
+}
+
 fn navigation_test_config(
     position_solution_smoothing: bool,
     position_solution_motion_class: NavigationMotionClass,
@@ -228,6 +247,7 @@ fn navigation_test_config(
         position_solution_motion_class,
         ..ReceiverPipelineConfig::default()
     };
+    config.raim = false;
     config.science_thresholds.min_mean_cn0_dbhz = 1.0;
     config.science_thresholds.max_pdop = 100.0;
     config.science_thresholds.max_gdop = 100.0;
@@ -301,13 +321,33 @@ fn public_navigation_api_smooths_static_and_moving_solution_sequences() {
         })
         .collect::<Vec<_>>();
 
+    let raw_static_rms_m = root_mean_square(&raw_static_errors_m);
+    let smoothed_static_rms_m = root_mean_square(&smoothed_static_errors_m);
+    let raw_static_jitter_rms_m = centroid_deviation_rms_m(&raw_static_solutions);
+    let smoothed_static_jitter_rms_m = centroid_deviation_rms_m(&smoothed_static_solutions);
+    let raw_static_path_m = path_length_m(&raw_static_solutions);
+    let smoothed_static_path_m = path_length_m(&smoothed_static_solutions);
+    let raw_moving_rms_m = root_mean_square(&raw_moving_errors_m);
+    let smoothed_moving_rms_m = root_mean_square(&smoothed_moving_errors_m);
+    let smoothed_moving_path_m = path_length_m(&smoothed_moving_solutions);
+    let moving_truth_path_m = path_length_from_positions_m(&moving_truth_trace);
+
     assert!(
-        root_mean_square(&smoothed_static_errors_m) < root_mean_square(&raw_static_errors_m) * 0.75
+        smoothed_static_jitter_rms_m < raw_static_jitter_rms_m * 0.75,
+        "static smoothing jitter contract failed: raw_jitter={raw_static_jitter_rms_m:.3}m smoothed_jitter={smoothed_static_jitter_rms_m:.3}m raw_error={raw_static_rms_m:.3}m smoothed_error={smoothed_static_rms_m:.3}m; {}; {}",
+        solution_decision_evidence("raw_static", &raw_static_solutions),
+        solution_decision_evidence("smoothed_static", &smoothed_static_solutions)
     );
-    assert!(path_length_m(&smoothed_static_solutions) < path_length_m(&raw_static_solutions) * 0.4);
-    assert!(root_mean_square(&smoothed_moving_errors_m) <= root_mean_square(&raw_moving_errors_m));
     assert!(
-        path_length_m(&smoothed_moving_solutions)
-            > path_length_from_positions_m(&moving_truth_trace) * 0.9
+        smoothed_static_path_m < raw_static_path_m * 0.4,
+        "static smoothing path contract failed: raw={raw_static_path_m:.3}m smoothed={smoothed_static_path_m:.3}m"
+    );
+    assert!(
+        smoothed_moving_rms_m <= raw_moving_rms_m,
+        "vehicle smoothing rms contract failed: raw={raw_moving_rms_m:.3}m smoothed={smoothed_moving_rms_m:.3}m"
+    );
+    assert!(
+        smoothed_moving_path_m > moving_truth_path_m * 0.9,
+        "vehicle smoothing path contract failed: truth={moving_truth_path_m:.3}m smoothed={smoothed_moving_path_m:.3}m"
     );
 }

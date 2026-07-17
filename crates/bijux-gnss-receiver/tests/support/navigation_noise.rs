@@ -21,6 +21,8 @@ pub struct SyntheticPvtNoiseSweepPoint {
     pub profile_name: &'static str,
     pub max_abs_pseudorange_noise_m: f64,
     pub max_position_error_3d_m: f64,
+    pub solution_count: usize,
+    pub valid_solution_count: usize,
 }
 
 pub fn synthetic_pseudorange_noise_sweep_profiles() -> Vec<SyntheticPseudorangeNoiseProfile> {
@@ -46,6 +48,9 @@ pub fn synthetic_pvt_noise_sweep() -> Vec<SyntheticPvtNoiseSweepPoint> {
                 .map(|satellite| satellite.pseudorange_noise_m.abs())
                 .fold(0.0, f64::max);
             let run = noisy_synthetic_navigation_run(noise_profile.clone());
+            let solution_count = run.run.solutions.len();
+            let valid_solution_count =
+                run.run.solutions.iter().filter(|solution| solution.status.is_valid()).count();
             let max_position_error_3d_m = run
                 .run
                 .solutions
@@ -57,6 +62,8 @@ pub fn synthetic_pvt_noise_sweep() -> Vec<SyntheticPvtNoiseSweepPoint> {
                 profile_name: noise_profile.profile_name,
                 max_abs_pseudorange_noise_m,
                 max_position_error_3d_m,
+                solution_count,
+                valid_solution_count,
             }
         })
         .collect()
@@ -67,10 +74,12 @@ pub fn synthetic_pvt_noise_evidence(points: &[SyntheticPvtNoiseSweepPoint]) -> S
         .iter()
         .map(|point| {
             format!(
-                "{}: noise_max={:.3}m position_error_max={:.3}m",
+                "{}: noise_max={:.3}m position_error_max={:.3}m valid_solutions={}/{}",
                 point.profile_name,
                 point.max_abs_pseudorange_noise_m,
-                point.max_position_error_3d_m
+                point.max_position_error_3d_m,
+                point.valid_solution_count,
+                point.solution_count
             )
         })
         .collect::<Vec<_>>()
