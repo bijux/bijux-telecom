@@ -617,7 +617,7 @@ mod tests {
         set_common_header(&mut bits, 2, 345_684);
         set_split_signed_bits(&mut bits, &[(43, 10), (61, 6)], -2_345);
         set_split_signed_bits(&mut bits, &[(67, 16), (91, 2)], 0x1_2345);
-        set_split_signed_bits(&mut bits, &[(93, 20), (121, 12)], -0x1ABC_DEF);
+        set_split_signed_bits(&mut bits, &[(93, 20), (121, 12)], -0x01AB_CDEF);
         set_split_unsigned_bits(&mut bits, &[(133, 10), (151, 22)], 0x1234_5678);
         set_signed_bits(&mut bits, 181, 18, -54_321);
         set_split_signed_bits(&mut bits, &[(199, 4), (211, 14)], 12_345);

@@ -731,7 +731,7 @@ mod tests {
         bits
     }
 
-    fn encode_subframe_1_with_clock(
+    struct ClockSubframeRequest {
         tow_count: u32,
         week: u16,
         sv_accuracy: u8,
@@ -742,33 +742,61 @@ mod tests {
         af1_raw: i32,
         af0_raw: i32,
         tgd_raw: i32,
-    ) -> Vec<i8> {
+    }
+
+    struct OrbitSubframe2Request {
+        tow_count: u32,
+        iode: u8,
+        crs_raw: i32,
+        delta_n_raw: i32,
+        m0_raw: i32,
+        cuc_raw: i32,
+        e_raw: u32,
+        cus_raw: i32,
+        sqrt_a_raw: u32,
+        toe_raw: u32,
+    }
+
+    struct OrbitSubframe3Request {
+        tow_count: u32,
+        iode: u8,
+        cic_raw: i32,
+        omega0_raw: i32,
+        cis_raw: i32,
+        i0_raw: i32,
+        crc_raw: i32,
+        w_raw: i32,
+        omegadot_raw: i32,
+        idot_raw: i32,
+    }
+
+    fn encode_subframe_1_with_clock(request: ClockSubframeRequest) -> Vec<i8> {
         let mut tlm = 0_u32;
         set_bits(&mut tlm, 1, 8, 0x8B);
 
         let mut how = 0_u32;
-        set_bits(&mut how, 1, 17, tow_count);
+        set_bits(&mut how, 1, 17, request.tow_count);
         set_bits(&mut how, 20, 3, 1);
 
         let mut w3 = 0_u32;
-        set_bits(&mut w3, 1, 10, week as u32);
-        set_bits(&mut w3, 11, 4, sv_accuracy as u32);
-        set_bits(&mut w3, 17, 6, sv_health as u32);
-        set_bits(&mut w3, 23, 2, ((iodc >> 8) & 0b11) as u32);
+        set_bits(&mut w3, 1, 10, request.week as u32);
+        set_bits(&mut w3, 11, 4, request.sv_accuracy as u32);
+        set_bits(&mut w3, 17, 6, request.sv_health as u32);
+        set_bits(&mut w3, 23, 2, ((request.iodc >> 8) & 0b11) as u32);
 
         let mut w7 = 0_u32;
-        set_bits(&mut w7, 17, 8, encode_signed(tgd_raw, 8));
+        set_bits(&mut w7, 17, 8, encode_signed(request.tgd_raw, 8));
 
         let mut w8 = 0_u32;
-        set_bits(&mut w8, 1, 8, (iodc & 0xFF) as u32);
-        set_bits(&mut w8, 9, 16, toc_raw);
+        set_bits(&mut w8, 1, 8, (request.iodc & 0xFF) as u32);
+        set_bits(&mut w8, 9, 16, request.toc_raw);
 
         let mut w9 = 0_u32;
-        set_bits(&mut w9, 1, 8, encode_signed(af2_raw, 8));
-        set_bits(&mut w9, 9, 16, encode_signed(af1_raw, 16));
+        set_bits(&mut w9, 1, 8, encode_signed(request.af2_raw, 8));
+        set_bits(&mut w9, 9, 16, encode_signed(request.af1_raw, 16));
 
         let mut w10 = 0_u32;
-        set_bits(&mut w10, 1, 22, encode_signed(af0_raw, 22));
+        set_bits(&mut w10, 1, 22, encode_signed(request.af0_raw, 22));
 
         let words = [tlm, how, w3, 0, 0, 0, w7, w8, w9, w10];
 
@@ -784,52 +812,41 @@ mod tests {
         bits
     }
 
-    fn encode_subframe_2_with_orbit(
-        tow_count: u32,
-        iode: u8,
-        crs_raw: i32,
-        delta_n_raw: i32,
-        m0_raw: i32,
-        cuc_raw: i32,
-        e_raw: u32,
-        cus_raw: i32,
-        sqrt_a_raw: u32,
-        toe_raw: u32,
-    ) -> Vec<i8> {
+    fn encode_subframe_2_with_orbit(request: OrbitSubframe2Request) -> Vec<i8> {
         let mut tlm = 0_u32;
         set_bits(&mut tlm, 1, 8, 0x8B);
 
         let mut how = 0_u32;
-        set_bits(&mut how, 1, 17, tow_count);
+        set_bits(&mut how, 1, 17, request.tow_count);
         set_bits(&mut how, 20, 3, 2);
 
         let mut w3 = 0_u32;
-        set_bits(&mut w3, 1, 8, iode as u32);
-        set_bits(&mut w3, 9, 16, encode_signed(crs_raw, 16));
+        set_bits(&mut w3, 1, 8, request.iode as u32);
+        set_bits(&mut w3, 9, 16, encode_signed(request.crs_raw, 16));
 
         let mut w4 = 0_u32;
-        set_bits(&mut w4, 1, 16, encode_signed(delta_n_raw, 16));
-        set_bits(&mut w4, 17, 8, ((m0_raw as u32) >> 24) & 0xFF);
+        set_bits(&mut w4, 1, 16, encode_signed(request.delta_n_raw, 16));
+        set_bits(&mut w4, 17, 8, ((request.m0_raw as u32) >> 24) & 0xFF);
 
         let mut w5 = 0_u32;
-        set_bits(&mut w5, 1, 24, (m0_raw as u32) & 0xFF_FFFF);
+        set_bits(&mut w5, 1, 24, (request.m0_raw as u32) & 0xFF_FFFF);
 
         let mut w6 = 0_u32;
-        set_bits(&mut w6, 1, 16, encode_signed(cuc_raw, 16));
-        set_bits(&mut w6, 17, 8, (e_raw >> 24) & 0xFF);
+        set_bits(&mut w6, 1, 16, encode_signed(request.cuc_raw, 16));
+        set_bits(&mut w6, 17, 8, (request.e_raw >> 24) & 0xFF);
 
         let mut w7 = 0_u32;
-        set_bits(&mut w7, 1, 24, e_raw & 0xFF_FFFF);
+        set_bits(&mut w7, 1, 24, request.e_raw & 0xFF_FFFF);
 
         let mut w8 = 0_u32;
-        set_bits(&mut w8, 1, 16, encode_signed(cus_raw, 16));
-        set_bits(&mut w8, 17, 8, (sqrt_a_raw >> 24) & 0xFF);
+        set_bits(&mut w8, 1, 16, encode_signed(request.cus_raw, 16));
+        set_bits(&mut w8, 17, 8, (request.sqrt_a_raw >> 24) & 0xFF);
 
         let mut w9 = 0_u32;
-        set_bits(&mut w9, 1, 24, sqrt_a_raw & 0xFF_FFFF);
+        set_bits(&mut w9, 1, 24, request.sqrt_a_raw & 0xFF_FFFF);
 
         let mut w10 = 0_u32;
-        set_bits(&mut w10, 1, 16, toe_raw);
+        set_bits(&mut w10, 1, 16, request.toe_raw);
 
         let words = [tlm, how, w3, w4, w5, w6, w7, w8, w9, w10];
 
@@ -845,52 +862,41 @@ mod tests {
         bits
     }
 
-    fn encode_subframe_3_with_orbit(
-        tow_count: u32,
-        iode: u8,
-        cic_raw: i32,
-        omega0_raw: i32,
-        cis_raw: i32,
-        i0_raw: i32,
-        crc_raw: i32,
-        w_raw: i32,
-        omegadot_raw: i32,
-        idot_raw: i32,
-    ) -> Vec<i8> {
+    fn encode_subframe_3_with_orbit(request: OrbitSubframe3Request) -> Vec<i8> {
         let mut tlm = 0_u32;
         set_bits(&mut tlm, 1, 8, 0x8B);
 
         let mut how = 0_u32;
-        set_bits(&mut how, 1, 17, tow_count);
+        set_bits(&mut how, 1, 17, request.tow_count);
         set_bits(&mut how, 20, 3, 3);
 
         let mut w3 = 0_u32;
-        set_bits(&mut w3, 1, 16, encode_signed(cic_raw, 16));
-        set_bits(&mut w3, 17, 8, ((omega0_raw as u32) >> 24) & 0xFF);
+        set_bits(&mut w3, 1, 16, encode_signed(request.cic_raw, 16));
+        set_bits(&mut w3, 17, 8, ((request.omega0_raw as u32) >> 24) & 0xFF);
 
         let mut w4 = 0_u32;
-        set_bits(&mut w4, 1, 24, (omega0_raw as u32) & 0xFF_FFFF);
+        set_bits(&mut w4, 1, 24, (request.omega0_raw as u32) & 0xFF_FFFF);
 
         let mut w5 = 0_u32;
-        set_bits(&mut w5, 1, 16, encode_signed(cis_raw, 16));
-        set_bits(&mut w5, 17, 8, ((i0_raw as u32) >> 24) & 0xFF);
+        set_bits(&mut w5, 1, 16, encode_signed(request.cis_raw, 16));
+        set_bits(&mut w5, 17, 8, ((request.i0_raw as u32) >> 24) & 0xFF);
 
         let mut w6 = 0_u32;
-        set_bits(&mut w6, 1, 24, (i0_raw as u32) & 0xFF_FFFF);
+        set_bits(&mut w6, 1, 24, (request.i0_raw as u32) & 0xFF_FFFF);
 
         let mut w7 = 0_u32;
-        set_bits(&mut w7, 1, 16, encode_signed(crc_raw, 16));
-        set_bits(&mut w7, 17, 8, ((w_raw as u32) >> 24) & 0xFF);
+        set_bits(&mut w7, 1, 16, encode_signed(request.crc_raw, 16));
+        set_bits(&mut w7, 17, 8, ((request.w_raw as u32) >> 24) & 0xFF);
 
         let mut w8 = 0_u32;
-        set_bits(&mut w8, 1, 24, (w_raw as u32) & 0xFF_FFFF);
+        set_bits(&mut w8, 1, 24, (request.w_raw as u32) & 0xFF_FFFF);
 
         let mut w9 = 0_u32;
-        set_bits(&mut w9, 1, 24, encode_signed(omegadot_raw, 24));
+        set_bits(&mut w9, 1, 24, encode_signed(request.omegadot_raw, 24));
 
         let mut w10 = 0_u32;
-        set_bits(&mut w10, 1, 8, iode as u32);
-        set_bits(&mut w10, 9, 14, encode_signed(idot_raw, 14));
+        set_bits(&mut w10, 1, 8, request.iode as u32);
+        set_bits(&mut w10, 9, 14, encode_signed(request.idot_raw, 14));
 
         let words = [tlm, how, w3, w4, w5, w6, w7, w8, w9, w10];
 
@@ -993,7 +999,7 @@ mod tests {
 
     #[test]
     fn aligned_subframes_normalize_inverted_preamble_polarity() {
-        let bits = encode_subframe(2, 2).into_iter().map(|bit| bit * -1).collect::<Vec<_>>();
+        let bits = encode_subframe(2, 2).into_iter().map(|bit| -bit).collect::<Vec<_>>();
 
         let aligned = align_gps_l1ca_lnav_subframes(&bits, 0);
 
@@ -1073,9 +1079,18 @@ mod tests {
     #[test]
     fn decoded_subframes_emit_subframe_1_clock_fields() {
         let decoded = decode_gps_l1ca_lnav_subframes(
-            &encode_subframe_1_with_clock(
-                3, 987, 2, 0b10_1101, 0x2AB, 21_600, -12, 3_210, -123_456, -20,
-            ),
+            &encode_subframe_1_with_clock(ClockSubframeRequest {
+                tow_count: 3,
+                week: 987,
+                sv_accuracy: 2,
+                sv_health: 0b10_1101,
+                iodc: 0x2AB,
+                toc_raw: 21_600,
+                af2_raw: -12,
+                af1_raw: 3_210,
+                af0_raw: -123_456,
+                tgd_raw: -20,
+            }),
             4,
         );
 
@@ -1095,30 +1110,30 @@ mod tests {
 
     #[test]
     fn decoded_subframes_emit_subframe_2_and_3_orbit_fields() {
-        let mut bits = encode_subframe_2_with_orbit(
-            3,
-            0xA5,
-            -512,
-            1234,
-            -0x1234_5678,
-            -777,
-            0x0123_4567,
-            911,
-            0x0056_789A,
-            21_600,
-        );
-        bits.extend(encode_subframe_3_with_orbit(
-            4,
-            0x5A,
-            -321,
-            0x2345_6789_u32 as i32,
-            654,
-            -0x1234_0000,
-            2047,
-            0x1112_1314_u32 as i32,
-            -0x34567,
-            0x1234,
-        ));
+        let mut bits = encode_subframe_2_with_orbit(OrbitSubframe2Request {
+            tow_count: 3,
+            iode: 0xA5,
+            crs_raw: -512,
+            delta_n_raw: 1234,
+            m0_raw: -0x1234_5678,
+            cuc_raw: -777,
+            e_raw: 0x0123_4567,
+            cus_raw: 911,
+            sqrt_a_raw: 0x0056_789A,
+            toe_raw: 21_600,
+        });
+        bits.extend(encode_subframe_3_with_orbit(OrbitSubframe3Request {
+            tow_count: 4,
+            iode: 0x5A,
+            cic_raw: -321,
+            omega0_raw: 0x2345_6789_u32 as i32,
+            cis_raw: 654,
+            i0_raw: -0x1234_0000,
+            crc_raw: 2047,
+            w_raw: 0x1112_1314_u32 as i32,
+            omegadot_raw: -0x34567,
+            idot_raw: 0x1234,
+        }));
 
         let decoded = decode_gps_l1ca_lnav_subframes(&bits, 2);
 
@@ -1164,31 +1179,42 @@ mod tests {
 
     #[test]
     fn decode_subframes_refuse_mixed_issue_numbers() {
-        let mut bits = encode_subframe_1_with_clock(1, 42, 0, 0, 0x1A5, 21_600, 0, 0, 0, 0);
-        bits.extend(encode_subframe_2_with_orbit(
-            2,
-            0xA5,
-            -512,
-            1234,
-            -0x1234_5678,
-            -777,
-            0x0123_4567,
-            911,
-            0x0056_789A,
-            21_600,
-        ));
-        bits.extend(encode_subframe_3_with_orbit(
-            3,
-            0x22,
-            -321,
-            0x2345_6789_u32 as i32,
-            654,
-            -0x1234_0000,
-            2047,
-            0x1112_1314_u32 as i32,
-            -0x34567,
-            0x1234,
-        ));
+        let mut bits = encode_subframe_1_with_clock(ClockSubframeRequest {
+            tow_count: 1,
+            week: 42,
+            sv_accuracy: 0,
+            sv_health: 0,
+            iodc: 0x1A5,
+            toc_raw: 21_600,
+            af2_raw: 0,
+            af1_raw: 0,
+            af0_raw: 0,
+            tgd_raw: 0,
+        });
+        bits.extend(encode_subframe_2_with_orbit(OrbitSubframe2Request {
+            tow_count: 2,
+            iode: 0xA5,
+            crs_raw: -512,
+            delta_n_raw: 1234,
+            m0_raw: -0x1234_5678,
+            cuc_raw: -777,
+            e_raw: 0x0123_4567,
+            cus_raw: 911,
+            sqrt_a_raw: 0x0056_789A,
+            toe_raw: 21_600,
+        }));
+        bits.extend(encode_subframe_3_with_orbit(OrbitSubframe3Request {
+            tow_count: 3,
+            iode: 0x22,
+            cic_raw: -321,
+            omega0_raw: 0x2345_6789_u32 as i32,
+            cis_raw: 654,
+            i0_raw: -0x1234_0000,
+            crc_raw: 2047,
+            w_raw: 0x1112_1314_u32 as i32,
+            omegadot_raw: -0x34567,
+            idot_raw: 0x1234,
+        }));
 
         let (ephemerides, stats) = decode_subframes(&bits, None);
 
@@ -1207,31 +1233,42 @@ mod tests {
 
     #[test]
     fn decoded_subframes_refuse_mixed_issue_numbers() {
-        let mut bits = encode_subframe_1_with_clock(1, 42, 0, 0, 0x1A5, 21_600, 0, 0, 0, 0);
-        bits.extend(encode_subframe_2_with_orbit(
-            2,
-            0xA5,
-            -512,
-            1234,
-            -0x1234_5678,
-            -777,
-            0x0123_4567,
-            911,
-            0x0056_789A,
-            21_600,
-        ));
-        bits.extend(encode_subframe_3_with_orbit(
-            3,
-            0x22,
-            -321,
-            0x2345_6789_u32 as i32,
-            654,
-            -0x1234_0000,
-            2047,
-            0x1112_1314_u32 as i32,
-            -0x34567,
-            0x1234,
-        ));
+        let mut bits = encode_subframe_1_with_clock(ClockSubframeRequest {
+            tow_count: 1,
+            week: 42,
+            sv_accuracy: 0,
+            sv_health: 0,
+            iodc: 0x1A5,
+            toc_raw: 21_600,
+            af2_raw: 0,
+            af1_raw: 0,
+            af0_raw: 0,
+            tgd_raw: 0,
+        });
+        bits.extend(encode_subframe_2_with_orbit(OrbitSubframe2Request {
+            tow_count: 2,
+            iode: 0xA5,
+            crs_raw: -512,
+            delta_n_raw: 1234,
+            m0_raw: -0x1234_5678,
+            cuc_raw: -777,
+            e_raw: 0x0123_4567,
+            cus_raw: 911,
+            sqrt_a_raw: 0x0056_789A,
+            toe_raw: 21_600,
+        }));
+        bits.extend(encode_subframe_3_with_orbit(OrbitSubframe3Request {
+            tow_count: 3,
+            iode: 0x22,
+            cic_raw: -321,
+            omega0_raw: 0x2345_6789_u32 as i32,
+            cis_raw: 654,
+            i0_raw: -0x1234_0000,
+            crc_raw: 2047,
+            w_raw: 0x1112_1314_u32 as i32,
+            omegadot_raw: -0x34567,
+            idot_raw: 0x1234,
+        }));
 
         let decoded = decode_gps_l1ca_lnav_subframes(&bits, 0);
         let (ephemerides, rejections) =

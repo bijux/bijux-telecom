@@ -11,9 +11,7 @@ use bijux_gnss_core::api::{Constellation, Llh, Seconds};
 
 use super::geodesy::{ecef_to_geodetic, elevation_azimuth_deg};
 use super::state::{PositionEstimate, SatelliteGeometry, WorkingSetResidual};
-use super::{
-    PositionBroadcastNavigation, PositionCorrectedObservation, SPEED_OF_LIGHT_MPS,
-};
+use super::{PositionBroadcastNavigation, PositionCorrectedObservation, SPEED_OF_LIGHT_MPS};
 
 pub(super) fn resolve_satellite_geometry(
     inputs: &[PositionSolveInput],

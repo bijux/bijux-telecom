@@ -724,7 +724,7 @@ fn rtk_double_difference_residuals_use_aligned_base_and_rover_receive_times() {
         [east_m, north_m, up_m]
     };
     let base_receive_gps_time = GpsTime { week: 2200, tow_s: 345_600.08 };
-    let rover_receive_gps_time = GpsTime { week: 2200, tow_s: 345_600.0802 };
+    let rover_receive_gps_time = GpsTime { week: 2200, tow_s: 345_600.080_2 };
     let ephemerides = vec![
         make_eph(1, 0.0, 0.0, 345_600.0),
         make_eph(2, 0.8, 0.9, 345_600.0),

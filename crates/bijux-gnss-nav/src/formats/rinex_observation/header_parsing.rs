@@ -11,7 +11,7 @@ fn parse_public_rinex_2_observation_header() {
     assert_eq!(header.marker_name.as_deref(), Some("st"));
     assert_eq!(
         header.approx_position_ecef_m,
-        Some((-4_647_137.5830, 2_562_189.6255, -3_526_626.7006))
+        Some((-4_647_137.583_0, 2_562_189.625_5, -3_526_626.700_6))
     );
     assert_eq!(header.interval_s, Some(15.0));
 

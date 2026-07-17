@@ -75,16 +75,17 @@ OSB G063 G01 C2W 2016:271:00000 2016:272:00000 m 2.0000 0.1200
     let biases = bias_sinex.parse::<BiasSinexProvider>().expect("Bias-SINEX parse");
     let l1 = bijux_gnss_core::api::SigId { sat, band: SignalBand::L1, code: SignalCode::Ca };
     let l2 = bijux_gnss_core::api::SigId { sat, band: SignalBand::L2, code: SignalCode::Py };
-    let bias_epoch = Some(GpsTime::from_seconds(1_158_969_600.0));
+    let bias_epoch = GpsTime::from_seconds(1_158_969_600.0);
+    let bias_query_time = Some(bias_epoch);
 
-    let osb = biases.code_bias_at(l1, bias_epoch).expect("typed OSB query");
+    let osb = biases.code_bias_at(l1, bias_query_time).expect("typed OSB query");
     let iono_free = biases
         .iono_free_code_bias_at(
             l1,
             l2,
             GPS_L1_CA_CARRIER_HZ.value(),
             GPS_L2_PY_CARRIER_HZ.value(),
-            bias_epoch,
+            bias_query_time,
         )
         .expect("typed ionosphere-free query");
 
@@ -94,8 +95,8 @@ OSB G063 G01 C2W 2016:271:00000 2016:272:00000 m 2.0000 0.1200
     assert!((osb.uncertainty_m.expect("OSB uncertainty") - 0.05).abs() < 1.0e-12);
     assert_eq!(iono_free.reference_signal, Some(l2));
     assert_eq!(iono_free.source, BiasSinexBiasSource::IonosphereFreeObservableCombination);
-    assert!(iono_free.window_start.to_seconds() <= bias_epoch.expect("bias epoch").to_seconds());
-    assert!(iono_free.window_end.to_seconds() >= bias_epoch.expect("bias epoch").to_seconds());
+    assert!(iono_free.window_start.to_seconds() <= bias_epoch.to_seconds());
+    assert!(iono_free.window_end.to_seconds() >= bias_epoch.to_seconds());
 }
 
 fn antex_line(value: &str, label: &str) -> String {

@@ -104,10 +104,10 @@ fn transformed_covariance(transform: &[Vec<i64>], covariance: &[Vec<f64>]) -> Ve
     for row in 0..size {
         for col in 0..size {
             let mut sum = 0.0;
-            for left in 0..size {
-                for right in 0..size {
+            for (left, covariance_row) in covariance.iter().enumerate().take(size) {
+                for (right, covariance_entry) in covariance_row.iter().enumerate().take(size) {
                     sum += transform[row][left] as f64
-                        * covariance[left][right]
+                        * covariance_entry
                         * transform[col][right] as f64;
                 }
             }

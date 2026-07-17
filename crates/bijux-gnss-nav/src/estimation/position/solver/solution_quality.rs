@@ -9,9 +9,9 @@ use super::{
     RaimSolutionSeparationCheck, ReplayTimingAnomalyEvidence, SatelliteState,
     REPLAY_TIMING_ANOMALY_CENTERED_DELAY_RMS_THRESHOLD_M,
     REPLAY_TIMING_ANOMALY_MAX_CENTERED_DELAY_THRESHOLD_M,
-    REPLAY_TIMING_ANOMALY_MIN_MATCHED_SATELLITES,
-    TERRESTRIAL_GEOMETRY_MAX_ALTITUDE_M, TERRESTRIAL_GEOMETRY_MAX_RECEIVER_RADIUS_M,
-    TERRESTRIAL_GEOMETRY_MIN_ALTITUDE_M, TERRESTRIAL_GEOMETRY_MIN_RECEIVER_RADIUS_M,
+    REPLAY_TIMING_ANOMALY_MIN_MATCHED_SATELLITES, TERRESTRIAL_GEOMETRY_MAX_ALTITUDE_M,
+    TERRESTRIAL_GEOMETRY_MAX_RECEIVER_RADIUS_M, TERRESTRIAL_GEOMETRY_MIN_ALTITUDE_M,
+    TERRESTRIAL_GEOMETRY_MIN_RECEIVER_RADIUS_M,
 };
 
 pub(super) fn sanitize_covariance(
@@ -28,8 +28,8 @@ pub(super) fn sanitize_covariance(
                 > 1e-9
             {
                 covariance_symmetrized = true;
-                let average =
-                    0.5 * (covariance[row_index][column_index] + covariance[column_index][row_index]);
+                let average = 0.5
+                    * (covariance[row_index][column_index] + covariance[column_index][row_index]);
                 covariance[row_index][column_index] = average;
                 covariance[column_index][row_index] = average;
             }
@@ -46,12 +46,7 @@ pub(super) fn sanitize_covariance(
         );
         row_index += 1;
     }
-    (
-        covariance,
-        covariance_symmetrized,
-        covariance_clamped,
-        covariance_max_variance,
-    )
+    (covariance, covariance_symmetrized, covariance_clamped, covariance_max_variance)
 }
 
 pub(super) fn detect_impossible_geometry(
@@ -183,8 +178,9 @@ pub(super) fn constellation_residual_rms(
         .into_iter()
         .map(|(constellation, summary)| NavConstellationResidualRms {
             constellation,
-            pre_fit_rms_m: (summary.pre_fit_sat_count > 0)
-                .then(|| Meters((summary.pre_fit_sum_sq_m2 / summary.pre_fit_sat_count as f64).sqrt())),
+            pre_fit_rms_m: (summary.pre_fit_sat_count > 0).then(|| {
+                Meters((summary.pre_fit_sum_sq_m2 / summary.pre_fit_sat_count as f64).sqrt())
+            }),
             post_fit_rms_m: (summary.post_fit_sat_count > 0).then(|| {
                 Meters((summary.post_fit_sum_sq_m2 / summary.post_fit_sat_count as f64).sqrt())
             }),

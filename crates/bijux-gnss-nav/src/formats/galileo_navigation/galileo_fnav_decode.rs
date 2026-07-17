@@ -565,7 +565,7 @@ mod tests {
         let mut bits = vec![0_u8; GALILEO_FNAV_PAGE_BITS];
         set_bits(&mut bits, 1, 6, 2);
         set_bits(&mut bits, 7, 10, u64::from(iodnav));
-        set_bits(&mut bits, 17, 32, encode_signed(-0x1020_304_i64, 32));
+        set_bits(&mut bits, 17, 32, encode_signed(-0x0102_0304_i64, 32));
         set_bits(&mut bits, 49, 24, encode_signed(-0x04_321_i64, 24));
         set_bits(&mut bits, 73, 32, 0x0123_4567);
         set_bits(&mut bits, 105, 32, 0x0987_6543);
@@ -581,7 +581,7 @@ mod tests {
         let mut bits = vec![0_u8; GALILEO_FNAV_PAGE_BITS];
         set_bits(&mut bits, 1, 6, 3);
         set_bits(&mut bits, 7, 10, u64::from(iodnav));
-        set_bits(&mut bits, 17, 32, encode_signed(-0x1234_567_i64, 32));
+        set_bits(&mut bits, 17, 32, encode_signed(-0x0123_4567_i64, 32));
         set_bits(&mut bits, 49, 32, encode_signed(0x2345_6789_i64, 32));
         set_bits(&mut bits, 81, 16, encode_signed(0x0F0F_i64, 16));
         set_bits(&mut bits, 97, 16, encode_signed(-321_i64, 16));
@@ -727,7 +727,7 @@ mod tests {
         let mut bits = vec![0_u8; GALILEO_FNAV_PAGE_BITS];
         set_bits(&mut bits, 1, 6, 2);
         set_bits(&mut bits, 7, 10, 0x155);
-        set_bits(&mut bits, 17, 32, encode_signed(-0x1020_304_i64, 32));
+        set_bits(&mut bits, 17, 32, encode_signed(-0x0102_0304_i64, 32));
         set_bits(&mut bits, 49, 24, encode_signed(-0x04_321_i64, 24));
         set_bits(&mut bits, 73, 32, 0x0123_4567);
         set_bits(&mut bits, 105, 32, 0x0987_6543);
@@ -741,7 +741,7 @@ mod tests {
         let keplerian = super::decode_galileo_fnav_keplerian_page(&page).expect("type 2 payload");
 
         assert_eq!(keplerian.iodnav, 0x155);
-        assert_eq!(keplerian.m0, -0x1020_304_i64 as f64 * 2f64.powi(-31) * std::f64::consts::PI);
+        assert_eq!(keplerian.m0, -0x0102_0304_i64 as f64 * 2f64.powi(-31) * std::f64::consts::PI);
         assert_eq!(
             keplerian.omegadot,
             -0x04_321_i64 as f64 * 2f64.powi(-43) * std::f64::consts::PI
@@ -762,7 +762,7 @@ mod tests {
         let mut bits = vec![0_u8; GALILEO_FNAV_PAGE_BITS];
         set_bits(&mut bits, 1, 6, 3);
         set_bits(&mut bits, 7, 10, 0x155);
-        set_bits(&mut bits, 17, 32, encode_signed(-0x1234_567_i64, 32));
+        set_bits(&mut bits, 17, 32, encode_signed(-0x0123_4567_i64, 32));
         set_bits(&mut bits, 49, 32, encode_signed(0x2345_6789_i64, 32));
         set_bits(&mut bits, 81, 16, encode_signed(0x0F0F_i64, 16));
         set_bits(&mut bits, 97, 16, encode_signed(-321_i64, 16));
@@ -778,7 +778,7 @@ mod tests {
         let harmonic = super::decode_galileo_fnav_harmonic_page(&page).expect("type 3 payload");
 
         assert_eq!(harmonic.iodnav, 0x155);
-        assert_eq!(harmonic.i0, -0x1234_567_i64 as f64 * 2f64.powi(-31) * std::f64::consts::PI);
+        assert_eq!(harmonic.i0, -0x0123_4567_i64 as f64 * 2f64.powi(-31) * std::f64::consts::PI);
         assert_eq!(harmonic.w, 0x2345_6789_i64 as f64 * 2f64.powi(-31) * std::f64::consts::PI);
         assert_eq!(harmonic.delta_n, 0x0F0F_i64 as f64 * 2f64.powi(-43) * std::f64::consts::PI);
         assert_eq!(harmonic.cuc, -321.0 * 2f64.powi(-29));

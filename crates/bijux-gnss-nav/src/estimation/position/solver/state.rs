@@ -153,22 +153,14 @@ impl PositionEstimate {
         self.clock_model.reference_clock_bias_s(&self.clock_state_s)
     }
 
-    pub(super) fn constellation_clock_bias_s(
-        &self,
-        constellation: Constellation,
-    ) -> Option<f64> {
-        self.clock_model
-            .constellation_clock_bias_s(&self.clock_state_s, constellation)
+    pub(super) fn constellation_clock_bias_s(&self, constellation: Constellation) -> Option<f64> {
+        self.clock_model.constellation_clock_bias_s(&self.clock_state_s, constellation)
     }
 
     pub(super) fn llh(&self) -> super::Llh {
         let (latitude_deg, longitude_deg, altitude_m) =
             ecef_to_geodetic(self.ecef_x_m, self.ecef_y_m, self.ecef_z_m);
-        super::Llh {
-            lat_deg: latitude_deg,
-            lon_deg: longitude_deg,
-            alt_m: altitude_m,
-        }
+        super::Llh { lat_deg: latitude_deg, lon_deg: longitude_deg, alt_m: altitude_m }
     }
 }
 

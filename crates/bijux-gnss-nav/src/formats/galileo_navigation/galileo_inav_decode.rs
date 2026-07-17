@@ -565,14 +565,14 @@ mod tests {
         set_bits(&mut word_1, 1, 6, 1);
         set_bits(&mut word_1, 7, 10, iodnav as u128);
         set_bits(&mut word_1, 17, 14, 2_345);
-        set_bits(&mut word_1, 31, 32, encode_signed(-0x1020_304_i64, 32));
+        set_bits(&mut word_1, 31, 32, encode_signed(-0x0102_0304_i64, 32));
         set_bits(&mut word_1, 63, 32, 0x0123_4567);
         set_bits(&mut word_1, 95, 32, 0x0987_6543);
 
         set_bits(&mut word_2, 1, 6, 2);
         set_bits(&mut word_2, 7, 10, iodnav as u128);
         set_bits(&mut word_2, 17, 32, encode_signed(0x1020_3040_i64, 32));
-        set_bits(&mut word_2, 49, 32, encode_signed(-0x1234_567_i64, 32));
+        set_bits(&mut word_2, 49, 32, encode_signed(-0x0123_4567_i64, 32));
         set_bits(&mut word_2, 81, 32, encode_signed(0x2345_6789_i64, 32));
         set_bits(&mut word_2, 113, 14, encode_signed(-0x03A5_i64, 14));
 
@@ -620,7 +620,7 @@ mod tests {
         let mut payload = 0_u128;
         let iodnav = 0x1A5_u16;
         let toe_raw = 4_321_u16;
-        let m0_raw = -0x1234_567_i64;
+        let m0_raw = -0x0123_4567_i64;
         let e_raw = 0x2345_6789_u32;
         let sqrt_a_raw = 0x1234_5678_u32;
 
@@ -647,7 +647,7 @@ mod tests {
 
         let iodnav = 0x155_u16;
         let omega0_raw = 0x1234_5678_u32 as i64;
-        let i0_raw = -0x1111_222_i64;
+        let i0_raw = -0x0111_1222_i64;
         let w_raw = 0x3141_5926_u32 as i64;
         let idot_raw = -0x0A55_i64;
         let omegadot_raw = -0x54_321_i64;

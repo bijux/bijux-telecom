@@ -104,7 +104,7 @@ fn rinex_galileo_phase_combinations_follow_signal_specific_wavelengths() {
     assert_eq!(measured_ionosphere.len(), 1);
     assert_eq!(measured_ionosphere[0].code_status, "ok");
     assert_eq!(measured_ionosphere[0].phase_status, "ok");
-    assert_eq!(measured_ionosphere[0].phase_arc_reset, true);
+    assert!(measured_ionosphere[0].phase_arc_reset);
     assert!(
         (measured_ionosphere[0].code_geometry_free_m.expect("geometry-free code")
             - (e5.pseudorange_m.0 - e1.pseudorange_m.0))
