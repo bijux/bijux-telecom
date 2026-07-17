@@ -7,7 +7,9 @@ pub mod bias_sinex;
 pub mod clk;
 #[path = "gps_navigation/cnav_decode.rs"]
 pub mod cnav_decode;
+#[path = "galileo_navigation/galileo_fnav_decode.rs"]
 pub mod galileo_fnav_decode;
+#[path = "galileo_navigation/galileo_inav_decode.rs"]
 pub mod galileo_inav_decode;
 pub mod glonass_navigation_decode;
 #[path = "gps_navigation/lnav_bits.rs"]
