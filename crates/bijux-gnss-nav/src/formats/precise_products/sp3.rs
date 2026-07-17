@@ -456,17 +456,11 @@ fn interpolate_record_state(records: &[Sp3Record], t_s: f64) -> Option<Sp3State>
     }
 
     let clock_bias_s = optional_lagrange(&support, t_s, |record| record.clock_bias_s);
-    let velocity_mps = support
-        .iter()
-        .all(|record| record.velocity_mps.is_some())
-        .then(|| {
-            Some([
-                lagrange_coordinate(&support, t_s, |record| record.velocity_mps.unwrap()[0])?,
-                lagrange_coordinate(&support, t_s, |record| record.velocity_mps.unwrap()[1])?,
-                lagrange_coordinate(&support, t_s, |record| record.velocity_mps.unwrap()[2])?,
-            ])
-        })
-        .flatten();
+    let velocity_mps = Some([
+        optional_lagrange(&support, t_s, |record| record.velocity_mps.map(|velocity| velocity[0]))?,
+        optional_lagrange(&support, t_s, |record| record.velocity_mps.map(|velocity| velocity[1]))?,
+        optional_lagrange(&support, t_s, |record| record.velocity_mps.map(|velocity| velocity[2]))?,
+    ]);
     let clock_rate_s_per_s = optional_lagrange(&support, t_s, |record| record.clock_rate_s_per_s);
 
     Some(Sp3State {
@@ -482,11 +476,11 @@ fn interpolate_record_state(records: &[Sp3Record], t_s: f64) -> Option<Sp3State>
     })
 }
 
-fn interpolation_support_records<'a>(
-    records: &'a [Sp3Record],
+fn interpolation_support_records(
+    records: &[Sp3Record],
     t_s: f64,
     skip_index: Option<usize>,
-) -> Option<Vec<&'a Sp3Record>> {
+) -> Option<Vec<&Sp3Record>> {
     if skip_index.is_none() {
         let bracket_index = records.partition_point(|record| record.epoch_s < t_s);
         let previous = records.get(bracket_index.checked_sub(1)?)?;
@@ -606,11 +600,23 @@ fn optional_lagrange(
     t_s: f64,
     value: impl Fn(&Sp3Record) -> Option<f64>,
 ) -> Option<f64> {
-    support
-        .iter()
-        .all(|record| value(record).is_some())
-        .then(|| lagrange_coordinate(support, t_s, |record| value(record).unwrap()))
-        .flatten()
+    let samples = support.iter().map(|record| value(record)).collect::<Option<Vec<_>>>()?;
+    let mut interpolated = 0.0;
+    for (index, record) in support.iter().enumerate() {
+        let mut basis = 1.0;
+        for (other_index, other) in support.iter().enumerate() {
+            if index == other_index {
+                continue;
+            }
+            let denominator = record.epoch_s - other.epoch_s;
+            if denominator.abs() <= f64::EPSILON {
+                return None;
+            }
+            basis *= (t_s - other.epoch_s) / denominator;
+        }
+        interpolated += basis * samples[index];
+    }
+    Some(interpolated)
 }
 
 fn summarize_interpolation_errors(records: &[Sp3Record]) -> Option<Sp3InterpolationSummary> {

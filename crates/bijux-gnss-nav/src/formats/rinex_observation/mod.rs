@@ -1621,19 +1621,21 @@ fn build_constellation_observations(
             .and_then(|index| observations.get(index).copied().flatten())
             .is_some();
         let cn0_dbhz = imported_cn0_dbhz(observations, channel.signal_strength_index);
-        let mut metadata = ObsMetadata::default();
-        metadata.tracking_mode = "rinex_import".to_string();
-        metadata.signal = channel.signal;
-        metadata.tracking_state = "external_file".to_string();
-        metadata.observation_lock_state = "imported".to_string();
-        metadata.pseudorange_model = format!("rinex_observation:{}", channel.pseudorange_type);
-        metadata.carrier_phase_model = channel
-            .carrier_phase_type
-            .as_ref()
-            .map(|observation_type| format!("rinex_observation:{observation_type}"))
-            .unwrap_or_else(|| "unavailable".to_string());
-        metadata.doppler_model = "unavailable".to_string();
-        metadata.time_tag_source = "rinex_epoch_utc".to_string();
+        let metadata = ObsMetadata {
+            tracking_mode: "rinex_import".to_string(),
+            signal: channel.signal,
+            tracking_state: "external_file".to_string(),
+            observation_lock_state: "imported".to_string(),
+            pseudorange_model: format!("rinex_observation:{}", channel.pseudorange_type),
+            carrier_phase_model: channel
+                .carrier_phase_type
+                .as_ref()
+                .map(|observation_type| format!("rinex_observation:{observation_type}"))
+                .unwrap_or_else(|| "unavailable".to_string()),
+            doppler_model: "unavailable".to_string(),
+            time_tag_source: "rinex_epoch_utc".to_string(),
+            ..ObsMetadata::default()
+        };
 
         satellites.push(ObsSatellite {
             signal_id: SigId { sat: satellite, band: channel.band, code: channel.code },

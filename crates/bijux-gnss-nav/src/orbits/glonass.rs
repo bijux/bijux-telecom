@@ -392,11 +392,11 @@ pub fn is_glonass_navigation_valid(
     glonass_navigation_age(navigation, transmit_gps_tow_s).is_some_and(|age| age.is_valid())
 }
 
-pub fn select_best_glonass_navigation<'a>(
-    navigation_frames: &'a [GlonassBroadcastNavigationFrame],
+pub fn select_best_glonass_navigation(
+    navigation_frames: &[GlonassBroadcastNavigationFrame],
     sat: SatId,
     transmit_gps_tow_s: f64,
-) -> Option<&'a GlonassBroadcastNavigationFrame> {
+) -> Option<&GlonassBroadcastNavigationFrame> {
     navigation_frames
         .iter()
         .filter(|navigation| navigation.sat == sat)

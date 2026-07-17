@@ -292,11 +292,11 @@ pub fn is_galileo_navigation_valid(
     galileo_navigation_age(navigation, reference_time_s).is_valid()
 }
 
-pub fn select_best_galileo_navigation<'a>(
-    navigations: &'a [GalileoBroadcastNavigationData],
+pub fn select_best_galileo_navigation(
+    navigations: &[GalileoBroadcastNavigationData],
     sat: SatId,
     reference_time_s: f64,
-) -> Option<&'a GalileoBroadcastNavigationData> {
+) -> Option<&GalileoBroadcastNavigationData> {
     navigations.iter().filter(|navigation| navigation.sat == sat).min_by(|left, right| {
         let left_age = galileo_navigation_age(left, reference_time_s);
         let right_age = galileo_navigation_age(right, reference_time_s);

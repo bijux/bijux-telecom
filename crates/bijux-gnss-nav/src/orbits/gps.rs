@@ -216,11 +216,11 @@ pub fn is_ephemeris_valid(eph: &GpsEphemeris, t_s: f64) -> bool {
     gps_ephemeris_age(eph, t_s).is_valid()
 }
 
-pub fn select_best_ephemeris<'a>(
-    ephs: &'a [GpsEphemeris],
+pub fn select_best_ephemeris(
+    ephs: &[GpsEphemeris],
     sat: SatId,
     reference_time_s: f64,
-) -> Option<&'a GpsEphemeris> {
+) -> Option<&GpsEphemeris> {
     ephs.iter().filter(|eph| eph.sat == sat).min_by(|left, right| {
         let left_age = gps_ephemeris_age(left, reference_time_s);
         let right_age = gps_ephemeris_age(right, reference_time_s);

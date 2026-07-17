@@ -442,11 +442,11 @@ fn interpolate_optional_s(
     lagrange_scalar(&support, t_s, value)
 }
 
-fn interpolation_support_records<'a>(
-    records: &'a [ClkRecord],
+fn interpolation_support_records(
+    records: &[ClkRecord],
     t_s: f64,
     skip_index: Option<usize>,
-) -> Option<Vec<&'a ClkRecord>> {
+) -> Option<Vec<&ClkRecord>> {
     if skip_index.is_none() {
         let bracket_index = records.partition_point(|record| record.epoch_s < t_s);
         let previous = records.get(bracket_index.checked_sub(1)?)?;

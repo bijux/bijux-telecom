@@ -253,11 +253,11 @@ pub fn is_beidou_navigation_valid(
     beidou_navigation_age(navigation, reference_time_s).is_valid()
 }
 
-pub fn select_best_beidou_navigation<'a>(
-    navigations: &'a [BeidouBroadcastNavigationData],
+pub fn select_best_beidou_navigation(
+    navigations: &[BeidouBroadcastNavigationData],
     sat: SatId,
     reference_time_s: f64,
-) -> Option<&'a BeidouBroadcastNavigationData> {
+) -> Option<&BeidouBroadcastNavigationData> {
     navigations.iter().filter(|navigation| navigation.sat == sat).min_by(|left, right| {
         let left_age = beidou_navigation_age(left, reference_time_s);
         let right_age = beidou_navigation_age(right, reference_time_s);

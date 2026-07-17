@@ -61,7 +61,7 @@ fn parse_antex_calibrations(
             "TYPE / SERIAL NO" => {
                 if let Some(pending) = current.as_mut() {
                     pending.antenna_type = field(line, 0, 20).trim().to_string();
-                    pending.sat = parse_antex_satellite_id(&field(line, 0, 40))?;
+                    pending.sat = parse_antex_satellite_id(field(line, 0, 40))?;
                     pending.receiver_antenna_type =
                         pending.sat.is_none().then(|| parse_antex_receiver_antenna_type(line));
                 }
@@ -177,7 +177,7 @@ impl PendingSatelliteAntennaCalibration {
 
     fn finish(self) -> (Option<SatelliteAntennaCalibration>, Option<ReceiverAntennaCalibration>) {
         let satellite_entry = self.sat.and_then(|sat| {
-            (!self.offsets_by_band.is_empty()).then(|| SatelliteAntennaCalibration {
+            (!self.offsets_by_band.is_empty()).then_some(SatelliteAntennaCalibration {
                 sat,
                 antenna_type: self.antenna_type.clone(),
                 valid_from_unix_s: self.valid_from_unix_s,
@@ -187,7 +187,7 @@ impl PendingSatelliteAntennaCalibration {
             })
         });
         let receiver_entry = self.receiver_antenna_type.and_then(|antenna_type| {
-            (!self.receiver_offsets_by_band.is_empty()).then(|| ReceiverAntennaCalibration {
+            (!self.receiver_offsets_by_band.is_empty()).then_some(ReceiverAntennaCalibration {
                 antenna_type,
                 valid_from_unix_s: self.valid_from_unix_s,
                 valid_until_unix_s: self.valid_until_unix_s,
