@@ -534,6 +534,7 @@ fn update_discriminator_instability_epochs_requires_strong_prompt() {
     let epochs = super::update_discriminator_instability_epochs(
         1,
         ChannelState::Tracking,
+        TrackingPhaseTransitionSource::None,
         Some(0.7),
         false,
         false,
@@ -545,6 +546,7 @@ fn update_discriminator_instability_epochs_requires_strong_prompt() {
     let reset = super::update_discriminator_instability_epochs(
         epochs,
         ChannelState::Tracking,
+        TrackingPhaseTransitionSource::None,
         Some(0.1),
         false,
         false,
@@ -559,6 +561,7 @@ fn update_discriminator_instability_epochs_accumulates_when_either_carrier_lock_
     let epochs = super::update_discriminator_instability_epochs(
         1,
         ChannelState::Tracking,
+        TrackingPhaseTransitionSource::None,
         Some(0.7),
         true,
         false,
@@ -567,4 +570,20 @@ fn update_discriminator_instability_epochs_accumulates_when_either_carrier_lock_
     );
 
     assert_eq!(epochs, 2);
+}
+
+#[test]
+fn update_discriminator_instability_epochs_ignores_single_lock_break_for_secondary_code() {
+    let epochs = super::update_discriminator_instability_epochs(
+        1,
+        ChannelState::Tracking,
+        TrackingPhaseTransitionSource::SecondaryCode,
+        Some(0.7),
+        true,
+        false,
+        false,
+        false,
+    );
+
+    assert_eq!(epochs, 0);
 }

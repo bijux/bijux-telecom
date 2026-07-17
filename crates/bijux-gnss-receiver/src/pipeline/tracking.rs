@@ -1175,6 +1175,7 @@ impl Tracking {
         state.unstable_discriminator_epochs = update_discriminator_instability_epochs(
             state.unstable_discriminator_epochs,
             state.state,
+            phase_transition_source,
             prompt_power_ratio,
             raw_pll_lock,
             raw_fll_lock,
@@ -1215,6 +1216,13 @@ impl Tracking {
                 .is_none_or(|ratio| ratio >= DISCRIMINATOR_INSTABILITY_MIN_PROMPT_POWER_RATIO)
             && !cycle_slip
             && !anti_false_lock;
+        // During pull-in, DLL feedback must still be able to walk a coarse seed
+        // back toward the prompt even while the false-lock guard is raised.
+        let code_feedback_ready = sustained_prompt_lock
+            && prompt_power_ratio
+                .is_none_or(|ratio| ratio >= DISCRIMINATOR_INSTABILITY_MIN_PROMPT_POWER_RATIO)
+            && !cycle_slip
+            && (!anti_false_lock || from_state == ChannelState::PullIn);
         let steady_state_tracking_ready = if from_state == ChannelState::Degraded {
             cn0_supports_lock
                 && discriminator_feedback_ready
@@ -1433,7 +1441,7 @@ impl Tracking {
             epoch_len_samples,
             coherent_integration_s,
             nominal_code_rate_hz: signal_model.code_rate_hz,
-            dll_bw_hz: if discriminator_feedback_ready { dll_bw } else { 0.0 },
+            dll_bw_hz: if code_feedback_ready { dll_bw } else { 0.0 },
             dll_err,
             samples_per_chip,
             samples_per_code,

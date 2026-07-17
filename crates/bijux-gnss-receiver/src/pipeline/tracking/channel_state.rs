@@ -321,6 +321,7 @@ fn clear_tracking_uncertainty_windows(state: &mut LoopState) {
 fn update_discriminator_instability_epochs(
     current_epochs: u8,
     from_state: ChannelState,
+    phase_transition_source: TrackingPhaseTransitionSource,
     prompt_power_ratio: Option<f32>,
     raw_pll_lock: bool,
     raw_fll_lock: bool,
@@ -329,9 +330,12 @@ fn update_discriminator_instability_epochs(
 ) -> u8 {
     let strong_prompt = prompt_power_ratio
         .is_some_and(|ratio| ratio >= DISCRIMINATOR_INSTABILITY_MIN_PROMPT_POWER_RATIO);
+    let carrier_instability = (!raw_pll_lock && !raw_fll_lock)
+        || (phase_transition_source != TrackingPhaseTransitionSource::SecondaryCode
+            && (!raw_pll_lock || !raw_fll_lock));
     let unstable = matches!(from_state, ChannelState::Tracking | ChannelState::Degraded)
         && strong_prompt
-        && (!raw_pll_lock || !raw_fll_lock)
+        && carrier_instability
         && !cycle_slip
         && !anti_false_lock;
     if unstable {
@@ -422,8 +426,8 @@ fn deterministic_transition_rule(request: ChannelTransitionRequest<'_>) -> Trans
         };
     }
     if loss_of_lock_cause == Some(LossOfLockCause::DiscriminatorInstability)
-        && (from_state != ChannelState::Degraded
-            || degraded_epochs < DEGRADED_FADE_INSTABILITY_GRACE_EPOCHS)
+        && from_state == ChannelState::Degraded
+        && degraded_epochs < DEGRADED_FADE_INSTABILITY_GRACE_EPOCHS
     {
         return TransitionDecision {
             to_state: ChannelState::Lost,
