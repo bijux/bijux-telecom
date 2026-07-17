@@ -2,10 +2,8 @@ use std::collections::BTreeSet;
 
 use super::geodesy::ecef_to_geodetic;
 use super::observation_inputs::constellation_primary_band;
-use super::{
-    Constellation, InterSystemBias, PositionObservation, PositionObservationCorrectionChain,
-    SatId, SatelliteState, Seconds,
-};
+use super::{Constellation, InterSystemBias, PositionObservation, SatId, SatelliteState, Seconds};
+use crate::estimation::position::navigation::PositionObservationCorrectionChain;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct ClockStateModel {
