@@ -45,6 +45,8 @@ flowchart LR
 - [API Surface](api-surface.md)
 - [Public Imports](public-imports.md)
 - [Command Contracts](command-contracts.md)
+- [CLI Reference](cli-reference.md)
+- [Configuration Contracts](configuration-contracts.md)
 - [Workflow Contracts](workflow-contracts.md)
 - [Reporting Contracts](reporting-contracts.md)
 - [Validation Contracts](validation-contracts.md)

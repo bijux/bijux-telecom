@@ -41,6 +41,7 @@ flowchart LR
 - [Common Workflows](common-workflows.md)
 - [Local Development](local-development.md)
 - [Change Sequence](change-sequence.md)
+- [Operator Journeys](operator-journeys.md)
 - [Verification Commands](verification-commands.md)
 - [Fixture And Workflow Care](fixture-and-workflow-care.md)
 - [Review Scope](review-scope.md)

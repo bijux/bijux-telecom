@@ -52,6 +52,7 @@ from collapsing into one owner.
 - [Package Overview](package-overview.md)
 - [Scope And Non-Goals](scope-and-non-goals.md)
 - [Ownership Boundary](ownership-boundary.md)
+- [Operator FAQ](operator-faq.md)
 - [Repository Fit](repository-fit.md)
 - [Domain Language](domain-language.md)
 - [Dependencies And Adjacencies](dependencies-and-adjacencies.md)
