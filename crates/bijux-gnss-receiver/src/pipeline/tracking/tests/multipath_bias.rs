@@ -113,18 +113,23 @@ fn measured_code_zero_crossing_chips(
     let signal_model = super::TrackingSignalModel::for_sat(config, sat);
     for offset_index in -50..=50 {
         let offset_chips = offset_index as f64 * 0.01;
-        let correlation = tracking.tracking_epoch_correlation(
-            frame,
-            0,
-            frame.len(),
-            frame.t0.sample_index,
-            &signal_model,
-            0.0,
-            0.0,
-            config.code_freq_basis_hz,
-            direct_code_phase_samples + offset_chips * samples_per_chip,
-            early_late_spacing_chips,
-        );
+        let correlation =
+            tracking.tracking_epoch_correlation(super::TrackingEpochCorrelationRequest {
+                range: super::TrackingCorrelationRange {
+                    frame,
+                    start: 0,
+                    end: frame.len(),
+                    sample_index: frame.t0.sample_index,
+                },
+                signal_model: &signal_model,
+                estimate: super::TrackingSignalEstimate {
+                    carrier_hz: 0.0,
+                    carrier_phase_cycles: 0.0,
+                    code_rate_hz: config.code_freq_basis_hz,
+                    code_phase_samples: direct_code_phase_samples + offset_chips * samples_per_chip,
+                    early_late_spacing_chips,
+                },
+            });
         let dll_err = match discriminator {
             CodeBiasDiscriminator::DoubleDelta => super::tracking_dll_discriminator(&correlation),
             CodeBiasDiscriminator::StandardEarlyLate | CodeBiasDiscriminator::NarrowEarlyLate => {

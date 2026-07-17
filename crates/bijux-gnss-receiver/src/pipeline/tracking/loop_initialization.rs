@@ -1,3 +1,15 @@
+#[derive(Debug, Clone)]
+struct TrackingLoopInitialization<'a> {
+    signal_model: &'a TrackingSignalModel,
+    carrier_hz: f64,
+    code_phase_samples: f64,
+    acquisition_cn0_proxy_dbhz: f64,
+    signal_delay_alignment: Option<SignalDelayAlignment>,
+    subcarrier_code_phase_refined: bool,
+    tracking_params: TrackingParams,
+    reacquisition_pending: bool,
+}
+
 impl Tracking {
     fn tracking_loop_profile(tracking_params: TrackingParams) -> SignalTrackingLoopProfile {
         SignalTrackingLoopProfile {
@@ -25,17 +37,17 @@ impl Tracking {
         }
     }
 
-    fn initial_loop_state(
-        &self,
-        signal_model: &TrackingSignalModel,
-        carrier_hz: f64,
-        code_phase_samples: f64,
-        acquisition_cn0_proxy_dbhz: f64,
-        signal_delay_alignment: Option<SignalDelayAlignment>,
-        subcarrier_code_phase_refined: bool,
-        tracking_params: TrackingParams,
-        reacquisition_pending: bool,
-    ) -> LoopState {
+    fn initial_loop_state(&self, request: TrackingLoopInitialization<'_>) -> LoopState {
+        let TrackingLoopInitialization {
+            signal_model,
+            carrier_hz,
+            code_phase_samples,
+            acquisition_cn0_proxy_dbhz,
+            signal_delay_alignment,
+            subcarrier_code_phase_refined,
+            tracking_params,
+            reacquisition_pending,
+        } = request;
         let code_rate_reference_hz =
             carrier_aided_code_rate_hz(&self.config, signal_model, carrier_hz);
         LoopState {

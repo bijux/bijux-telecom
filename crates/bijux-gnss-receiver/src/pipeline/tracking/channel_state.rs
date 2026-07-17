@@ -375,7 +375,8 @@ struct TransitionDecision {
     next_degraded_epochs: u16,
 }
 
-fn deterministic_transition_rule(
+#[derive(Debug, Clone, Copy)]
+struct ChannelTransitionRequest<'a> {
     from_state: ChannelState,
     lock: bool,
     ready_for_tracking: bool,
@@ -385,8 +386,22 @@ fn deterministic_transition_rule(
     degraded_epochs: u16,
     short_fade_epoch_budget: u16,
     short_fade_relock_evidence: bool,
-    degraded_tracking_reason: Option<&str>,
-) -> TransitionDecision {
+    degraded_tracking_reason: Option<&'a str>,
+}
+
+fn deterministic_transition_rule(request: ChannelTransitionRequest<'_>) -> TransitionDecision {
+    let ChannelTransitionRequest {
+        from_state,
+        lock,
+        ready_for_tracking,
+        anti_false_lock,
+        loss_of_lock_cause,
+        unlocked_count,
+        degraded_epochs,
+        short_fade_epoch_budget,
+        short_fade_relock_evidence,
+        degraded_tracking_reason,
+    } = request;
     if loss_of_lock_cause == Some(LossOfLockCause::PhaseJump) {
         return TransitionDecision {
             to_state: ChannelState::Lost,

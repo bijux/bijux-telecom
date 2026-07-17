@@ -350,7 +350,15 @@ fn quick_reacquire_recovers_offset_code_hypothesis() {
     let tracking = Tracking::new(config.clone(), ReceiverRuntime::default());
 
     let seed = tracking
-        .quick_reacquire(&frame, sat, 0.0, 2.0, 35.0, 0.0, None)
+        .quick_reacquire(super::ReacquisitionSearchRequest {
+            frame: &frame,
+            sat,
+            carrier_hz: 0.0,
+            code_phase_samples: 2.0,
+            lock_reference_cn0_dbhz: 35.0,
+            min_prompt_power: 0.0,
+            acquisition_uncertainty: None,
+        })
         .expect("reacquisition seed");
     let samples_per_code =
         samples_per_code(config.sampling_freq_hz, config.code_freq_basis_hz, config.code_length);

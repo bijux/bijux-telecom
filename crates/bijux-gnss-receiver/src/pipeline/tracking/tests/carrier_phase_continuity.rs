@@ -192,16 +192,16 @@ fn classify_prompt_phase_handles_real_synthetic_nav_bit_transitions() {
                 &epoch_frame,
                 epoch_code_phase_chips,
             );
-        let (epoch, _) = tracking.track_epoch(
-            &epoch_frame,
-            0,
+        let (epoch, _) = tracking.track_epoch(super::TrackEpochRequest {
+            frame: &epoch_frame,
+            channel_id: 0,
             sat,
-            0.0,
-            0.0,
-            config.code_freq_basis_hz,
-            epoch_code_phase_samples,
-            0.5,
-        );
+            carrier_hz: 0.0,
+            carrier_phase_cycles: 0.0,
+            code_rate_hz: config.code_freq_basis_hz,
+            code_phase_samples: epoch_code_phase_samples,
+            early_late_spacing_chips: 0.5,
+        });
         let raw_phase_cycles =
             (epoch.prompt_q as f64).atan2(epoch.prompt_i as f64) / (2.0 * std::f64::consts::PI);
         let decision = super::classify_prompt_phase(

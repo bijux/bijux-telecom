@@ -62,15 +62,16 @@ fn synthetic_nav_bits_flip_prompt_polarity_every_twenty_milliseconds() {
             .expect("valid epoch code phase");
             let epoch_code_phase_samples =
                 epoch_code_phase_chips * config.sampling_freq_hz / config.code_freq_basis_hz;
-            let correlator = tracking.correlate_epoch(
-                &epoch_frame,
-                sat,
-                0.0,
-                0.0,
-                config.code_freq_basis_hz,
-                epoch_code_phase_samples,
-                0.5,
-            );
+            let correlator =
+                tracking.correlate_epoch(bijux_gnss_receiver::api::TrackingCorrelationRequest {
+                    frame: &epoch_frame,
+                    sat,
+                    carrier_hz: 0.0,
+                    carrier_phase_cycles: 0.0,
+                    code_rate_hz: config.code_freq_basis_hz,
+                    code_phase_samples: epoch_code_phase_samples,
+                    early_late_spacing_chips: 0.5,
+                });
             correlator.prompt.re as f64
         })
         .collect::<Vec<_>>();

@@ -386,22 +386,22 @@ impl SubcarrierAmbiguityGuard {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum TrackingDiscriminatorFamily {
-    EarlyPromptLate,
-    BocEarlyPromptLate,
-    CbocEarlyPromptLate,
+    Conventional,
+    BocUnambiguous,
+    CbocUnambiguous,
 }
 
 impl TrackingDiscriminatorFamily {
     fn label(self) -> &'static str {
         match self {
-            Self::EarlyPromptLate => "early_prompt_late",
-            Self::BocEarlyPromptLate => "unambiguous_boc_early_prompt_late",
-            Self::CbocEarlyPromptLate => "unambiguous_cboc_early_prompt_late",
+            Self::Conventional => "early_prompt_late",
+            Self::BocUnambiguous => "unambiguous_boc_early_prompt_late",
+            Self::CbocUnambiguous => "unambiguous_cboc_early_prompt_late",
         }
     }
 
     fn requires_unambiguous_code_lock(self) -> bool {
-        matches!(self, Self::BocEarlyPromptLate | Self::CbocEarlyPromptLate)
+        matches!(self, Self::BocUnambiguous | Self::CbocUnambiguous)
     }
 }
 
@@ -547,7 +547,7 @@ impl TrackingSignalModel {
             code_rate_hz: config.code_freq_basis_hz,
             code_length: config.code_length.max(1),
             local_code_model,
-            discriminator_family: TrackingDiscriminatorFamily::EarlyPromptLate,
+            discriminator_family: TrackingDiscriminatorFamily::Conventional,
             phase_transition_source: TrackingPhaseTransitionSource::None,
             aiding_mode: TrackingAidingMode::None,
             pilot_component: None,
@@ -637,22 +637,22 @@ impl TrackingSignalModel {
 
 fn signal_default_early_late_spacing_chips(signal_model: &TrackingSignalModel) -> f64 {
     match signal_model.discriminator_family {
-        TrackingDiscriminatorFamily::BocEarlyPromptLate
-        | TrackingDiscriminatorFamily::CbocEarlyPromptLate => {
+        TrackingDiscriminatorFamily::BocUnambiguous
+        | TrackingDiscriminatorFamily::CbocUnambiguous => {
             NARROW_SUBCARRIER_EARLY_LATE_SPACING_CHIPS
         }
-        TrackingDiscriminatorFamily::EarlyPromptLate
+        TrackingDiscriminatorFamily::Conventional
             if signal_model.code_rate_hz >= 10_000_000.0 - f64::EPSILON =>
         {
             NARROW_HIGH_RATE_EARLY_LATE_SPACING_CHIPS
         }
-        TrackingDiscriminatorFamily::EarlyPromptLate
+        TrackingDiscriminatorFamily::Conventional
             if signal_model.phase_transition_source
                 == TrackingPhaseTransitionSource::SecondaryCode =>
         {
             SECONDARY_CODE_EARLY_LATE_SPACING_CHIPS
         }
-        TrackingDiscriminatorFamily::EarlyPromptLate => NARROW_BPSK_EARLY_LATE_SPACING_CHIPS,
+        TrackingDiscriminatorFamily::Conventional => NARROW_BPSK_EARLY_LATE_SPACING_CHIPS,
     }
 }
 
@@ -671,17 +671,15 @@ fn resolve_signal_tracking_params(
 
 fn code_discriminator_mode(signal_model: &TrackingSignalModel) -> CodeDiscriminatorMode {
     match signal_model.discriminator_family {
-        TrackingDiscriminatorFamily::EarlyPromptLate
+        TrackingDiscriminatorFamily::Conventional
             if signal_model.phase_transition_source
                 != TrackingPhaseTransitionSource::SecondaryCode =>
         {
             CodeDiscriminatorMode::DoubleDeltaEarlyPromptLate
         }
-        TrackingDiscriminatorFamily::EarlyPromptLate => CodeDiscriminatorMode::EarlyPromptLate,
-        TrackingDiscriminatorFamily::BocEarlyPromptLate
-        | TrackingDiscriminatorFamily::CbocEarlyPromptLate => {
-            CodeDiscriminatorMode::EarlyPromptLate
-        }
+        TrackingDiscriminatorFamily::Conventional => CodeDiscriminatorMode::EarlyPromptLate,
+        TrackingDiscriminatorFamily::BocUnambiguous
+        | TrackingDiscriminatorFamily::CbocUnambiguous => CodeDiscriminatorMode::EarlyPromptLate,
     }
 }
 
@@ -863,23 +861,38 @@ fn tracking_component_local_code_model_for_signal_role(
 
 fn tracking_discriminator_family(subcarrier: SignalSubcarrierSpec) -> TrackingDiscriminatorFamily {
     match subcarrier {
-        SignalSubcarrierSpec::None => TrackingDiscriminatorFamily::EarlyPromptLate,
-        SignalSubcarrierSpec::Boc { .. } => TrackingDiscriminatorFamily::BocEarlyPromptLate,
-        SignalSubcarrierSpec::Cboc { .. } => TrackingDiscriminatorFamily::CbocEarlyPromptLate,
+        SignalSubcarrierSpec::None => TrackingDiscriminatorFamily::Conventional,
+        SignalSubcarrierSpec::Boc { .. } => TrackingDiscriminatorFamily::BocUnambiguous,
+        SignalSubcarrierSpec::Cboc { .. } => TrackingDiscriminatorFamily::CbocUnambiguous,
     }
 }
 
-fn subcarrier_ambiguity_guard(
-    signal_model: &TrackingSignalModel,
-    samples: &[Complex<f32>],
+struct SubcarrierAmbiguityGuardRequest<'a> {
+    signal_model: &'a TrackingSignalModel,
+    samples: &'a [Complex<f32>],
     sample_rate_hz: f64,
-    carrier_freq_hz: f64,
+    carrier_hz: f64,
     carrier_phase_cycles: f64,
     base_chip_phase: f64,
     tracked_chips_per_sample: f64,
     epoch_primary_code_period_index: usize,
     prompt: Complex<f32>,
+}
+
+fn subcarrier_ambiguity_guard(
+    request: SubcarrierAmbiguityGuardRequest<'_>,
 ) -> Option<SubcarrierAmbiguityGuard> {
+    let SubcarrierAmbiguityGuardRequest {
+        signal_model,
+        samples,
+        sample_rate_hz,
+        carrier_hz: carrier_freq_hz,
+        carrier_phase_cycles,
+        base_chip_phase,
+        tracked_chips_per_sample,
+        epoch_primary_code_period_index,
+        prompt,
+    } = request;
     if !signal_model.discriminator_family.requires_unambiguous_code_lock() {
         return None;
     }

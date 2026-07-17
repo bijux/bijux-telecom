@@ -146,15 +146,15 @@ fn correlate_epoch_honors_receiver_code_phase_seed_at_low_sample_rate() {
     let refined_code_phase_samples =
         crate::sim::synthetic::expected_acquisition_code_phase_samples_f64(&config, &frame, 200.25);
     let tracking = Tracking::new(config, ReceiverRuntime::default());
-    let correlator = tracking.correlate_epoch(
-        &frame,
+    let correlator = tracking.correlate_epoch(super::TrackingCorrelationRequest {
+        frame: &frame,
         sat,
-        750.0,
-        0.0,
-        1_023_000.0,
-        refined_code_phase_samples,
-        0.5,
-    );
+        carrier_hz: 750.0,
+        carrier_phase_cycles: 0.0,
+        code_rate_hz: 1_023_000.0,
+        code_phase_samples: refined_code_phase_samples,
+        early_late_spacing_chips: 0.5,
+    });
 
     assert!(
         correlator.prompt.norm() > 10_000.0,
@@ -195,18 +195,18 @@ fn ambiguous_hypothesis_is_degraded_for_tracking() {
 
 #[test]
 fn deterministic_transition_rule_handles_cycle_slip_first() {
-    let decision = super::deterministic_transition_rule(
-        ChannelState::Tracking,
-        false,
-        false,
-        false,
-        Some(super::LossOfLockCause::PhaseJump),
-        1,
-        0,
-        100,
-        false,
-        None,
-    );
+    let decision = super::deterministic_transition_rule(super::ChannelTransitionRequest {
+        from_state: ChannelState::Tracking,
+        lock: false,
+        ready_for_tracking: false,
+        anti_false_lock: false,
+        loss_of_lock_cause: Some(super::LossOfLockCause::PhaseJump),
+        unlocked_count: 1,
+        degraded_epochs: 0,
+        short_fade_epoch_budget: 100,
+        short_fade_relock_evidence: false,
+        degraded_tracking_reason: None,
+    });
     assert_eq!(decision.to_state, ChannelState::Lost);
     assert_eq!(decision.reason, "phase_jump");
     assert_eq!(decision.next_unlocked_count, 2);
@@ -215,18 +215,18 @@ fn deterministic_transition_rule_handles_cycle_slip_first() {
 
 #[test]
 fn deterministic_transition_rule_promotes_lock() {
-    let decision = super::deterministic_transition_rule(
-        ChannelState::PullIn,
-        true,
-        true,
-        false,
-        None,
-        2,
-        0,
-        100,
-        false,
-        None,
-    );
+    let decision = super::deterministic_transition_rule(super::ChannelTransitionRequest {
+        from_state: ChannelState::PullIn,
+        lock: true,
+        ready_for_tracking: true,
+        anti_false_lock: false,
+        loss_of_lock_cause: None,
+        unlocked_count: 2,
+        degraded_epochs: 0,
+        short_fade_epoch_budget: 100,
+        short_fade_relock_evidence: false,
+        degraded_tracking_reason: None,
+    });
     assert_eq!(decision.to_state, ChannelState::Tracking);
     assert_eq!(decision.reason, "carrier_converged");
     assert_eq!(decision.next_unlocked_count, 0);
@@ -235,18 +235,18 @@ fn deterministic_transition_rule_promotes_lock() {
 
 #[test]
 fn deterministic_transition_rule_degrades_tracking_during_short_fade() {
-    let decision = super::deterministic_transition_rule(
-        ChannelState::Tracking,
-        false,
-        false,
-        false,
-        None,
-        1,
-        0,
-        100,
-        false,
-        None,
-    );
+    let decision = super::deterministic_transition_rule(super::ChannelTransitionRequest {
+        from_state: ChannelState::Tracking,
+        lock: false,
+        ready_for_tracking: false,
+        anti_false_lock: false,
+        loss_of_lock_cause: None,
+        unlocked_count: 1,
+        degraded_epochs: 0,
+        short_fade_epoch_budget: 100,
+        short_fade_relock_evidence: false,
+        degraded_tracking_reason: None,
+    });
     assert_eq!(decision.to_state, ChannelState::Degraded);
     assert_eq!(decision.reason, "signal_fade");
     assert_eq!(decision.next_unlocked_count, 0);
@@ -255,18 +255,18 @@ fn deterministic_transition_rule_degrades_tracking_during_short_fade() {
 
 #[test]
 fn deterministic_transition_rule_reports_doppler_estimator_divergence() {
-    let decision = super::deterministic_transition_rule(
-        ChannelState::Tracking,
-        true,
-        false,
-        false,
-        None,
-        0,
-        0,
-        100,
-        false,
-        Some("doppler_estimator_divergence"),
-    );
+    let decision = super::deterministic_transition_rule(super::ChannelTransitionRequest {
+        from_state: ChannelState::Tracking,
+        lock: true,
+        ready_for_tracking: false,
+        anti_false_lock: false,
+        loss_of_lock_cause: None,
+        unlocked_count: 0,
+        degraded_epochs: 0,
+        short_fade_epoch_budget: 100,
+        short_fade_relock_evidence: false,
+        degraded_tracking_reason: Some("doppler_estimator_divergence"),
+    });
 
     assert_eq!(decision.to_state, ChannelState::Degraded);
     assert_eq!(decision.reason, "doppler_estimator_divergence");
@@ -276,18 +276,18 @@ fn deterministic_transition_rule_reports_doppler_estimator_divergence() {
 
 #[test]
 fn deterministic_transition_rule_recovers_after_short_fade() {
-    let decision = super::deterministic_transition_rule(
-        ChannelState::Degraded,
-        true,
-        true,
-        false,
-        None,
-        0,
-        4,
-        100,
-        false,
-        None,
-    );
+    let decision = super::deterministic_transition_rule(super::ChannelTransitionRequest {
+        from_state: ChannelState::Degraded,
+        lock: true,
+        ready_for_tracking: true,
+        anti_false_lock: false,
+        loss_of_lock_cause: None,
+        unlocked_count: 0,
+        degraded_epochs: 4,
+        short_fade_epoch_budget: 100,
+        short_fade_relock_evidence: false,
+        degraded_tracking_reason: None,
+    });
     assert_eq!(decision.to_state, ChannelState::Tracking);
     assert_eq!(decision.reason, "fade_recovered");
     assert_eq!(decision.next_unlocked_count, 0);
@@ -296,18 +296,18 @@ fn deterministic_transition_rule_recovers_after_short_fade() {
 
 #[test]
 fn deterministic_transition_rule_preserves_doppler_reason_while_degraded() {
-    let decision = super::deterministic_transition_rule(
-        ChannelState::Degraded,
-        true,
-        false,
-        false,
-        None,
-        0,
-        4,
-        100,
-        false,
-        Some("doppler_estimator_divergence"),
-    );
+    let decision = super::deterministic_transition_rule(super::ChannelTransitionRequest {
+        from_state: ChannelState::Degraded,
+        lock: true,
+        ready_for_tracking: false,
+        anti_false_lock: false,
+        loss_of_lock_cause: None,
+        unlocked_count: 0,
+        degraded_epochs: 4,
+        short_fade_epoch_budget: 100,
+        short_fade_relock_evidence: false,
+        degraded_tracking_reason: Some("doppler_estimator_divergence"),
+    });
 
     assert_eq!(decision.to_state, ChannelState::Degraded);
     assert_eq!(decision.reason, "doppler_estimator_divergence");
@@ -317,18 +317,18 @@ fn deterministic_transition_rule_preserves_doppler_reason_while_degraded() {
 
 #[test]
 fn deterministic_transition_rule_keeps_degraded_state_during_fade_cycle_slip() {
-    let decision = super::deterministic_transition_rule(
-        ChannelState::Degraded,
-        false,
-        false,
-        false,
-        Some(super::LossOfLockCause::PhaseJump),
-        0,
-        2,
-        100,
-        false,
-        None,
-    );
+    let decision = super::deterministic_transition_rule(super::ChannelTransitionRequest {
+        from_state: ChannelState::Degraded,
+        lock: false,
+        ready_for_tracking: false,
+        anti_false_lock: false,
+        loss_of_lock_cause: Some(super::LossOfLockCause::PhaseJump),
+        unlocked_count: 0,
+        degraded_epochs: 2,
+        short_fade_epoch_budget: 100,
+        short_fade_relock_evidence: false,
+        degraded_tracking_reason: None,
+    });
     assert_eq!(decision.to_state, ChannelState::Lost);
     assert_eq!(decision.reason, "phase_jump");
     assert_eq!(decision.next_unlocked_count, 1);
@@ -337,18 +337,18 @@ fn deterministic_transition_rule_keeps_degraded_state_during_fade_cycle_slip() {
 
 #[test]
 fn deterministic_transition_rule_marks_loss_after_fade_budget_exhaustion() {
-    let decision = super::deterministic_transition_rule(
-        ChannelState::Degraded,
-        false,
-        false,
-        false,
-        Some(super::LossOfLockCause::PromptPowerDrop),
-        0,
-        100,
-        100,
-        false,
-        None,
-    );
+    let decision = super::deterministic_transition_rule(super::ChannelTransitionRequest {
+        from_state: ChannelState::Degraded,
+        lock: false,
+        ready_for_tracking: false,
+        anti_false_lock: false,
+        loss_of_lock_cause: Some(super::LossOfLockCause::PromptPowerDrop),
+        unlocked_count: 0,
+        degraded_epochs: 100,
+        short_fade_epoch_budget: 100,
+        short_fade_relock_evidence: false,
+        degraded_tracking_reason: None,
+    });
     assert_eq!(decision.to_state, ChannelState::Lost);
     assert_eq!(decision.reason, "prompt_power_drop");
     assert_eq!(decision.next_unlocked_count, 1);
@@ -357,18 +357,18 @@ fn deterministic_transition_rule_marks_loss_after_fade_budget_exhaustion() {
 
 #[test]
 fn deterministic_transition_rule_grants_short_fade_grace_to_degraded_instability() {
-    let decision = super::deterministic_transition_rule(
-        ChannelState::Degraded,
-        false,
-        false,
-        false,
-        Some(super::LossOfLockCause::DiscriminatorInstability),
-        0,
-        super::DEGRADED_FADE_INSTABILITY_GRACE_EPOCHS,
-        100,
-        false,
-        None,
-    );
+    let decision = super::deterministic_transition_rule(super::ChannelTransitionRequest {
+        from_state: ChannelState::Degraded,
+        lock: false,
+        ready_for_tracking: false,
+        anti_false_lock: false,
+        loss_of_lock_cause: Some(super::LossOfLockCause::DiscriminatorInstability),
+        unlocked_count: 0,
+        degraded_epochs: super::DEGRADED_FADE_INSTABILITY_GRACE_EPOCHS,
+        short_fade_epoch_budget: 100,
+        short_fade_relock_evidence: false,
+        degraded_tracking_reason: None,
+    });
     assert_eq!(decision.to_state, ChannelState::Degraded);
     assert_eq!(decision.reason, "signal_fade");
     assert_eq!(decision.next_degraded_epochs, super::DEGRADED_FADE_INSTABILITY_GRACE_EPOCHS + 1);

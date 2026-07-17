@@ -67,6 +67,72 @@ pub struct Tracking {
     runtime: ReceiverRuntime,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct TrackingSignalEstimate {
+    carrier_hz: f64,
+    carrier_phase_cycles: f64,
+    code_rate_hz: f64,
+    code_phase_samples: f64,
+    early_late_spacing_chips: f64,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct TrackingCorrelationRange<'a> {
+    frame: &'a SamplesFrame,
+    start: usize,
+    end: usize,
+    sample_index: u64,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct TrackingEpochCorrelationRequest<'a> {
+    range: TrackingCorrelationRange<'a>,
+    signal_model: &'a TrackingSignalModel,
+    estimate: TrackingSignalEstimate,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct TrackEpochRangeRequest<'a> {
+    correlation: TrackingEpochCorrelationRequest<'a>,
+    channel_id: u8,
+    sat: SatId,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct TrackEpochSequenceRequest<'a> {
+    frame: &'a SamplesFrame,
+    channel_id: u8,
+    sat: SatId,
+    signal_model: &'a TrackingSignalModel,
+    initial_estimate: TrackingSignalEstimate,
+    acquisition_cn0_proxy_dbhz: f64,
+    tracking_params: TrackingParams,
+    epochs: usize,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct TrackingCorrelationRequest<'a> {
+    pub frame: &'a SamplesFrame,
+    pub sat: SatId,
+    pub carrier_hz: f64,
+    pub carrier_phase_cycles: f64,
+    pub code_rate_hz: f64,
+    pub code_phase_samples: f64,
+    pub early_late_spacing_chips: f64,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct TrackEpochRequest<'a> {
+    pub frame: &'a SamplesFrame,
+    pub channel_id: u8,
+    pub sat: SatId,
+    pub carrier_hz: f64,
+    pub carrier_phase_cycles: f64,
+    pub code_rate_hz: f64,
+    pub code_phase_samples: f64,
+    pub early_late_spacing_chips: f64,
+}
+
 impl Tracking {
     pub fn new(config: ReceiverPipelineConfig, runtime: ReceiverRuntime) -> Self {
         Self { config, runtime }
@@ -125,72 +191,58 @@ impl Tracking {
         })
     }
 
-    pub fn correlate_epoch(
-        &self,
-        frame: &SamplesFrame,
-        sat: SatId,
-        carrier_freq_hz: f64,
-        carrier_phase_cycles: f64,
-        code_rate_hz: f64,
-        code_phase_samples: f64,
-        early_late_spacing_chips: f64,
-    ) -> CorrelatorOutput {
-        let signal_model = TrackingSignalModel::for_sat(&self.config, sat);
-        self.correlate_epoch_range_with_signal_model(
+    pub fn correlate_epoch(&self, request: TrackingCorrelationRequest<'_>) -> CorrelatorOutput {
+        let TrackingCorrelationRequest {
             frame,
-            0,
-            frame.len(),
-            frame.t0.sample_index,
-            &signal_model,
-            carrier_freq_hz,
+            sat,
+            carrier_hz,
             carrier_phase_cycles,
             code_rate_hz,
             code_phase_samples,
             early_late_spacing_chips,
-        )
+        } = request;
+        let signal_model = TrackingSignalModel::for_sat(&self.config, sat);
+        self.correlate_epoch_range_with_signal_model(TrackingEpochCorrelationRequest {
+            range: TrackingCorrelationRange {
+                frame,
+                start: 0,
+                end: frame.len(),
+                sample_index: frame.t0.sample_index,
+            },
+            signal_model: &signal_model,
+            estimate: TrackingSignalEstimate {
+                carrier_hz,
+                carrier_phase_cycles,
+                code_rate_hz,
+                code_phase_samples,
+                early_late_spacing_chips,
+            },
+        })
     }
 
     fn correlate_epoch_range_with_signal_model(
         &self,
-        frame: &SamplesFrame,
-        start: usize,
-        end: usize,
-        sample_index: u64,
-        signal_model: &TrackingSignalModel,
-        carrier_freq_hz: f64,
-        carrier_phase_cycles: f64,
-        code_rate_hz: f64,
-        code_phase_samples: f64,
-        early_late_spacing_chips: f64,
+        request: TrackingEpochCorrelationRequest<'_>,
     ) -> CorrelatorOutput {
-        self.tracking_epoch_correlation(
-            frame,
-            start,
-            end,
-            sample_index,
-            signal_model,
-            carrier_freq_hz,
-            carrier_phase_cycles,
-            code_rate_hz,
-            code_phase_samples,
-            early_late_spacing_chips,
-        )
-        .primary
+        self.tracking_epoch_correlation(request).primary
     }
 
     fn tracking_epoch_correlation(
         &self,
-        frame: &SamplesFrame,
-        start: usize,
-        end: usize,
-        sample_index: u64,
-        signal_model: &TrackingSignalModel,
-        carrier_freq_hz: f64,
-        carrier_phase_cycles: f64,
-        code_rate_hz: f64,
-        code_phase_samples: f64,
-        early_late_spacing_chips: f64,
+        request: TrackingEpochCorrelationRequest<'_>,
     ) -> TrackingEpochCorrelation {
+        let TrackingEpochCorrelationRequest {
+            range: TrackingCorrelationRange { frame, start, end, sample_index },
+            signal_model,
+            estimate:
+                TrackingSignalEstimate {
+                    carrier_hz: carrier_freq_hz,
+                    carrier_phase_cycles,
+                    code_rate_hz,
+                    code_phase_samples,
+                    early_late_spacing_chips,
+                },
+        } = request;
         let sample_rate_hz = self.config.sampling_freq_hz;
         let samples = &frame.iq[start..end];
         let primary_code_period_samples = signal_model.samples_per_code(sample_rate_hz);
@@ -228,17 +280,18 @@ impl Tracking {
                     },
                 )
             });
-        let subcarrier_ambiguity_guard = subcarrier_ambiguity_guard(
-            signal_model,
-            samples,
-            sample_rate_hz,
-            carrier_freq_hz,
-            carrier_phase_cycles,
-            base_chip_phase,
-            tracked_chips_per_sample,
-            epoch_primary_code_period_index,
-            primary.prompt,
-        );
+        let subcarrier_ambiguity_guard =
+            subcarrier_ambiguity_guard(SubcarrierAmbiguityGuardRequest {
+                signal_model,
+                samples,
+                sample_rate_hz,
+                carrier_hz: carrier_freq_hz,
+                carrier_phase_cycles,
+                base_chip_phase,
+                tracked_chips_per_sample,
+                epoch_primary_code_period_index,
+                prompt: primary.prompt,
+            });
         let pilot_prompt = signal_model.pilot_component.as_ref().map(|component| {
             correlate_early_prompt_late(
                 EarlyPromptLateCorrelatorInput {
@@ -299,64 +352,68 @@ impl Tracking {
         }
     }
 
-    pub fn track_epoch(
-        &self,
-        frame: &SamplesFrame,
-        channel_id: u8,
-        sat: SatId,
-        carrier_freq_hz: f64,
-        carrier_phase_cycles: f64,
-        code_rate_hz: f64,
-        code_phase_samples: f64,
-        early_late_spacing_chips: f64,
-    ) -> (TrackEpoch, CorrelatorOutput) {
-        let signal_model = TrackingSignalModel::for_sat(&self.config, sat);
-        let (epoch, correlation) = self.track_epoch_range_with_signal_model(
+    pub fn track_epoch(&self, request: TrackEpochRequest<'_>) -> (TrackEpoch, CorrelatorOutput) {
+        let TrackEpochRequest {
             frame,
-            0,
-            frame.len(),
             channel_id,
             sat,
-            &signal_model,
-            carrier_freq_hz,
+            carrier_hz,
             carrier_phase_cycles,
             code_rate_hz,
             code_phase_samples,
             early_late_spacing_chips,
-        );
+        } = request;
+        let signal_model = TrackingSignalModel::for_sat(&self.config, sat);
+        let (epoch, correlation) =
+            self.track_epoch_range_with_signal_model(TrackEpochRangeRequest {
+                correlation: TrackingEpochCorrelationRequest {
+                    range: TrackingCorrelationRange {
+                        frame,
+                        start: 0,
+                        end: frame.len(),
+                        sample_index: frame.t0.sample_index,
+                    },
+                    signal_model: &signal_model,
+                    estimate: TrackingSignalEstimate {
+                        carrier_hz,
+                        carrier_phase_cycles,
+                        code_rate_hz,
+                        code_phase_samples,
+                        early_late_spacing_chips,
+                    },
+                },
+                channel_id,
+                sat,
+            });
         (epoch, correlation.primary)
     }
 
     fn track_epoch_range_with_signal_model(
         &self,
-        frame: &SamplesFrame,
-        start: usize,
-        end: usize,
-        channel_id: u8,
-        sat: SatId,
-        signal_model: &TrackingSignalModel,
-        carrier_freq_hz: f64,
-        carrier_phase_cycles: f64,
-        code_rate_hz: f64,
-        code_phase_samples: f64,
-        early_late_spacing_chips: f64,
+        request: TrackEpochRangeRequest<'_>,
     ) -> (TrackEpoch, TrackingEpochCorrelation) {
+        let TrackEpochRangeRequest { correlation, channel_id, sat } = request;
+        let TrackingEpochCorrelationRequest {
+            range: TrackingCorrelationRange { frame, start, end, sample_index: _ },
+            signal_model,
+            estimate:
+                TrackingSignalEstimate {
+                    carrier_hz: carrier_freq_hz,
+                    carrier_phase_cycles,
+                    code_rate_hz,
+                    code_phase_samples,
+                    ..
+                },
+        } = correlation;
         let sample_index = frame.t0.sample_index + start as u64;
         let source_time = SampleTime { sample_index, sample_rate_hz: frame.t0.sample_rate_hz };
         let clock = SampleClock::new(self.config.sampling_freq_hz);
         let epoch = clock.epoch_from_samples(sample_index);
-        let correlation = self.tracking_epoch_correlation(
-            frame,
-            start,
-            end,
-            sample_index,
+        let correlation = self.tracking_epoch_correlation(TrackingEpochCorrelationRequest {
+            range: TrackingCorrelationRange { frame, start, end, sample_index },
             signal_model,
-            carrier_freq_hz,
-            carrier_phase_cycles,
-            code_rate_hz,
-            code_phase_samples,
-            early_late_spacing_chips,
-        );
+            estimate: correlation.estimate,
+        });
         let coherent_samples = end.saturating_sub(start);
         let cn0_dbhz = estimate_cn0_dbhz(
             correlation.primary.prompt,
@@ -433,17 +490,22 @@ impl Tracking {
         let sat = SatId { constellation: Constellation::Gps, prn: 1 };
         let signal_model = TrackingSignalModel::for_sat(&self.config, sat);
         let tracking_params = resolve_signal_tracking_params(&self.config, &signal_model);
-        let epochs = self.track_epochs(
-            &frame,
-            0,
+        let epochs = self.track_epochs(TrackEpochSequenceRequest {
+            frame: &frame,
+            channel_id: 0,
             sat,
-            &signal_model,
-            0.0,
-            0.0,
-            f64::INFINITY,
+            signal_model: &signal_model,
+            initial_estimate: TrackingSignalEstimate {
+                carrier_hz: 0.0,
+                carrier_phase_cycles: 0.0,
+                code_rate_hz: self.config.code_freq_basis_hz,
+                code_phase_samples: 0.0,
+                early_late_spacing_chips: tracking_params.early_late_spacing_chips,
+            },
+            acquisition_cn0_proxy_dbhz: f64::INFINITY,
             tracking_params,
-            5,
-        );
+            epochs: 5,
+        });
         vec![TrackingResult {
             sat,
             carrier_hz: 0.0,
@@ -563,26 +625,28 @@ impl Tracking {
 
     fn track_epochs(
         &self,
-        frame: &SamplesFrame,
-        channel_id: u8,
-        sat: SatId,
-        signal_model: &TrackingSignalModel,
-        carrier_hz: f64,
-        code_phase_samples: f64,
-        acquisition_cn0_proxy_dbhz: f64,
-        tracking_params: TrackingParams,
-        epochs: usize,
+        request: TrackEpochSequenceRequest<'_>,
     ) -> (Vec<TrackEpoch>, Vec<TrackTransition>) {
-        let mut state = self.initial_loop_state(
+        let TrackEpochSequenceRequest {
+            frame,
+            channel_id,
+            sat,
             signal_model,
-            carrier_hz,
-            code_phase_samples,
+            initial_estimate,
             acquisition_cn0_proxy_dbhz,
-            None,
-            false,
             tracking_params,
-            false,
-        );
+            epochs,
+        } = request;
+        let mut state = self.initial_loop_state(TrackingLoopInitialization {
+            signal_model,
+            carrier_hz: initial_estimate.carrier_hz,
+            code_phase_samples: initial_estimate.code_phase_samples,
+            acquisition_cn0_proxy_dbhz,
+            signal_delay_alignment: None,
+            subcarrier_code_phase_refined: false,
+            tracking_params,
+            reacquisition_pending: false,
+        });
 
         let mut out = Vec::new();
         let mut transitions = Vec::new();
@@ -635,16 +699,16 @@ impl Tracking {
                     ],
                 });
                 IncrementalTrackingChannel {
-                    state: self.initial_loop_state(
-                        &signal_model,
-                        context.acquisition_carrier_hz,
-                        context.seed.code_phase_samples.0,
-                        context.acquisition_cn0_proxy_dbhz,
-                        context.seed.signal_delay_alignment.clone(),
-                        context.subcarrier_code_phase_refined,
+                    state: self.initial_loop_state(TrackingLoopInitialization {
+                        signal_model: &signal_model,
+                        carrier_hz: context.acquisition_carrier_hz,
+                        code_phase_samples: context.seed.code_phase_samples.0,
+                        acquisition_cn0_proxy_dbhz: context.acquisition_cn0_proxy_dbhz,
+                        signal_delay_alignment: context.seed.signal_delay_alignment.clone(),
+                        subcarrier_code_phase_refined: context.subcarrier_code_phase_refined,
                         tracking_params,
-                        false,
-                    ),
+                        reacquisition_pending: false,
+                    }),
                     sat: context.seed.sat,
                     channel_id,
                     start_source_time: context.seed.source_time,
@@ -917,19 +981,27 @@ impl Tracking {
                 .map(|application| application.carrier_rate_correction_hz_per_s)
                 .unwrap_or_default();
         let alloc_before = crate::engine::alloc::allocation_count();
-        let (mut track_epoch, correlation) = self.track_epoch_range_with_signal_model(
-            frame,
-            start,
-            end,
-            channel_id,
-            sat,
-            signal_model,
-            aided_carrier_hz,
-            state.carrier_phase_cycles,
-            aided_code_rate_hz,
-            aided_code_phase_samples,
-            tracking_params.early_late_spacing_chips,
-        );
+        let (mut track_epoch, correlation) =
+            self.track_epoch_range_with_signal_model(TrackEpochRangeRequest {
+                correlation: TrackingEpochCorrelationRequest {
+                    range: TrackingCorrelationRange {
+                        frame,
+                        start,
+                        end,
+                        sample_index: frame.t0.sample_index + start as u64,
+                    },
+                    signal_model,
+                    estimate: TrackingSignalEstimate {
+                        carrier_hz: aided_carrier_hz,
+                        carrier_phase_cycles: state.carrier_phase_cycles,
+                        code_rate_hz: aided_code_rate_hz,
+                        code_phase_samples: aided_code_phase_samples,
+                        early_late_spacing_chips: tracking_params.early_late_spacing_chips,
+                    },
+                },
+                channel_id,
+                sat,
+            });
         track_epoch.processing_ms = None;
         let alloc_after = crate::engine::alloc::allocation_count();
         if alloc_after > alloc_before {
@@ -1154,18 +1226,18 @@ impl Tracking {
                 next_degraded_epochs: 0,
             }
         } else {
-            deterministic_transition_rule(
+            deterministic_transition_rule(ChannelTransitionRequest {
                 from_state,
-                sustained_prompt_lock,
+                lock: sustained_prompt_lock,
                 ready_for_tracking,
                 anti_false_lock,
                 loss_of_lock_cause,
-                state.unlocked_count,
-                state.degraded_epochs,
-                short_fade_epoch_budget(tracking_params),
+                unlocked_count: state.unlocked_count,
+                degraded_epochs: state.degraded_epochs,
+                short_fade_epoch_budget: short_fade_epoch_budget(tracking_params),
                 short_fade_relock_evidence,
                 degraded_tracking_reason,
-            )
+            })
         };
         state.unlocked_count = transition.next_unlocked_count;
         state.degraded_epochs = transition.next_degraded_epochs;

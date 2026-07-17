@@ -150,15 +150,15 @@ fn correlate_epoch_aligns_prompt_with_non_integer_rate_sampled_code() {
         code_phase_chips,
     );
 
-    let correlator = tracking.correlate_epoch(
-        &frame,
+    let correlator = tracking.correlate_epoch(super::TrackingCorrelationRequest {
+        frame: &frame,
         sat,
-        0.0,
-        0.0,
-        config.code_freq_basis_hz,
+        carrier_hz: 0.0,
+        carrier_phase_cycles: 0.0,
+        code_rate_hz: config.code_freq_basis_hz,
         code_phase_samples,
-        0.5,
-    );
+        early_late_spacing_chips: 0.5,
+    });
 
     assert!(correlator.prompt.norm() > correlator.early.norm());
     assert!(correlator.prompt.norm() > correlator.late.norm());
@@ -199,24 +199,24 @@ fn correlate_epoch_uses_tracked_code_rate_for_code_rate_offset_signal() {
         code_phase_chips,
     );
 
-    let nominal = tracking.correlate_epoch(
-        &frame,
+    let nominal = tracking.correlate_epoch(super::TrackingCorrelationRequest {
+        frame: &frame,
         sat,
-        0.0,
-        0.0,
-        config.code_freq_basis_hz,
+        carrier_hz: 0.0,
+        carrier_phase_cycles: 0.0,
+        code_rate_hz: config.code_freq_basis_hz,
         code_phase_samples,
-        0.5,
-    );
-    let matched = tracking.correlate_epoch(
-        &frame,
+        early_late_spacing_chips: 0.5,
+    });
+    let matched = tracking.correlate_epoch(super::TrackingCorrelationRequest {
+        frame: &frame,
         sat,
-        0.0,
-        0.0,
-        signal_code_rate_hz,
+        carrier_hz: 0.0,
+        carrier_phase_cycles: 0.0,
+        code_rate_hz: signal_code_rate_hz,
         code_phase_samples,
-        0.5,
-    );
+        early_late_spacing_chips: 0.5,
+    });
 
     assert!(
         matched.prompt.norm() > nominal.prompt.norm(),
@@ -259,17 +259,24 @@ fn correlate_epoch_uses_tracked_carrier_phase_for_phase_offset_signal() {
         0.001,
     );
 
-    let unmatched =
-        tracking.correlate_epoch(&frame, sat, 0.0, 0.0, config.code_freq_basis_hz, 0.0, 0.5);
-    let matched = tracking.correlate_epoch(
-        &frame,
+    let unmatched = tracking.correlate_epoch(super::TrackingCorrelationRequest {
+        frame: &frame,
         sat,
-        0.0,
+        carrier_hz: 0.0,
+        carrier_phase_cycles: 0.0,
+        code_rate_hz: config.code_freq_basis_hz,
+        code_phase_samples: 0.0,
+        early_late_spacing_chips: 0.5,
+    });
+    let matched = tracking.correlate_epoch(super::TrackingCorrelationRequest {
+        frame: &frame,
+        sat,
+        carrier_hz: 0.0,
         carrier_phase_cycles,
-        config.code_freq_basis_hz,
-        0.0,
-        0.5,
-    );
+        code_rate_hz: config.code_freq_basis_hz,
+        code_phase_samples: 0.0,
+        early_late_spacing_chips: 0.5,
+    });
 
     assert!(
         matched.prompt.re > unmatched.prompt.re,
@@ -321,15 +328,15 @@ fn correlate_epoch_keeps_carrier_phase_aligned_across_nonzero_epoch_starts() {
     );
     let second_epoch = super::frame_slice(&frame, epoch_len_samples, epoch_len_samples * 2);
 
-    let correlator = tracking.correlate_epoch(
-        &second_epoch,
+    let correlator = tracking.correlate_epoch(super::TrackingCorrelationRequest {
+        frame: &second_epoch,
         sat,
         carrier_hz,
-        second_epoch_start_phase_cycles,
-        config.code_freq_basis_hz,
-        0.0,
-        0.5,
-    );
+        carrier_phase_cycles: second_epoch_start_phase_cycles,
+        code_rate_hz: config.code_freq_basis_hz,
+        code_phase_samples: 0.0,
+        early_late_spacing_chips: 0.5,
+    });
 
     assert!(
         correlator.prompt.re > correlator.prompt.im.abs() * 10.0,
@@ -528,15 +535,15 @@ fn dll_pull_in_increases_code_rate_for_faster_signal() {
         code_phase_chips,
     );
 
-    let correlator = tracking.correlate_epoch(
-        &frame,
+    let correlator = tracking.correlate_epoch(super::TrackingCorrelationRequest {
+        frame: &frame,
         sat,
-        0.0,
-        0.0,
-        config.code_freq_basis_hz,
+        carrier_hz: 0.0,
+        carrier_phase_cycles: 0.0,
+        code_rate_hz: config.code_freq_basis_hz,
         code_phase_samples,
-        0.5,
-    );
+        early_late_spacing_chips: 0.5,
+    });
     let (dll_err, _, _, _) =
         discriminators(correlator.early, correlator.prompt, correlator.late, None);
     let code_loop = super::apply_dll_code_loop(super::CodeLoopInput {

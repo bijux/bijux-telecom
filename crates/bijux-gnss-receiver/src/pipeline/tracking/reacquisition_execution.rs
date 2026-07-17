@@ -22,15 +22,16 @@ impl Tracking {
                 self.config.code_length,
             ),
         );
-        let Some(seed) = self.quick_reacquire(
+        let Some(seed) = self.quick_reacquire(ReacquisitionSearchRequest {
             frame,
-            channel.sat,
-            sustained_loss_seed.carrier_hz,
-            reacquisition_code_phase_samples,
-            channel.state.lock_reference_cn0_dbhz,
-            channel.state.prompt_power_reference * REACQUISITION_REFERENCE_PROMPT_POWER_RATIO,
-            channel.acquisition_uncertainty.as_ref(),
-        ) else {
+            sat: channel.sat,
+            carrier_hz: sustained_loss_seed.carrier_hz,
+            code_phase_samples: reacquisition_code_phase_samples,
+            lock_reference_cn0_dbhz: channel.state.lock_reference_cn0_dbhz,
+            min_prompt_power: channel.state.prompt_power_reference
+                * REACQUISITION_REFERENCE_PROMPT_POWER_RATIO,
+            acquisition_uncertainty: channel.acquisition_uncertainty.as_ref(),
+        }) else {
             channel.state.reacquisition_candidate = None;
             channel.state.reacquisition_candidate_streak = 0;
             return ReacquisitionOutcome::Failed;
@@ -52,16 +53,16 @@ impl Tracking {
             return ReacquisitionOutcome::Failed;
         }
 
-        channel.state = self.initial_loop_state(
-            &channel.signal_model,
-            seed.carrier_hz,
-            seed.code_phase_samples,
-            seed.cn0_dbhz,
-            channel.state.signal_delay_alignment.clone(),
-            channel.state.subcarrier_code_phase_refined,
-            channel.tracking_params,
-            true,
-        );
+        channel.state = self.initial_loop_state(TrackingLoopInitialization {
+            signal_model: &channel.signal_model,
+            carrier_hz: seed.carrier_hz,
+            code_phase_samples: seed.code_phase_samples,
+            acquisition_cn0_proxy_dbhz: seed.cn0_dbhz,
+            signal_delay_alignment: channel.state.signal_delay_alignment.clone(),
+            subcarrier_code_phase_refined: channel.state.subcarrier_code_phase_refined,
+            tracking_params: channel.tracking_params,
+            reacquisition_pending: true,
+        });
         channel.state.carrier_phase_cycles = wrap_phase_cycles_signed(
             channel.state.carrier_phase_cycles + seed.carrier_sign.phase_offset_cycles(),
         );
@@ -89,14 +90,17 @@ impl Tracking {
 
     fn quick_reacquire(
         &self,
-        frame: &SamplesFrame,
-        sat: SatId,
-        carrier_hz: f64,
-        code_phase_samples: f64,
-        lock_reference_cn0_dbhz: f64,
-        min_prompt_power: f32,
-        acquisition_uncertainty: Option<&AcqUncertainty>,
+        request: ReacquisitionSearchRequest<'_>,
     ) -> Option<ReacquisitionSeed> {
+        let ReacquisitionSearchRequest {
+            frame,
+            sat,
+            carrier_hz,
+            code_phase_samples,
+            lock_reference_cn0_dbhz,
+            min_prompt_power,
+            acquisition_uncertainty,
+        } = request;
         let doppler_step_hz = self.config.acquisition_doppler_step_hz.max(1) as f64;
         let doppler_step = acquisition_uncertainty
             .map(|uncertainty| uncertainty.doppler_hz.clamp(doppler_step_hz / 2.0, doppler_step_hz))
@@ -207,4 +211,15 @@ impl Tracking {
             |chip_phase| signal_model.value_at_phase(chip_phase, primary_code_period_index),
         )
     }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ReacquisitionSearchRequest<'a> {
+    frame: &'a SamplesFrame,
+    sat: SatId,
+    carrier_hz: f64,
+    code_phase_samples: f64,
+    lock_reference_cn0_dbhz: f64,
+    min_prompt_power: f32,
+    acquisition_uncertainty: Option<&'a AcqUncertainty>,
 }

@@ -23,18 +23,18 @@ fn tracking_scenario_fixtures_are_deterministic() {
         let mut unlocked = 0u8;
         let mut degraded_epochs = 0u16;
         for event in &fixture.events {
-            let decision = super::deterministic_transition_rule(
-                state,
-                event.lock,
-                event.lock,
-                event.anti_false_lock,
-                event.cycle_slip.then_some(super::LossOfLockCause::PhaseJump),
-                unlocked,
+            let decision = super::deterministic_transition_rule(super::ChannelTransitionRequest {
+                from_state: state,
+                lock: event.lock,
+                ready_for_tracking: event.lock,
+                anti_false_lock: event.anti_false_lock,
+                loss_of_lock_cause: event.cycle_slip.then_some(super::LossOfLockCause::PhaseJump),
+                unlocked_count: unlocked,
                 degraded_epochs,
-                100,
-                false,
-                None,
-            );
+                short_fade_epoch_budget: 100,
+                short_fade_relock_evidence: false,
+                degraded_tracking_reason: None,
+            });
             state = decision.to_state;
             unlocked = decision.next_unlocked_count;
             degraded_epochs = decision.next_degraded_epochs;

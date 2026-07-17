@@ -78,9 +78,9 @@ pub use crate::pipeline::observations::{
 };
 /// Tracking engine and related types.
 pub use crate::pipeline::tracking::{
-    Channel, ChannelEvent, ChannelState, CorrelatorOutput, Tracking as TrackingEngine,
-    TrackingArtifacts, TrackingChannelState, TrackingChannelStateEvent, TrackingChannelStateReport,
-    TrackingResult, TrackingSession,
+    Channel, ChannelEvent, ChannelState, CorrelatorOutput, TrackEpochRequest,
+    Tracking as TrackingEngine, TrackingArtifacts, TrackingChannelState, TrackingChannelStateEvent,
+    TrackingChannelStateReport, TrackingCorrelationRequest, TrackingResult, TrackingSession,
 };
 /// Pipeline step report helpers.
 pub use crate::pipeline::{StepReport, StepStats};

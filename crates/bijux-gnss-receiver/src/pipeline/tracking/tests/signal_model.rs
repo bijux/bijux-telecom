@@ -50,18 +50,22 @@ fn galileo_e1_subcarrier_guard_for_seed(
     let samples_per_chip = config.sampling_freq_hz / config.code_freq_basis_hz;
     let code_phase_samples = (code_phase_chips + seed_offset_chips) * samples_per_chip;
     tracking
-        .tracking_epoch_correlation(
-            &frame,
-            0,
-            frame.len(),
-            0,
-            &signal_model,
-            0.0,
-            0.0,
-            config.code_freq_basis_hz,
-            code_phase_samples,
-            config.early_late_spacing_chips,
-        )
+        .tracking_epoch_correlation(super::TrackingEpochCorrelationRequest {
+            range: super::TrackingCorrelationRange {
+                frame: &frame,
+                start: 0,
+                end: frame.len(),
+                sample_index: 0,
+            },
+            signal_model: &signal_model,
+            estimate: super::TrackingSignalEstimate {
+                carrier_hz: 0.0,
+                carrier_phase_cycles: 0.0,
+                code_rate_hz: config.code_freq_basis_hz,
+                code_phase_samples,
+                early_late_spacing_chips: config.early_late_spacing_chips,
+            },
+        })
         .subcarrier_ambiguity_guard
         .expect("Galileo E1 requires subcarrier ambiguity guard")
 }
@@ -89,10 +93,7 @@ fn tracking_signal_model_uses_registry_metadata_for_gps_l5q() {
         signal_model.phase_transition_source,
         super::TrackingPhaseTransitionSource::SecondaryCode
     );
-    assert_eq!(
-        signal_model.discriminator_family,
-        super::TrackingDiscriminatorFamily::EarlyPromptLate
-    );
+    assert_eq!(signal_model.discriminator_family, super::TrackingDiscriminatorFamily::Conventional);
     assert!((signal_model.nominal_carrier_hz() - 1_176_450_000.0).abs() <= f64::EPSILON);
     assert!(!signal_model.supports_navigation_bit_sign_recovery());
 }
@@ -608,7 +609,7 @@ fn tracking_signal_model_uses_registry_metadata_for_galileo_e1b() {
     assert!(signal_model.secondary_code.is_none());
     assert_eq!(
         signal_model.discriminator_family,
-        super::TrackingDiscriminatorFamily::CbocEarlyPromptLate
+        super::TrackingDiscriminatorFamily::CbocUnambiguous
     );
     assert_eq!(
         signal_model.phase_transition_source,
@@ -663,10 +664,7 @@ fn tracking_signal_model_uses_registry_metadata_for_beidou_b1i() {
 
     assert_eq!(signal_model.component_role, SignalComponentRole::Data);
     assert!(signal_model.secondary_code.is_some());
-    assert_eq!(
-        signal_model.discriminator_family,
-        super::TrackingDiscriminatorFamily::EarlyPromptLate
-    );
+    assert_eq!(signal_model.discriminator_family, super::TrackingDiscriminatorFamily::Conventional);
     assert_eq!(
         signal_model.phase_transition_source,
         super::TrackingPhaseTransitionSource::SecondaryCode

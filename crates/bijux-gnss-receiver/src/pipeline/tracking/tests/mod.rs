@@ -140,18 +140,18 @@ fn refresh_lock_reference_cn0_dbhz_only_updates_on_reliable_lock() {
 
 #[test]
 fn deterministic_transition_rule_holds_pull_in_until_carrier_converges() {
-    let decision = super::deterministic_transition_rule(
-        ChannelState::PullIn,
-        true,
-        false,
-        false,
-        None,
-        1,
-        0,
-        100,
-        false,
-        None,
-    );
+    let decision = super::deterministic_transition_rule(super::ChannelTransitionRequest {
+        from_state: ChannelState::PullIn,
+        lock: true,
+        ready_for_tracking: false,
+        anti_false_lock: false,
+        loss_of_lock_cause: None,
+        unlocked_count: 1,
+        degraded_epochs: 0,
+        short_fade_epoch_budget: 100,
+        short_fade_relock_evidence: false,
+        degraded_tracking_reason: None,
+    });
 
     assert_eq!(decision.to_state, ChannelState::PullIn);
     assert_eq!(decision.reason, "carrier_pull_in");

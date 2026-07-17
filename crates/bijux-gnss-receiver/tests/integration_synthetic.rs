@@ -272,24 +272,24 @@ fn tracking_correlator_preserves_prompt_phase_across_sixty_second_offset() {
     let offset_code_phase_samples =
         offset_code_phase_chips * config.sampling_freq_hz / config.code_freq_basis_hz;
 
-    let first = tracking.correlate_epoch(
-        &first_frame,
+    let first = tracking.correlate_epoch(bijux_gnss_receiver::api::TrackingCorrelationRequest {
+        frame: &first_frame,
         sat,
         carrier_hz,
-        carrier_phase_rad / (std::f64::consts::PI * 2.0),
-        config.code_freq_basis_hz,
+        carrier_phase_cycles: carrier_phase_rad / (std::f64::consts::PI * 2.0),
+        code_rate_hz: config.code_freq_basis_hz,
         code_phase_samples,
-        0.5,
-    );
-    let offset = tracking.correlate_epoch(
-        &offset_frame,
+        early_late_spacing_chips: 0.5,
+    });
+    let offset = tracking.correlate_epoch(bijux_gnss_receiver::api::TrackingCorrelationRequest {
+        frame: &offset_frame,
         sat,
         carrier_hz,
-        carrier_phase_rad / (std::f64::consts::PI * 2.0),
-        config.code_freq_basis_hz,
-        offset_code_phase_samples,
-        0.5,
-    );
+        carrier_phase_cycles: carrier_phase_rad / (std::f64::consts::PI * 2.0),
+        code_rate_hz: config.code_freq_basis_hz,
+        code_phase_samples: offset_code_phase_samples,
+        early_late_spacing_chips: 0.5,
+    });
 
     let first_phase = first.prompt.arg();
     let offset_phase = offset.prompt.arg();

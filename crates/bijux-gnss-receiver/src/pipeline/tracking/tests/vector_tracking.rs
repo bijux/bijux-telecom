@@ -139,16 +139,16 @@ fn vector_tracking_application_bounds_weak_channel_aid() {
     let tracking = Tracking::new(config.clone(), ReceiverRuntime::default());
     let sat = SatId { constellation: Constellation::Gps, prn: 1 };
     let signal_model = super::TrackingSignalModel::for_sat(&config, sat);
-    let mut loop_state = tracking.initial_loop_state(
-        &signal_model,
-        1500.0,
-        0.0,
-        31.0,
-        None,
-        false,
-        config.tracking_params(SignalBand::L1),
-        false,
-    );
+    let mut loop_state = tracking.initial_loop_state(super::TrackingLoopInitialization {
+        signal_model: &signal_model,
+        carrier_hz: 1500.0,
+        code_phase_samples: 0.0,
+        acquisition_cn0_proxy_dbhz: 31.0,
+        signal_delay_alignment: None,
+        subcarrier_code_phase_refined: false,
+        tracking_params: config.tracking_params(SignalBand::L1),
+        reacquisition_pending: false,
+    });
     loop_state.state = ChannelState::PullIn;
     let prediction = super::VectorTrackingPrediction {
         sample_index: 10_000,
@@ -198,16 +198,16 @@ fn vector_tracking_application_preserves_stable_frequency_support_channels() {
     let tracking = Tracking::new(config.clone(), ReceiverRuntime::default());
     let sat = SatId { constellation: Constellation::Gps, prn: 1 };
     let signal_model = super::TrackingSignalModel::for_sat(&config, sat);
-    let mut loop_state = tracking.initial_loop_state(
-        &signal_model,
-        1500.0,
-        0.0,
-        45.0,
-        None,
-        false,
-        config.tracking_params(SignalBand::L1),
-        false,
-    );
+    let mut loop_state = tracking.initial_loop_state(super::TrackingLoopInitialization {
+        signal_model: &signal_model,
+        carrier_hz: 1500.0,
+        code_phase_samples: 0.0,
+        acquisition_cn0_proxy_dbhz: 45.0,
+        signal_delay_alignment: None,
+        subcarrier_code_phase_refined: false,
+        tracking_params: config.tracking_params(SignalBand::L1),
+        reacquisition_pending: false,
+    });
     loop_state.state = ChannelState::Tracking;
     let prediction = super::VectorTrackingPrediction {
         sample_index: 10_000,
@@ -237,16 +237,16 @@ fn vector_tracking_application_reduces_common_frequency_prediction_error() {
     let tracking = Tracking::new(config.clone(), ReceiverRuntime::default());
     let sat = SatId { constellation: Constellation::Gps, prn: 1 };
     let signal_model = super::TrackingSignalModel::for_sat(&config, sat);
-    let mut loop_state = tracking.initial_loop_state(
-        &signal_model,
-        43.0,
-        0.0,
-        31.0,
-        None,
-        false,
-        config.tracking_params(SignalBand::L1),
-        false,
-    );
+    let mut loop_state = tracking.initial_loop_state(super::TrackingLoopInitialization {
+        signal_model: &signal_model,
+        carrier_hz: 43.0,
+        code_phase_samples: 0.0,
+        acquisition_cn0_proxy_dbhz: 31.0,
+        signal_delay_alignment: None,
+        subcarrier_code_phase_refined: false,
+        tracking_params: config.tracking_params(SignalBand::L1),
+        reacquisition_pending: false,
+    });
     loop_state.state = ChannelState::PullIn;
     let prediction = super::VectorTrackingPrediction {
         sample_index: 10_000,
