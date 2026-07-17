@@ -18,6 +18,7 @@ fn apply_carrier_loop(input: CarrierLoopInput) -> CarrierLoopUpdate {
             fll_err_hz: input.fll_err_hz,
             apply_fll: input.apply_fll,
             apply_pll_frequency: input.apply_pll_frequency,
+            apply_pll_phase: input.apply_pll_phase,
         });
     CarrierLoopUpdate {
         carrier_hz: update.carrier_hz,

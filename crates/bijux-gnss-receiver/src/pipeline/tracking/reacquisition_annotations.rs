@@ -1,3 +1,23 @@
+fn stable_reacquisition_tracking_epoch(epoch: &TrackEpoch) -> bool {
+    let doppler_uncertainty_bounded = epoch
+        .tracking_uncertainty
+        .as_ref()
+        .is_some_and(|uncertainty| {
+            uncertainty.doppler_hz.is_finite()
+                && uncertainty.doppler_hz
+                    <= REACQUISITION_STABLE_TRACKING_MAX_DOPPLER_UNCERTAINTY_HZ
+        });
+    epoch.lock
+        && epoch.lock_state == ChannelState::Tracking.to_string()
+        && epoch.lock_state_reason.as_deref() == Some("carrier_converged")
+        && epoch.dll_lock
+        && epoch.pll_lock
+        && epoch.fll_lock
+        && !epoch.cycle_slip
+        && !epoch.anti_false_lock
+        && doppler_uncertainty_bounded
+}
+
 fn apply_reacquisition_annotations(
     state: &mut LoopState,
     epochs: &mut [TrackEpoch],
@@ -9,13 +29,7 @@ fn apply_reacquisition_annotations(
     };
 
     if state.reacquisition_pending {
-        let stable_tracking_epoch = last_epoch.lock
-            && last_epoch.lock_state == ChannelState::Tracking.to_string()
-            && last_epoch.lock_state_reason.as_deref() == Some("carrier_converged")
-            && last_epoch.pll_lock
-            && last_epoch.fll_lock
-            && !last_epoch.cycle_slip
-            && !last_epoch.anti_false_lock;
+        let stable_tracking_epoch = stable_reacquisition_tracking_epoch(last_epoch);
         state.reacquisition_stable_tracking_epochs = if stable_tracking_epoch {
             state.reacquisition_stable_tracking_epochs.saturating_add(1)
         } else {
@@ -25,8 +39,7 @@ fn apply_reacquisition_annotations(
 
     if state.reacquisition_pending
         && state.reacquisition_stable_tracking_epochs >= REACQUISITION_STABLE_TRACKING_EPOCHS
-        && last_epoch.lock_state == ChannelState::Tracking.to_string()
-        && last_epoch.lock_state_reason.as_deref() == Some("carrier_converged")
+        && stable_reacquisition_tracking_epoch(last_epoch)
     {
         last_epoch.lock_state_reason = Some("reacquired".to_string());
         if let Some(last_transition) = transitions.last_mut() {

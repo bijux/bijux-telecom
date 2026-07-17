@@ -360,6 +360,7 @@ fn apply_carrier_loop_advances_phase_and_frequency_from_pll_error() {
         fll_err_hz: 0.0,
         apply_fll: false,
         apply_pll_frequency: true,
+        apply_pll_phase: true,
     });
 
     let pll_coefficients = phase_lock_loop_coefficients(8.0, 0.001);
@@ -396,6 +397,7 @@ fn apply_carrier_loop_uses_fll_correction_during_pull_in() {
         fll_err_hz: 30.0,
         apply_fll: true,
         apply_pll_frequency: false,
+        apply_pll_phase: false,
     });
 
     let fll_coefficients = first_order_angular_loop_coefficients(10.0, 0.001);
@@ -418,6 +420,7 @@ fn apply_carrier_loop_accumulates_unwrapped_phase_across_epochs() {
         fll_err_hz: 0.0,
         apply_fll: false,
         apply_pll_frequency: true,
+        apply_pll_phase: true,
     });
     let second = super::apply_carrier_loop(super::CarrierLoopInput {
         current_carrier_hz: first.carrier_hz,
@@ -432,6 +435,7 @@ fn apply_carrier_loop_accumulates_unwrapped_phase_across_epochs() {
         fll_err_hz: 0.0,
         apply_fll: false,
         apply_pll_frequency: true,
+        apply_pll_phase: true,
     });
 
     assert!((first.carrier_phase_cycles - 129.75).abs() < 1.0e-9, "{first:?}");
@@ -457,6 +461,7 @@ fn apply_carrier_loop_preserves_continuous_phase_for_negative_doppler() {
         fll_err_hz: 0.0,
         apply_fll: false,
         apply_pll_frequency: true,
+        apply_pll_phase: true,
     });
 
     assert!((update.carrier_hz + 850.0).abs() < 1.0e-9, "{update:?}");
@@ -478,6 +483,7 @@ fn apply_carrier_loop_uses_coherent_interval_to_scale_frequency_gain() {
         fll_err_hz: 0.0,
         apply_fll: false,
         apply_pll_frequency: true,
+        apply_pll_phase: true,
     });
     let long = super::apply_carrier_loop(super::CarrierLoopInput {
         current_carrier_hz: 1_000.0,
@@ -492,6 +498,7 @@ fn apply_carrier_loop_uses_coherent_interval_to_scale_frequency_gain() {
         fll_err_hz: 0.0,
         apply_fll: false,
         apply_pll_frequency: true,
+        apply_pll_phase: true,
     });
 
     assert!(

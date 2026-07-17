@@ -1122,12 +1122,13 @@ impl Tracking {
             anti_false_lock,
         );
         let prompt_power_ratio = prompt_power_ratio(prompt_power, state.prompt_power_reference);
+        let prompt_power_supports_lock = prompt_power_ratio
+            .is_some_and(|ratio| ratio >= DISCRIMINATOR_INSTABILITY_MIN_PROMPT_POWER_RATIO);
         let sustained_prompt_lock = lock
             || (matches!(
                 state.state,
                 ChannelState::PullIn | ChannelState::Tracking | ChannelState::Degraded
-            ) && prompt_power_ratio
-                .is_some_and(|ratio| ratio >= DISCRIMINATOR_INSTABILITY_MIN_PROMPT_POWER_RATIO)
+            ) && prompt_power_supports_lock
                 && !cycle_slip
                 && !anti_false_lock);
         let sustained_code_lock = sustained_dll_lock
@@ -1178,9 +1179,16 @@ impl Tracking {
             raw_fll_lock,
             cycle_slip,
         );
+        let discriminator_feedback_ready = lock
+            && prompt_power_ratio.is_none_or(|ratio| {
+                ratio >= DISCRIMINATOR_INSTABILITY_MIN_PROMPT_POWER_RATIO
+            })
+            && !cycle_slip
+            && !anti_false_lock;
         let steady_state_tracking_ready = if from_state == ChannelState::Degraded {
             cn0_supports_lock
-                && lock
+                && discriminator_feedback_ready
+                && prompt_power_supports_lock
                 && sustained_code_lock
                 && (raw_pll_lock || carrier_convergence_lock)
                 && raw_fll_lock
@@ -1354,8 +1362,8 @@ impl Tracking {
             ));
         }
 
-        let apply_fll =
-            apply_fll_during_epoch(fll_bw, state.state, raw_fll_lock, doppler_consistency);
+        let apply_fll = discriminator_feedback_ready
+            && apply_fll_during_epoch(fll_bw, state.state, raw_fll_lock, doppler_consistency);
         let tracked_center_hz =
             tracked_signal_center_hz(self.config.intermediate_freq_hz, signal_model.signal_spec);
         let current_carrier_doppler_hz = tracked_signal_doppler_hz(
@@ -1375,7 +1383,9 @@ impl Tracking {
             fll_bw_hz: fll_bw,
             fll_err_hz: fll_err_hz as f64,
             apply_fll,
-            apply_pll_frequency: !apply_fll || matches!(state.state, ChannelState::PullIn),
+            apply_pll_frequency: discriminator_feedback_ready
+                && (!apply_fll || matches!(state.state, ChannelState::PullIn)),
+            apply_pll_phase: discriminator_feedback_ready,
         });
         let tracked_carrier_hz = tracked_center_hz + carrier_loop.carrier_hz;
         let code_rate_reference_hz = next_code_rate_reference_hz(
@@ -1383,7 +1393,7 @@ impl Tracking {
             signal_model,
             tracked_carrier_hz,
             state.code_rate_reference_hz,
-            raw_fll_lock || sustained_pll_lock,
+            discriminator_feedback_ready && (raw_fll_lock || sustained_or_converged_pll_lock),
         );
         let code_loop = apply_dll_code_loop(CodeLoopInput {
             current_code_rate_hz: aided_code_rate_hz,
@@ -1393,7 +1403,7 @@ impl Tracking {
             epoch_len_samples,
             coherent_integration_s,
             nominal_code_rate_hz: signal_model.code_rate_hz,
-            dll_bw_hz: dll_bw,
+            dll_bw_hz: if discriminator_feedback_ready { dll_bw } else { 0.0 },
             dll_err,
             samples_per_chip,
             samples_per_code,

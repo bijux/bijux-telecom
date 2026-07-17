@@ -373,6 +373,7 @@ fn is_sustained_lock_loss_reason(reason: &str) -> bool {
         "lock_lost"
             | "prompt_power_drop"
             | "discriminator_instability"
+            | "doppler_estimator_divergence"
             | "phase_jump"
             | "reacquisition_failed"
     )
@@ -525,19 +526,28 @@ fn deterministic_transition_rule(request: ChannelTransitionRequest<'_>) -> Trans
 
 fn sustained_lock_loss_reacquire_seed(epochs: &[TrackEpoch]) -> Option<SustainedLockLossSeed> {
     let mut consecutive_lost_epochs = 0usize;
+    let mut stable_tracking_seed = None;
     for epoch in epochs {
+        if epoch.lock && epoch.lock_state == ChannelState::Tracking.to_string() {
+            stable_tracking_seed = Some(SustainedLockLossSeed {
+                carrier_hz: epoch.carrier_hz.0,
+                code_phase_samples: epoch.code_phase_samples.0,
+                code_rate_hz: epoch.code_rate_hz.0,
+                sample_index: epoch.sample_index,
+            });
+        }
         if !epoch.lock
             && epoch.lock_state == "lost"
             && epoch.lock_state_reason.as_deref().is_some_and(is_sustained_lock_loss_reason)
         {
             consecutive_lost_epochs += 1;
             if consecutive_lost_epochs >= REACQUISITION_REQUIRED_LOST_EPOCHS {
-                return Some(SustainedLockLossSeed {
+                return stable_tracking_seed.or(Some(SustainedLockLossSeed {
                     carrier_hz: epoch.carrier_hz.0,
                     code_phase_samples: epoch.code_phase_samples.0,
                     code_rate_hz: epoch.code_rate_hz.0,
                     sample_index: epoch.sample_index,
-                });
+                }));
             }
             continue;
         }

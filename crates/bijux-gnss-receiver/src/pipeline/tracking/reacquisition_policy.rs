@@ -119,7 +119,7 @@ fn same_reacquisition_signal_location(
     left: ReacquisitionHypothesis,
     right: ReacquisitionHypothesis,
 ) -> bool {
-    (left.doppler_bin - right.doppler_bin).abs() <= 1
+    left.doppler_bin == right.doppler_bin
         && (left.code_bin - right.code_bin).abs() <= 1
         && left.secondary_code_phase_periods == right.secondary_code_phase_periods
 }

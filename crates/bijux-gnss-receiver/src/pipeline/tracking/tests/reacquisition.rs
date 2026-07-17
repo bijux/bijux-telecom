@@ -31,6 +31,26 @@ fn sustained_lock_loss_reacquire_seed_requires_three_lost_epochs() {
 }
 
 #[test]
+fn sustained_lock_loss_reacquire_seed_prefers_last_tracking_anchor_before_loss() {
+    let epochs = vec![
+        track_epoch_with_state(0, true, "tracking", Some("carrier_converged")),
+        track_epoch_with_state(1, false, "lost", Some("lock_lost")),
+        track_epoch_with_state(2, false, "lost", Some("lock_lost")),
+        track_epoch_with_state(3, false, "lost", Some("lock_lost")),
+    ];
+
+    assert_eq!(
+        super::sustained_lock_loss_reacquire_seed(&epochs),
+        Some(super::SustainedLockLossSeed {
+            carrier_hz: 0.0,
+            code_phase_samples: 0.5,
+            code_rate_hz: 0.0,
+            sample_index: 0,
+        })
+    );
+}
+
+#[test]
 fn sustained_lock_loss_reacquire_seed_accepts_explicit_loss_causes() {
     let epochs = vec![
         track_epoch_with_state(0, false, "lost", Some("prompt_power_drop")),
@@ -165,6 +185,34 @@ fn reacquisition_selection_refuses_ambiguous_hypotheses() {
                 None,
                 43.0,
                 292.0,
+            ),
+        ],
+        35.0,
+        0.0,
+    );
+
+    assert_eq!(selection, super::ReacquisitionSelection::Refused);
+}
+
+#[test]
+fn reacquisition_selection_refuses_adjacent_doppler_bin_competition() {
+    let selection = super::select_reacquisition_candidate(
+        &[
+            reacquisition_candidate(
+                0,
+                0,
+                super::ReacquisitionCarrierSign::Aligned,
+                None,
+                44.0,
+                300.0,
+            ),
+            reacquisition_candidate(
+                1,
+                0,
+                super::ReacquisitionCarrierSign::Aligned,
+                None,
+                43.8,
+                295.0,
             ),
         ],
         35.0,
@@ -319,6 +367,65 @@ fn reacquisition_selection_rejects_strong_prompt_when_cn0_is_too_low() {
     );
 
     assert_eq!(selection, super::ReacquisitionSelection::Refused);
+}
+
+#[test]
+fn reacquisition_selection_accepts_cn0_floor_without_prompt_fallback() {
+    let selection = super::select_reacquisition_candidate(
+        &[reacquisition_candidate(
+            0,
+            0,
+            super::ReacquisitionCarrierSign::Aligned,
+            None,
+            48.0,
+            90_000.0,
+        )],
+        48.0,
+        100_000.0,
+    );
+
+    assert_eq!(
+        selection,
+        super::ReacquisitionSelection::Accepted(super::ReacquisitionSeed {
+            carrier_hz: 1000.0,
+            code_phase_samples: 42.0,
+            cn0_dbhz: 48.0,
+            carrier_sign: super::ReacquisitionCarrierSign::Aligned,
+            secondary_code_phase_periods: None,
+        })
+    );
+}
+
+#[test]
+fn stable_reacquisition_tracking_epoch_rejects_large_doppler_uncertainty() {
+    let mut epoch = track_epoch_with_state(0, true, "tracking", Some("carrier_converged"));
+    epoch.dll_lock = true;
+    epoch.pll_lock = true;
+    epoch.fll_lock = true;
+    epoch.tracking_uncertainty = Some(bijux_gnss_core::api::TrackingUncertainty {
+        code_phase_samples: 0.1,
+        carrier_phase_cycles: 0.01,
+        doppler_hz: 80.0,
+        cn0_dbhz: 0.05,
+    });
+
+    assert!(!super::stable_reacquisition_tracking_epoch(&epoch));
+}
+
+#[test]
+fn stable_reacquisition_tracking_epoch_accepts_bounded_uncertainty() {
+    let mut epoch = track_epoch_with_state(0, true, "tracking", Some("carrier_converged"));
+    epoch.dll_lock = true;
+    epoch.pll_lock = true;
+    epoch.fll_lock = true;
+    epoch.tracking_uncertainty = Some(bijux_gnss_core::api::TrackingUncertainty {
+        code_phase_samples: 0.1,
+        carrier_phase_cycles: 0.01,
+        doppler_hz: 12.0,
+        cn0_dbhz: 0.05,
+    });
+
+    assert!(super::stable_reacquisition_tracking_epoch(&epoch));
 }
 
 #[test]

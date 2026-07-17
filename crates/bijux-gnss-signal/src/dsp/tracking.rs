@@ -159,6 +159,8 @@ pub struct CarrierTrackingLoopInput {
     pub apply_fll: bool,
     /// Whether to apply PLL frequency feedback this interval.
     pub apply_pll_frequency: bool,
+    /// Whether to apply PLL phase feedback this interval.
+    pub apply_pll_phase: bool,
 }
 
 /// Combined carrier PLL/FLL update outputs for one coherent interval.
@@ -1547,9 +1549,14 @@ pub fn apply_carrier_tracking_loop(input: CarrierTrackingLoopInput) -> CarrierTr
         carrier_hz += pll_coefficients.frequency_gain_hz_per_rad * input.pll_err_rad;
     }
 
+    let phase_feedback_cycles = if input.apply_pll_phase {
+        pll_coefficients.phase_blend * input.pll_err_rad / std::f64::consts::TAU
+    } else {
+        0.0
+    };
     let carrier_phase_cycles = input.current_carrier_phase_cycles
         + (input.current_carrier_hz + carrier_hz) * coherent_integration_s * 0.5
-        + pll_coefficients.phase_blend * input.pll_err_rad / std::f64::consts::TAU;
+        + phase_feedback_cycles;
 
     CarrierTrackingLoopUpdate { carrier_hz, carrier_phase_cycles, carrier_rate_hz_per_s }
 }

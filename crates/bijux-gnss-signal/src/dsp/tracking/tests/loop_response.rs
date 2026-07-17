@@ -165,6 +165,7 @@ fn apply_carrier_tracking_loop_advances_phase_and_frequency_from_pll_error() {
         fll_err_hz: 0.0,
         apply_fll: false,
         apply_pll_frequency: true,
+        apply_pll_phase: true,
     });
 
     let pll_coefficients = phase_lock_loop_coefficients(8.0, 0.001);
@@ -217,6 +218,7 @@ fn phase_lock_loop_ramp_response_tracks_constant_frequency_rate() {
             fll_err_hz: 0.0,
             apply_fll: false,
             apply_pll_frequency: true,
+            apply_pll_phase: true,
         });
         estimated_frequency_hz = update.carrier_hz;
         estimated_phase_cycles = update.carrier_phase_cycles;
