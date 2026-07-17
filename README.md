@@ -115,13 +115,18 @@ Active development. Interfaces and outputs are stabilizing; use deterministic mo
 regression runs.
 
 ## MSRV
-Minimum supported Rust version: `1.78.0`.
+Minimum supported Rust version: `1.86.0`.
 
 ## Documentation
-- `docs/index.md`
-- `docs/01-bijux-gnss/index.md`
-- `docs/07-bijux-gnss-dev/index.md`
-- `makes/README.md`
+- [Repository handbook](docs/index.md)
+- [01-bijux-gnss](docs/01-bijux-gnss/index.md)
+- [02-bijux-gnss-core](docs/02-bijux-gnss-core/index.md)
+- [03-bijux-gnss-infra](docs/03-bijux-gnss-infra/index.md)
+- [04-bijux-gnss-nav](docs/04-bijux-gnss-nav/index.md)
+- [05-bijux-gnss-receiver](docs/05-bijux-gnss-receiver/index.md)
+- [06-bijux-gnss-signal](docs/06-bijux-gnss-signal/index.md)
+- [07-bijux-gnss-dev](docs/07-bijux-gnss-dev/index.md)
+- [Makes public surface](makes/README.md)
 
 ## Workspace Layout
 - `bijux-gnss` owns the public facade library and the `bijux` binary entrypoint, so top-level command wiring lives with the package users actually install.

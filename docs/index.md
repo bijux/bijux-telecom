@@ -9,18 +9,38 @@ last_reviewed: 2026-07-17
 
 # Repository Handbook
 
-This handbook series explains the durable package boundaries in
-`bijux-telecom`. The goal is not to replace crate-local documentation. The
-goal is to make the repository legible at the package level so a reader can
-answer two questions quickly:
+`bijux-telecom` is a Rust GNSS workspace built around explicit package
+ownership. This handbook series exists so a reader can find the package that
+owns a behavior before reading implementation detail, cargo metadata, or test
+evidence. The root does not replace crate-local documentation. It makes the
+repository legible enough that the next proof surface is obvious.
+
+<!-- bijux-telecom-badges:generated:start -->
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-0F766E)](https://github.com/bijux/bijux-telecom/blob/main/LICENSE)
+[![CI](https://github.com/bijux/bijux-telecom/actions/workflows/ci.yml/badge.svg)](https://github.com/bijux/bijux-telecom/actions/workflows/ci.yml)
+[![deploy-docs](https://img.shields.io/badge/deploy--docs-no%20status-9CA3AF)](https://github.com/bijux/bijux-telecom/actions/workflows/deploy-docs.yml)
+[![release-crates](https://img.shields.io/badge/release--crates-no%20status-9CA3AF)](https://github.com/bijux/bijux-telecom/actions/workflows/release-crates.yml)
+[![release-pypi](https://img.shields.io/badge/release--pypi-no%20status-9CA3AF)](https://github.com/bijux/bijux-telecom/actions/workflows/release-pypi.yml)
+[![release-ghcr](https://img.shields.io/badge/release--ghcr-no%20status-9CA3AF)](https://github.com/bijux/bijux-telecom/actions/workflows/release-ghcr.yml)
+[![release-github](https://img.shields.io/badge/release--github-no%20status-9CA3AF)](https://github.com/bijux/bijux-telecom/actions/workflows/release-github.yml)
+[![release](https://img.shields.io/badge/release-no%20status-9CA3AF)](https://github.com/bijux/bijux-telecom/releases)
+[![ghcr](https://img.shields.io/badge/ghcr-no%20status-9CA3AF)](https://github.com/bijux?tab=packages&repo_name=bijux-telecom)
+[![published packages](https://img.shields.io/badge/published%20packages-no%20status-9CA3AF)](https://github.com/bijux/bijux-telecom)
+
+[![Repository docs](https://img.shields.io/badge/docs-no%20status-9CA3AF?logo=materialformkdocs&logoColor=white)](https://github.com/bijux/bijux-telecom/tree/main/docs)
+<!-- bijux-telecom-badges:generated:end -->
+
+Use this site to answer three questions quickly:
 
 - which crate actually owns this behavior
 - where should I inspect proof before I trust a strong sentence
+- when should I leave the repository handbook and move into crate-local docs,
+  source, or tests
 
-The root discipline is restraint. The repository must not become a shadow API
-manual for every crate. Once package ownership is clear, these handbooks
-should hand the reader to the owning crate README, crate `docs/`, source tree,
-or tests.
+The root discipline is restraint. The repository handbook must not become a
+shadow API manual for every crate. Once package ownership is clear, it should
+hand the reader to the owning crate README, crate `docs/`, source tree, test
+suite, or repository evidence surface.
 
 ```mermaid
 flowchart TB
@@ -42,6 +62,18 @@ flowchart TB
     root --> dev
 ```
 
+## Read The Repository By Ownership
+
+| if the question is about | start here | strongest proof after the handbook |
+| --- | --- | --- |
+| operator commands, CLI reports, or top-level workflows | [01-bijux-gnss](01-bijux-gnss/) | `crates/bijux-gnss/src/cli`, `crates/bijux-gnss/docs/` |
+| shared record meaning, IDs, units, times, or artifact envelopes | [02-bijux-gnss-core](02-bijux-gnss-core/) | `crates/bijux-gnss-core/src/`, `crates/bijux-gnss-core/docs/` |
+| datasets, run identity, manifests, overrides, or persisted evidence | [03-bijux-gnss-infra](03-bijux-gnss-infra/) | `crates/bijux-gnss-infra/src/`, `crates/bijux-gnss-infra/docs/` |
+| navigation products, corrections, orbit logic, or estimator behavior | [04-bijux-gnss-nav](04-bijux-gnss-nav/) | `crates/bijux-gnss-nav/src/`, `crates/bijux-gnss-nav/docs/` |
+| staged receiver execution, in-memory artifacts, or runtime validation | [05-bijux-gnss-receiver](05-bijux-gnss-receiver/) | `crates/bijux-gnss-receiver/src/`, `crates/bijux-gnss-receiver/docs/` |
+| signal catalogs, code families, sample contracts, or reusable DSP | [06-bijux-gnss-signal](06-bijux-gnss-signal/) | `crates/bijux-gnss-signal/src/`, `crates/bijux-gnss-signal/docs/` |
+| maintainer governance, audit policy, or benchmark evidence | [07-bijux-gnss-dev](07-bijux-gnss-dev/) | `crates/bijux-gnss-dev/src/main.rs`, `crates/bijux-gnss-dev/docs/` |
+
 ## What This Root Handbook Owns
 
 - the package map for the primary GNSS product path
@@ -49,6 +81,8 @@ flowchart TB
   file-level
 - repository-level context about how command, contract, infrastructure,
   signal, receiver, navigation, and maintainer crates fit together
+- the shortest honest route from a root claim to the checked-in proof that can
+  defend it
 
 ## What It Does Not Own
 
@@ -60,6 +94,24 @@ flowchart TB
 `bijux-gnss-policies` and `bijux-gnss-testkit` are still important, but they
 are support packages rather than the primary product handoff chain the root
 series is documenting here.
+
+## Support Packages Outside The Seven-Handbook Chain
+
+Two crates matter to the repository trust story even though they are not first
+class handbook owners in `docs/`:
+
+- `bijux-gnss-policies` owns executable repository guardrails. Its strongest
+  proof surfaces are `crates/bijux-gnss-policies/README.md`,
+  `crates/bijux-gnss-policies/docs/`, and its policy tests.
+- `bijux-gnss-testkit` owns reusable scientific fixtures, truth data, and
+  independent reference models. Its strongest proof surfaces are
+  `crates/bijux-gnss-testkit/README.md`,
+  `crates/bijux-gnss-testkit/docs/`, and test-only consumers across the
+  workspace.
+
+When a product claim depends on reference truth or repository guardrails,
+leave the root series after package routing and inspect those support crates
+directly.
 
 ## Package Handbooks
 
@@ -90,6 +142,17 @@ series is documenting here.
 | [06-bijux-gnss-signal](06-bijux-gnss-signal/) | what signal-layer or DSP behavior is reusable product substrate | `crates/bijux-gnss-signal/src/`, `crates/bijux-gnss-signal/docs/` |
 | [07-bijux-gnss-dev](07-bijux-gnss-dev/) | which repository safety and benchmark workflows are maintainer-only | `crates/bijux-gnss-dev/src/main.rs`, `crates/bijux-gnss-dev/docs/` |
 
+## What The Repository Takes And Produces
+
+- takes: registered datasets, raw-IQ captures, receiver and navigation
+  configuration, reference products, and reviewed maintainer policy inputs
+- produces: receiver run artifacts, validation reports, persisted manifests,
+  benchmark evidence, and package-level proof surfaces for the GNSS pipeline
+- guarantees: explicit package ownership, typed repository evidence, and a
+  durable route from public command surface to lower-level scientific owners
+- does not guarantee: navigation truth beyond the checked-in proof, silent
+  cross-package handoffs, or one root page that can replace crate-local docs
+
 ## Shared Reader Routes
 
 - Start at [01-bijux-gnss](01-bijux-gnss/) when the question begins from the
@@ -119,6 +182,15 @@ series is documenting here.
 | command and maintainer entrypoints | `crates/bijux-gnss/src/main.rs`, `crates/bijux-gnss-dev/src/main.rs`, `Makefile` |
 | data and configuration inputs | `datasets/`, `configs/`, `schemas/` |
 | execution and regression evidence | crate `tests/`, repository `artifacts/`, validation commands in crate READMEs |
+
+## Leave The Root Handbook When
+
+- one crate handbook clearly owns the next sentence you need to trust
+- the next step is implementation detail, public API detail, or test evidence
+- the question depends on `bijux-gnss-policies` or `bijux-gnss-testkit`
+  rather than on the seven product and maintainer handbooks
+- you already know the owner and need crate-local proof rather than
+  repository-level routing
 
 ## Boundary Test
 

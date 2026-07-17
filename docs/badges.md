@@ -1,10 +1,43 @@
+---
+title: Badge Catalog
+audience: maintainer
+type: reference
+status: canonical
+owner: bijux-telecom-docs
+last_reviewed: 2026-07-17
+---
+
 # Badge Catalog
 
-`docs/badges.md` defines the shared badge contract for `bijux-telecom` public
-entry surfaces.
+`docs/badges.md` is the shared badge contract for `bijux-telecom` public entry
+surfaces.
 
-Use the generated block below in the root `README.md` so release readiness and
-publication status stay consistent.
+Keep the generated block below identical in:
+
+- the root `README.md`
+- the repository handbook landing page at `docs/index.md`
+
+This repository does not yet publish the richer templated badge system used in
+some other Bijux repositories. Until that automation exists here, treat this
+file as the single source of truth and keep the generated block in sync across
+both entry surfaces.
+
+Badge order is part of the contract:
+
+1. repository summary and workflow badges
+2. release and publication posture badges
+3. repository documentation badge
+
+Link policy is also fixed here:
+
+- workflow badges must link to the exact workflow file or release surface they
+  summarize
+- the GHCR summary badge must link to
+  `https://github.com/bijux?tab=packages&repo_name=bijux-telecom`
+- the documentation badge must link to the checked-in `docs/` tree until a
+  published docs site becomes canonical
+
+## Generated Badge Block
 
 <!-- bijux-telecom-badges:generated:start -->
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-0F766E)](https://github.com/bijux/bijux-telecom/blob/main/LICENSE)
