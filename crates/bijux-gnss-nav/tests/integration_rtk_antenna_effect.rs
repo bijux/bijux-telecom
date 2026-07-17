@@ -7,7 +7,7 @@ use bijux_gnss_nav::api::{
     rtk_single_difference_residual_metrics_with_antenna_corrections,
     rtk_single_differences_from_obs_epochs, RtkAntennaCorrectionConfig,
 };
-use bijux_gnss_testkit::antenna_validation::gps_l1_rtk_antenna_effect_case;
+use bijux_gnss_testkit::antenna::gps_l1_rtk_antenna_effect_case;
 
 #[test]
 fn rtk_antenna_corrections_reduce_synthetic_sd_and_dd_residuals() {

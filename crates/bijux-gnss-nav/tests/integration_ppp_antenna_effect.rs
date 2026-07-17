@@ -1,9 +1,7 @@
 #![allow(missing_docs)]
 
 use bijux_gnss_nav::api::sat_state_gps_l1ca_from_observation;
-use bijux_gnss_testkit::antenna_validation::{
-    gps_l1_ppp_antenna_effect_case, GpsL1PppAntennaEffectCase,
-};
+use bijux_gnss_testkit::antenna::{gps_l1_ppp_antenna_effect_case, GpsL1PppAntennaEffectCase};
 
 #[test]
 fn ppp_antenna_corrections_reduce_synthetic_code_residuals() {
