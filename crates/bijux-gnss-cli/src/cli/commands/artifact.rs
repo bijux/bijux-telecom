@@ -1,4 +1,6 @@
-fn handle_artifact(command: GnssCommand) -> Result<()> {
+use super::*;
+
+pub(crate) fn handle_artifact(command: GnssCommand) -> Result<()> {
     let GnssCommand::Artifact { command } = command else {
         bail!("invalid command for handler");
     };

@@ -12,6 +12,8 @@ fn export_synthetic_iq_args<'a>(
     }
 }
 
+use super::*;
+
 fn synthetic_navigation_args(common: &CommonArgs) -> bijux_gnss_infra::api::RunContextArgs<'_> {
     bijux_gnss_infra::api::RunContextArgs {
         config: common.config.as_ref(),
@@ -138,7 +140,7 @@ fn resolved_quantization_profiles(
     resolved
 }
 
-fn handle_export_synthetic_iq(command: GnssCommand) -> Result<()> {
+pub(crate) fn handle_export_synthetic_iq(command: GnssCommand) -> Result<()> {
     let GnssCommand::ExportSyntheticIq { scenario, out, report, capture_start_utc } = command
     else {
         bail!("invalid command for handler");
@@ -208,7 +210,7 @@ fn handle_export_synthetic_iq(command: GnssCommand) -> Result<()> {
     Ok(())
 }
 
-fn handle_validate_synthetic_iq(command: GnssCommand) -> Result<()> {
+pub(crate) fn handle_validate_synthetic_iq(command: GnssCommand) -> Result<()> {
     let GnssCommand::ValidateSyntheticIq {
         common,
         file,
@@ -425,7 +427,7 @@ fn handle_validate_synthetic_iq(command: GnssCommand) -> Result<()> {
     Ok(())
 }
 
-fn handle_validate_synthetic_navigation(command: GnssCommand) -> Result<()> {
+pub(crate) fn handle_validate_synthetic_navigation(command: GnssCommand) -> Result<()> {
     let GnssCommand::ValidateSyntheticNavigation { common, scenario } = command else {
         bail!("invalid command for handler");
     };
@@ -520,7 +522,7 @@ fn handle_validate_synthetic_navigation(command: GnssCommand) -> Result<()> {
     Ok(())
 }
 
-fn handle_measure_synthetic_quantization(command: GnssCommand) -> Result<()> {
+pub(crate) fn handle_measure_synthetic_quantization(command: GnssCommand) -> Result<()> {
     let GnssCommand::MeasureSyntheticQuantization {
         common,
         scenario,

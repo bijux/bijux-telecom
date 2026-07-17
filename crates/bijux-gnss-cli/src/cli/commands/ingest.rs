@@ -1,4 +1,6 @@
-fn validate_config_ingest(profile: &ReceiverConfig) -> Result<()> {
+use super::*;
+
+pub(crate) fn validate_config_ingest(profile: &ReceiverConfig) -> Result<()> {
     let report = <ReceiverConfig as ValidateConfig>::validate(profile);
     if report.errors.is_empty() {
         return Ok(());
@@ -7,7 +9,7 @@ fn validate_config_ingest(profile: &ReceiverConfig) -> Result<()> {
     bail!("invalid config: {}", messages.join(", "));
 }
 
-fn handle_track(command: GnssCommand) -> Result<()> {
+pub(crate) fn handle_track(command: GnssCommand) -> Result<()> {
     let GnssCommand::Track {
         common,
         file,
@@ -106,7 +108,7 @@ fn handle_track(command: GnssCommand) -> Result<()> {
     Ok(())
 }
 
-fn handle_inspect(command: GnssCommand) -> Result<()> {
+pub(crate) fn handle_inspect(command: GnssCommand) -> Result<()> {
     let GnssCommand::Inspect {
                 common,
                 file,
@@ -139,7 +141,7 @@ fn handle_inspect(command: GnssCommand) -> Result<()> {
     Ok(())
 }
 
-fn handle_validateconfig(command: GnssCommand) -> Result<()> {
+pub(crate) fn handle_validateconfig(command: GnssCommand) -> Result<()> {
     let GnssCommand::ValidateConfig { common } = command else {
         bail!("invalid command for handler");
     };
@@ -169,7 +171,7 @@ fn handle_validateconfig(command: GnssCommand) -> Result<()> {
     Ok(())
 }
 
-fn handle_config(command: GnssCommand) -> Result<()> {
+pub(crate) fn handle_config(command: GnssCommand) -> Result<()> {
     let GnssCommand::Config { command } = command else {
         bail!("invalid command for handler");
     };
@@ -234,7 +236,7 @@ fn handle_config(command: GnssCommand) -> Result<()> {
 use schemars::schema_for;
 
 #[cfg(feature = "schema-validate")]
-fn handle_configschema(command: GnssCommand) -> Result<()> {
+pub(crate) fn handle_configschema(command: GnssCommand) -> Result<()> {
     let GnssCommand::ConfigSchema { common, out } = command else {
         bail!("invalid command for handler");
     };
@@ -256,14 +258,14 @@ fn handle_configschema(command: GnssCommand) -> Result<()> {
 }
 
 #[cfg(not(feature = "schema-validate"))]
-fn handle_configschema(command: GnssCommand) -> Result<()> {
+pub(crate) fn handle_configschema(command: GnssCommand) -> Result<()> {
     let GnssCommand::ConfigSchema { common: _, out: _ } = command else {
         bail!("invalid command for handler");
     };
     bail!("schema generation disabled; enable --features schema-validate");
 }
 
-fn handle_configupgrade(command: GnssCommand) -> Result<()> {
+pub(crate) fn handle_configupgrade(command: GnssCommand) -> Result<()> {
     let GnssCommand::ConfigUpgrade { common, config, out } = command else {
         bail!("invalid command for handler");
     };
@@ -292,7 +294,7 @@ fn handle_configupgrade(command: GnssCommand) -> Result<()> {
     Ok(())
 }
 
-fn handle_rinex(command: GnssCommand) -> Result<()> {
+pub(crate) fn handle_rinex(command: GnssCommand) -> Result<()> {
     let GnssCommand::Rinex {
                 common,
                 obs,

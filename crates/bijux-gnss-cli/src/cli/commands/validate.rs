@@ -1,8 +1,10 @@
 #[cfg(feature = "schema-validate")]
 use jsonschema::validator_for;
 
+use super::*;
+
 #[derive(Copy, Clone)]
-enum CsvType {
+pub(crate) enum CsvType {
     U64,
     U8,
     F64,
@@ -10,7 +12,7 @@ enum CsvType {
     Str,
 }
 
-fn validate_csv_schema(path: &Path, expected: &str, types: &[CsvType]) -> Result<()> {
+pub(crate) fn validate_csv_schema(path: &Path, expected: &str, types: &[CsvType]) -> Result<()> {
     let data = fs::read_to_string(path)?;
     let mut lines = data.lines();
     let header = lines.next().unwrap_or_default();
@@ -68,7 +70,11 @@ fn validate_csv_schema(path: &Path, expected: &str, types: &[CsvType]) -> Result
     Ok(())
 }
 
-fn validate_json_schema(schema_path: &Path, data_path: &Path, strict: bool) -> Result<()> {
+pub(crate) fn validate_json_schema(
+    schema_path: &Path,
+    data_path: &Path,
+    strict: bool,
+) -> Result<()> {
     #[cfg(feature = "schema-validate")]
     {
         let schema_data = fs::read_to_string(schema_path)?;
@@ -107,7 +113,11 @@ fn validate_json_schema(schema_path: &Path, data_path: &Path, strict: bool) -> R
     }
 }
 
-fn validate_jsonl_schema(schema_path: &Path, data_path: &Path, strict: bool) -> Result<()> {
+pub(crate) fn validate_jsonl_schema(
+    schema_path: &Path,
+    data_path: &Path,
+    strict: bool,
+) -> Result<()> {
     #[cfg(feature = "schema-validate")]
     {
         let schema_data = fs::read_to_string(schema_path)?;
@@ -150,7 +160,7 @@ fn validate_jsonl_schema(schema_path: &Path, data_path: &Path, strict: bool) -> 
     }
 }
 
-fn validate_config_schema(profile: &ReceiverConfig) -> Result<()> {
+pub(crate) fn validate_config_schema(profile: &ReceiverConfig) -> Result<()> {
     #[cfg(feature = "schema-validate")]
     {
         let schema_path = schema_path("receiver_profile.schema.json");
@@ -183,7 +193,7 @@ fn validate_config_schema(profile: &ReceiverConfig) -> Result<()> {
     }
 }
 
-fn validate_sidecar_schema(sidecar: &RawIqMetadata) -> Result<()> {
+pub(crate) fn validate_sidecar_schema(sidecar: &RawIqMetadata) -> Result<()> {
     #[cfg(feature = "schema-validate")]
     {
         let schema_path = schema_path("sidecar.schema.json");
@@ -208,7 +218,7 @@ fn validate_sidecar_schema(sidecar: &RawIqMetadata) -> Result<()> {
     }
 }
 
-fn handle_validateartifacts(command: GnssCommand) -> Result<()> {
+pub(crate) fn handle_validateartifacts(command: GnssCommand) -> Result<()> {
     let GnssCommand::ValidateArtifacts { common, obs, eph, strict } = command else {
         bail!("invalid command for handler");
     };
@@ -254,7 +264,7 @@ fn validation_science_policy(
     }
 }
 
-fn handle_validate_capture(command: GnssCommand) -> Result<()> {
+pub(crate) fn handle_validate_capture(command: GnssCommand) -> Result<()> {
     let GnssCommand::ValidateCapture {
         common,
         file,
@@ -423,7 +433,7 @@ fn handle_validate_capture(command: GnssCommand) -> Result<()> {
     Ok(())
 }
 
-fn handle_validate(command: GnssCommand) -> Result<()> {
+pub(crate) fn handle_validate(command: GnssCommand) -> Result<()> {
     let GnssCommand::Validate { common, file, eph, reference, prn, sp3, clk, bias_sinex } = command else {
         bail!("invalid command for handler");
     };
@@ -539,7 +549,7 @@ fn handle_validate(command: GnssCommand) -> Result<()> {
     Ok(())
 }
 
-fn handle_validate_reference(command: GnssCommand) -> Result<()> {
+pub(crate) fn handle_validate_reference(command: GnssCommand) -> Result<()> {
     let GnssCommand::ValidateReference { common, run_dir, reference, align } = command else {
         bail!("invalid command for handler");
     };

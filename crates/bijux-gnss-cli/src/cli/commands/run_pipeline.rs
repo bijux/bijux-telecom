@@ -1,4 +1,6 @@
-fn validate_config(profile: &ReceiverConfig) -> Result<()> {
+use super::*;
+
+pub(crate) fn validate_config(profile: &ReceiverConfig) -> Result<()> {
     let report = <ReceiverConfig as ValidateConfig>::validate(profile);
     if report.errors.is_empty() {
         return Ok(());
@@ -7,7 +9,7 @@ fn validate_config(profile: &ReceiverConfig) -> Result<()> {
     bail!("invalid config: {}", messages.join(", "));
 }
 
-fn handle_acquire(command: GnssCommand) -> Result<()> {
+pub(crate) fn handle_acquire(command: GnssCommand) -> Result<()> {
     let GnssCommand::Acquire {
         common,
         file,
@@ -99,7 +101,9 @@ fn handle_acquire(command: GnssCommand) -> Result<()> {
     Ok(())
 }
 
-fn acquisition_row_from_result(result: &bijux_gnss_infra::api::core::AcqResult) -> AcquisitionRow {
+pub(crate) fn acquisition_row_from_result(
+    result: &bijux_gnss_infra::api::core::AcqResult,
+) -> AcquisitionRow {
     let (coarse_carrier_hz, doppler_refinement_hz, doppler_refinement_bins) = result
         .doppler_refinement
         .as_ref()
@@ -147,7 +151,7 @@ fn acquisition_row_from_result(result: &bijux_gnss_infra::api::core::AcqResult) 
     }
 }
 
-fn handle_pvt(command: GnssCommand) -> Result<()> {
+pub(crate) fn handle_pvt(command: GnssCommand) -> Result<()> {
     let GnssCommand::Pvt { common, obs, eph, ekf } = command else {
         bail!("invalid command for handler");
     };
@@ -204,7 +208,7 @@ fn handle_pvt(command: GnssCommand) -> Result<()> {
     Ok(())
 }
 
-fn handle_experiment(command: GnssCommand) -> Result<()> {
+pub(crate) fn handle_experiment(command: GnssCommand) -> Result<()> {
     let GnssCommand::Experiment { common, scenario, sweep } = command else {
         bail!("invalid command for handler");
     };
@@ -303,7 +307,7 @@ fn handle_experiment(command: GnssCommand) -> Result<()> {
     Ok(())
 }
 
-fn handle_validatesidecar(command: GnssCommand) -> Result<()> {
+pub(crate) fn handle_validatesidecar(command: GnssCommand) -> Result<()> {
     let GnssCommand::ValidateSidecar { common, sidecar_file } = command else {
         bail!("invalid command for handler");
     };
@@ -329,7 +333,7 @@ fn handle_validatesidecar(command: GnssCommand) -> Result<()> {
     Ok(())
 }
 
-fn handle_run(command: GnssCommand) -> Result<()> {
+pub(crate) fn handle_run(command: GnssCommand) -> Result<()> {
     let GnssCommand::Run { common, file, replay, rate } = command else {
         bail!("invalid command for handler");
     };

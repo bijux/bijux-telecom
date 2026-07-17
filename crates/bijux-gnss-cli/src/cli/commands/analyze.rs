@@ -1,4 +1,6 @@
-fn handle_analyze(command: GnssCommand) -> Result<()> {
+use super::*;
+
+pub(crate) fn handle_analyze(command: GnssCommand) -> Result<()> {
     let GnssCommand::Analyze {
         run_dir,
         reference,
@@ -63,7 +65,7 @@ fn handle_analyze(command: GnssCommand) -> Result<()> {
     Ok(())
 }
 
-fn handle_diff(command: GnssCommand) -> Result<()> {
+pub(crate) fn handle_diff(command: GnssCommand) -> Result<()> {
     let GnssCommand::Diff { run_a, run_b } = command else {
         bail!("invalid command for handler");
     };
@@ -75,7 +77,7 @@ fn handle_diff(command: GnssCommand) -> Result<()> {
     Ok(())
 }
 
-fn diff_runs(run_a: &Path, run_b: &Path) -> Result<serde_json::Value> {
+pub(crate) fn diff_runs(run_a: &Path, run_b: &Path) -> Result<serde_json::Value> {
     let nav_a = run_a.join("artifacts/pvt/pvt.jsonl");
     let nav_b = run_b.join("artifacts/pvt/pvt.jsonl");
     let obs_a = run_a.join("artifacts/obs/obs.jsonl");
