@@ -9,6 +9,7 @@ refactors; helper targets remain internal.
 - `lint`
 - `audit`
 - `test`
+- `test-slow`
 - `test-all`
 - `test-all-frozen`
 - `lint-frozen`
@@ -57,8 +58,9 @@ the code, reports, and cargo state aligned to the same immutable source tree.
 - `fmt` -> `cargo fmt --all -- --check`
 - `lint` -> `cargo clippy --workspace --all-targets --all-features --locked -- -D warnings`
 - `audit` -> `cargo run -q -p bijux-gnss-dev -- audit-allowlist` + `deny-policy-deviations` + `cargo deny` + `cargo audit`
-- `test` -> fast nextest lane
-- `test-all` -> full nextest lane with ignored tests enabled
+- `test` -> nextest lane excluding `slow__` tests and the governed slow roster
+- `test-slow` -> nextest lane containing only `slow__` tests and the governed slow roster
+- `test-all` -> full nextest lane with ignored tests enabled and no fast-lane filtering
 - `test-all-frozen` -> pinned `test-all`
 - `lint-frozen` -> pinned `lint`
 - `audit-frozen` -> pinned `audit`

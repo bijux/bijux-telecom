@@ -19,7 +19,14 @@ This repository uses a test taxonomy to keep the suite navigable and determinist
 - Property tests (default): `cargo test prop_`
 - Nextest: `cargo nextest run --config-file configs/rust/nextest.toml`
 - Fast governed lane: `make test`
+- Governed slow lane: `make test-slow`
 - Full governed lane: `make test-all`
+
+`make test` excludes every `slow__`-prefixed test plus every entry in
+`configs/rust/nextest-slow-roster.txt`. That roster is the contract for tests that exceeded the
+10-second fast-lane budget during observed runs. `make test-slow` runs only that governed slow
+surface. `make test-all` and `make test-all-frozen` stay unfiltered and are the lanes that run the
+complete suite.
 
 ## Frozen Verification Gates
 
