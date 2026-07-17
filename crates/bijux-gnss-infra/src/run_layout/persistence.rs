@@ -10,7 +10,7 @@ pub fn write_run_report(
     profile: &ReceiverConfig,
     dataset: Option<&DatasetEntry>,
 ) -> Result<RunReport, InputError> {
-    super::records::report::write_run_report(args, command, profile, dataset)
+    super::records::write_run_report(args, command, profile, dataset)
 }
 
 /// Write a run manifest to disk.
@@ -21,5 +21,5 @@ pub fn write_manifest(
     dataset: Option<&DatasetEntry>,
     summary: &serde_json::Value,
 ) -> Result<RunManifest, InputError> {
-    super::records::manifest::write_manifest(args, command, profile, dataset, summary)
+    super::records::write_manifest(args, command, profile, dataset, summary)
 }

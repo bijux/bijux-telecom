@@ -1,7 +1,12 @@
 //! Run metadata records and persistence helpers.
 
-pub(crate) mod artifact_header;
+mod artifact_header;
 pub(crate) mod build_metadata;
-pub(crate) mod history;
-pub(crate) mod manifest;
-pub(crate) mod report;
+mod history;
+mod manifest;
+mod report;
+
+pub(crate) use artifact_header::artifact_header;
+pub(crate) use history::{append_run_history_entry, RunHistoryEntry};
+pub(crate) use manifest::{write_manifest, RunManifest};
+pub(crate) use report::{run_report_schema_version, write_run_report, RunReport};

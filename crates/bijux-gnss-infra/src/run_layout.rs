@@ -14,10 +14,10 @@ pub type RunDirectoryLayout = directories::RunDirectoryLayout;
 pub type RunContextArgs<'a> = directories::RunContextArgs<'a>;
 
 /// Run manifest persisted for each execution.
-pub type RunManifest = records::manifest::RunManifest;
+pub type RunManifest = records::RunManifest;
 
 /// Run report persisted for each execution.
-pub type RunReport = records::report::RunReport;
+pub type RunReport = records::RunReport;
 
 /// Replay scope persisted in run manifests and reports.
 pub type ReplayScope = provenance::ReplayScope;
@@ -26,7 +26,7 @@ pub type ReplayScope = provenance::ReplayScope;
 pub type FrontEndProvenance = provenance::FrontEndProvenance;
 
 /// Run history entry appended to `artifacts/runs/index.jsonl`.
-pub type RunHistoryEntry = records::history::RunHistoryEntry;
+pub type RunHistoryEntry = records::RunHistoryEntry;
 
 /// Resolve run directory path.
 pub fn run_dir(
@@ -51,7 +51,7 @@ pub fn append_run_history_entry(
     run_dir: &std::path::Path,
     manifest: &RunManifest,
 ) -> Result<(), bijux_gnss_receiver::api::core::InputError> {
-    records::history::append_run_history_entry(run_dir, manifest)
+    records::append_run_history_entry(run_dir, manifest)
 }
 
 /// Build an artifact header for outputs.
@@ -63,12 +63,12 @@ pub fn artifact_header(
     bijux_gnss_receiver::api::core::ArtifactHeaderV1,
     bijux_gnss_receiver::api::core::InputError,
 > {
-    records::artifact_header::artifact_header(args, profile, dataset)
+    records::artifact_header(args, profile, dataset)
 }
 
 /// Load run report schema version.
 pub fn run_report_schema_version() -> u32 {
-    records::report::run_report_schema_version()
+    records::run_report_schema_version()
 }
 
 /// Write a run report to disk.
