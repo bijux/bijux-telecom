@@ -504,7 +504,7 @@ fn tracking_follows_dynamic_gps_l5_code_rate_from_common_oscillator_drift() {
     );
     assert_carrier_aiding_reduces_dynamic_code_rate_error(
         &stable_code_rate_errors_hz,
-        &stable_epochs,
+        stable_epochs,
         &config,
         signal,
         &receiver_oscillator,
@@ -609,7 +609,7 @@ fn tracking_follows_dynamic_beidou_b1i_code_rate_from_common_oscillator_drift() 
     );
     assert_carrier_aiding_reduces_dynamic_code_rate_error(
         &stable_code_rate_errors_hz,
-        &stable_epochs,
+        stable_epochs,
         &config,
         signal,
         &receiver_oscillator,

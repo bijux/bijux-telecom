@@ -381,7 +381,7 @@ fn glonass_navigation_group() -> Vec<GlonassBroadcastNavigationFrame> {
                 ay_mps2: 0.0,
                 az_mps2: -2.793_967_723_846_435_5e-6,
             },
-            6.508_920_341_730_117_7e-5,
+            6.508_920_341_730_118e-5,
             -3.725_290_298e-9,
         ),
         make_glonass_navigation(

@@ -57,9 +57,11 @@ impl SignalSource for SingleFrameSource {
 
 #[test]
 fn receiver_dc_removal_preserves_or_improves_biased_acquisition_margin() {
-    let mut profile = ReceiverConfig::default();
-    profile.sample_rate_hz = 4_092_000.0;
-    profile.intermediate_freq_hz = 0.0;
+    let mut profile = ReceiverConfig {
+        sample_rate_hz: 4_092_000.0,
+        intermediate_freq_hz: 0.0,
+        ..ReceiverConfig::default()
+    };
     profile.acquisition.doppler_search_hz = 1_000;
     profile.acquisition.doppler_step_hz = 250;
     profile.acquisition.integration_ms = 1;
@@ -134,9 +136,11 @@ fn receiver_dc_removal_preserves_or_improves_biased_acquisition_margin() {
 
 #[test]
 fn receiver_dc_removal_reports_power_imbalance_diagnostics() {
-    let mut profile = ReceiverConfig::default();
-    profile.sample_rate_hz = 4_092_000.0;
-    profile.intermediate_freq_hz = 0.0;
+    let mut profile = ReceiverConfig {
+        sample_rate_hz: 4_092_000.0,
+        intermediate_freq_hz: 0.0,
+        ..ReceiverConfig::default()
+    };
     profile.acquisition.doppler_search_hz = 1_000;
     profile.acquisition.doppler_step_hz = 250;
     profile.acquisition.integration_ms = 1;

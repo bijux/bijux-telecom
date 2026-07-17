@@ -28,7 +28,7 @@ fn acquisition_supports_coherent_lengths_without_nav_bit_modulation() {
             intermediate_freq_hz: config.intermediate_freq_hz,
             receiver_clock_frequency_bias_hz: 0.0,
             duration_s: 0.04,
-            seed: 2_407_1985,
+            seed: 24_071_985,
             satellites: vec![
                 SyntheticSignalParams {
                     sat: SatId { constellation: Constellation::Gps, prn: 3 },
@@ -108,7 +108,7 @@ fn acquisition_supports_coherent_lengths_with_nav_bit_modulation() {
             intermediate_freq_hz: config.intermediate_freq_hz,
             receiver_clock_frequency_bias_hz: 0.0,
             duration_s: 0.04,
-            seed: 2_407_1986,
+            seed: 24_071_986,
             satellites: vec![
                 SyntheticSignalParams {
                     sat: SatId { constellation: Constellation::Gps, prn: 5 },
@@ -189,7 +189,7 @@ fn acquisition_supports_gps_l1_twenty_millisecond_integration_across_bit_boundar
         intermediate_freq_hz: config.intermediate_freq_hz,
         receiver_clock_frequency_bias_hz: 0.0,
         duration_s: 0.05,
-        seed: 2_407_1987,
+        seed: 24_071_987,
         satellites: vec![SyntheticSignalParams {
             sat: SatId { constellation: Constellation::Gps, prn: 5 },
             glonass_frequency_channel: None,
@@ -248,7 +248,7 @@ fn acquisition_supports_galileo_e5b_twenty_millisecond_integration_across_symbol
         intermediate_freq_hz: config.intermediate_freq_hz,
         receiver_clock_frequency_bias_hz: 0.0,
         duration_s: 0.03,
-        seed: 2_407_1988,
+        seed: 24_071_988,
         satellites: vec![SyntheticSignalParams {
             sat: SatId { constellation: Constellation::Galileo, prn: 11 },
             glonass_frequency_channel: None,

@@ -27,7 +27,7 @@ fn acquisition_recovers_clean_synthetic_code_phase_within_two_samples_at_multipl
             intermediate_freq_hz: config.intermediate_freq_hz,
             receiver_clock_frequency_bias_hz: 0.0,
             duration_s: 0.04,
-            seed: 2_407_1985,
+            seed: 24_071_985,
             satellites: vec![
                 SyntheticSignalParams {
                     sat: SatId { constellation: Constellation::Gps, prn: 3 },

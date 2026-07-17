@@ -26,7 +26,7 @@ fn acquisition_reports_consistent_receiver_clock_offset_across_satellites() {
         intermediate_freq_hz: config.intermediate_freq_hz,
         receiver_clock_frequency_bias_hz: 500.0,
         duration_s: 0.04,
-        seed: 2_407_1987,
+        seed: 24_071_987,
         satellites: vec![
             SyntheticSignalParams {
                 sat: SatId { constellation: Constellation::Gps, prn: 3 },

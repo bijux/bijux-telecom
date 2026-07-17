@@ -83,9 +83,11 @@ fn noise_only_frame(profile: &ReceiverConfig, seed: u64) -> SamplesFrame {
 
 #[test]
 fn receiver_rejects_zero_signal_window_before_search() {
-    let mut profile = ReceiverConfig::default();
-    profile.sample_rate_hz = 4_092_000.0;
-    profile.intermediate_freq_hz = 0.0;
+    let mut profile = ReceiverConfig {
+        sample_rate_hz: 4_092_000.0,
+        intermediate_freq_hz: 0.0,
+        ..ReceiverConfig::default()
+    };
     profile.acquisition.doppler_search_hz = 1_500;
     profile.acquisition.doppler_step_hz = 250;
 
@@ -135,9 +137,11 @@ fn receiver_rejects_zero_signal_window_before_search() {
 
 #[test]
 fn deterministic_noise_only_input_never_produces_accepted_satellites() {
-    let mut profile = ReceiverConfig::default();
-    profile.sample_rate_hz = 4_092_000.0;
-    profile.intermediate_freq_hz = 0.0;
+    let mut profile = ReceiverConfig {
+        sample_rate_hz: 4_092_000.0,
+        intermediate_freq_hz: 0.0,
+        ..ReceiverConfig::default()
+    };
     profile.acquisition.doppler_search_hz = 1_500;
     profile.acquisition.doppler_step_hz = 250;
 
@@ -155,11 +159,13 @@ fn deterministic_noise_only_input_never_produces_accepted_satellites() {
 
 #[test]
 fn galileo_e1_zero_signal_searches_registered_galileo_catalog() {
-    let mut profile = ReceiverConfig::default();
-    profile.sample_rate_hz = 4_092_000.0;
-    profile.intermediate_freq_hz = 0.0;
-    profile.code_freq_basis_hz = 1_023_000.0;
-    profile.code_length = 4092;
+    let mut profile = ReceiverConfig {
+        sample_rate_hz: 4_092_000.0,
+        intermediate_freq_hz: 0.0,
+        code_freq_basis_hz: 1_023_000.0,
+        code_length: 4092,
+        ..ReceiverConfig::default()
+    };
     profile.acquisition.integration_ms = 20;
     profile.acquisition.noncoherent_integration = 1;
     profile.acquisition.doppler_search_hz = 1_500;

@@ -59,9 +59,11 @@ impl TraceSink for CapturedTrace {
 
 #[test]
 fn receiver_front_end_filter_improves_acquisition_under_out_of_band_interference() {
-    let mut profile = ReceiverConfig::default();
-    profile.sample_rate_hz = 4_092_000.0;
-    profile.intermediate_freq_hz = 0.0;
+    let mut profile = ReceiverConfig {
+        sample_rate_hz: 4_092_000.0,
+        intermediate_freq_hz: 0.0,
+        ..ReceiverConfig::default()
+    };
     profile.acquisition.doppler_search_hz = 1_000;
     profile.acquisition.doppler_step_hz = 250;
     profile.acquisition.integration_ms = 1;

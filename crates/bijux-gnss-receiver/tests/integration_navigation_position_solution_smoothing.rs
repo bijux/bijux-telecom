@@ -223,9 +223,11 @@ fn navigation_test_config(
     position_solution_smoothing: bool,
     position_solution_motion_class: NavigationMotionClass,
 ) -> ReceiverPipelineConfig {
-    let mut config = ReceiverPipelineConfig::default();
-    config.position_solution_smoothing = position_solution_smoothing;
-    config.position_solution_motion_class = position_solution_motion_class;
+    let mut config = ReceiverPipelineConfig {
+        position_solution_smoothing,
+        position_solution_motion_class,
+        ..ReceiverPipelineConfig::default()
+    };
     config.science_thresholds.min_mean_cn0_dbhz = 1.0;
     config.science_thresholds.max_pdop = 100.0;
     config.science_thresholds.max_gdop = 100.0;

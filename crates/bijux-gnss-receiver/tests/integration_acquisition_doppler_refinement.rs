@@ -30,7 +30,7 @@ fn acquisition_refinement_recovers_fractional_doppler_more_closely_than_the_raw_
             intermediate_freq_hz: config.intermediate_freq_hz,
             receiver_clock_frequency_bias_hz: 0.0,
             duration_s: 0.04,
-            seed: 2_407_1985,
+            seed: 24_071_985,
             satellites: vec![
                 SyntheticSignalParams {
                     sat: SatId { constellation: Constellation::Gps, prn: 3 },
