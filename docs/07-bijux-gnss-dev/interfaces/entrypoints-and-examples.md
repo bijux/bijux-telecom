@@ -1,5 +1,5 @@
 ---
-title: Entry Points And Examples
+title: Entrypoints And Examples
 audience: mixed
 type: interfaces
 status: canonical
@@ -7,9 +7,9 @@ owner: bijux-gnss-dev-docs
 last_reviewed: 2026-07-17
 ---
 
-# Entry Points And Examples
+# Entrypoints And Examples
 
-Use these entry points when choosing the right maintainer command.
+Use these entrypoints when choosing the right maintainer command.
 
 ## Common Starting Points
 

@@ -30,7 +30,7 @@ to maintainers and repository automation.
 - [Binary Boundary](binary-boundary.md)
 - [Command Entry Contracts](command-entry-contracts.md)
 - [Workflow Contracts](workflow-contracts.md)
-- [Entry Points And Examples](entry-points-and-examples.md)
+- [Entrypoints And Examples](entrypoints-and-examples.md)
 - [Compatibility Commitments](compatibility-commitments.md)
 
 ## First Public Surfaces

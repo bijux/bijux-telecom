@@ -1,5 +1,5 @@
 ---
-title: Entry Points And Examples
+title: Entrypoints And Examples
 audience: mixed
 type: interfaces
 status: canonical
@@ -7,9 +7,9 @@ owner: bijux-gnss-signal-docs
 last_reviewed: 2026-07-17
 ---
 
-# Entry Points And Examples
+# Entrypoints And Examples
 
-Use these entry points when choosing a public signal surface.
+Use these entrypoints when choosing a public signal surface.
 
 ## Common Starting Points
 

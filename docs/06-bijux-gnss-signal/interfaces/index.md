@@ -31,7 +31,7 @@ promises to downstream crates.
 - [Signal Model Assumptions](signal-model-assumptions.md)
 - [Validation Contracts](validation-contracts.md)
 - [Trait Contracts](trait-contracts.md)
-- [Entry Points And Examples](entry-points-and-examples.md)
+- [Entrypoints And Examples](entrypoints-and-examples.md)
 - [Compatibility Commitments](compatibility-commitments.md)
 
 ## First Public Surfaces
