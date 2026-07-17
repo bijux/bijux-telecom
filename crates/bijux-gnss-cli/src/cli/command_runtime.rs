@@ -1,4 +1,4 @@
-fn run_command(command: GnssCommand) -> Result<()> {
+fn execute_gnss_command(command: GnssCommand) -> Result<()> {
     match command {
         cmd @ GnssCommand::CaCode { .. } => handle_cacode(cmd),
         cmd @ GnssCommand::Acquire { .. } => handle_acquire(cmd),
@@ -766,6 +766,6 @@ fn main() -> Result<()> {
     init_tracing();
     let command_line = CommandLine::parse();
     match command_line.command {
-        ApplicationCommand::Gnss { command } => run_command(command),
+        ApplicationCommand::Gnss { command } => execute_gnss_command(command),
     }
 }

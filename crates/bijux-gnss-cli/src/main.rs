@@ -18,5 +18,5 @@ mod diagnostics {
 use diagnostics::{handle_cacode, handle_diagnostics, handle_doctor, handle_nav, handle_rtk};
 include!("cli/commands/validate.rs");
 include!("cli/commands/analyze.rs");
-include!("cli/run_command.rs");
+include!("cli/command_runtime.rs");
 include!("cli/commands/artifact.rs");
