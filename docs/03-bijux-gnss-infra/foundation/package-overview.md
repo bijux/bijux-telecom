@@ -52,7 +52,10 @@ command UX, it has crossed the boundary.
 
 ## First Proof Check
 
+- `crates/bijux-gnss-infra/src/api.rs`
 - `crates/bijux-gnss-infra/src/datasets/registry.rs`
+- `crates/bijux-gnss-infra/src/datasets/raw_iq_metadata.rs`
+- `crates/bijux-gnss-infra/src/run_layout.rs`
 - `crates/bijux-gnss-infra/src/run_layout/`
 - `crates/bijux-gnss-infra/src/sweep.rs`
 - `crates/bijux-gnss-infra/src/artifact_inspection/`

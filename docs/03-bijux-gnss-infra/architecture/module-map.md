@@ -17,9 +17,10 @@ subsystems that would become a catch-all quickly if their ownership were vague.
 | code area | primary ownership |
 | --- | --- |
 | `src/api.rs` | curated infrastructure-facing surface |
-| `src/datasets/` | registry parsing, raw-IQ metadata resolution, and coordinate parsing |
-| `src/run_layout/` | run identity, directories, manifests, reports, history, and persisted records |
-| `src/artifact_inspection/` | artifact kind detection, explanation, and persisted validation entrypoints |
+| `src/datasets/registry.rs` plus `src/datasets/registry/` | dataset registry loading, entry parsing, and path resolution |
+| `src/datasets/raw_iq_metadata.rs` plus `src/datasets/raw_iq_metadata/` | sidecar loading, metadata resolution, and capture validation |
+| `src/run_layout.rs` plus `src/run_layout/` | run-layout surface assembly, identity, directories, provenance, and persisted records |
+| `src/artifact_inspection/` plus `src/artifact_inspection/validation/` | artifact kind detection, explanation, and persisted validation entrypoints |
 | `src/overrides/` | typed receiver-profile override application |
 | `src/experiments.rs` and `src/sweep.rs` | experiment specs and sweep expansion |
 | `src/hash/` | provenance-oriented hashing and environment capture |
@@ -35,5 +36,8 @@ contract family.
 
 ## First Proof Check
 
-- `crates/bijux-gnss-infra/src/`
+- `crates/bijux-gnss-infra/src/api.rs`
+- `crates/bijux-gnss-infra/src/datasets/`
+- `crates/bijux-gnss-infra/src/run_layout.rs`
+- `crates/bijux-gnss-infra/src/run_layout/`
 - `crates/bijux-gnss-infra/docs/ARCHITECTURE.md`

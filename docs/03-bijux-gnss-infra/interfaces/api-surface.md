@@ -19,6 +19,9 @@ last_reviewed: 2026-07-17
   re-exports used for repository-facing convenience
 - re-exports are justified only when they strengthen the repository boundary
   instead of bypassing it
+- the strongest infra-owned families behind that surface are dataset
+  interpretation, run-layout records, artifact inspection, overrides, sweep
+  expansion, provenance capture, and validation adapters
 
 ## Why The Policy Exists
 

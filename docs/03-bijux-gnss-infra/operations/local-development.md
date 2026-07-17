@@ -15,7 +15,10 @@ contract oriented.
 ## Good Development Loop
 
 1. identify the owning contract family first
-2. inspect the relevant source area and crate-local docs
+2. inspect the relevant source area such as `src/datasets/registry.rs`,
+   `src/datasets/raw_iq_metadata.rs`, `src/run_layout.rs`,
+   `src/run_layout/`, or `src/artifact_inspection/`, then read the matching
+   crate-local docs
 3. make the smallest coherent repository-contract change
 4. run the narrowest protecting tests
 5. only then widen into higher-level caller fallout if needed
