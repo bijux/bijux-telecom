@@ -1,31 +1,51 @@
 # bijux-gnss-dev
 
-## What this crate does
-`bijux-gnss-dev` owns maintainer-only tooling for the GNSS workspace. It validates audit
-allowlists, checks deny-policy governance files, derives `cargo audit` ignore arguments from the
- reviewed allowlist, and runs benchmark comparison workflows that write evidence into repository
-artifacts.
+`bijux-gnss-dev` owns maintainer tooling for the GNSS repository.
 
-## Why this crate exists
-The workspace needs operational tooling that is too repository-specific to belong in product crates
-and too important to leave as ad hoc shell fragments. This crate keeps that tooling typed,
-testable, and versioned with the repository.
+## Scope
 
-## Ownership boundary
-This crate owns maintainer workflows, not GNSS science or pipeline behavior. It must not turn into
-a second CLI for product features or a generic utility bucket. The boundary is documented in
-[docs/BOUNDARY.md](docs/BOUNDARY.md).
+This crate owns:
 
-## Source layout
+- quality gates for `audit-allowlist.toml`
+- quality gates for `configs/rust/deny.deviations.toml`
+- derived `cargo audit --ignore ...` arguments from the reviewed allowlist
+- benchmark comparison workflows and their repository-scoped evidence outputs
 
-- `src/main.rs` contains the full command surface and command implementations.
-- `tests/integration_guardrails.rs` keeps the crate aligned with workspace guardrails.
+This crate does not own operator-facing product commands, GNSS science, receiver execution, or
+general-purpose shell helpers with no durable repository owner.
 
-The crate structure is documented in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+## Public surface
 
-## Documentation map
-This crate keeps one root README and crate-specific docs under `docs/`:
+The public surface is the `bijux-gnss-dev` binary command set. There is no `lib.rs`, and downstream
+crates should not treat maintainer governance workflows as a reusable library API.
+
+## Source map
+
+- `src/main.rs` owns subcommand parsing, repository-file validation, benchmark execution, and
+  baseline comparison.
+- `tests/integration_guardrails.rs` verifies the crate still fits the workspace structure rules.
+
+## Documentation
+
+The crate root intentionally contains only this README. Durable crate documentation lives under
+`docs/`:
+
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - [docs/BOUNDARY.md](docs/BOUNDARY.md)
+- [docs/COMMANDS.md](docs/COMMANDS.md)
+- [docs/CONTRACTS.md](docs/CONTRACTS.md)
+- [docs/PUBLIC_API.md](docs/PUBLIC_API.md)
+- [docs/TESTS.md](docs/TESTS.md)
+- [docs/WORKFLOWS.md](docs/WORKFLOWS.md)
 
-Repository work is governed by [../../README.md](../../README.md).
+## Verification
+
+Run from the repository root when changing this crate:
+
+```sh
+cargo test -p bijux-gnss-dev --test integration_guardrails
+cargo run -p bijux-gnss-dev -- audit-allowlist
+cargo run -p bijux-gnss-dev -- deny-policy-deviations
+```
+
+Repository-wide expectations are documented in [../../README.md](../../README.md).

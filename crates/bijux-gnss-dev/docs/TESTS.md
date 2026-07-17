@@ -10,6 +10,9 @@ This crate currently has no large standalone test matrix because most of its beh
 file validation with direct command implementations in `src/main.rs`. The important contract today
 is that the command surface stays narrow, repository-owned, and policy-compliant.
 
+Command execution is still part of verification for this crate because the main product surface is
+the binary itself rather than a Rust library API.
+
 ## Verification
 
 Useful validation commands from the repository root:

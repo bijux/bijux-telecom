@@ -27,10 +27,12 @@ an adapter command for CI and Makefile workflows that need one reviewed source o
 
 ### `bijux-gnss-dev bench-compare`
 
-Runs the owned benchmark set, writes outputs under `artifacts/` and `benchmarks/`, and compares the
-current snapshot against the checked-in baseline.
+Runs the owned benchmark set for `bijux-gnss-receiver` and `bijux-gnss-nav`, writes outputs under
+`artifacts/` and `benchmarks/`, and compares the current snapshot against the checked-in baseline.
 
 Flags:
 - `--strict` fails the command on threshold violations
 - `--threshold <ratio>` sets the regression threshold
 - `--workspace-root <path>` overrides the repository root
+
+The workflow-level contract and output locations are documented in [WORKFLOWS.md](WORKFLOWS.md).
