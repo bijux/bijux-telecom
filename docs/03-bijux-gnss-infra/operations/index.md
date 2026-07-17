@@ -51,6 +51,7 @@ change sequence has to stay explicit.
 - [Common Workflows](common-workflows.md)
 - [Local Development](local-development.md)
 - [Change Sequence](change-sequence.md)
+- [Dataset Registration](dataset-registration.md)
 - [Verification Commands](verification-commands.md)
 - [Fixture and Artifact Care](fixture-and-artifact-care.md)
 - [Review Scope](review-scope.md)

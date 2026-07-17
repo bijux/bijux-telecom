@@ -59,6 +59,7 @@ flowchart LR
 - [API Surface](api-surface.md)
 - [Public Imports](public-imports.md)
 - [Dataset Contracts](dataset-contracts.md)
+- [Persisted Artifact Contracts](persisted-artifact-contracts.md)
 - [Run Footprint Contracts](run-footprint-contracts.md)
 - [Artifact Inspection Contracts](artifact-inspection-contracts.md)
 - [Override and Sweep Contracts](override-and-sweep-contracts.md)
