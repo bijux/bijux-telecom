@@ -18,6 +18,9 @@ format parsing, physical models, corrections, and estimators.
 - `tests/support/` contains shared truth and reference helpers
 - `tests/golden_lnav_fixture.rs` and related files lock decoder fixture behavior
 
+The size of this test surface mirrors the crate boundary: parsing, corrections, and estimation are
+all scientifically meaningful and all owned here.
+
 ## Verification
 
 Useful commands from the repository root:

@@ -7,6 +7,8 @@
 The format layer owns stable decoding and parsing behavior for navigation messages, RINEX products,
 and precise-reference products. It defines how external navigation data enters the workspace.
 
+The format families and their boundary rules are detailed in [FORMATS.md](FORMATS.md).
+
 ## Correction contracts
 
 The correction layer owns:
@@ -27,6 +29,8 @@ The estimation layer owns:
 
 These contracts describe navigation-domain estimation behavior independent of CLI and repository
 workflows.
+
+The estimation-owned families and their boundary are detailed in [ESTIMATION.md](ESTIMATION.md).
 
 ## Orbit and model contracts
 

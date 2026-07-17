@@ -1,37 +1,56 @@
 # bijux-gnss-nav
 
-## What this crate does
-`bijux-gnss-nav` owns the GNSS navigation domain for the workspace: orbit and ephemeris handling,
-navigation-format parsing, atmospheric and bias corrections, estimation engines for positioning and
-integrity, and navigation-time utilities shared by downstream crates.
+`bijux-gnss-nav` owns navigation-domain GNSS science for the workspace.
 
-## Why this crate exists
-Navigation logic has enough depth and scientific cohesion to stand as its own crate. It is where
-the workspace turns signal-level observations and reference products into satellite state,
-corrections, and position solutions.
+## Scope
 
-## Public entrypoint
-The curated downstream surface is `bijux_gnss_nav::api`.
+This crate owns:
 
-## Ownership boundary
-This crate owns navigation-domain science and estimation logic. It must not own receiver runtime
-orchestration, repository run layout, or operator command workflows. The boundary is documented in
-[docs/BOUNDARY.md](docs/BOUNDARY.md).
+- broadcast and precise orbit state plus ephemeris interpretation
+- navigation-message and reference-product parsing
+- atmospheric, bias, and signal-combination corrections
+- position, integrity, PPP, and RTK estimation behavior
+- supporting physical models and navigation-time helpers
 
-## Source layout
+This crate does not own receiver scheduling, repository run layout, dataset registry mechanics, or
+operator command workflows.
 
-- `orbits/` owns satellite-state and ephemeris logic
-- `formats/` owns navigation and precise-product parsing/formatting
-- `corrections/` owns atmosphere, bias, and signal-combination helpers
-- `estimation/` owns SPP, EKF, PPP, RAIM, and RTK estimation flows
-- `models/` owns supporting physical models
-- `time/` owns navigation-specific time utilities
+## Public surface
 
-The architecture and test layout are documented in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+`bijux_gnss_nav::api` is the deliberate downstream surface. It organizes exports by durable
+scientific role rather than by internal file layout so higher-level crates consume navigation
+capabilities without coupling themselves to parser and solver internals.
 
-## Documentation map
-This crate keeps one root README and crate-specific docs under `docs/`:
+## Source map
+
+- `src/orbits/` owns satellite-state and ephemeris logic.
+- `src/formats/` owns navigation and precise-product parsing families.
+- `src/corrections/` owns atmosphere, bias, and combination computations.
+- `src/estimation/` owns SPP, PPP, RAIM, EKF, and RTK surfaces.
+- `src/models/` owns supporting physical models.
+- `src/time/` owns navigation-specific time utilities.
+
+## Documentation
+
+The crate root intentionally contains only this README. Durable crate documentation lives under
+`docs/`:
+
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - [docs/BOUNDARY.md](docs/BOUNDARY.md)
+- [docs/CONTRACTS.md](docs/CONTRACTS.md)
+- [docs/ESTIMATION.md](docs/ESTIMATION.md)
+- [docs/FORMATS.md](docs/FORMATS.md)
+- [docs/PUBLIC_API.md](docs/PUBLIC_API.md)
+- [docs/TESTS.md](docs/TESTS.md)
 
-Repository work is governed by [../../README.md](../../README.md).
+## Verification
+
+Run from the repository root when changing this crate:
+
+```sh
+cargo test -p bijux-gnss-nav --test integration_position
+cargo test -p bijux-gnss-nav --test integration_precise_products
+cargo test -p bijux-gnss-nav --test integration_rtk_baseline_accuracy
+```
+
+Repository-wide expectations are documented in [../../README.md](../../README.md).
