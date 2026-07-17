@@ -18,11 +18,11 @@ pub fn validate_truth_guided_acquisition_doppler(
                 config.clone(),
                 crate::engine::runtime::ReceiverRuntime::default(),
             );
+            let request = acquisition_frequency_measurement_request(
+                truth_guided_acquisition_request(config, sat_truth),
+            );
             let result = acquisition
-                .run_fft_for_requests(
-                    &isolated_frame,
-                    &[truth_guided_acquisition_request(config, sat_truth)],
-                )
+                .run_fft_for_requests(&isolated_frame, &[request])
                 .remove(0);
             let measured_doppler_hz = synthetic_measured_doppler_hz_from_carrier_hz(
                 config.intermediate_freq_hz,
@@ -87,11 +87,11 @@ pub fn validate_truth_guided_acquisition_receiver_clock_offset(
                 config.clone(),
                 crate::engine::runtime::ReceiverRuntime::default(),
             );
+            let request = acquisition_frequency_measurement_request(
+                truth_guided_acquisition_request(config, sat_truth),
+            );
             let result = acquisition
-                .run_fft_for_requests(
-                    &isolated_frame,
-                    &[truth_guided_acquisition_request(config, sat_truth)],
-                )
+                .run_fft_for_requests(&isolated_frame, &[request])
                 .remove(0);
             let measured_doppler_hz = synthetic_measured_doppler_hz_from_carrier_hz(
                 config.intermediate_freq_hz,
@@ -179,7 +179,12 @@ pub fn validate_truth_guided_common_oscillator_bias_follow_up(
         config.clone(),
         crate::engine::runtime::ReceiverRuntime::default(),
     );
-    let initial_rows = acquisition.run_fft_topn_for_requests(frame, requests, 1);
+    let frequency_measurement_requests = requests
+        .iter()
+        .copied()
+        .map(acquisition_frequency_measurement_request)
+        .collect::<Vec<_>>();
+    let initial_rows = acquisition.run_fft_topn_for_requests(frame, &frequency_measurement_requests, 1);
     let estimate = crate::pipeline::acquisition_assistance::estimate_common_oscillator_bias(
         requests,
         &initial_rows,
@@ -197,11 +202,11 @@ pub fn validate_truth_guided_common_oscillator_bias_follow_up(
     let follow_up_rows = if follow_up_requests.is_empty() {
         Vec::new()
     } else {
-        acquisition.run_fft_topn_for_requests(
-            frame,
-            &follow_up_requests.iter().map(|request| request.request).collect::<Vec<_>>(),
-            1,
-        )
+        let follow_up_frequency_measurement_requests = follow_up_requests
+            .iter()
+            .map(|request| acquisition_frequency_measurement_request(request.request))
+            .collect::<Vec<_>>();
+        acquisition.run_fft_topn_for_requests(frame, &follow_up_frequency_measurement_requests, 1)
     };
     let mut follow_up_primary_by_request_index = vec![None; requests.len()];
     for (follow_up_request, row) in follow_up_requests.iter().zip(follow_up_rows.into_iter()) {
@@ -291,6 +296,13 @@ pub fn validate_truth_guided_common_oscillator_bias_follow_up(
         pass,
         satellites,
     }
+}
+
+fn acquisition_frequency_measurement_request(
+    mut request: crate::api::core::AcqRequest,
+) -> crate::api::core::AcqRequest {
+    request.expected_line_of_sight_doppler_hz = None;
+    request
 }
 
 /// Validate assisted acquisition bounds reduction and safety fallback behavior from one capture.
