@@ -41,6 +41,8 @@ flowchart LR
 - [Common Workflows](common-workflows.md)
 - [Local Development](local-development.md)
 - [Change Sequence](change-sequence.md)
+- [Receiver Extension Guide](receiver-extension-guide.md)
+- [Performance And Profiling](performance-and-profiling.md)
 - [Verification Commands](verification-commands.md)
 - [Fixture And Simulation Care](fixture-and-simulation-care.md)
 - [Review Scope](review-scope.md)

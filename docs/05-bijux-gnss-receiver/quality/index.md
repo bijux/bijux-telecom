@@ -40,6 +40,8 @@ flowchart LR
 - [Test Strategy](test-strategy.md)
 - [Invariants](invariants.md)
 - [Change Validation](change-validation.md)
+- [Determinism And Purity](determinism-and-purity.md)
+- [Validation Budgets](validation-budgets.md)
 - [Review Checklist](review-checklist.md)
 - [Definition Of Done](definition-of-done.md)
 - [Known Limitations](known-limitations.md)

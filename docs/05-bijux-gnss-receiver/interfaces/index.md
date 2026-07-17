@@ -47,6 +47,7 @@ flowchart LR
 - [API Surface](api-surface.md)
 - [Public Imports](public-imports.md)
 - [Runtime Contracts](runtime-contracts.md)
+- [Diagnostic Contracts](diagnostic-contracts.md)
 - [Stage Contracts](stage-contracts.md)
 - [Port Contracts](port-contracts.md)
 - [Artifact Contracts](artifact-contracts.md)
