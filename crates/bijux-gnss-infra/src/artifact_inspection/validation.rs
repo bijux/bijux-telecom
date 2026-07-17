@@ -3,12 +3,14 @@
 use std::path::Path;
 
 use bijux_gnss_receiver::api::core::{
-    AcqResultV1, ArtifactHeaderV1, ArtifactPayloadValidate, ArtifactReadPolicy, ArtifactValidate,
-    DiagnosticEvent, DiagnosticSeverity, InputError, NavSolutionEpochV1, ObsEpochV1, TrackEpochV1,
+    AcqResultV1, ArtifactHeaderV1, ArtifactPayloadValidate, ArtifactReadPolicy, DiagnosticEvent,
+    DiagnosticSeverity, InputError, NavSolutionEpochV1, TrackEpochV1,
 };
 
 use super::artifact_type::ArtifactKind;
 use super::ArtifactValidationResult;
+
+mod observation;
 
 /// Validate an artifact file and return diagnostics.
 pub fn artifact_validate(
@@ -25,44 +27,11 @@ pub fn artifact_validate(
     let diagnostics = match kind {
         ArtifactKind::Acq => validate_acq_artifact(&data)?,
         ArtifactKind::Track => validate_track_artifact(&data)?,
-        ArtifactKind::Obs => validate_obs_artifact(&data)?,
+        ArtifactKind::Obs => observation::validate_obs_artifact(&data)?,
         ArtifactKind::Pvt => validate_nav_artifact(&data)?,
     };
 
     Ok(ArtifactValidationResult { kind: kind.as_str().to_string(), diagnostics })
-}
-
-fn validate_obs_artifact(data: &str) -> Result<Vec<DiagnosticEvent>, InputError> {
-    let mut epochs = Vec::new();
-    let mut events = Vec::new();
-    let mut last_t_rx_s: Option<bijux_gnss_receiver::api::core::Seconds> = None;
-    for line in data.lines() {
-        if line.trim().is_empty() {
-            continue;
-        }
-        let wrapped: ObsEpochV1 = serde_json::from_str(line).map_err(map_err)?;
-        validate_schema_version(wrapped.header.schema_version, "obs")?;
-        if let Some(prev) = last_t_rx_s {
-            if wrapped.payload.t_rx_s.0 < prev.0 {
-                events.push(DiagnosticEvent::new(
-                    DiagnosticSeverity::Error,
-                    "GNSS_OBS_TIME_NON_MONOTONIC",
-                    "obs t_rx_s is not monotonic",
-                ));
-            }
-        }
-        last_t_rx_s = Some(wrapped.payload.t_rx_s);
-        events.extend(wrapped.validate());
-        epochs.push(wrapped.payload);
-    }
-    if let Err(err) = bijux_gnss_receiver::api::signal::validate_obs_epochs(&epochs) {
-        events.push(DiagnosticEvent::new(
-            DiagnosticSeverity::Error,
-            "GNSS_OBS_VALIDATE_FAILED",
-            format!("obs epoch validation failed: {err}"),
-        ));
-    }
-    Ok(events)
 }
 
 fn validate_acq_artifact(data: &str) -> Result<Vec<DiagnosticEvent>, InputError> {
