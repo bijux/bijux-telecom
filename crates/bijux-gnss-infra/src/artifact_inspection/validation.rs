@@ -4,13 +4,14 @@ use std::path::Path;
 
 use bijux_gnss_receiver::api::core::{
     AcqResultV1, ArtifactHeaderV1, ArtifactPayloadValidate, ArtifactReadPolicy, DiagnosticEvent,
-    DiagnosticSeverity, InputError, NavSolutionEpochV1, TrackEpochV1,
+    InputError, NavSolutionEpochV1, TrackEpochV1,
 };
 
 use super::artifact_type::ArtifactKind;
 use super::ArtifactValidationResult;
 
 mod observation;
+mod navigation;
 mod tracking;
 
 /// Validate an artifact file and return diagnostics.
@@ -29,7 +30,7 @@ pub fn artifact_validate(
         ArtifactKind::Acq => validate_acq_artifact(&data)?,
         ArtifactKind::Track => tracking::validate_track_artifact(&data)?,
         ArtifactKind::Obs => observation::validate_obs_artifact(&data)?,
-        ArtifactKind::Pvt => validate_nav_artifact(&data)?,
+        ArtifactKind::Pvt => navigation::validate_nav_artifact(&data)?,
     };
 
     Ok(ArtifactValidationResult { kind: kind.as_str().to_string(), diagnostics })
@@ -37,30 +38,6 @@ pub fn artifact_validate(
 
 fn validate_acq_artifact(data: &str) -> Result<Vec<DiagnosticEvent>, InputError> {
     validate_wrapped_payloads::<AcqResultV1>(data, "acq")
-}
-
-fn validate_nav_artifact(data: &str) -> Result<Vec<DiagnosticEvent>, InputError> {
-    let mut last_t_rx_s: Option<bijux_gnss_receiver::api::core::Seconds> = None;
-    let mut events = Vec::new();
-    for line in data.lines() {
-        if line.trim().is_empty() {
-            continue;
-        }
-        let wrapped: NavSolutionEpochV1 = serde_json::from_str(line).map_err(map_err)?;
-        validate_schema_version(wrapped.header.schema_version, "pvt")?;
-        if let Some(prev) = last_t_rx_s {
-            if wrapped.payload.t_rx_s.0 < prev.0 {
-                events.push(DiagnosticEvent::new(
-                    DiagnosticSeverity::Error,
-                    "GNSS_NAV_TIME_NON_MONOTONIC",
-                    "nav t_rx_s is not monotonic",
-                ));
-            }
-        }
-        last_t_rx_s = Some(wrapped.payload.t_rx_s);
-        events.extend(wrapped.payload.validate_payload());
-    }
-    Ok(events)
 }
 
 fn validate_wrapped_payloads<T>(data: &str, kind: &str) -> Result<Vec<DiagnosticEvent>, InputError>
