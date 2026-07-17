@@ -24,6 +24,11 @@ law, and estimator meaning.
 4. update public navigation contracts when the result shape or solver promise
    changes
 
+Common existing owners worth matching before adding a new file are
+`broadcast_ionosphere_residuals.rs`, `dual_frequency.rs`,
+`measured_ionosphere.rs`, `phase_windup.rs`, and the combination helpers such
+as `iono_free_code.rs` and `narrow_lane.rs`.
+
 ## Extend Satellite Clock Handling
 
 1. keep broadcast clock behavior with the owning clock model rather than
@@ -33,7 +38,19 @@ law, and estimator meaning.
 3. preserve the rule that precise-clock bias replaces the relevant broadcast
    bias contribution rather than stacking on top of it blindly
 4. prove both broadcast fallback and precise-clock override behavior with
-   targeted tests
+   targeted tests such as `integration_clk_reference_accuracy.rs` or
+   `integration_broadcast_clock_reference.rs`
+
+## Extend An Estimator Surface
+
+1. place new position behavior under `src/estimation/position/`, PPP behavior
+   under `src/estimation/ppp/`, and RTK behavior under `src/estimation/rtk/`
+2. keep shared filter primitives with `src/estimation/ekf/` only when they are
+   genuinely reusable across solver families
+3. add a refusal, downgrade, or integrity-focused proof when the extension can
+   fail in a scientifically meaningful way
+4. update public estimation contracts when downstream crates are meant to rely
+   on the new behavior
 
 ## Boundary Rule
 

@@ -14,15 +14,16 @@ multiple navigation families need them.
 
 ## Time Contracts
 
-- Galileo, BeiDou, and GLONASS time records
+- Galileo, BeiDou, and GLONASS time records in `src/time.rs`
 - civil-time parsing tied to navigation use
 - conversion wrappers and time-offset evidence
-- rollover interpretation and reference-day support
+- rollover interpretation and reference-day support in `src/time/rollover.rs`
 
 ## Model Contracts
 
-- atmosphere and ionosphere model seams
-- antenna calibration and physical effect helpers
+- atmosphere and ionosphere model seams in `src/models/atmosphere.rs` and the
+  NeQuick family
+- antenna calibration and physical effect helpers in `src/models/antenna.rs`
 - celestial, ocean-tide, solid-earth-tide, and NeQuick support where public
   consumers need typed model results
 
@@ -34,6 +35,9 @@ of external GNSS time systems and physically motivated model use belongs here.
 ## Closest Proof
 
 - `crates/bijux-gnss-nav/src/time.rs`
+- `crates/bijux-gnss-nav/src/time/rollover.rs`
 - `crates/bijux-gnss-nav/src/models/`
+- `crates/bijux-gnss-nav/tests/integration_utc_leap_seconds.rs`
+- `crates/bijux-gnss-nav/tests/integration_troposphere_elevation.rs`
 - `crates/bijux-gnss-nav/docs/TIME.md`
 - `crates/bijux-gnss-nav/docs/MODELS.md`

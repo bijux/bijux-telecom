@@ -67,6 +67,11 @@ flowchart LR
 - navigation-specific time systems, rollover logic, and supporting physical
   models
 
+The durable science families today are formats, orbits, corrections,
+estimation, physical models, and navigation-owned time handling. The handbook
+should route readers into one of those owners quickly instead of flattening
+them into one generic "nav logic" bucket.
+
 ## What It Refuses
 
 - sample scheduling, capture flow, and runtime channel orchestration owned by
@@ -161,6 +166,8 @@ flowchart LR
 - `crates/bijux-gnss-nav/src/orbits/`
 - `crates/bijux-gnss-nav/src/corrections/`
 - `crates/bijux-gnss-nav/src/estimation/`
+- `crates/bijux-gnss-nav/src/models/`
+- `crates/bijux-gnss-nav/src/time/rollover.rs`
 - `crates/bijux-gnss-nav/docs/PUBLIC_API.md`
 
 ## Design Pressure
