@@ -16,6 +16,7 @@ fmt-check: fmt-rs ## Run formatting checks (compatibility alias)
 lint: lint-rs ## Run lint checks
 clippy: lint-rs ## Run clippy checks (compatibility alias)
 test: test-rs ## Run fast test checks
+test-slow: test-slow-rs ## Run governed slow tests outside the fast lane
 test-all: test-all-rs ## Run full Rust tests including ignored tests
 test-full: test-all-rs ## Run full Rust tests (compatibility alias)
 coverage: coverage-rs ## Run workspace coverage with cargo llvm-cov + nextest
@@ -27,4 +28,4 @@ help: ## Show available make targets
 	@awk 'BEGIN{FS=":.*##"; OFS="";} \
 	  /^[a-zA-Z0-9_.-]+:.*##/ {printf "  \033[36m%-28s\033[0m %s\n", $$1, $$2}' \
 	  $(MAKEFILE_LIST)
-.PHONY: all fmt fmt-check lint clippy test test-all test-full coverage security audit doc help
+.PHONY: all fmt fmt-check lint clippy test test-slow test-all test-full coverage security audit doc help

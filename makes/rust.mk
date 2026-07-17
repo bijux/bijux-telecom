@@ -1,6 +1,7 @@
 RS_ARTIFACT_ROOT ?= artifacts/rust
 RS_RUN_ID ?= local
 PINNED_REF_GATE_BIN ?= makes/bin/run_pinned_ref_gate.sh
+NEXTEST_EXPR_BIN ?= makes/bin/nextest_expr.sh
 
 RS_TARGET_DIR ?= $(abspath $(RS_ARTIFACT_ROOT)/target)
 RS_NEXTEST_CACHE_DIR ?= $(RS_TARGET_DIR)/nextest
@@ -11,6 +12,7 @@ RS_LLVM_PROFILE_FILE ?= $(RS_PROFRAW_DIR)/default_%m_%p.profraw
 RS_FMT_REPORT ?= $(RS_ARTIFACT_ROOT)/fmt/$(RS_RUN_ID)/report.txt
 RS_LINT_REPORT ?= $(RS_ARTIFACT_ROOT)/lint/$(RS_RUN_ID)/report.txt
 RS_TEST_REPORT ?= $(RS_ARTIFACT_ROOT)/test/$(RS_RUN_ID)/nextest.log
+RS_TEST_SLOW_REPORT ?= $(RS_ARTIFACT_ROOT)/test/$(RS_RUN_ID)/nextest-slow.log
 RS_TEST_ALL_REPORT ?= $(RS_ARTIFACT_ROOT)/test/$(RS_RUN_ID)/nextest-all.log
 RS_AUDIT_REPORT ?= $(RS_ARTIFACT_ROOT)/audit/$(RS_RUN_ID)/report.txt
 RS_COVERAGE_DIR ?= $(RS_ARTIFACT_ROOT)/coverage/$(RS_RUN_ID)
@@ -19,8 +21,12 @@ RS_LCOV_FILE ?= $(RS_COVERAGE_DIR)/lcov.info
 RS_COVERAGE_SUMMARY_REPORT ?= $(RS_COVERAGE_DIR)/summary.txt
 
 NEXTEST_PROFILE ?= default
+NEXTEST_PROFILE_FAST ?= $(NEXTEST_PROFILE)
+NEXTEST_PROFILE_SLOW ?= $(NEXTEST_PROFILE)
 NEXTEST_STATUS_LEVEL ?= all
 NEXTEST_FINAL_STATUS_LEVEL ?= all
+NEXTEST_FAST_EXPR ?= $(shell "$(NEXTEST_EXPR_BIN)" fast)
+NEXTEST_SLOW_EXPR ?= $(shell "$(NEXTEST_EXPR_BIN)" slow)
 
 define rs_require_tool
 	@command -v $(1) >/dev/null 2>&1 || { \
@@ -34,7 +40,7 @@ define rs_nextest_summary
 	printf '\033[1;36m%s\033[0m %s\n' "nextest-summary:" "$${summary_line:-unavailable}"
 endef
 
-.PHONY: fmt-rs lint-rs test-rs test-all-rs test-all-frozen lint-frozen audit-frozen coverage-rs audit-rs bench-compare docs-check ci-docs
+.PHONY: fmt-rs lint-rs test-rs test-slow-rs test-all-rs test-all-frozen lint-frozen audit-frozen coverage-rs audit-rs bench-compare docs-check ci-docs
 
 fmt-rs: ## Run Rust formatting checks
 	@mkdir -p "$(dir $(RS_FMT_REPORT))"
@@ -51,7 +57,7 @@ lint-rs: ## Run Rust clippy checks with -D warnings
 	CARGO_TERM_COLOR="$(CARGO_TERM_COLOR)" \
 	cargo clippy --workspace --all-targets --all-features --locked -- -D warnings 2>&1 | tee "$(RS_LINT_REPORT)"
 
-test-rs: ## Run Rust fast tests with nextest
+test-rs: ## Run Rust tests outside the governed slow roster
 	$(call rs_require_tool,cargo-nextest)
 	@mkdir -p "$(dir $(RS_TEST_REPORT))" "$(RS_PROFRAW_DIR)" "$(RS_NEXTEST_CONFIG_HOME)"
 	@status=0; \
@@ -63,11 +69,32 @@ test-rs: ## Run Rust fast tests with nextest
 	cargo nextest run \
 		--workspace \
 		--config-file configs/rust/nextest.toml \
-		--profile "$(NEXTEST_PROFILE)" \
+		--profile "$(NEXTEST_PROFILE_FAST)" \
+		-E "$(NEXTEST_FAST_EXPR)" \
 		--status-level "$(NEXTEST_STATUS_LEVEL)" \
 		--final-status-level "$(NEXTEST_FINAL_STATUS_LEVEL)" \
 		2>&1 | tee "$(RS_TEST_REPORT)" || status=$$?; \
 	$(call rs_nextest_summary,$(RS_TEST_REPORT)); \
+	test $$status -eq 0
+
+test-slow-rs: ## Run only governed slow tests from the roster and slow__ namespace
+	$(call rs_require_tool,cargo-nextest)
+	@mkdir -p "$(dir $(RS_TEST_SLOW_REPORT))" "$(RS_PROFRAW_DIR)" "$(RS_NEXTEST_CONFIG_HOME)"
+	@status=0; \
+	LLVM_PROFILE_FILE="$(RS_LLVM_PROFILE_FILE)" \
+	XDG_CONFIG_HOME="$(RS_NEXTEST_CONFIG_HOME)" \
+	CARGO_TARGET_DIR="$(RS_TARGET_DIR)" \
+	NEXTEST_CACHE_DIR="$(RS_NEXTEST_CACHE_DIR)" \
+	CARGO_TERM_COLOR="$(CARGO_TERM_COLOR)" \
+	cargo nextest run \
+		--workspace \
+		--config-file configs/rust/nextest.toml \
+		--profile "$(NEXTEST_PROFILE_SLOW)" \
+		-E "$(NEXTEST_SLOW_EXPR)" \
+		--status-level "$(NEXTEST_STATUS_LEVEL)" \
+		--final-status-level "$(NEXTEST_FINAL_STATUS_LEVEL)" \
+		2>&1 | tee "$(RS_TEST_SLOW_REPORT)" || status=$$?; \
+	$(call rs_nextest_summary,$(RS_TEST_SLOW_REPORT)); \
 	test $$status -eq 0
 
 test-all-rs: ## Run full Rust tests with nextest including ignored
