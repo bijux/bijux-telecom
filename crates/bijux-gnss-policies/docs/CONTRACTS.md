@@ -7,6 +7,8 @@
 `GuardrailConfig` defines the per-crate policy knobs used by the rule engine. It is the stable way
 to declare what a crate is allowed to look like without hard-coding every rule in every test.
 
+That configuration surface is detailed in [CONFIGURATION.md](CONFIGURATION.md).
+
 ## Guardrail execution contract
 
 `check(crate_root, config)` is the crate’s central contract:
