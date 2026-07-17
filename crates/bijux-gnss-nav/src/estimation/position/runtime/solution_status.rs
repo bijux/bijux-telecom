@@ -9,10 +9,10 @@ pub(super) fn deterministic_solution_transition(
     refusal_class: Option<NavRefusalClass>,
     reused_previous: bool,
 ) -> SolutionStatus {
-    if refusal_class.is_some() && !reused_previous {
-        return refusal_status(refusal_class.expect("guarded refusal class"));
-    }
-    if refusal_class.is_some() && reused_previous {
+    if let Some(refusal_class) = refusal_class {
+        if !reused_previous {
+            return refusal_status(refusal_class);
+        }
         return SolutionStatus::Degraded;
     }
     match (previous, proposed) {

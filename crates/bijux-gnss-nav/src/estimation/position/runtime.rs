@@ -420,19 +420,21 @@ impl PositionRuntime {
             return Some(apply_atmosphere_explainability(
                 self.current_epoch_refusal(
                     obs,
-                    source_observation_epoch_id,
-                    nav_artifact_id,
-                    Some(refusal),
-                    "refused".to_string(),
-                    explain_reasons,
-                    assumptions,
-                    observations.len() + invalid_satellite_time_sats.len(),
-                    observations.len(),
-                    invalid_satellite_time_sats
-                        .iter()
-                        .copied()
-                        .map(|sat| (sat, MeasurementRejectReason::TimeInconsistency))
-                        .collect(),
+                    NavigationRefusalContext {
+                        source_observation_epoch_id,
+                        artifact_id: nav_artifact_id,
+                        refusal_class: Some(refusal),
+                        explain_decision: "refused".to_string(),
+                        explain_reasons,
+                        assumptions,
+                        sat_count: observations.len() + invalid_satellite_time_sats.len(),
+                        used_sat_count: observations.len(),
+                        rejected: invalid_satellite_time_sats
+                            .iter()
+                            .copied()
+                            .map(|sat| (sat, MeasurementRejectReason::TimeInconsistency))
+                            .collect(),
+                    },
                 ),
                 obs,
                 navigation,
@@ -543,15 +545,17 @@ impl PositionRuntime {
                     if is_sparse_refusal {
                         let solution = self.current_epoch_refusal(
                             obs,
-                            source_observation_epoch_id,
-                            nav_artifact_id,
-                            Some(refusal_class),
-                            "refused".to_string(),
-                            explain_reasons,
-                            assumptions,
-                            refusal.sat_count + invalid_satellite_time_sats.len(),
-                            refusal.used_sat_count,
-                            rejected,
+                            NavigationRefusalContext {
+                                source_observation_epoch_id,
+                                artifact_id: nav_artifact_id,
+                                refusal_class: Some(refusal_class),
+                                explain_decision: "refused".to_string(),
+                                explain_reasons,
+                                assumptions,
+                                sat_count: refusal.sat_count + invalid_satellite_time_sats.len(),
+                                used_sat_count: refusal.used_sat_count,
+                                rejected,
+                            },
                         );
                         if solution_status == SolutionStatus::IntegrityFailed {
                             mark_integrity_failure(solution)
@@ -1304,28 +1308,9 @@ impl PositionRuntime {
     fn current_epoch_refusal(
         &self,
         obs: &ObsEpoch,
-        source_observation_epoch_id: String,
-        nav_artifact_id: String,
-        refusal_class: Option<NavRefusalClass>,
-        explain_decision: String,
-        explain_reasons: Vec<String>,
-        assumptions: NavAssumptions,
-        sat_count: usize,
-        used_sat_count: usize,
-        rejected: Vec<(bijux_gnss_core::api::SatId, MeasurementRejectReason)>,
+        refusal: NavigationRefusalContext,
     ) -> NavSolutionEpoch {
-        sparse_navigation_refusal_epoch(
-            obs,
-            source_observation_epoch_id,
-            nav_artifact_id,
-            refusal_class,
-            explain_decision,
-            explain_reasons,
-            assumptions,
-            sat_count,
-            used_sat_count,
-            rejected,
-        )
+        sparse_navigation_refusal_epoch(obs, refusal)
     }
 }
 
@@ -1359,6 +1344,18 @@ fn position_solution_smoother_config(
     motion_class: PositionFilterMotionClass,
 ) -> PositionSolutionSmootherConfig {
     PositionSolutionSmootherConfig::for_motion_class(motion_class)
+}
+
+struct NavigationRefusalContext {
+    source_observation_epoch_id: String,
+    artifact_id: String,
+    refusal_class: Option<NavRefusalClass>,
+    explain_decision: String,
+    explain_reasons: Vec<String>,
+    assumptions: NavAssumptions,
+    sat_count: usize,
+    used_sat_count: usize,
+    rejected: Vec<(bijux_gnss_core::api::SatId, MeasurementRejectReason)>,
 }
 
 impl crate::api::NavEngine for PositionRuntime {
@@ -1466,26 +1463,19 @@ fn invalid_solution_epoch(
 
 fn sparse_navigation_refusal_epoch(
     obs: &ObsEpoch,
-    source_observation_epoch_id: String,
-    artifact_id: String,
-    refusal_class: Option<NavRefusalClass>,
-    explain_decision: String,
-    explain_reasons: Vec<String>,
-    assumptions: NavAssumptions,
-    sat_count: usize,
-    used_sat_count: usize,
-    rejected: Vec<(bijux_gnss_core::api::SatId, MeasurementRejectReason)>,
+    refusal: NavigationRefusalContext,
 ) -> NavSolutionEpoch {
     let mut solution = invalid_solution_epoch(
         obs,
-        source_observation_epoch_id,
-        artifact_id,
-        refusal_class,
-        explain_decision,
-        explain_reasons,
-        assumptions,
+        refusal.source_observation_epoch_id,
+        refusal.artifact_id,
+        refusal.refusal_class,
+        refusal.explain_decision,
+        refusal.explain_reasons,
+        refusal.assumptions,
     );
-    solution.residuals = rejected
+    solution.residuals = refusal
+        .rejected
         .into_iter()
         .map(|(sat, reject_reason)| NavResidual {
             sat,
@@ -1495,8 +1485,8 @@ fn sparse_navigation_refusal_epoch(
             reject_reason: Some(reject_reason),
         })
         .collect();
-    solution.sat_count = sat_count;
-    solution.used_sat_count = used_sat_count;
+    solution.sat_count = refusal.sat_count;
+    solution.used_sat_count = refusal.used_sat_count;
     solution.rejected_sat_count = solution.residuals.len();
     solution.stability_signature = nav_output_stability_signature(&solution);
     solution

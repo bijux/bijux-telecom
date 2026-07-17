@@ -8,15 +8,16 @@ pub(super) fn nav_output_stability_signature(solution: &NavSolutionEpoch) -> Str
         .refusal_class
         .map(|value| format!("{value:?}"))
         .unwrap_or_else(|| "None".to_string());
+    let source_descriptor = format!(
+        "{}@{}",
+        short_id(&solution.source_observation_epoch_id),
+        solution.source_time.sample_index
+    );
     format!(
         "navsig:v{}:epoch={}:src={}:status={:?}:lifecycle={:?}:valid={}:sat={}:used={}:rej={}:pdop={:.3}:hdop={}:vdop={}:gdop={}:tdop={}:rms={:.3}:refusal={}:decision={}",
         NAV_OUTPUT_STABILITY_SIGNATURE_VERSION,
         solution.epoch.index,
-        format!(
-            "{}@{}",
-            short_id(&solution.source_observation_epoch_id),
-            solution.source_time.sample_index
-        ),
+        source_descriptor,
         solution.status,
         solution.lifecycle_state,
         solution.valid,

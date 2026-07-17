@@ -837,7 +837,7 @@ mod tests {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct PppConvergenceEvidence {
     pub covariance_supported: bool,
     pub residual_supported: bool,
@@ -894,18 +894,6 @@ impl Default for PppAmbiguityResolutionEvidence {
             stability_epochs_required: 0,
             stable_epochs: 0,
             missing_reasons: Vec::new(),
-        }
-    }
-}
-
-impl Default for PppConvergenceEvidence {
-    fn default() -> Self {
-        Self {
-            covariance_supported: false,
-            residual_supported: false,
-            ambiguity_supported: false,
-            correction_supported: false,
-            integrity_supported: false,
         }
     }
 }

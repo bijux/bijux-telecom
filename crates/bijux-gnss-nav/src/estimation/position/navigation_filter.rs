@@ -53,6 +53,12 @@ pub struct NavigationFilter {
     corrections: CorrectionContext,
 }
 
+impl Default for NavigationFilter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 struct NavigationSolutionEvidence {
     covariance_supported: bool,
