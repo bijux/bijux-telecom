@@ -32,3 +32,12 @@ deviation changes, read the governed-field validation loops first. If the
 question is about slow-test roster policy, leave `src/main.rs` and inspect
 `tests/integration_nextest_suite_selection.rs`, because that contract is
 test-governed rather than command-consumed.
+
+## First Proof Check
+
+Open `crates/bijux-gnss-dev/docs/ARCHITECTURE.md`,
+`crates/bijux-gnss-dev/docs/WORKFLOWS.md`, and
+`crates/bijux-gnss-dev/docs/TESTS.md` first. Then follow the route from
+`crates/bijux-gnss-dev/src/main.rs` into the selected `run_*` function and the
+matching integration test so code navigation stays aligned with owned
+repository workflows.

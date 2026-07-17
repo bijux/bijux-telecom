@@ -30,3 +30,12 @@ inputs and evidence outputs instead of through hidden product coupling.
 Each seam should remain inspectable from the binary entry point. If a reviewer
 cannot tell what a command reads, writes, or invokes by reading the command
 path, the maintainer boundary is becoming opaque.
+
+## First Proof Check
+
+Inspect `crates/bijux-gnss-dev/docs/WORKFLOWS.md`,
+`crates/bijux-gnss-dev/docs/OUTPUTS.md`,
+`crates/bijux-gnss-dev/docs/TESTS.md`, and
+`crates/bijux-gnss-dev/src/main.rs`. Then inspect both integration tests to
+confirm the seams remain explicit command-to-governed-file or
+command-to-evidence routes rather than hidden cross-repository coupling.

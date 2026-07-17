@@ -33,3 +33,12 @@ Use this vocabulary consistently when changing `bijux-gnss-dev`.
   string
 - policy:
   use this for reviewed repository rules, not incidental implementation detail
+
+## First Proof Check
+
+Inspect `crates/bijux-gnss-dev/docs/COMMANDS.md`,
+`crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md`,
+`crates/bijux-gnss-dev/docs/OUTPUTS.md`, and
+`crates/bijux-gnss-dev/docs/BENCHMARKS.md`. Then inspect
+`crates/bijux-gnss-dev/src/main.rs` to make sure the language here still
+matches the repository-facing command and evidence vocabulary in code.

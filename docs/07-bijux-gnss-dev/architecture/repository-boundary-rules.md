@@ -39,3 +39,11 @@ contracts do not depend back upward.
 
 When a proposed file, module, or crate name needs a long explanation to defend
 why it exists, the structure is usually not clean enough yet.
+
+## First Proof Check
+
+Inspect `crates/bijux-gnss-dev/docs/BOUNDARY.md`,
+`crates/bijux-gnss-dev/docs/PUBLIC_API.md`,
+`crates/bijux-gnss-dev/tests/integration_guardrails.rs`, and
+`crates/bijux-gnss-dev/src/main.rs` to confirm the repository boundary rules
+described here still match the enforced maintainer crate shape.

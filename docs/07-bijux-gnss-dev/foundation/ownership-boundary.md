@@ -32,3 +32,14 @@ workflows separate from product behavior and from generic scripting sprawl.
 When a proposed command says "it is convenient to have this near other dev
 commands," that is not enough. The real question is whether the workflow has a
 durable maintainer-owner reason to exist as reviewed repository tooling.
+
+## First Proof Check
+
+Read `crates/bijux-gnss-dev/docs/BOUNDARY.md`,
+`crates/bijux-gnss-dev/docs/CONTRACTS.md`, and
+`crates/bijux-gnss-dev/docs/WORKFLOWS.md` first. Then inspect
+`crates/bijux-gnss-dev/src/main.rs`,
+`crates/bijux-gnss-dev/tests/integration_guardrails.rs`, and
+`crates/bijux-gnss-dev/tests/integration_nextest_suite_selection.rs` to
+confirm the binary still owns maintainer workflows rather than product
+behavior or generic automation sprawl.

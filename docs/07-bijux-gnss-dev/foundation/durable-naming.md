@@ -33,3 +33,12 @@ is forgotten.
 
 If a name only tells the story of when a thing was introduced, renamed, or
 temporarily parked, it is not durable enough for this repository.
+
+## First Proof Check
+
+Inspect `crates/bijux-gnss-dev/docs/COMMANDS.md`,
+`crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md`, and
+`crates/bijux-gnss-dev/src/main.rs`. Then inspect
+`crates/bijux-gnss-dev/tests/integration_guardrails.rs` to confirm naming
+discipline is being defended as a repository guardrail rather than as a style
+preference.

@@ -35,3 +35,11 @@ Every extension should answer three questions:
 - what reviewed maintainer workflow now exists
 - what governed inputs or outputs it owns
 - why it belongs in this binary rather than in product code or shared policy
+
+## First Proof Check
+
+Inspect `crates/bijux-gnss-dev/docs/WORKFLOWS.md`,
+`crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md`,
+`crates/bijux-gnss-dev/docs/OUTPUTS.md`, and
+`crates/bijux-gnss-dev/src/main.rs`. Then inspect the integration tests before
+accepting any extension as a durable maintainer workflow.

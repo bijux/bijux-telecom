@@ -25,3 +25,11 @@ taxonomy.
 Errors here are maintainer-facing diagnostics. They should explain what
 governed contract failed and why. They are not meant to become a reusable Rust
 error API for downstream crates.
+
+## First Proof Check
+
+Inspect `crates/bijux-gnss-dev/docs/COMMANDS.md`,
+`crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md`, and
+`crates/bijux-gnss-dev/src/main.rs`. Then inspect the integration tests to
+confirm diagnostics are still tied to governed repository contracts instead of
+to an accidental internal error taxonomy.

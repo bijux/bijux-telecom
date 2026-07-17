@@ -35,3 +35,11 @@ must remain explicit:
 
 The crate is not supposed to hide side effects behind a vague automation layer.
 Its value comes from making maintainer behavior typed, reviewable, and bounded.
+
+## First Proof Check
+
+Inspect `crates/bijux-gnss-dev/docs/WORKFLOWS.md`,
+`crates/bijux-gnss-dev/docs/OUTPUTS.md`, and
+`crates/bijux-gnss-dev/src/main.rs`. Then inspect
+`crates/bijux-gnss-dev/tests/integration_guardrails.rs` to confirm reads,
+writes, and external commands are still explicit and repository-scoped.

@@ -30,3 +30,12 @@ owner and not below them as a shared scientific dependency.
 Without this crate, governance logic would either leak into product command
 crates or hide inside shell snippets that have no stable ownership, no typed
 validation, and no clear review boundary.
+
+## First Proof Check
+
+Inspect `crates/bijux-gnss-dev/docs/ARCHITECTURE.md`,
+`crates/bijux-gnss-dev/docs/PUBLIC_API.md`, and
+`crates/bijux-gnss-dev/docs/TESTS.md`. Then inspect
+`crates/bijux-gnss-dev/src/main.rs` and the integration tests to confirm this
+crate still sits beside the product path as a repository-maintenance owner
+rather than as a hidden umbrella over product behavior.

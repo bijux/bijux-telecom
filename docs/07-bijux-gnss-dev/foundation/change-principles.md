@@ -27,3 +27,14 @@ convenience is not a sufficient standard.
 - letting benchmark evidence drift into ad hoc locations
 - introducing product behavior into the maintainer binary because it is already
   convenient to invoke from the repository root
+
+## First Proof Check
+
+Read `crates/bijux-gnss-dev/docs/BOUNDARY.md`,
+`crates/bijux-gnss-dev/docs/WORKFLOWS.md`, and
+`crates/bijux-gnss-dev/docs/OUTPUTS.md` first. Then inspect
+`crates/bijux-gnss-dev/src/main.rs`,
+`crates/bijux-gnss-dev/tests/integration_guardrails.rs`, and
+`crates/bijux-gnss-dev/tests/integration_nextest_suite_selection.rs` to
+confirm the change principles still match actual maintainer workflows and
+guardrails.

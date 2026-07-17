@@ -40,3 +40,11 @@ stay out.
 This binary must not pull in product crates just to reach behavior indirectly.
 If reusable product logic is needed, the owning product crate should expose it
 first.
+
+## First Proof Check
+
+Inspect `crates/bijux-gnss-dev/Cargo.toml`,
+`crates/bijux-gnss-dev/docs/BOUNDARY.md`, and
+`crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md`. Then inspect
+`crates/bijux-gnss-dev/src/main.rs` to confirm the binary still reads reviewed
+files and emits governed evidence without depending on product crates.

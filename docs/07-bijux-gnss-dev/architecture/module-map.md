@@ -47,3 +47,13 @@ itself. If the crate grows, it should split by durable workflow family such as
 audit governance or benchmark governance, not by temporary sequencing. A split
 should also preserve the current distinction between read-only validators and
 the single write-producing benchmark workflow.
+
+## First Proof Check
+
+Inspect `crates/bijux-gnss-dev/docs/ARCHITECTURE.md`,
+`crates/bijux-gnss-dev/docs/WORKFLOWS.md`, and
+`crates/bijux-gnss-dev/src/main.rs`. Then inspect
+`crates/bijux-gnss-dev/tests/integration_guardrails.rs` and
+`crates/bijux-gnss-dev/tests/integration_nextest_suite_selection.rs` to
+confirm the module map still reflects actual owned workflow families and test
+governance.

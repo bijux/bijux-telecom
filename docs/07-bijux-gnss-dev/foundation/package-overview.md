@@ -28,3 +28,12 @@ intentionally writes repository evidence.
 The crate is intentionally a binary-only boundary. It is meant to sit at the
 repository edge where governance inputs, diagnostics, and benchmark evidence
 need an owner without turning maintainer behavior into a reusable product API.
+
+## First Proof Check
+
+Inspect `crates/bijux-gnss-dev/docs/COMMANDS.md`,
+`crates/bijux-gnss-dev/docs/WORKFLOWS.md`,
+`crates/bijux-gnss-dev/docs/OUTPUTS.md`, and
+`crates/bijux-gnss-dev/src/main.rs`. Then inspect both integration tests to
+confirm the four workflow families described here still match the actual binary
+surface and repository checks.

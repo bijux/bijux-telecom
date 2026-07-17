@@ -46,3 +46,20 @@ binary and which adjacent crates create the real review pressure.
 For every dependency or governed file addition, ask whether it strengthens a
 durable maintainer boundary or whether it is attempting to smuggle unrelated
 repository behavior into the dev crate.
+
+## First Proof Check
+
+Inspect `crates/bijux-gnss-dev/Cargo.toml`,
+`crates/bijux-gnss-dev/docs/ARCHITECTURE.md`, and
+`crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md`. Then inspect
+`crates/bijux-gnss-dev/src/main.rs` and
+`crates/bijux-gnss-dev/tests/integration_guardrails.rs` to confirm the binary
+still depends only on general-purpose tooling while reading named governed
+repository inputs.
+
+## First Neighbor Proof Check
+
+When a dependency question turns into reusable repository policy, inspect the
+support-crate route in [../index.md](../index.md) and then the
+`bijux-gnss-policies` crate surfaces. When it turns into product-command
+ownership, inspect [01-bijux-gnss/foundation/dependencies-and-adjacencies](../../01-bijux-gnss/foundation/dependencies-and-adjacencies.md).
