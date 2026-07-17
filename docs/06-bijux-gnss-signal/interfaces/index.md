@@ -28,6 +28,7 @@ promises to downstream crates.
 - [Code Contracts](code-contracts.md)
 - [DSP Contracts](dsp-contracts.md)
 - [Raw IQ And Sample Contracts](raw-iq-and-sample-contracts.md)
+- [Signal Model Assumptions](signal-model-assumptions.md)
 - [Validation Contracts](validation-contracts.md)
 - [Trait Contracts](trait-contracts.md)
 - [Entry Points And Examples](entry-points-and-examples.md)

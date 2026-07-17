@@ -26,6 +26,7 @@ without damaging reference behavior, boundary clarity, or downstream trust.
 - [Common Workflows](common-workflows.md)
 - [Local Development](local-development.md)
 - [Change Sequence](change-sequence.md)
+- [Signal Extension Guide](signal-extension-guide.md)
 - [Verification Commands](verification-commands.md)
 - [Fixture And Reference Care](fixture-and-reference-care.md)
 - [Review Scope](review-scope.md)

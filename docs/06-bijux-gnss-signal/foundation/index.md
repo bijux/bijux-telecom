@@ -27,6 +27,7 @@ its scope fits inside the repository.
 - [Package Overview](package-overview.md)
 - [Scope And Non-Goals](scope-and-non-goals.md)
 - [Ownership Boundary](ownership-boundary.md)
+- [GPS L1 C/A Reference](gps-l1-ca-reference.md)
 - [Repository Fit](repository-fit.md)
 - [Domain Language](domain-language.md)
 - [Dependencies And Adjacencies](dependencies-and-adjacencies.md)
