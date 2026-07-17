@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-include!("cli/mod.rs");
+include!("cli/execution_support.rs");
 include!("cli/command_catalog.rs");
 include!("cli/command_line.rs");
 include!("cli/report.rs");
