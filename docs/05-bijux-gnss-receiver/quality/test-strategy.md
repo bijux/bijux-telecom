@@ -14,12 +14,22 @@ runtime orchestration and a large stage-facing integration surface.
 
 ## Main Proof Layers
 
-- stage-family tests for acquisition, tracking, and observations
+- stage-family tests for acquisition, tracking, and observations such as
+  `integration_acquisition_*.rs`, `integration_tracking_*.rs`, and
+  `integration_observations_*.rs`
 - runtime integration tests for boundary, determinism, and support reporting
-- validation and synthetic tests for runtime proof behavior
+  such as `integration_basic.rs`, `integration_determinism.rs`,
+  `integration_pipeline_determinism.rs`, and
+  `integration_receiver_support_matrix_inventory.rs`
+- validation and synthetic tests for runtime proof behavior such as
+  `integration_navigation_validation_run.rs`,
+  `integration_synthetic.rs`, `integration_tracking_truth_table.rs`, and
+  `integration_navigation_pvt_truth_table.rs`
 - feature-gated navigation and RTK tests when receiver-owned adapters or
-  validation surfaces depend on nav
-- golden and truth-table tests for stable runtime outputs
+  validation surfaces depend on nav, such as `integration_navigation_*.rs` and
+  `integration_rtk_*.rs`
+- golden and truth-table tests for stable runtime outputs such as
+  `golden_acquisition.rs`, `golden_tracking.rs`, and the truth-table suites
 
 ## Why One Layer Is Never Enough
 
@@ -30,9 +40,10 @@ layer and at the most relevant integration layer.
 
 ## Strong Example Families
 
-- `integration_basic`
-- `integration_receiver_support_matrix_inventory`
-- `integration_acquisition_*`
-- `integration_tracking_*`
-- `integration_observations_*`
-- `integration_navigation_*`
+- `integration_basic.rs`
+- `integration_receiver_support_matrix_inventory.rs`
+- `integration_acquisition_*.rs`
+- `integration_tracking_*.rs`
+- `integration_observations_*.rs`
+- `integration_navigation_*.rs`
+- `integration_rtk_*.rs`

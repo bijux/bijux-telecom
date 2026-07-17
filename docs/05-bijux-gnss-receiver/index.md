@@ -65,6 +65,11 @@ flowchart LR
 - in-memory receiver artifacts and runtime-side validation helpers
 - synthetic receiver execution helpers exposed from the receiver surface
 
+The durable runtime families today are engine, pipeline stages, ports,
+receiver-side validation, and synthetic proof. Readers should be routed into
+one of those families quickly rather than treating the receiver crate as one
+undifferentiated execution block.
+
 ## What It Refuses
 
 - command vocabulary and top-level operator policy owned by `bijux-gnss`
@@ -160,6 +165,7 @@ flowchart LR
 - `crates/bijux-gnss-receiver/src/ports/`
 - `crates/bijux-gnss-receiver/src/artifacts.rs`
 - `crates/bijux-gnss-receiver/src/reference_validation.rs`
+- `crates/bijux-gnss-receiver/src/validation_report/`
 - `crates/bijux-gnss-receiver/src/sim/`
 - `crates/bijux-gnss-receiver/docs/PIPELINE.md`
 

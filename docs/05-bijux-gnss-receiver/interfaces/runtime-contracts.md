@@ -13,10 +13,12 @@ These contracts define the top-level receiver boundary.
 
 ## Owned Runtime Surfaces
 
-- `ReceiverConfig` and `ReceiverPipelineConfig`
-- `ReceiverRuntimeConfig` and `ReceiverRuntime`
+- `ReceiverConfig` and `ReceiverPipelineConfig` in
+  `src/engine/receiver_config.rs` and the surrounding config family
+- `ReceiverRuntimeConfig` and `ReceiverRuntime` in `src/engine/runtime.rs`
 - logger, trace, and metrics sink traits
-- `Receiver`, `ReceiverEngine`, and receiver-launch helpers
+- `Receiver`, `ReceiverEngine`, and receiver-launch helpers in
+  `src/engine/receiver.rs` and `src/engine/engine.rs`
 - support-matrix and diagnostics-facing runtime output support
 
 ## Stability Expectations
@@ -31,4 +33,6 @@ These contracts define the top-level receiver boundary.
 ## Closest Proof
 
 - `crates/bijux-gnss-receiver/src/engine/`
+- `crates/bijux-gnss-receiver/tests/integration_basic.rs`
+- `crates/bijux-gnss-receiver/tests/integration_receiver_support_matrix_inventory.rs`
 - `crates/bijux-gnss-receiver/docs/RUNTIME.md`

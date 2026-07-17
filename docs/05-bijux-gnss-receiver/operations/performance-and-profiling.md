@@ -21,6 +21,14 @@ tracking, observation building, or runtime-side validation cost.
 
 - bench the runtime path that changed instead of rerunning unrelated crates by
   habit
-- profile stage transitions and hot loops where execution ownership lives
+- profile stage transitions and hot loops where execution ownership lives,
+  especially under `src/pipeline/acquisition/`, `src/pipeline/tracking/`, and
+  `src/pipeline/observations/`
 - treat benchmark evidence as maintainer-facing proof once the workflow hands
   off to `bijux-gnss-dev`
+
+## Reader Boundary
+
+Receiver profiling proves runtime cost at the staged execution boundary. Once
+the question becomes repository benchmark baselines, threshold policy, or
+publication of benchmark evidence, hand off to `07-bijux-gnss-dev`.
