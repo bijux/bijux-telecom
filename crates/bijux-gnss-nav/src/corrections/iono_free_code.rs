@@ -38,6 +38,19 @@ enum IonoFreeCodeStatus {
     FrequencyInvalid,
 }
 
+#[derive(Clone, Copy)]
+struct IonoFreeCodePairInput<'a> {
+    epoch_idx: u64,
+    t_rx_s: f64,
+    gps_time: Option<GpsTime>,
+    sat: SatId,
+    band_1: SignalBand,
+    band_2: SignalBand,
+    first: Option<&'a ObsSatellite>,
+    second: Option<&'a ObsSatellite>,
+    biases: Option<&'a dyn CodeBiasProvider>,
+}
+
 pub fn iono_free_code_from_obs_epochs(
     epochs: &[ObsEpoch],
     band_1: SignalBand,
@@ -64,9 +77,9 @@ pub fn iono_free_code_from_obs_epochs_with_biases(
             let first = sats.iter().find(|candidate| candidate.signal_id.band == band_1).copied();
             let second = sats.iter().find(|candidate| candidate.signal_id.band == band_2).copied();
             let gps_time = epoch_gps_time(epoch);
-            out.push(iono_free_code_from_pair_with_biases(
-                epoch.epoch_idx,
-                epoch.t_rx_s.0,
+            out.push(iono_free_code_from_pair_with_biases(IonoFreeCodePairInput {
+                epoch_idx: epoch.epoch_idx,
+                t_rx_s: epoch.t_rx_s.0,
                 gps_time,
                 sat,
                 band_1,
@@ -74,7 +87,7 @@ pub fn iono_free_code_from_obs_epochs_with_biases(
                 first,
                 second,
                 biases,
-            ));
+            }));
         }
     }
 
@@ -90,42 +103,51 @@ pub(crate) fn iono_free_code_from_pair(
     first: Option<&ObsSatellite>,
     second: Option<&ObsSatellite>,
 ) -> IonoFreeCodeObservation {
-    iono_free_code_from_pair_with_biases(
-        epoch_idx, t_rx_s, None, sat, band_1, band_2, first, second, None,
-    )
+    iono_free_code_from_pair_with_biases(IonoFreeCodePairInput {
+        epoch_idx,
+        t_rx_s,
+        gps_time: None,
+        sat,
+        band_1,
+        band_2,
+        first,
+        second,
+        biases: None,
+    })
 }
 
-pub(crate) fn iono_free_code_from_pair_with_biases(
-    epoch_idx: u64,
-    t_rx_s: f64,
-    gps_time: Option<GpsTime>,
-    sat: SatId,
-    band_1: SignalBand,
-    band_2: SignalBand,
-    first: Option<&ObsSatellite>,
-    second: Option<&ObsSatellite>,
-    biases: Option<&dyn CodeBiasProvider>,
+fn iono_free_code_from_pair_with_biases(
+    input: IonoFreeCodePairInput<'_>,
 ) -> IonoFreeCodeObservation {
-    let f1_hz =
-        first.map(|observation| observation.metadata.signal.carrier_hz.value()).unwrap_or(0.0);
-    let f2_hz =
-        second.map(|observation| observation.metadata.signal.carrier_hz.value()).unwrap_or(0.0);
-    let signal_1 = first.map(|observation| observation.signal_id);
-    let signal_2 = second.map(|observation| observation.signal_id);
+    let f1_hz = input
+        .first
+        .map(|observation| observation.metadata.signal.carrier_hz.value())
+        .unwrap_or(0.0);
+    let f2_hz = input
+        .second
+        .map(|observation| observation.metadata.signal.carrier_hz.value())
+        .unwrap_or(0.0);
+    let signal_1 = input.first.map(|observation| observation.signal_id);
+    let signal_2 = input.second.map(|observation| observation.signal_id);
 
-    let (code_m, variance_m2, status) =
-        match dual_frequency_pair_issue(sat, band_1, band_2, first, second) {
-            Some(issue) => (None, None, iono_free_code_status_from_pair_issue(issue)),
-            None => {
-                let (Some(first), Some(second)) = (first, second) else {
-                    unreachable!("compatible dual-frequency pairs must include both observations");
-                };
-                evaluate_iono_free_code(first, second)
-            }
-        };
-    let code_bias_m = match (biases, signal_1, signal_2, code_m) {
+    let (code_m, variance_m2, status) = match dual_frequency_pair_issue(
+        input.sat,
+        input.band_1,
+        input.band_2,
+        input.first,
+        input.second,
+    ) {
+        Some(issue) => (None, None, iono_free_code_status_from_pair_issue(issue)),
+        None => {
+            let (Some(first), Some(second)) = (input.first, input.second) else {
+                unreachable!("compatible dual-frequency pairs must include both observations");
+            };
+            evaluate_iono_free_code(first, second)
+        }
+    };
+    let code_bias_m = match (input.biases, signal_1, signal_2, code_m) {
         (Some(provider), Some(signal_1), Some(signal_2), Some(_)) => {
-            iono_free_code_bias_m_at(provider, signal_1, signal_2, f1_hz, f2_hz, gps_time)
+            iono_free_code_bias_m_at(provider, signal_1, signal_2, f1_hz, f2_hz, input.gps_time)
         }
         _ => None,
     };
@@ -133,13 +155,13 @@ pub(crate) fn iono_free_code_from_pair_with_biases(
     let (status_text, reason) = status_reason(status);
 
     IonoFreeCodeObservation {
-        epoch_idx,
-        t_rx_s,
-        sat,
+        epoch_idx: input.epoch_idx,
+        t_rx_s: input.t_rx_s,
+        sat: input.sat,
         signal_1,
         signal_2,
-        band_1,
-        band_2,
+        band_1: input.band_1,
+        band_2: input.band_2,
         f1_hz,
         f2_hz,
         code_m,

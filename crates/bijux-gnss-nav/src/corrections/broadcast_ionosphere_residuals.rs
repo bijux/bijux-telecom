@@ -472,12 +472,12 @@ fn receiver_llh_from_ecef(receiver_ecef_m: (f64, f64, f64)) -> Option<Llh> {
     Some(Llh { lat_deg, lon_deg, alt_m })
 }
 
-fn dual_frequency_observation_pair<'a>(
-    epoch: &'a ObsEpoch,
+fn dual_frequency_observation_pair(
+    epoch: &ObsEpoch,
     sat: SatId,
     band_1: SignalBand,
     band_2: SignalBand,
-) -> Option<(&'a ObsSatellite, &'a ObsSatellite)> {
+) -> Option<(&ObsSatellite, &ObsSatellite)> {
     let first = epoch.sats.iter().find(|observation| {
         observation.signal_id.sat == sat && observation.signal_id.band == band_1
     })?;

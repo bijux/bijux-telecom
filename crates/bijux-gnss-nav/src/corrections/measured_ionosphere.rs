@@ -66,6 +66,40 @@ struct PhaseArcState {
     level_bias_m: Option<f64>,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct MeasuredIonospherePairInput<'a> {
+    epoch_idx: u64,
+    t_rx_s: f64,
+    sat: SatId,
+    band_1: SignalBand,
+    band_2: SignalBand,
+    first: Option<&'a ObsSatellite>,
+    second: Option<&'a ObsSatellite>,
+    prior_phase_level_bias_m: Option<f64>,
+    phase_arc_reset: bool,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct MeasuredIonosphereCodeEvaluation {
+    geometry_free_m: Option<f64>,
+    geometry_free_var_m2: Option<f64>,
+    delay_band_1_m: Option<f64>,
+    delay_band_2_m: Option<f64>,
+    delay_var_band_1_m2: Option<f64>,
+    delay_var_band_2_m2: Option<f64>,
+    status: MeasuredIonosphereCodeStatus,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct MeasuredIonospherePhaseEvaluation {
+    geometry_free_m: Option<f64>,
+    leveled_geometry_free_m: Option<f64>,
+    delay_band_1_m: Option<f64>,
+    delay_band_2_m: Option<f64>,
+    level_bias_m: Option<f64>,
+    status: MeasuredIonospherePhaseStatus,
+}
+
 pub fn measured_ionosphere_from_obs_epochs(
     epochs: &[ObsEpoch],
     band_1: SignalBand,
@@ -90,17 +124,17 @@ pub fn measured_ionosphere_from_obs_epochs(
                 arc_state.level_bias_m = None;
             }
 
-            let mut observation = measured_ionosphere_from_pair(
-                epoch.epoch_idx,
-                epoch.t_rx_s.0,
+            let mut observation = measured_ionosphere_from_pair(MeasuredIonospherePairInput {
+                epoch_idx: epoch.epoch_idx,
+                t_rx_s: epoch.t_rx_s.0,
                 sat,
                 band_1,
                 band_2,
                 first,
                 second,
-                arc_state.level_bias_m,
-                phase_arc_broken,
-            );
+                prior_phase_level_bias_m: arc_state.level_bias_m,
+                phase_arc_reset: phase_arc_broken,
+            });
             observation.phase_arc_reset = phase_arc_broken
                 || (arc_state.level_bias_m.is_none() && observation.phase_level_bias_m.is_some());
             arc_state.level_bias_m = observation.phase_level_bias_m;
@@ -111,99 +145,97 @@ pub fn measured_ionosphere_from_obs_epochs(
     out
 }
 
-pub(crate) fn measured_ionosphere_from_pair(
-    epoch_idx: u64,
-    t_rx_s: f64,
-    sat: SatId,
-    band_1: SignalBand,
-    band_2: SignalBand,
-    first: Option<&ObsSatellite>,
-    second: Option<&ObsSatellite>,
-    prior_phase_level_bias_m: Option<f64>,
-    phase_arc_reset: bool,
+fn measured_ionosphere_from_pair(
+    input: MeasuredIonospherePairInput<'_>,
 ) -> MeasuredIonosphereObservation {
-    let f1_hz =
-        first.map(|observation| observation.metadata.signal.carrier_hz.value()).unwrap_or(0.0);
-    let f2_hz =
-        second.map(|observation| observation.metadata.signal.carrier_hz.value()).unwrap_or(0.0);
-    let signal_1 = first.map(|observation| observation.signal_id);
-    let signal_2 = second.map(|observation| observation.signal_id);
+    let f1_hz = input
+        .first
+        .map(|observation| observation.metadata.signal.carrier_hz.value())
+        .unwrap_or(0.0);
+    let f2_hz = input
+        .second
+        .map(|observation| observation.metadata.signal.carrier_hz.value())
+        .unwrap_or(0.0);
+    let signal_1 = input.first.map(|observation| observation.signal_id);
+    let signal_2 = input.second.map(|observation| observation.signal_id);
 
-    let (
-        code_geometry_free_m,
-        code_geometry_free_var_m2,
-        code_delay_band_1_m,
-        code_delay_band_2_m,
-        code_delay_var_band_1_m2,
-        code_delay_var_band_2_m2,
-        code_status,
-    ) = match dual_frequency_pair_issue(sat, band_1, band_2, first, second) {
-        Some(issue) => (
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            measured_ionosphere_code_status_from_pair_issue(issue),
-        ),
+    let code = match dual_frequency_pair_issue(
+        input.sat,
+        input.band_1,
+        input.band_2,
+        input.first,
+        input.second,
+    ) {
+        Some(issue) => MeasuredIonosphereCodeEvaluation {
+            geometry_free_m: None,
+            geometry_free_var_m2: None,
+            delay_band_1_m: None,
+            delay_band_2_m: None,
+            delay_var_band_1_m2: None,
+            delay_var_band_2_m2: None,
+            status: measured_ionosphere_code_status_from_pair_issue(issue),
+        },
         None => {
-            let (Some(first), Some(second)) = (first, second) else {
+            let (Some(first), Some(second)) = (input.first, input.second) else {
                 unreachable!("compatible dual-frequency pairs must include both observations");
             };
             evaluate_measured_ionosphere_code(first, second)
         }
     };
 
-    let (
-        phase_geometry_free_m,
-        leveled_phase_geometry_free_m,
-        phase_delay_band_1_m,
-        phase_delay_band_2_m,
-        phase_level_bias_m,
-        phase_status,
-    ) = match dual_frequency_pair_issue(sat, band_1, band_2, first, second) {
-        Some(issue) => {
-            (None, None, None, None, None, measured_ionosphere_phase_status_from_pair_issue(issue))
-        }
+    let phase = match dual_frequency_pair_issue(
+        input.sat,
+        input.band_1,
+        input.band_2,
+        input.first,
+        input.second,
+    ) {
+        Some(issue) => MeasuredIonospherePhaseEvaluation {
+            geometry_free_m: None,
+            leveled_geometry_free_m: None,
+            delay_band_1_m: None,
+            delay_band_2_m: None,
+            level_bias_m: None,
+            status: measured_ionosphere_phase_status_from_pair_issue(issue),
+        },
         None => {
-            let (Some(first), Some(second)) = (first, second) else {
+            let (Some(first), Some(second)) = (input.first, input.second) else {
                 unreachable!("compatible dual-frequency pairs must include both observations");
             };
             evaluate_measured_ionosphere_phase(
                 first,
                 second,
-                code_geometry_free_m,
-                prior_phase_level_bias_m,
+                code.geometry_free_m,
+                input.prior_phase_level_bias_m,
             )
         }
     };
 
-    let (code_status, code_reason) = code_status_reason(code_status);
-    let (phase_status, phase_reason) = phase_status_reason(phase_status);
+    let (code_status, code_reason) = code_status_reason(code.status);
+    let (phase_status, phase_reason) = phase_status_reason(phase.status);
 
     MeasuredIonosphereObservation {
-        epoch_idx,
-        t_rx_s,
-        sat,
+        epoch_idx: input.epoch_idx,
+        t_rx_s: input.t_rx_s,
+        sat: input.sat,
         signal_1,
         signal_2,
-        band_1,
-        band_2,
+        band_1: input.band_1,
+        band_2: input.band_2,
         f1_hz,
         f2_hz,
-        code_geometry_free_m,
-        code_geometry_free_var_m2,
-        code_delay_band_1_m,
-        code_delay_band_2_m,
-        code_delay_var_band_1_m2,
-        code_delay_var_band_2_m2,
-        phase_geometry_free_m,
-        leveled_phase_geometry_free_m,
-        phase_delay_band_1_m,
-        phase_delay_band_2_m,
-        phase_level_bias_m,
-        phase_arc_reset,
+        code_geometry_free_m: code.geometry_free_m,
+        code_geometry_free_var_m2: code.geometry_free_var_m2,
+        code_delay_band_1_m: code.delay_band_1_m,
+        code_delay_band_2_m: code.delay_band_2_m,
+        code_delay_var_band_1_m2: code.delay_var_band_1_m2,
+        code_delay_var_band_2_m2: code.delay_var_band_2_m2,
+        phase_geometry_free_m: phase.geometry_free_m,
+        leveled_phase_geometry_free_m: phase.leveled_geometry_free_m,
+        phase_delay_band_1_m: phase.delay_band_1_m,
+        phase_delay_band_2_m: phase.delay_band_2_m,
+        phase_level_bias_m: phase.level_bias_m,
+        phase_arc_reset: input.phase_arc_reset,
         code_status,
         code_reason,
         phase_status,
@@ -229,53 +261,61 @@ fn should_reset_phase_arc(
 fn evaluate_measured_ionosphere_code(
     first: &ObsSatellite,
     second: &ObsSatellite,
-) -> (
-    Option<f64>,
-    Option<f64>,
-    Option<f64>,
-    Option<f64>,
-    Option<f64>,
-    Option<f64>,
-    MeasuredIonosphereCodeStatus,
-) {
+) -> MeasuredIonosphereCodeEvaluation {
     if !first.lock_flags.code_lock || !second.lock_flags.code_lock {
-        return (None, None, None, None, None, None, MeasuredIonosphereCodeStatus::CodeLockInvalid);
+        return MeasuredIonosphereCodeEvaluation {
+            geometry_free_m: None,
+            geometry_free_var_m2: None,
+            delay_band_1_m: None,
+            delay_band_2_m: None,
+            delay_var_band_1_m2: None,
+            delay_var_band_2_m2: None,
+            status: MeasuredIonosphereCodeStatus::CodeLockInvalid,
+        };
     }
     if !first.pseudorange_var_m2.is_finite()
         || !second.pseudorange_var_m2.is_finite()
         || first.pseudorange_var_m2 < 0.0
         || second.pseudorange_var_m2 < 0.0
     {
-        return (None, None, None, None, None, None, MeasuredIonosphereCodeStatus::VarianceInvalid);
+        return MeasuredIonosphereCodeEvaluation {
+            geometry_free_m: None,
+            geometry_free_var_m2: None,
+            delay_band_1_m: None,
+            delay_band_2_m: None,
+            delay_var_band_1_m2: None,
+            delay_var_band_2_m2: None,
+            status: MeasuredIonosphereCodeStatus::VarianceInvalid,
+        };
     }
 
     let f1_hz = first.metadata.signal.carrier_hz.value();
     let f2_hz = second.metadata.signal.carrier_hz.value();
     if !f1_hz.is_finite() || !f2_hz.is_finite() || f1_hz <= 0.0 || f2_hz <= 0.0 {
-        return (
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            MeasuredIonosphereCodeStatus::FrequencyInvalid,
-        );
+        return MeasuredIonosphereCodeEvaluation {
+            geometry_free_m: None,
+            geometry_free_var_m2: None,
+            delay_band_1_m: None,
+            delay_band_2_m: None,
+            delay_var_band_1_m2: None,
+            delay_var_band_2_m2: None,
+            status: MeasuredIonosphereCodeStatus::FrequencyInvalid,
+        };
     }
 
     let f1_2 = f1_hz * f1_hz;
     let f2_2 = f2_hz * f2_hz;
     let denom = f1_2 - f2_2;
     if !denom.is_finite() || denom.abs() <= f64::EPSILON {
-        return (
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            MeasuredIonosphereCodeStatus::FrequencyInvalid,
-        );
+        return MeasuredIonosphereCodeEvaluation {
+            geometry_free_m: None,
+            geometry_free_var_m2: None,
+            delay_band_1_m: None,
+            delay_band_2_m: None,
+            delay_var_band_1_m2: None,
+            delay_var_band_2_m2: None,
+            status: MeasuredIonosphereCodeStatus::FrequencyInvalid,
+        };
     }
 
     let geometry_free_m = second.pseudorange_m.0 - first.pseudorange_m.0;
@@ -287,15 +327,15 @@ fn evaluate_measured_ionosphere_code(
     let delay_var_band_1_m2 = geometry_free_var_m2 * scale_band_1.powi(2);
     let delay_var_band_2_m2 = geometry_free_var_m2 * scale_band_2.powi(2);
 
-    (
-        Some(geometry_free_m),
-        Some(geometry_free_var_m2),
-        Some(delay_band_1_m),
-        Some(delay_band_2_m),
-        Some(delay_var_band_1_m2),
-        Some(delay_var_band_2_m2),
-        MeasuredIonosphereCodeStatus::Ok,
-    )
+    MeasuredIonosphereCodeEvaluation {
+        geometry_free_m: Some(geometry_free_m),
+        geometry_free_var_m2: Some(geometry_free_var_m2),
+        delay_band_1_m: Some(delay_band_1_m),
+        delay_band_2_m: Some(delay_band_2_m),
+        delay_var_band_1_m2: Some(delay_var_band_1_m2),
+        delay_var_band_2_m2: Some(delay_var_band_2_m2),
+        status: MeasuredIonosphereCodeStatus::Ok,
+    }
 }
 
 fn evaluate_measured_ionosphere_phase(
@@ -303,30 +343,57 @@ fn evaluate_measured_ionosphere_phase(
     second: &ObsSatellite,
     code_geometry_free_m: Option<f64>,
     prior_phase_level_bias_m: Option<f64>,
-) -> (Option<f64>, Option<f64>, Option<f64>, Option<f64>, Option<f64>, MeasuredIonospherePhaseStatus)
-{
+) -> MeasuredIonospherePhaseEvaluation {
     if !first.lock_flags.carrier_lock || !second.lock_flags.carrier_lock {
-        return (None, None, None, None, None, MeasuredIonospherePhaseStatus::CarrierLockInvalid);
+        return MeasuredIonospherePhaseEvaluation {
+            geometry_free_m: None,
+            leveled_geometry_free_m: None,
+            delay_band_1_m: None,
+            delay_band_2_m: None,
+            level_bias_m: None,
+            status: MeasuredIonospherePhaseStatus::CarrierLockInvalid,
+        };
     }
     if !first.carrier_phase_var_cycles2.is_finite()
         || !second.carrier_phase_var_cycles2.is_finite()
         || first.carrier_phase_var_cycles2 < 0.0
         || second.carrier_phase_var_cycles2 < 0.0
     {
-        return (None, None, None, None, None, MeasuredIonospherePhaseStatus::VarianceInvalid);
+        return MeasuredIonospherePhaseEvaluation {
+            geometry_free_m: None,
+            leveled_geometry_free_m: None,
+            delay_band_1_m: None,
+            delay_band_2_m: None,
+            level_bias_m: None,
+            status: MeasuredIonospherePhaseStatus::VarianceInvalid,
+        };
     }
 
     let f1_hz = first.metadata.signal.carrier_hz.value();
     let f2_hz = second.metadata.signal.carrier_hz.value();
     if !f1_hz.is_finite() || !f2_hz.is_finite() || f1_hz <= 0.0 || f2_hz <= 0.0 {
-        return (None, None, None, None, None, MeasuredIonospherePhaseStatus::FrequencyInvalid);
+        return MeasuredIonospherePhaseEvaluation {
+            geometry_free_m: None,
+            leveled_geometry_free_m: None,
+            delay_band_1_m: None,
+            delay_band_2_m: None,
+            level_bias_m: None,
+            status: MeasuredIonospherePhaseStatus::FrequencyInvalid,
+        };
     }
 
     let f1_2 = f1_hz * f1_hz;
     let f2_2 = f2_hz * f2_hz;
     let denom = f1_2 - f2_2;
     if !denom.is_finite() || denom.abs() <= f64::EPSILON {
-        return (None, None, None, None, None, MeasuredIonospherePhaseStatus::FrequencyInvalid);
+        return MeasuredIonospherePhaseEvaluation {
+            geometry_free_m: None,
+            leveled_geometry_free_m: None,
+            delay_band_1_m: None,
+            delay_band_2_m: None,
+            level_bias_m: None,
+            status: MeasuredIonospherePhaseStatus::FrequencyInvalid,
+        };
     }
 
     let geometry_free_m =
@@ -336,14 +403,14 @@ fn evaluate_measured_ionosphere_phase(
         code_geometry_free_m.map(|code_geometry_free_m| geometry_free_m - code_geometry_free_m)
     });
     let Some(phase_level_bias_m) = phase_level_bias_m else {
-        return (
-            Some(geometry_free_m),
-            None,
-            None,
-            None,
-            None,
-            MeasuredIonospherePhaseStatus::BiasUnavailable,
-        );
+        return MeasuredIonospherePhaseEvaluation {
+            geometry_free_m: Some(geometry_free_m),
+            leveled_geometry_free_m: None,
+            delay_band_1_m: None,
+            delay_band_2_m: None,
+            level_bias_m: None,
+            status: MeasuredIonospherePhaseStatus::BiasUnavailable,
+        };
     };
 
     let leveled_geometry_free_m = geometry_free_m - phase_level_bias_m;
@@ -352,14 +419,14 @@ fn evaluate_measured_ionosphere_phase(
     let delay_band_1_m = leveled_geometry_free_m * scale_band_1;
     let delay_band_2_m = leveled_geometry_free_m * scale_band_2;
 
-    (
-        Some(geometry_free_m),
-        Some(leveled_geometry_free_m),
-        Some(delay_band_1_m),
-        Some(delay_band_2_m),
-        Some(phase_level_bias_m),
-        MeasuredIonospherePhaseStatus::Ok,
-    )
+    MeasuredIonospherePhaseEvaluation {
+        geometry_free_m: Some(geometry_free_m),
+        leveled_geometry_free_m: Some(leveled_geometry_free_m),
+        delay_band_1_m: Some(delay_band_1_m),
+        delay_band_2_m: Some(delay_band_2_m),
+        level_bias_m: Some(phase_level_bias_m),
+        status: MeasuredIonospherePhaseStatus::Ok,
+    }
 }
 
 fn code_status_reason(status: MeasuredIonosphereCodeStatus) -> (String, String) {
