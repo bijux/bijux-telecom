@@ -26,149 +26,28 @@ pub(crate) fn handle_diagnostics(command: GnssCommand) -> Result<()> {
             replay_dispatch::handle_replay_audit(common, baseline_run_dir, candidate_run_dir)?
         }
         DiagnosticsCommand::AdvancedGate { common, run_dir, mode, strict } => {
-            let _ = runtime_config_from_env(&common, None);
-            let report = advanced_gate_report(&run_dir, mode)?;
-            let passed =
-                report.get("gate_passed").and_then(|value| value.as_bool()).unwrap_or(false);
-            if strict && !passed {
-                return Err(classified_error(
-                    CliErrorClass::UnsupportedScience,
-                    format!(
-                        "advanced gate failed for mode={:?} run_dir={}",
-                        mode,
-                        run_dir.display()
-                    ),
-                ));
-            }
-            report_publishing::publish_diagnostics_report(
-                &common,
-                "diagnostics_advanced_gate",
-                &report,
-                "diagnostics_advanced_gate_report.schema.json",
-                print_advanced_gate_table,
-            )?;
+            quality_dispatch::handle_advanced_gate(common, run_dir, mode, strict)?
         }
         DiagnosticsCommand::ArtifactInventory { common, run_dir } => {
-            let report = artifact_inventory_report(&run_dir)?;
-            report_publishing::publish_diagnostics_report(
-                &common,
-                "diagnostics_artifact_inventory",
-                &report,
-                "diagnostics_artifact_inventory_report.schema.json",
-                print_artifact_inventory_table,
-            )?;
+            quality_dispatch::handle_artifact_inventory(common, run_dir)?
         }
         DiagnosticsCommand::DebugPlan { common, run_dir } => {
-            let report = debug_plan_report(&run_dir)?;
-            report_publishing::publish_diagnostics_report(
-                &common,
-                "diagnostics_debug_plan",
-                &report,
-                "diagnostics_debug_plan_report.schema.json",
-                print_debug_plan_table,
-            )?;
+            quality_dispatch::handle_debug_plan(common, run_dir)?
         }
         DiagnosticsCommand::BenchmarkSummary { common, run_dir } => {
-            let report = benchmark_summary_report(&run_dir)?;
-            report_publishing::publish_diagnostics_report(
-                &common,
-                "diagnostics_benchmark_summary",
-                &report,
-                "diagnostics_benchmark_summary_report.schema.json",
-                print_benchmark_summary_table,
-            )?;
+            quality_dispatch::handle_benchmark_summary(common, run_dir)?
         }
         DiagnosticsCommand::MediumGate { common, run_dir, strict } => {
-            let _ = runtime_config_from_env(&common, None);
-            let report = medium_gate_report(&run_dir)?;
-            let passed =
-                report.get("gate_passed").and_then(|value| value.as_bool()).unwrap_or(false);
-            if strict && !passed {
-                return Err(classified_error(
-                    CliErrorClass::UnsupportedScience,
-                    format!("medium gate failed for run_dir={}", run_dir.display()),
-                ));
-            }
-            match common.report {
-                ReportFormat::Table => print_medium_gate_table(&report),
-                ReportFormat::Json => emit_report(&common, "diagnostics_medium_gate", &report)?,
-            }
-            write_diagnostics_report_artifact(
-                &common,
-                "diagnostics_medium_gate",
-                &report,
-                "diagnostics_medium_gate_report.schema.json",
-            )?;
-            write_manifest(
-                &common,
-                "diagnostics_medium_gate",
-                &ReceiverConfig::default(),
-                None,
-                &report,
-            )?;
+            quality_dispatch::handle_medium_gate(common, run_dir, strict)?
         }
         DiagnosticsCommand::OperatorStatus { common, run_dir } => {
-            let _ = runtime_config_from_env(&common, None);
-            let report = operator_status_report(&run_dir)?;
-            match common.report {
-                ReportFormat::Table => print_operator_status_table(&report),
-                ReportFormat::Json => emit_report(&common, "diagnostics_operator_status", &report)?,
-            }
-            write_diagnostics_report_artifact(
-                &common,
-                "diagnostics_operator_status",
-                &report,
-                "diagnostics_operator_status_report.schema.json",
-            )?;
-            write_manifest(
-                &common,
-                "diagnostics_operator_status",
-                &ReceiverConfig::default(),
-                None,
-                &report,
-            )?;
+            quality_dispatch::handle_operator_status(common, run_dir)?
         }
         DiagnosticsCommand::ChannelSummary { common, run_dir } => {
-            let _ = runtime_config_from_env(&common, None);
-            let report = channel_summary_report(&run_dir)?;
-            match common.report {
-                ReportFormat::Table => print_channel_summary_table(&report),
-                ReportFormat::Json => emit_report(&common, "diagnostics_channel_summary", &report)?,
-            }
-            write_diagnostics_report_artifact(
-                &common,
-                "diagnostics_channel_summary",
-                &report,
-                "diagnostics_channel_summary_report.schema.json",
-            )?;
-            write_manifest(
-                &common,
-                "diagnostics_channel_summary",
-                &ReceiverConfig::default(),
-                None,
-                &report,
-            )?;
+            quality_dispatch::handle_channel_summary(common, run_dir)?
         }
         DiagnosticsCommand::ExportBundle { common, run_dir, out_dir } => {
-            let _ = runtime_config_from_env(&common, None);
-            let report = export_bundle_report(&run_dir, out_dir.as_ref())?;
-            match common.report {
-                ReportFormat::Table => print_export_bundle_table(&report),
-                ReportFormat::Json => emit_report(&common, "diagnostics_export_bundle", &report)?,
-            }
-            write_diagnostics_report_artifact(
-                &common,
-                "diagnostics_export_bundle",
-                &report,
-                "diagnostics_export_bundle_report.schema.json",
-            )?;
-            write_manifest(
-                &common,
-                "diagnostics_export_bundle",
-                &ReceiverConfig::default(),
-                None,
-                &report,
-            )?;
+            quality_dispatch::handle_export_bundle(common, run_dir, out_dir)?
         }
         DiagnosticsCommand::MachineCatalog { common } => {
             let _ = runtime_config_from_env(&common, None);
