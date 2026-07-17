@@ -23,7 +23,21 @@ fn navigation_pipeline_reports_formal_protection_levels() {
         )
         .expect("formal protection levels");
 
-        assert_eq!(solution.integrity_hpl_m, Some(expected.horizontal_m));
-        assert_eq!(solution.integrity_vpl_m, Some(expected.vertical_m));
+        assert_option_close(solution.integrity_hpl_m, Some(expected.horizontal_m), 1.0e-12);
+        assert_option_close(solution.integrity_vpl_m, Some(expected.vertical_m), 1.0e-12);
+    }
+}
+
+fn assert_option_close(actual: Option<f64>, expected: Option<f64>, tolerance: f64) {
+    match (actual, expected) {
+        (Some(actual), Some(expected)) => {
+            let error = (actual - expected).abs();
+            assert!(
+                error <= tolerance,
+                "value mismatch: actual={actual:.15} expected={expected:.15} error={error:.15} tolerance={tolerance:.15}"
+            );
+        }
+        (None, None) => {}
+        _ => panic!("option mismatch: actual={actual:?} expected={expected:?}"),
     }
 }
