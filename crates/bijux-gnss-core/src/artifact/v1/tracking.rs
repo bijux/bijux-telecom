@@ -1,4 +1,5 @@
-use super::{validate_receiver_sample_trace, ArtifactPayloadValidate, ArtifactV1};
+use super::validate_receiver_sample_trace;
+use crate::artifact::{ArtifactPayloadValidate, ArtifactV1};
 use crate::api::{DiagnosticEvent, DiagnosticSeverity, TrackEpoch, TrackTransition};
 
 /// Tracking epoch artifact v1.

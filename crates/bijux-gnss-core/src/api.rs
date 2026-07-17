@@ -1,11 +1,10 @@
 //! Public API for bijux-gnss-core.
 
 pub use crate::artifact::v1::acquisition::{AcqExplainV1, AcqResultV1};
-pub use crate::artifact::v1::nav::NavSolutionEpochV1;
+pub use crate::artifact::v1::navigation::{ppp, rtk, NavSolutionEpochV1};
 pub use crate::artifact::v1::observation::{ObsDecisionV1, ObsEpochV1};
 pub use crate::artifact::v1::support_matrix::SupportMatrixV1;
 pub use crate::artifact::v1::tracking::{TrackEpochV1, TrackTransitionV1};
-pub use crate::artifact::v1::{ppp, rtk};
 /// Artifact headers and versioned payloads.
 pub use crate::artifact::{
     convert_v1_to_v2, ArtifactHeaderV1, ArtifactKind, ArtifactPayloadValidate, ArtifactReadPolicy,

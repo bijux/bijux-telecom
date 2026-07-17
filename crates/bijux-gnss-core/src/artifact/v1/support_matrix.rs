@@ -1,4 +1,4 @@
-use super::{ArtifactPayloadValidate, ArtifactV1};
+use crate::artifact::{ArtifactPayloadValidate, ArtifactV1};
 use crate::api::{DiagnosticEvent, DiagnosticSeverity, SupportMatrix};
 
 /// Support matrix artifact v1.
