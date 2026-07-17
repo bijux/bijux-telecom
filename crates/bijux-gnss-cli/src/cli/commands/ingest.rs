@@ -142,9 +142,10 @@ pub(crate) fn handle_inspect(command: GnssCommand) -> Result<()> {
 }
 
 pub(crate) fn handle_validate_config(command: GnssCommand) -> Result<()> {
-    let GnssCommand::ValidateConfig { common } = command else {
+    let GnssCommand::ValidateConfig { args } = command else {
         bail!("invalid command for handler");
     };
+    let ValidateConfigArgs { common } = args;
 
     let _ = runtime_config_from_env(&common, None);
     let path = common.config.clone().context("--config is required")?;
@@ -237,9 +238,10 @@ use schemars::schema_for;
 
 #[cfg(feature = "schema-validate")]
 pub(crate) fn handle_config_schema(command: GnssCommand) -> Result<()> {
-    let GnssCommand::ConfigSchema { common, out } = command else {
+    let GnssCommand::ConfigSchema { args } = command else {
         bail!("invalid command for handler");
     };
+    let ConfigSchemaArgs { common, out } = args;
 
     let _ = runtime_config_from_env(&common, None);
                         let schema = schema_for!(ReceiverConfig);
@@ -259,16 +261,17 @@ pub(crate) fn handle_config_schema(command: GnssCommand) -> Result<()> {
 
 #[cfg(not(feature = "schema-validate"))]
 pub(crate) fn handle_config_schema(command: GnssCommand) -> Result<()> {
-    let GnssCommand::ConfigSchema { common: _, out: _ } = command else {
+    let GnssCommand::ConfigSchema { args: _ } = command else {
         bail!("invalid command for handler");
     };
     bail!("schema generation disabled; enable --features schema-validate");
 }
 
 pub(crate) fn handle_config_upgrade(command: GnssCommand) -> Result<()> {
-    let GnssCommand::ConfigUpgrade { common, config, out } = command else {
+    let GnssCommand::ConfigUpgrade { args } = command else {
         bail!("invalid command for handler");
     };
+    let ConfigUpgradeArgs { common, config, out } = args;
 
     let _ = runtime_config_from_env(&common, None);
     let profile = load_config_from_path(&config)?;

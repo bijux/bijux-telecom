@@ -1,8 +1,12 @@
 mod diagnostics_commands;
 mod artifact_commands;
 mod navigation_commands;
+mod configuration_commands;
 
 pub(crate) use artifact_commands::{ArtifactCommand, DiagnosticFailOn};
+pub(crate) use configuration_commands::{
+    ConfigCommand, ConfigSchemaArgs, ConfigUpgradeArgs, ValidateConfigArgs,
+};
 pub(crate) use diagnostics_commands::{AdvancedGateMode, DiagnosticsCommand, RouteTopic, WorkflowProfile};
 pub(crate) use navigation_commands::{NavCommand, ReferenceAlign};
 
@@ -281,7 +285,7 @@ pub(crate) enum GnssCommand {
     /// Validate a receiver profile configuration file
     ValidateConfig {
         #[command(flatten)]
-        common: CommonArgs,
+        args: ValidateConfigArgs,
     },
 
     /// Configuration utilities
@@ -348,24 +352,13 @@ pub(crate) enum GnssCommand {
     /// Write JSON schema for receiver config
     ConfigSchema {
         #[command(flatten)]
-        common: CommonArgs,
-
-        #[arg(long, value_name = "FILE")]
-        out: PathBuf,
+        args: ConfigSchemaArgs,
     },
 
     /// Upgrade a receiver config to the current schema version
     ConfigUpgrade {
         #[command(flatten)]
-        common: CommonArgs,
-
-        /// Input config file
-        #[arg(long, value_name = "FILE")]
-        config: PathBuf,
-
-        /// Optional output path (defaults to overwriting input)
-        #[arg(long, value_name = "FILE")]
-        out: Option<PathBuf>,
+        args: ConfigUpgradeArgs,
     },
 
     /// Run a streaming pipeline with optional replay rate
@@ -496,31 +489,5 @@ pub(crate) enum GnssCommand {
         /// Comma-separated PRN list, e.g. "11,12,25,31,32"
         #[arg(long, value_delimiter = ',', value_parser = clap::value_parser!(u8).range(1..=32))]
         prn: Vec<u8>,
-    },
-}
-
-#[derive(Subcommand)]
-pub(crate) enum ConfigCommand {
-    /// Validate a configuration file (prints warnings unless --strict)
-    Validate {
-        #[command(flatten)]
-        common: CommonArgs,
-
-        #[arg(long, value_name = "FILE")]
-        file: PathBuf,
-
-        /// Treat warnings as errors
-        #[arg(long)]
-        strict: bool,
-    },
-
-    /// Print default receiver profile configuration
-    PrintDefaults {
-        #[command(flatten)]
-        common: CommonArgs,
-
-        /// Output path for defaults (TOML). If omitted, prints to stdout.
-        #[arg(long, value_name = "FILE")]
-        out: Option<PathBuf>,
     },
 }
