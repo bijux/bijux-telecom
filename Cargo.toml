@@ -13,6 +13,7 @@ members = [
   "crates/bijux-telecom-dev",
 ]
 exclude = [
+  "crates/bijux-gnss-infra-fuzz",
   "crates/bijux-gnss-receiver-fuzz",
 ]
 
