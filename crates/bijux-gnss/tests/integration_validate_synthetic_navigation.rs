@@ -6,6 +6,8 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use bijux_gnss_receiver::api::{sim::SyntheticNavigationValidationScenario, ReceiverConfig};
+
 fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -27,20 +29,55 @@ fn temp_dir_path(name: &str) -> PathBuf {
     std::env::temp_dir().join(format!("bijux_{}_{}_{}", name, std::process::id(), nanos))
 }
 
+fn write_bounded_navigation_validation_inputs(dir: &Path) -> (PathBuf, PathBuf) {
+    let repo = repo_root();
+    let mut config: ReceiverConfig = toml::from_str(
+        &fs::read_to_string(repo.join("configs/receiver_low_rate.toml"))
+            .expect("read receiver config"),
+    )
+    .expect("parse receiver config");
+    let mut scenario: SyntheticNavigationValidationScenario = toml::from_str(
+        &fs::read_to_string(repo.join("configs/scenarios/synthetic_navigation_accuracy.toml"))
+            .expect("read synthetic navigation scenario"),
+    )
+    .expect("parse synthetic navigation scenario");
+
+    scenario.duration_s = 0.08;
+
+    config.sample_rate_hz = scenario.sample_rate_hz;
+    config.intermediate_freq_hz = scenario.intermediate_freq_hz;
+    config.code_freq_basis_hz = 1_023_000.0;
+    config.code_length = 1023;
+    config.acquisition.doppler_search_hz = 1_500;
+    config.acquisition.doppler_step_hz = 250;
+    config.tracking.max_channels = scenario.satellites.len();
+    config.tracking.per_epoch_budget_ms = 100.0;
+    config.navigation.hatch_window = 20;
+
+    let scenario_path = dir.join("synthetic_navigation_validation.toml");
+    let config_path = dir.join("receiver_navigation_validation.toml");
+    fs::write(&scenario_path, toml::to_string(&scenario).expect("serialize bounded scenario"))
+        .expect("write bounded scenario");
+    fs::write(&config_path, toml::to_string(&config).expect("serialize bounded config"))
+        .expect("write bounded config");
+    (scenario_path, config_path)
+}
+
 #[test]
 fn validate_synthetic_navigation_emits_truth_guided_accuracy_artifact() {
     let repo = repo_root();
     let out_dir = temp_dir_path("validate_synthetic_navigation");
     fs::create_dir_all(&out_dir).expect("create output dir");
+    let (scenario_path, config_path) = write_bounded_navigation_validation_inputs(&out_dir);
 
     let output = run_bijux(
         &[
             "gnss",
             "validate-synthetic-navigation",
             "--scenario",
-            "configs/scenarios/synthetic_navigation_accuracy.toml",
+            scenario_path.to_str().expect("scenario path"),
             "--config",
-            "configs/receiver_low_rate.toml",
+            config_path.to_str().expect("config path"),
             "--report",
             "json",
             "--out",

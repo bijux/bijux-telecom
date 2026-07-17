@@ -1,38 +1,18 @@
 #![allow(missing_docs)]
 
-use std::fs;
-use std::path::{Path, PathBuf};
-
 use bijux_gnss_receiver::api::{
     signal::FrontEndFilterSpec,
-    sim::{
-        validate_synthetic_navigation_run, SyntheticClosureStageKind, SyntheticClosureStageStatus,
-        SyntheticNavigationValidationScenario,
-    },
-    ReceiverConfig,
+    sim::{validate_synthetic_navigation_run, SyntheticClosureStageKind, SyntheticClosureStageStatus},
 };
 
-fn repo_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(Path::parent)
-        .expect("workspace root")
-        .to_path_buf()
-}
+#[path = "support/synthetic_navigation_validation.rs"]
+mod synthetic_navigation_validation;
+
+use synthetic_navigation_validation::bounded_navigation_validation_fixture;
 
 #[test]
 fn synthetic_navigation_validation_run_builds_run_level_accuracy_artifact() {
-    let repo = repo_root();
-    let config: ReceiverConfig = toml::from_str(
-        &fs::read_to_string(repo.join("configs/receiver_low_rate.toml"))
-            .expect("read receiver config"),
-    )
-    .expect("parse receiver config");
-    let scenario: SyntheticNavigationValidationScenario = toml::from_str(
-        &fs::read_to_string(repo.join("configs/scenarios/synthetic_navigation_accuracy.toml"))
-            .expect("read synthetic navigation scenario"),
-    )
-    .expect("parse synthetic navigation scenario");
+    let (config, scenario) = bounded_navigation_validation_fixture();
 
     let run = validate_synthetic_navigation_run(
         &config.to_pipeline_config(),
@@ -81,20 +61,10 @@ fn synthetic_navigation_validation_run_builds_run_level_accuracy_artifact() {
 
 #[test]
 fn synthetic_navigation_validation_run_carries_source_and_receiver_front_end_delay() {
-    let repo = repo_root();
-    let mut config: ReceiverConfig = toml::from_str(
-        &fs::read_to_string(repo.join("configs/receiver_low_rate.toml"))
-            .expect("read receiver config"),
-    )
-    .expect("parse receiver config");
-    let mut scenario: SyntheticNavigationValidationScenario = toml::from_str(
-        &fs::read_to_string(repo.join("configs/scenarios/synthetic_navigation_accuracy.toml"))
-            .expect("read synthetic navigation scenario"),
-    )
-    .expect("parse synthetic navigation scenario");
-    let source_front_end_filter = FrontEndFilterSpec::LowPass { cutoff_hz: 1_600_000.0, taps: 17 };
+    let (mut config, mut scenario) = bounded_navigation_validation_fixture();
+    let source_front_end_filter = FrontEndFilterSpec::LowPass { cutoff_hz: 400_000.0, taps: 17 };
     let receiver_front_end_filter =
-        FrontEndFilterSpec::LowPass { cutoff_hz: 1_400_000.0, taps: 21 };
+        FrontEndFilterSpec::LowPass { cutoff_hz: 350_000.0, taps: 21 };
     let combined_sample_delay_samples = source_front_end_filter.group_delay_samples() as u64
         + receiver_front_end_filter.group_delay_samples() as u64;
 
