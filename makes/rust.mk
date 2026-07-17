@@ -1,5 +1,6 @@
 RS_ARTIFACT_ROOT ?= artifacts/rust
 RS_RUN_ID ?= local
+PINNED_REF_GATE_BIN ?= makes/bin/run_pinned_ref_gate.sh
 
 RS_TARGET_DIR ?= $(abspath $(RS_ARTIFACT_ROOT)/target)
 RS_NEXTEST_CACHE_DIR ?= $(RS_TARGET_DIR)/nextest
@@ -33,7 +34,7 @@ define rs_nextest_summary
 	printf '\033[1;36m%s\033[0m %s\n' "nextest-summary:" "$${summary_line:-unavailable}"
 endef
 
-.PHONY: fmt-rs lint-rs test-rs test-all-rs coverage-rs audit-rs bench-compare docs-check ci-docs
+.PHONY: fmt-rs lint-rs test-rs test-all-rs test-all-frozen lint-frozen audit-frozen coverage-rs audit-rs bench-compare docs-check ci-docs
 
 fmt-rs: ## Run Rust formatting checks
 	@mkdir -p "$(dir $(RS_FMT_REPORT))"
@@ -89,6 +90,15 @@ test-all-rs: ## Run full Rust tests with nextest including ignored
 		2>&1 | tee "$(RS_TEST_ALL_REPORT)" || status=$$?; \
 	$(call rs_nextest_summary,$(RS_TEST_ALL_REPORT)); \
 	test $$status -eq 0
+
+test-all-frozen: ## Start a detached full-suite run for a pinned commit and write artifacts under artifacts/<sha>/
+	@PINNED_REF_GATE_TARGET="test-all" "$(PINNED_REF_GATE_BIN)"
+
+lint-frozen: ## Start a detached lint run for a pinned commit and write artifacts under artifacts/<sha>/
+	@PINNED_REF_GATE_TARGET="lint" "$(PINNED_REF_GATE_BIN)"
+
+audit-frozen: ## Start a detached audit run for a pinned commit and write artifacts under artifacts/<sha>/
+	@PINNED_REF_GATE_TARGET="audit" "$(PINNED_REF_GATE_BIN)"
 
 coverage-rs: ## Run workspace coverage with cargo llvm-cov + nextest
 	$(call rs_require_tool,cargo-llvm-cov)
