@@ -39,8 +39,10 @@ The crate root intentionally contains only this README. Durable crate documentat
 - [docs/CODE_FAMILIES.md](docs/CODE_FAMILIES.md)
 - [docs/CONTRACTS.md](docs/CONTRACTS.md)
 - [docs/DSP.md](docs/DSP.md)
+- [docs/TRAITS.md](docs/TRAITS.md)
 - [docs/PUBLIC_API.md](docs/PUBLIC_API.md)
 - [docs/TESTS.md](docs/TESTS.md)
+- [docs/VALIDATION.md](docs/VALIDATION.md)
 
 ## Verification
 
