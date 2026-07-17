@@ -19,6 +19,8 @@ The fixture boundary and its ownership rules are described in [FIXTURES.md](FIXT
 truth and troposphere-elevation references. These are shared evidence sources, not crate-local test
 scratch files.
 
+That evidence surface is described in [REFERENCE_DATA.md](REFERENCE_DATA.md).
+
 ## Truth-generation contract
 
 `position_truth/`, `antenna/`, and `signal/` own deterministic truth generation helpers that
@@ -32,3 +34,5 @@ The independence and visibility rules behind those helpers are described in
 The crate must preserve enough independence from product helpers that it can validate them
 meaningfully. When a truth helper becomes a thin wrapper around the runtime helper under test, the
 contract has been violated.
+
+The broader crate-level independence rule is described in [INDEPENDENCE.md](INDEPENDENCE.md).
