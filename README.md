@@ -121,6 +121,8 @@ Minimum supported Rust version: `1.78.0`.
 - `docs/README.md`
 - `docs/GETTING_STARTED.md`
 - `docs/CLI.md`
+- `docs/TESTING.md`
+- `makes/README.md`
 
 ## Workspace Layout
 - `bijux-gnss` owns the public facade library and the `bijux` binary entrypoint, so top-level command wiring lives with the package users actually install.

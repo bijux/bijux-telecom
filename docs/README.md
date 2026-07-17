@@ -32,6 +32,9 @@ Welcome to the `bijux-gnss` documentation. Start with **Getting Started**, then 
 - `docs/TESTING.md`
 - `docs/CONTRIBUTING.md`
 
+## Tooling & Gates
+- `makes/README.md`
+
 ## Architecture & Conventions
 - `docs/ARCHITECTURE.md`
 - `docs/CODEBASE_RULES.md`
