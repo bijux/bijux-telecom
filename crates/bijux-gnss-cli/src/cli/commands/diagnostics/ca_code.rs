@@ -1,6 +1,6 @@
 use super::*;
 
-pub(crate) fn handle_cacode(command: GnssCommand) -> Result<()> {
+pub(crate) fn handle_ca_code(command: GnssCommand) -> Result<()> {
     let GnssCommand::CaCode {
         prn,
         start_chip,

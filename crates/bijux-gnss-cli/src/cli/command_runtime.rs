@@ -1,6 +1,6 @@
 fn execute_gnss_command(command: GnssCommand) -> Result<()> {
     match command {
-        cmd @ GnssCommand::CaCode { .. } => handle_cacode(cmd),
+        cmd @ GnssCommand::CaCode { .. } => handle_ca_code(cmd),
         cmd @ GnssCommand::Acquire { .. } => handle_acquire(cmd),
         cmd @ GnssCommand::Track { .. } => handle_track(cmd),
         cmd @ GnssCommand::Nav { .. } => handle_nav(cmd),
@@ -16,16 +16,16 @@ fn execute_gnss_command(command: GnssCommand) -> Result<()> {
         cmd @ GnssCommand::MeasureSyntheticQuantization { .. } => {
             handle_measure_synthetic_quantization(cmd)
         }
-        cmd @ GnssCommand::ValidateConfig { .. } => handle_validateconfig(cmd),
+        cmd @ GnssCommand::ValidateConfig { .. } => handle_validate_config(cmd),
         cmd @ GnssCommand::Config { .. } => handle_config(cmd),
-        cmd @ GnssCommand::ValidateArtifacts { .. } => handle_validateartifacts(cmd),
-        cmd @ GnssCommand::ValidateSidecar { .. } => handle_validatesidecar(cmd),
+        cmd @ GnssCommand::ValidateArtifacts { .. } => handle_validate_artifacts(cmd),
+        cmd @ GnssCommand::ValidateSidecar { .. } => handle_validate_sidecar(cmd),
         cmd @ GnssCommand::Analyze { .. } => handle_analyze(cmd),
         cmd @ GnssCommand::Diff { .. } => handle_diff(cmd),
         cmd @ GnssCommand::Artifact { .. } => handle_artifact(cmd),
         cmd @ GnssCommand::Diagnostics { .. } => handle_diagnostics(cmd),
-        cmd @ GnssCommand::ConfigUpgrade { .. } => handle_configupgrade(cmd),
-        cmd @ GnssCommand::ConfigSchema { .. } => handle_configschema(cmd),
+        cmd @ GnssCommand::ConfigUpgrade { .. } => handle_config_upgrade(cmd),
+        cmd @ GnssCommand::ConfigSchema { .. } => handle_config_schema(cmd),
         cmd @ GnssCommand::Validate { .. } => handle_validate(cmd),
         cmd @ GnssCommand::ValidateReference { .. } => handle_validate_reference(cmd),
         cmd @ GnssCommand::ValidateCapture { .. } => handle_validate_capture(cmd),

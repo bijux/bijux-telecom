@@ -11,7 +11,7 @@ mod replay_evidence;
 mod rtk_processing;
 mod run_quality;
 
-pub(crate) use ca_code::handle_cacode;
+pub(crate) use ca_code::handle_ca_code;
 pub(crate) use doctor::handle_doctor;
 pub(crate) use filesystem_support::{ensure_run_dir_exists, sha256_hex};
 pub(crate) use navigation_decode::handle_nav;

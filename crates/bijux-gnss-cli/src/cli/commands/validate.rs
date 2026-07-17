@@ -218,7 +218,7 @@ pub(crate) fn validate_sidecar_schema(sidecar: &RawIqMetadata) -> Result<()> {
     }
 }
 
-pub(crate) fn handle_validateartifacts(command: GnssCommand) -> Result<()> {
+pub(crate) fn handle_validate_artifacts(command: GnssCommand) -> Result<()> {
     let GnssCommand::ValidateArtifacts { common, obs, eph, strict } = command else {
         bail!("invalid command for handler");
     };

@@ -307,7 +307,7 @@ pub(crate) fn handle_experiment(command: GnssCommand) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn handle_validatesidecar(command: GnssCommand) -> Result<()> {
+pub(crate) fn handle_validate_sidecar(command: GnssCommand) -> Result<()> {
     let GnssCommand::ValidateSidecar { common, sidecar_file } = command else {
         bail!("invalid command for handler");
     };
