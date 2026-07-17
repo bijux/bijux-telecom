@@ -14,11 +14,13 @@ Use this page when you know the question but not the owning file.
 ## Start From The Question
 
 - "How is this navigation product parsed?":
-  `src/formats/` and the matching constellation or precise-product subfamily
+  `src/formats/` and the matching constellation, RINEX, or precise-product
+  subfamily
 - "How is orbit state computed?":
   `src/orbits/`
 - "How is this correction derived?":
-  `src/corrections/`
+  `src/corrections/`, especially `combinations.rs`, `dual_frequency.rs`, or
+  the matching single-purpose correction file
 - "Why did the position solution refuse or downgrade?":
   `src/estimation/position/`, `src/estimation/solution_claims.rs`
 - "Why did PPP or RTK behave this way?":
@@ -35,7 +37,8 @@ Use this page when you know the question but not the owning file.
 
 ## Start From A Test Failure
 
-- parser and product failures usually map to one family in `tests/` with the
-  same constellation or product name
-- estimator failures usually map to `integration_position*`, `integration_ppp*`,
-  `integration_rtk*`, or one of the precise-product reference tests
+- parser and product failures usually map to one family in
+  `crates/bijux-gnss-nav/tests/` with the same constellation or product name
+- estimator failures usually map to the
+  `integration_position*`, `integration_ppp*`, `integration_rtk*`, or
+  `integration_raim*` families under `crates/bijux-gnss-nav/tests/`

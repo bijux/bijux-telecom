@@ -23,6 +23,9 @@ scientific role rather than by internal file layout.
 - exports needed by multiple downstream crates or tools
 - typed records and helpers with durable scientific meaning
 - provider or estimator seams that callers are expected to implement or consume
+- the strongest exported families today are format and product readers, orbit
+  state helpers, correction providers, positioning surfaces, PPP and RTK
+  helpers, and time-conversion contracts
 
 ## What Should Stay Out
 

@@ -28,22 +28,22 @@ packages can trust.
 
 ## Major Scientific Families
 
-- `formats/` decodes navigation messages, RINEX products, and precise
+- `src/formats/` decodes navigation messages, RINEX products, and precise
   reference products such as SP3, CLK, ANTEX, and bias SINEX
-- `orbits/` interprets broadcast and precise orbital state for GPS, Galileo,
-  BeiDou, and GLONASS
-- `corrections/` owns atmosphere, broadcast ionosphere, bias, and
-  signal-combination law
-- `estimation/position/` owns PVT, integrity, runtime-neutral filter behavior,
-  and RAIM evidence
-- `estimation/ppp/` owns precise point positioning state, lifecycle, and
+- `src/orbits/` interprets broadcast and precise orbital state for GPS,
+  Galileo, BeiDou, and GLONASS
+- `src/corrections/` owns atmosphere, broadcast ionosphere, bias,
+  dual-frequency, phase-windup, and signal-combination law
+- `src/estimation/position/` owns PVT, integrity, runtime-neutral filter
+  behavior, RAIM evidence, and solution smoothing
+- `src/estimation/ppp/` owns precise point positioning state, lifecycle, and
   product-consumption policy
-- `estimation/rtk/` owns differencing, ambiguity logic, baseline solving, and
-  RTK quality evidence
-- `time.rs` and `time/rollover.rs` own GNSS-specific time conversions and
-  rollover interpretation above core
-- `models/` owns supporting atmosphere, antenna, tide, celestial, and NeQuick
-  surfaces needed by navigation computations
+- `src/estimation/rtk/` owns differencing, ambiguity logic, baseline solving,
+  and RTK quality evidence
+- `src/time.rs` and `src/time/rollover.rs` own GNSS-specific time conversions
+  and rollover interpretation above core
+- `src/models/` owns supporting atmosphere, antenna, tide, celestial, and
+  NeQuick surfaces needed by navigation computations
 
 ## Why This Package Is Heavy
 
@@ -56,5 +56,6 @@ law, solver design, and integrity evidence.
 
 - `crates/bijux-gnss-nav/src/api.rs`
 - `crates/bijux-gnss-nav/src/formats.rs`
+- `crates/bijux-gnss-nav/src/corrections/`
 - `crates/bijux-gnss-nav/src/estimation.rs`
 - `crates/bijux-gnss-nav/src/time.rs`

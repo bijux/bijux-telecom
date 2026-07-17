@@ -14,8 +14,9 @@ file that happened to fail first.
 
 ## Good Local Loop
 
-- find the owning family in `formats`, `orbits`, `corrections`, `position`,
-  `ppp`, `rtk`, `models`, or `time`
+- find the owning family in `src/formats/`, `src/orbits/`,
+  `src/corrections/`, `src/estimation/position/`, `src/estimation/ppp/`,
+  `src/estimation/rtk/`, `src/models/`, or `src/time.rs`
 - update the crate-local docs if the scientific meaning moves
 - run targeted tests for that family before touching wider suites
 - inspect `src/api.rs` if the change affects something public

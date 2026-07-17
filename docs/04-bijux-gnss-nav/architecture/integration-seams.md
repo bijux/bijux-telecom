@@ -31,9 +31,10 @@ without hardwiring every caller to one storage shape.
 
 - `MeasurementModel` and related EKF traits in `src/estimation/ekf/traits.rs`
 - `NavigationEngine`, `PositionRuntime`, and solver surfaces consumed by
-  runtime layers
+  runtime layers through `src/estimation/position/`
 - PPP and RTK product-policy surfaces that let higher layers decide which
   precise inputs are available without redefining the scientific contract
+  through `src/estimation/ppp/` and `src/estimation/rtk/`
 
 ## Boundary Rule
 

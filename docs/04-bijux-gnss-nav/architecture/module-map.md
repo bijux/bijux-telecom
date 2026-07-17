@@ -44,6 +44,9 @@ that owns them.
 - `src/corrections/broadcast_group_delay.rs` and
   `src/corrections/broadcast_ionosphere_residuals.rs` own broadcast-driven
   correction families
+- `src/corrections/combinations.rs`, `src/corrections/dual_frequency.rs`, and
+  `src/corrections/phase_windup.rs` own multi-signal and carrier-aware
+  correction helpers that do not belong to one estimator family alone
 - `src/corrections/geometry_free.rs`, `iono_free_code.rs`,
   `iono_free_phase.rs`, `measured_ionosphere.rs`, `melbourne_wubbena.rs`, and
   `narrow_lane.rs` own reusable diagnostic and combination families
@@ -53,7 +56,8 @@ that owns them.
 - `src/estimation/ekf/` owns reusable filter primitives and measurement-model
   seams
 - `src/estimation/position/` owns positioning, integrity, RAIM, navigation
-  runtime-neutral filtering, trajectory reconstruction, and solution reporting
+  runtime-neutral filtering, trajectory reconstruction, solution reporting,
+  and solver/runtime subfamilies
 - `src/estimation/ppp/` owns PPP configuration, state, filter evolution,
   quality evidence, and product policy
 - `src/estimation/rtk/` owns differencing, ambiguity logic, baseline solving,
@@ -63,9 +67,9 @@ that owns them.
 
 ## Supporting Models
 
-- `src/models/antenna.rs`, `atmosphere.rs`, `celestial.rs`,
-  `ocean_tide_loading.rs`, and `solid_earth_tide.rs` own supporting physical
-  models
+- `src/models/antenna.rs`, `src/models/atmosphere.rs`,
+  `src/models/celestial.rs`, `src/models/ocean_tide_loading.rs`, and
+  `src/models/solid_earth_tide.rs` own supporting physical models
 - `src/models/nequick/` owns NeQuick-specific data and model execution
 
 ## Shared Small Math
