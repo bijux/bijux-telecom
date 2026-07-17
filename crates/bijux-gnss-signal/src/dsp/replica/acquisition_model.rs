@@ -7,7 +7,7 @@ use bijux_gnss_core::api::{
     GPS_L1_CA_CARRIER_HZ,
 };
 
-use super::default_signal_code_for_band;
+use super::signal_identity::default_signal_code_for_band;
 
 /// Signal-owned metadata and local-code sampling for supported acquisition search signals.
 #[derive(Debug, Clone, PartialEq)]

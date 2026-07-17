@@ -8,6 +8,7 @@ pub mod ca_code;
 pub mod galileo_e1;
 mod galileo_e1_tables;
 pub mod galileo_e5;
+pub(crate) mod galileo_e5_assignments;
 mod galileo_e5_tables;
 pub mod glonass_l1;
 pub mod gps_l2c;

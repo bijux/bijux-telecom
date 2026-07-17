@@ -2,7 +2,8 @@ use crate::dsp::sample_timing::code_sample_position_at_index;
 use crate::error::SignalError;
 use num_complex::Complex;
 
-use super::{carrier_phase_radians_at_time, ReplicaCodeModel};
+use super::carrier_trajectory::carrier_phase_radians_at_time;
+use super::code_model::ReplicaCodeModel;
 
 /// Inputs for sampling one modulated replica at an absolute sample index.
 #[derive(Debug, Clone, Copy, PartialEq)]

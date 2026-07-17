@@ -1,42 +1,32 @@
 //! Replica-generation and modulation helpers for synthetic and tracking workflows.
 
-mod acquisition_model;
-mod carrier_trajectory;
-mod code_model;
-mod modulation;
-mod signal_identity;
-
-pub use acquisition_model::AcquisitionSignalModel;
-pub use carrier_trajectory::{
-    carrier_hz_at_time, carrier_hz_at_time_with_jerk, carrier_phase_radians_at_time,
-    carrier_phase_radians_at_time_with_jerk, wipeoff_carrier_with_linear_rate,
-};
-pub use code_model::ReplicaCodeModel;
-pub use modulation::{
-    sample_modulated_replica_at_sample_index, sample_modulated_replica_at_time,
-    signal_amplitude_from_cn0_db_hz, ReplicaBlockRequest, ReplicaSampleIndexRequest,
-    ReplicaSampleTimeRequest,
-};
-pub(crate) use signal_identity::default_signal_code_for_band;
-pub use signal_identity::{
-    default_signal_carrier_hz, default_signal_carrier_hz_for_band,
-    default_signal_carrier_hz_for_signal,
-};
+pub(crate) mod acquisition_model;
+pub(crate) mod carrier_trajectory;
+pub(crate) mod code_model;
+pub(crate) mod modulation;
+pub(crate) mod signal_identity;
 
 /// Complex noise power implied by unit-variance I and Q components.
 pub const UNIT_VARIANCE_COMPLEX_NOISE_POWER: f64 = 2.0;
 
 #[cfg(test)]
 mod tests {
-    use super::{
+    use super::acquisition_model::AcquisitionSignalModel;
+    use super::carrier_trajectory::{
         carrier_hz_at_time, carrier_hz_at_time_with_jerk, carrier_phase_radians_at_time,
-        carrier_phase_radians_at_time_with_jerk, default_signal_carrier_hz,
-        default_signal_carrier_hz_for_band, sample_modulated_replica_at_sample_index,
-        sample_modulated_replica_at_time, signal_amplitude_from_cn0_db_hz,
-        wipeoff_carrier_with_linear_rate, AcquisitionSignalModel, ReplicaBlockRequest,
-        ReplicaCodeModel, ReplicaSampleIndexRequest, ReplicaSampleTimeRequest,
-        UNIT_VARIANCE_COMPLEX_NOISE_POWER,
+        carrier_phase_radians_at_time_with_jerk, wipeoff_carrier_with_linear_rate,
     };
+    use super::code_model::ReplicaCodeModel;
+    use super::modulation::{
+        sample_modulated_replica_at_sample_index, sample_modulated_replica_at_time,
+        signal_amplitude_from_cn0_db_hz, ReplicaBlockRequest, ReplicaSampleIndexRequest,
+        ReplicaSampleTimeRequest,
+    };
+    use super::signal_identity::{
+        default_signal_carrier_hz, default_signal_carrier_hz_for_band,
+        default_signal_carrier_hz_for_signal,
+    };
+    use super::UNIT_VARIANCE_COMPLEX_NOISE_POWER;
     use crate::catalog::resolved_signal_registry_entry;
     use crate::codes::beidou_d1::{beidou_d1_epoch_symbol, BEIDOU_D1_PRIMARY_EPOCHS_PER_SYMBOL};
     use crate::codes::galileo_e1::{
@@ -847,14 +837,10 @@ mod tests {
     #[test]
     fn default_signal_carrier_hz_for_signal_returns_galileo_e5b_carrier() {
         let sat = SatId { constellation: Constellation::Galileo, prn: 11 };
-        let carrier = super::default_signal_carrier_hz_for_signal(
-            sat,
-            Some(SignalBand::E5),
-            SignalCode::E5b,
-            None,
-        )
-        .expect("carrier lookup")
-        .expect("Galileo E5b carrier");
+        let carrier =
+            default_signal_carrier_hz_for_signal(sat, Some(SignalBand::E5), SignalCode::E5b, None)
+                .expect("carrier lookup")
+                .expect("Galileo E5b carrier");
 
         assert_eq!(carrier, GALILEO_E5B_CARRIER_HZ);
     }

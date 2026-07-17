@@ -30,10 +30,10 @@ use crate::error::SignalError;
 use bijux_gnss_core::api::{Constellation, SatId, SignalBand, SignalCode};
 use num_complex::Complex;
 
-use super::{
-    default_signal_code_for_band, sample_modulated_replica_at_sample_index, ReplicaBlockRequest,
-    ReplicaSampleIndexRequest,
+use super::modulation::{
+    sample_modulated_replica_at_sample_index, ReplicaBlockRequest, ReplicaSampleIndexRequest,
 };
+use super::signal_identity::default_signal_code_for_band;
 
 /// Reusable spreading-code models for synthesized signal replicas.
 #[derive(Debug, Clone, PartialEq)]

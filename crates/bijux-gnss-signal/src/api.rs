@@ -48,25 +48,27 @@ pub use crate::codes::galileo_e1::{
     GALILEO_E1_PRIMARY_CODE_CHIPS, GALILEO_E1_PRIMARY_PERIOD_MS, GALILEO_E1_SECONDARY_CODE_CHIPS,
 };
 pub use crate::codes::galileo_e5::{
-    galileo_e5a_i_code_assignment, galileo_e5a_i_code_assignments, galileo_e5a_i_data_symbol_index,
-    galileo_e5a_i_epoch_symbol, galileo_e5a_i_secondary_chip, galileo_e5a_i_secondary_code,
-    galileo_e5a_i_value, galileo_e5a_primary_autocorrelation, galileo_e5a_q_code_assignment,
-    galileo_e5a_q_code_assignments, galileo_e5a_q_epoch_symbol, galileo_e5a_q_secondary_chip,
-    galileo_e5a_q_secondary_code, galileo_e5a_q_value, galileo_e5a_qpsk_value,
-    galileo_e5b_i_code_assignment, galileo_e5b_i_code_assignments, galileo_e5b_i_data_symbol_index,
+    galileo_e5a_i_data_symbol_index, galileo_e5a_i_epoch_symbol, galileo_e5a_i_secondary_chip,
+    galileo_e5a_i_secondary_code, galileo_e5a_i_value, galileo_e5a_primary_autocorrelation,
+    galileo_e5a_q_epoch_symbol, galileo_e5a_q_secondary_chip, galileo_e5a_q_secondary_code,
+    galileo_e5a_q_value, galileo_e5a_qpsk_value, galileo_e5b_i_data_symbol_index,
     galileo_e5b_i_epoch_symbol, galileo_e5b_i_secondary_chip, galileo_e5b_i_secondary_code,
-    galileo_e5b_i_value, galileo_e5b_primary_autocorrelation, galileo_e5b_q_code_assignment,
-    galileo_e5b_q_code_assignments, galileo_e5b_q_epoch_symbol, galileo_e5b_q_secondary_chip,
-    galileo_e5b_q_secondary_code, galileo_e5b_q_value, galileo_e5b_qpsk_value,
-    generate_galileo_e5a_i_code, generate_galileo_e5a_q_code, generate_galileo_e5b_i_code,
-    generate_galileo_e5b_q_code, sample_galileo_e5a_i_primary_code,
+    galileo_e5b_i_value, galileo_e5b_primary_autocorrelation, galileo_e5b_q_epoch_symbol,
+    galileo_e5b_q_secondary_chip, galileo_e5b_q_secondary_code, galileo_e5b_q_value,
+    galileo_e5b_qpsk_value, generate_galileo_e5a_i_code, generate_galileo_e5a_q_code,
+    generate_galileo_e5b_i_code, generate_galileo_e5b_q_code, sample_galileo_e5a_i_primary_code,
     sample_galileo_e5a_q_primary_code, sample_galileo_e5b_i_primary_code,
-    sample_galileo_e5b_q_primary_code, GalileoE5aICodeAssignment, GalileoE5aQCodeAssignment,
-    GalileoE5bICodeAssignment, GalileoE5bQCodeAssignment, GALILEO_E5A_CODE_RATE_HZ,
+    sample_galileo_e5b_q_primary_code, GALILEO_E5A_CODE_RATE_HZ,
     GALILEO_E5A_I_PRIMARY_EPOCHS_PER_SYMBOL, GALILEO_E5A_I_SECONDARY_CODE_CHIPS,
     GALILEO_E5A_PRIMARY_CODE_CHIPS, GALILEO_E5A_Q_SECONDARY_CODE_CHIPS, GALILEO_E5B_CODE_RATE_HZ,
     GALILEO_E5B_I_PRIMARY_EPOCHS_PER_SYMBOL, GALILEO_E5B_I_SECONDARY_CODE_CHIPS,
     GALILEO_E5B_PRIMARY_CODE_CHIPS, GALILEO_E5B_Q_SECONDARY_CODE_CHIPS,
+};
+pub use crate::codes::galileo_e5_assignments::{
+    galileo_e5a_i_code_assignment, galileo_e5a_i_code_assignments, galileo_e5a_q_code_assignment,
+    galileo_e5a_q_code_assignments, galileo_e5b_i_code_assignment, galileo_e5b_i_code_assignments,
+    galileo_e5b_q_code_assignment, galileo_e5b_q_code_assignments, GalileoE5aICodeAssignment,
+    GalileoE5aQCodeAssignment, GalileoE5bICodeAssignment, GalileoE5bQCodeAssignment,
 };
 pub use crate::codes::glonass_l1::{
     generate_glonass_l1_st_code, generate_glonass_l1_st_code_chips, glonass_l1_meander_symbol,
@@ -125,15 +127,22 @@ pub use crate::dsp::quality::{
     IqFrontEndAnalyzer, IqFrontEndMetrics,
 };
 /// Replica-generation and synthetic modulation helpers.
-pub use crate::dsp::replica::{
+pub use crate::dsp::replica::acquisition_model::AcquisitionSignalModel;
+pub use crate::dsp::replica::carrier_trajectory::{
     carrier_hz_at_time, carrier_hz_at_time_with_jerk, carrier_phase_radians_at_time,
-    carrier_phase_radians_at_time_with_jerk, default_signal_carrier_hz,
-    default_signal_carrier_hz_for_band, default_signal_carrier_hz_for_signal,
-    sample_modulated_replica_at_sample_index, sample_modulated_replica_at_time,
-    signal_amplitude_from_cn0_db_hz, wipeoff_carrier_with_linear_rate, AcquisitionSignalModel,
-    ReplicaBlockRequest, ReplicaCodeModel, ReplicaSampleIndexRequest, ReplicaSampleTimeRequest,
-    UNIT_VARIANCE_COMPLEX_NOISE_POWER,
+    carrier_phase_radians_at_time_with_jerk, wipeoff_carrier_with_linear_rate,
 };
+pub use crate::dsp::replica::code_model::ReplicaCodeModel;
+pub use crate::dsp::replica::modulation::{
+    sample_modulated_replica_at_sample_index, sample_modulated_replica_at_time,
+    signal_amplitude_from_cn0_db_hz, ReplicaBlockRequest, ReplicaSampleIndexRequest,
+    ReplicaSampleTimeRequest,
+};
+pub use crate::dsp::replica::signal_identity::{
+    default_signal_carrier_hz, default_signal_carrier_hz_for_band,
+    default_signal_carrier_hz_for_signal,
+};
+pub use crate::dsp::replica::UNIT_VARIANCE_COMPLEX_NOISE_POWER;
 /// Absolute sample-index timing helpers for chunk-stable generation.
 pub use crate::dsp::sample_timing::{code_sample_position_at_index, CodeSamplePosition};
 /// Signal processing utilities.
@@ -154,13 +163,12 @@ pub use crate::dsp::spectrum::{
     find_deep_spectrum_nulls, summarize_power_spectral_density, PowerSpectralDensityPoint,
     PowerSpectralDensitySummary, SpectrumEstimatorConfig, SpectrumNull,
 };
-/// Tracking helpers.
 pub use crate::dsp::tracking::{
-    advance_tracking_adaptation, anti_false_lock_detected, apply_carrier_tracking_loop,
-    apply_code_loop, calibrated_lock_detector_thresholds,
-    carrier_frequency_error_hz_from_phase_delta, carrier_phase_offset_radians, code_at,
-    coherent_integration_seconds, correlate_early_prompt_late, delay_lock_loop_coefficients,
-    discriminators, dll_discriminator_from_early_late, dll_hold_threshold, dll_lock_threshold,
+    anti_false_lock_detected, apply_carrier_tracking_loop, apply_code_loop,
+    calibrated_lock_detector_thresholds, carrier_frequency_error_hz_from_phase_delta,
+    carrier_phase_offset_radians, code_at, coherent_integration_seconds,
+    correlate_early_prompt_late, delay_lock_loop_coefficients, discriminators,
+    dll_discriminator_from_early_late, dll_hold_threshold, dll_lock_threshold,
     double_delta_dll_discriminator, estimate_cn0_dbhz, estimate_tracking_uncertainty,
     first_order_angular_loop_coefficients, first_order_loop_coefficients, fll_lock_threshold_hz,
     lock_detector_distributions, lock_detector_probability_summary, normalize_dll_discriminator,
@@ -171,9 +179,13 @@ pub use crate::dsp::tracking::{
     CodeLoopUpdate, DelayLockLoopCoefficients, EarlyPromptLateCorrelation,
     EarlyPromptLateCorrelatorInput, FirstOrderLoopCoefficients, LockDetectorCalibrationInput,
     LockDetectorDistributions, LockDetectorProbabilityInput, LockDetectorProbabilitySummary,
-    LockDetectorThresholds, PhaseLockLoopCoefficients, TrackingAdaptationDecision,
-    TrackingAdaptationInput, TrackingAdaptationState, TrackingLoopProfile, TrackingLoopProfileKind,
-    TrackingQualityClass, TrackingUncertaintyInputs,
+    LockDetectorThresholds, PhaseLockLoopCoefficients, TrackingQualityClass,
+    TrackingUncertaintyInputs,
+};
+/// Tracking helpers.
+pub use crate::dsp::tracking_adaptation::{
+    advance_tracking_adaptation, TrackingAdaptationDecision, TrackingAdaptationInput,
+    TrackingAdaptationState, TrackingLoopProfile, TrackingLoopProfileKind,
 };
 /// Error types.
 pub use crate::error::SignalError;
