@@ -19,3 +19,12 @@ complete, reviewable, and honestly proven.
 - the narrowest honest verification has been run
 - governed inputs and outputs still match the docs
 - the commit boundary matches one durable maintainer intent
+
+## First Proof Check
+
+Inspect `crates/bijux-gnss-dev/docs/BOUNDARY.md`,
+`crates/bijux-gnss-dev/docs/WORKFLOWS.md`,
+`crates/bijux-gnss-dev/docs/OUTPUTS.md`, and
+`crates/bijux-gnss-dev/src/main.rs`. A change is not done until the command
+path and its governed input or output contract still defend the same reader
+promise.

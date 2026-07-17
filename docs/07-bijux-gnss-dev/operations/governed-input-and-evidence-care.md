@@ -33,3 +33,8 @@ paths.
 - `crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md`
 - `crates/bijux-gnss-dev/docs/OUTPUTS.md`
 - `crates/bijux-gnss-dev/src/main.rs`
+
+Also inspect `crates/bijux-gnss-dev/docs/BENCHMARKS.md` when evidence files are
+in play. Governed inputs and outputs are trustworthy only when the workflow
+that reads or writes them stays explicit about purpose, location, and review
+cost.

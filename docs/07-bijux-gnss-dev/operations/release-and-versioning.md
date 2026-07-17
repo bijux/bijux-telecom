@@ -24,3 +24,12 @@ surface for the repository.
 Even without a published library surface, maintainers already depend on the
 binary's documented behavior. The right standard is workflow stability, not
 version-number comfort.
+
+## First Proof Check
+
+Inspect `crates/bijux-gnss-dev/docs/COMMANDS.md`,
+`crates/bijux-gnss-dev/docs/WORKFLOWS.md`,
+`crates/bijux-gnss-dev/docs/OUTPUTS.md`, and
+`crates/bijux-gnss-dev/src/main.rs`. Then inspect the integration tests to
+confirm that any claimed release safety still matches the maintained command
+surface and evidence contract.

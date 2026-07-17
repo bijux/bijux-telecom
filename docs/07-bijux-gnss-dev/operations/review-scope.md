@@ -27,3 +27,12 @@ Reviewers should align their depth to the changed maintainer workflow.
 
 If the diff changes which repository file is read or where evidence is written,
 treat the change as a boundary review even when the code diff looks small.
+
+## First Proof Check
+
+Use `crates/bijux-gnss-dev/docs/WORKFLOWS.md`,
+`crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md`,
+`crates/bijux-gnss-dev/docs/OUTPUTS.md`, and
+`crates/bijux-gnss-dev/docs/TESTS.md` as the review map. Then inspect the
+changed command path or integration test so review depth follows actual
+maintainer risk rather than diff size.

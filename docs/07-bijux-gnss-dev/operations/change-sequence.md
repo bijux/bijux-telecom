@@ -24,3 +24,11 @@ Use this sequence when modifying `bijux-gnss-dev`.
 The wrong order usually produces one of two failures: a command changes meaning
 without updating its documented governance contract, or a green test run proves
 something adjacent instead of the actual maintained workflow.
+
+## First Proof Check
+
+Read `crates/bijux-gnss-dev/docs/WORKFLOWS.md`,
+`crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md`, and
+`crates/bijux-gnss-dev/docs/OUTPUTS.md` before editing. Then inspect the
+matching `run_*` path in `crates/bijux-gnss-dev/src/main.rs` so the sequence
+starts from real governed inputs and outputs.

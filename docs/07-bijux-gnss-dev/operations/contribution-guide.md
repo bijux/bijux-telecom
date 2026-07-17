@@ -34,3 +34,8 @@ that lane. Do not rely on unrelated green tests as substitute proof.
 - `crates/bijux-gnss-dev/docs/WORKFLOWS.md`
 - `crates/bijux-gnss-dev/docs/TESTS.md`
 - `docs/07-bijux-gnss-dev/operations/verification-commands.md`
+
+Contributors should also inspect `crates/bijux-gnss-dev/docs/OUTPUTS.md` and
+`crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md` before changing a command.
+Those files make the read and write contract explicit enough to keep
+maintainer-only tooling from drifting into generic repository automation.

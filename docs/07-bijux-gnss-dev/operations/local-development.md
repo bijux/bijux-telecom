@@ -22,3 +22,11 @@ last_reviewed: 2026-07-17
 This crate rewards narrow work. A small CLI or validation change can alter
 repository policy behavior, so local development should stay precise even when
 the code edit itself is short.
+
+## First Proof Check
+
+Inspect `crates/bijux-gnss-dev/docs/ARCHITECTURE.md`,
+`crates/bijux-gnss-dev/docs/WORKFLOWS.md`, and
+`crates/bijux-gnss-dev/docs/TESTS.md` first. Then trace the target workflow in
+`crates/bijux-gnss-dev/src/main.rs` so local work stays aligned with actual
+repository-facing effects.

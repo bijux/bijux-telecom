@@ -31,3 +31,13 @@ experimental.
 
 Do not call a surface stable merely because it already has callers. Stability
 means the repository is willing to pay the compatibility cost.
+
+## Protecting Proof
+
+Inspect `crates/bijux-gnss-dev/docs/COMMANDS.md`,
+`crates/bijux-gnss-dev/docs/WORKFLOWS.md`,
+`crates/bijux-gnss-dev/docs/OUTPUTS.md`, and
+`crates/bijux-gnss-dev/src/main.rs`. Then inspect
+`crates/bijux-gnss-dev/tests/integration_guardrails.rs` to confirm that the
+stability claims here still match the actual maintainer command surface and
+governed evidence contracts.

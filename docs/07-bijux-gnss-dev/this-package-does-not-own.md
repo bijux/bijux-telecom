@@ -49,3 +49,8 @@ decision here instead of blurring the boundary.
 - `../02-bijux-gnss-core/index.md`
 - `../04-bijux-gnss-nav/index.md`
 - `../06-bijux-gnss-signal/index.md`
+
+When a workflow proposal starts justifying itself with repository convenience,
+inspect the neighbor handbook first anyway. That habit is what keeps
+`bijux-gnss-dev` from becoming the place where product behavior or policy debt
+gets hidden behind a maintenance label.

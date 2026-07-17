@@ -30,3 +30,11 @@ workflow.
 - changing evidence outputs without checking the documented output contract
 - claiming benchmark workflow safety without stating whether heavy execution was
   actually run
+
+## First Proof Check
+
+Use `crates/bijux-gnss-dev/docs/TESTS.md`,
+`crates/bijux-gnss-dev/docs/WORKFLOWS.md`, and
+`crates/bijux-gnss-dev/docs/OUTPUTS.md` as the validation map. Then inspect
+the matching command path in `crates/bijux-gnss-dev/src/main.rs` before
+declaring the proof set complete.

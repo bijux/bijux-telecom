@@ -20,3 +20,11 @@ Use this checklist when reviewing a `bijux-gnss-dev` change.
 - if benchmark behavior changed, is the evidence path still explicit
 - if a test changed, does it still defend a maintainer contract rather than
   incidental implementation detail
+
+## First Proof Check
+
+Inspect `crates/bijux-gnss-dev/docs/WORKFLOWS.md`,
+`crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md`,
+`crates/bijux-gnss-dev/docs/OUTPUTS.md`, and
+`crates/bijux-gnss-dev/docs/TESTS.md` first. Then inspect the changed command
+or test path so the checklist is answered with repository-backed evidence.

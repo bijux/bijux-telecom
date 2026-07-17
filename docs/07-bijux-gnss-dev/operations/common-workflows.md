@@ -25,3 +25,11 @@ Choose the workflow based on the owned maintainer surface. A benchmark-evidence
 change is reviewed differently from a governed-TOML validation change even if
 both happen in the same binary. The audit and deviation workflows are read-only
 contract checks; `bench-compare` is the write-producing evidence workflow.
+
+## First Proof Check
+
+Use `crates/bijux-gnss-dev/docs/WORKFLOWS.md`,
+`crates/bijux-gnss-dev/docs/BENCHMARKS.md`, and
+`crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md` as the workflow map. Then
+choose the exact command path in `crates/bijux-gnss-dev/src/main.rs` before
+deciding whether one edit really belongs to one workflow family.
