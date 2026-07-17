@@ -218,9 +218,11 @@ fn assert_precision_refusal_metrics(
 }
 
 fn write_biased_synthetic_iq8_capture(path: &Path, i_bias: f32, q_bias: f32) {
-    let mut profile = ReceiverConfig::default();
-    profile.sample_rate_hz = 4_092_000.0;
-    profile.intermediate_freq_hz = 0.0;
+    let profile = ReceiverConfig {
+        sample_rate_hz: 4_092_000.0,
+        intermediate_freq_hz: 0.0,
+        ..ReceiverConfig::default()
+    };
     let pipeline = profile.to_pipeline_config();
     let frame = generate_l1_ca(
         &pipeline,
@@ -264,9 +266,11 @@ fn write_synthetic_iq8_capture_with_signal_if_and_duration_s(
     signal_intermediate_freq_hz: f64,
     duration_s: f64,
 ) {
-    let mut profile = ReceiverConfig::default();
-    profile.sample_rate_hz = sample_rate_hz;
-    profile.intermediate_freq_hz = signal_intermediate_freq_hz;
+    let profile = ReceiverConfig {
+        sample_rate_hz,
+        intermediate_freq_hz: signal_intermediate_freq_hz,
+        ..ReceiverConfig::default()
+    };
     let pipeline = profile.to_pipeline_config();
     let frame = generate_l1_ca(
         &pipeline,
@@ -307,9 +311,11 @@ fn write_synthetic_cf32_capture_with_signal_if(
     sample_rate_hz: f64,
     signal_intermediate_freq_hz: f64,
 ) {
-    let mut profile = ReceiverConfig::default();
-    profile.sample_rate_hz = sample_rate_hz;
-    profile.intermediate_freq_hz = signal_intermediate_freq_hz;
+    let profile = ReceiverConfig {
+        sample_rate_hz,
+        intermediate_freq_hz: signal_intermediate_freq_hz,
+        ..ReceiverConfig::default()
+    };
     let pipeline = profile.to_pipeline_config();
     let frame = generate_l1_ca(
         &pipeline,

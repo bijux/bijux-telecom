@@ -33,7 +33,10 @@ pub(crate) fn operator_map_report() -> serde_json::Value {
     })
 }
 
-pub(crate) fn layered_report(critical: Vec<String>, details: serde_json::Value) -> serde_json::Value {
+pub(crate) fn layered_report(
+    critical: Vec<String>,
+    details: serde_json::Value,
+) -> serde_json::Value {
     serde_json::json!({
         "critical": critical,
         "details": details
@@ -129,7 +132,10 @@ pub(crate) fn print_workflow_table(report: &serde_json::Value) {
     }
 }
 
-pub(crate) fn print_diagnostics_summary_table(entries: Option<&Vec<serde_json::Value>>, top: usize) {
+pub(crate) fn print_diagnostics_summary_table(
+    entries: Option<&Vec<serde_json::Value>>,
+    top: usize,
+) {
     println!("Diagnostics summary (top {}):", top);
     if let Some(items) = entries {
         for entry in items.iter().take(top.max(1)) {

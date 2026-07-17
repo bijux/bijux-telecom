@@ -229,7 +229,7 @@ fn encode_subframe_with_how(
     bits
 }
 
-fn encode_subframe_1_with_clock(
+struct LnavClockSubframeRequest {
     tow_count: u32,
     week: u16,
     sv_health: u8,
@@ -239,7 +239,20 @@ fn encode_subframe_1_with_clock(
     af1_raw: i32,
     af0_raw: i32,
     tgd_raw: i32,
-) -> Vec<i8> {
+}
+
+fn encode_subframe_1_with_clock(request: LnavClockSubframeRequest) -> Vec<i8> {
+    let LnavClockSubframeRequest {
+        tow_count,
+        week,
+        sv_health,
+        iodc,
+        toc_raw,
+        af2_raw,
+        af1_raw,
+        af0_raw,
+        tgd_raw,
+    } = request;
     let mut tlm = 0_u32;
     set_bits(&mut tlm, 1, 8, 0x8B);
 
@@ -280,7 +293,7 @@ fn encode_subframe_1_with_clock(
     bits
 }
 
-fn encode_subframe_2_with_orbit(
+struct LnavOrbitSubframe2Request {
     tow_count: u32,
     iode: u8,
     crs_raw: i32,
@@ -291,7 +304,21 @@ fn encode_subframe_2_with_orbit(
     cus_raw: i32,
     sqrt_a_raw: u32,
     toe_raw: u32,
-) -> Vec<i8> {
+}
+
+fn encode_subframe_2_with_orbit(request: LnavOrbitSubframe2Request) -> Vec<i8> {
+    let LnavOrbitSubframe2Request {
+        tow_count,
+        iode,
+        crs_raw,
+        delta_n_raw,
+        m0_raw,
+        cuc_raw,
+        e_raw,
+        cus_raw,
+        sqrt_a_raw,
+        toe_raw,
+    } = request;
     let mut tlm = 0_u32;
     set_bits(&mut tlm, 1, 8, 0x8B);
 
@@ -341,7 +368,7 @@ fn encode_subframe_2_with_orbit(
     bits
 }
 
-fn encode_subframe_3_with_orbit(
+struct LnavOrbitSubframe3Request {
     tow_count: u32,
     iode: u8,
     cic_raw: i32,
@@ -352,7 +379,21 @@ fn encode_subframe_3_with_orbit(
     w_raw: i32,
     omegadot_raw: i32,
     idot_raw: i32,
-) -> Vec<i8> {
+}
+
+fn encode_subframe_3_with_orbit(request: LnavOrbitSubframe3Request) -> Vec<i8> {
+    let LnavOrbitSubframe3Request {
+        tow_count,
+        iode,
+        cic_raw,
+        omega0_raw,
+        cis_raw,
+        i0_raw,
+        crc_raw,
+        w_raw,
+        omegadot_raw,
+        idot_raw,
+    } = request;
     let mut tlm = 0_u32;
     set_bits(&mut tlm, 1, 8, 0x8B);
 
@@ -786,8 +827,17 @@ fn nav_decode_reports_lnav_subframe_1_clock_fields_from_wrapped_track_artifact()
     let temp = temp_dir_path("nav_decode_subframe_clock");
     fs::create_dir_all(&temp).expect("create temp dir");
     let sat = SatId { constellation: Constellation::Gps, prn: 12 };
-    let bits =
-        encode_subframe_1_with_clock(3, 987, 0b10_1101, 0x2AB, 21_600, -12, 3_210, -123_456, -20);
+    let bits = encode_subframe_1_with_clock(LnavClockSubframeRequest {
+        tow_count: 3,
+        week: 987,
+        sv_health: 0b10_1101,
+        iodc: 0x2AB,
+        toc_raw: 21_600,
+        af2_raw: -12,
+        af1_raw: 3_210,
+        af0_raw: -123_456,
+        tgd_raw: -20,
+    });
 
     let track_path = temp.join("track.jsonl");
     write_track_artifact_from_bits(&track_path, sat, 9, &bits);
@@ -851,30 +901,30 @@ fn nav_decode_reports_lnav_orbit_subframes_from_wrapped_track_artifact() {
     let temp = temp_dir_path("nav_decode_orbit_subframes");
     fs::create_dir_all(&temp).expect("create temp dir");
     let sat = SatId { constellation: Constellation::Gps, prn: 12 };
-    let mut bits = encode_subframe_2_with_orbit(
-        3,
-        0xA5,
-        -512,
-        1234,
-        -0x1234_5678,
-        -777,
-        0x0123_4567,
-        911,
-        0x0056_789A,
-        21_600,
-    );
-    bits.extend(encode_subframe_3_with_orbit(
-        4,
-        0x5A,
-        -321,
-        0x2345_6789_u32 as i32,
-        654,
-        -0x1234_0000,
-        2047,
-        0x1112_1314_u32 as i32,
-        -0x34567,
-        0x1234,
-    ));
+    let mut bits = encode_subframe_2_with_orbit(LnavOrbitSubframe2Request {
+        tow_count: 3,
+        iode: 0xA5,
+        crs_raw: -512,
+        delta_n_raw: 1234,
+        m0_raw: -0x1234_5678,
+        cuc_raw: -777,
+        e_raw: 0x0123_4567,
+        cus_raw: 911,
+        sqrt_a_raw: 0x0056_789A,
+        toe_raw: 21_600,
+    });
+    bits.extend(encode_subframe_3_with_orbit(LnavOrbitSubframe3Request {
+        tow_count: 4,
+        iode: 0x5A,
+        cic_raw: -321,
+        omega0_raw: 0x2345_6789_u32 as i32,
+        cis_raw: 654,
+        i0_raw: -0x1234_0000,
+        crc_raw: 2047,
+        w_raw: 0x1112_1314_u32 as i32,
+        omegadot_raw: -0x34567,
+        idot_raw: 0x1234,
+    }));
 
     let track_path = temp.join("track.jsonl");
     write_track_artifact_from_bits(&track_path, sat, 8, &bits);
@@ -933,8 +983,17 @@ fn nav_decode_reports_explicit_reference_week() {
     let temp = temp_dir_path("nav_decode_reference_week");
     fs::create_dir_all(&temp).expect("create temp dir");
     let sat = SatId { constellation: Constellation::Gps, prn: 12 };
-    let bits =
-        encode_subframe_1_with_clock(3, 987, 0b10_1101, 0x2AB, 21_600, -12, 3_210, -123_456, -20);
+    let bits = encode_subframe_1_with_clock(LnavClockSubframeRequest {
+        tow_count: 3,
+        week: 987,
+        sv_health: 0b10_1101,
+        iodc: 0x2AB,
+        toc_raw: 21_600,
+        af2_raw: -12,
+        af1_raw: 3_210,
+        af0_raw: -123_456,
+        tgd_raw: -20,
+    });
 
     let track_path = temp.join("track.jsonl");
     write_track_artifact_from_bits(&track_path, sat, 9, &bits);
@@ -986,31 +1045,41 @@ fn nav_decode_reports_lnav_ephemeris_refusals_from_wrapped_track_artifact() {
     let temp = temp_dir_path("nav_decode_ephemeris_refusal");
     fs::create_dir_all(&temp).expect("create temp dir");
     let sat = SatId { constellation: Constellation::Gps, prn: 12 };
-    let mut bits = encode_subframe_1_with_clock(1, 42, 0, 0x1A5, 21_600, 0, 0, 0, 0);
-    bits.extend(encode_subframe_2_with_orbit(
-        2,
-        0xA5,
-        -512,
-        1234,
-        -0x1234_5678,
-        -777,
-        0x0123_4567,
-        911,
-        0x0056_789A,
-        21_600,
-    ));
-    bits.extend(encode_subframe_3_with_orbit(
-        3,
-        0x22,
-        -321,
-        0x2345_6789_u32 as i32,
-        654,
-        -0x1234_0000,
-        2047,
-        0x1112_1314_u32 as i32,
-        -0x34567,
-        0x1234,
-    ));
+    let mut bits = encode_subframe_1_with_clock(LnavClockSubframeRequest {
+        tow_count: 1,
+        week: 42,
+        sv_health: 0,
+        iodc: 0x1A5,
+        toc_raw: 21_600,
+        af2_raw: 0,
+        af1_raw: 0,
+        af0_raw: 0,
+        tgd_raw: 0,
+    });
+    bits.extend(encode_subframe_2_with_orbit(LnavOrbitSubframe2Request {
+        tow_count: 2,
+        iode: 0xA5,
+        crs_raw: -512,
+        delta_n_raw: 1234,
+        m0_raw: -0x1234_5678,
+        cuc_raw: -777,
+        e_raw: 0x0123_4567,
+        cus_raw: 911,
+        sqrt_a_raw: 0x0056_789A,
+        toe_raw: 21_600,
+    }));
+    bits.extend(encode_subframe_3_with_orbit(LnavOrbitSubframe3Request {
+        tow_count: 3,
+        iode: 0x22,
+        cic_raw: -321,
+        omega0_raw: 0x2345_6789_u32 as i32,
+        cis_raw: 654,
+        i0_raw: -0x1234_0000,
+        crc_raw: 2047,
+        w_raw: 0x1112_1314_u32 as i32,
+        omegadot_raw: -0x34567,
+        idot_raw: 0x1234,
+    }));
 
     let track_path = temp.join("track.jsonl");
     write_track_artifact_from_bits(&track_path, sat, 6, &bits);

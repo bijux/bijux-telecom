@@ -1,6 +1,4 @@
-fn export_synthetic_iq_args<'a>(
-    out: Option<&'a PathBuf>,
-) -> bijux_gnss_infra::api::RunContextArgs<'a> {
+fn export_synthetic_iq_args(out: Option<&PathBuf>) -> bijux_gnss_infra::api::RunContextArgs<'_> {
     bijux_gnss_infra::api::RunContextArgs {
         config: None,
         dataset_id: None,
@@ -84,9 +82,12 @@ fn emit_synthetic_navigation_validation_report(
     common: &CommonArgs,
     report: &SyntheticNavigationValidationReport,
 ) -> Result<()> {
-    let run_dir =
-        bijux_gnss_infra::api::run_dir(&synthetic_navigation_args(common), "validate_synthetic_navigation", None)
-            .map_err(|err| eyre!(err.message))?;
+    let run_dir = bijux_gnss_infra::api::run_dir(
+        &synthetic_navigation_args(common),
+        "validate_synthetic_navigation",
+        None,
+    )
+    .map_err(|err| eyre!(err.message))?;
     fs::write(run_dir.join("summary.json"), serde_json::to_string_pretty(report)?)?;
 
     match common.report {
@@ -127,8 +128,7 @@ fn resolved_quantization_profiles(
     quantization: &[SyntheticQuantizationArg],
 ) -> Vec<bijux_gnss_infra::api::signal::IqQuantization> {
     let requested = if quantization.is_empty() {
-        bijux_gnss_infra::api::receiver::sim::truth_guided_quantization_reference_sweep()
-            .to_vec()
+        bijux_gnss_infra::api::receiver::sim::truth_guided_quantization_reference_sweep().to_vec()
     } else {
         quantization.iter().map(|entry| entry.into_quantization()).collect::<Vec<_>>()
     };
@@ -153,11 +153,13 @@ pub(crate) fn handle_export_synthetic_iq(command: GnssCommand) -> Result<()> {
         toml::from_str(&scenario_contents)?;
     let scenario_id = resolved_scenario_id(&scenario_def, &scenario);
 
-    let mut profile = ReceiverConfig::default();
-    profile.sample_rate_hz = scenario_def.sample_rate_hz;
-    profile.intermediate_freq_hz = scenario_def.intermediate_freq_hz;
-    profile.quantization_bits = 16;
-    profile.seed = scenario_def.seed;
+    let profile = ReceiverConfig {
+        sample_rate_hz: scenario_def.sample_rate_hz,
+        intermediate_freq_hz: scenario_def.intermediate_freq_hz,
+        quantization_bits: 16,
+        seed: scenario_def.seed,
+        ..ReceiverConfig::default()
+    };
     validate_config(&profile)?;
     let config = profile.to_pipeline_config();
     let frame = bijux_gnss_infra::api::receiver::sim::generate_l1_ca_multi(&config, &scenario_def);

@@ -201,8 +201,8 @@ pub(crate) fn validate_sidecar_schema(sidecar: &RawIqMetadata) -> Result<()> {
         let schema_path = schema_path("sidecar.schema.json");
         let schema_data = fs::read_to_string(schema_path)?;
         let schema_json: serde_json::Value = serde_json::from_str(&schema_data)?;
-        let compiled =
-            validator_for(&schema_json).map_err(|error| eyre!("invalid sidecar schema: {}", error))?;
+        let compiled = validator_for(&schema_json)
+            .map_err(|error| eyre!("invalid sidecar schema: {}", error))?;
         let json = serde_json::to_value(sidecar)?;
         if !compiled.is_valid(&json) {
             let mut messages = Vec::new();

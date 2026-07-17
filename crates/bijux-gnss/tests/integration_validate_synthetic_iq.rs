@@ -107,24 +107,32 @@ fn validate_acquisition_reference_bundle(
     .expect("parse validation report");
     assert_eq!(report["validation"]["scenario_id"], scenario_id);
     assert_eq!(report["validation"]["sample_rate_hz"], expected_sample_rate_hz);
-    assert_eq!(report["validation"]["pass"], true);
+    assert!(report["validation"]["pass"].as_bool().expect("validation pass"));
     assert_eq!(
         report["acquisition_code_phase_validation"]["sample_rate_hz"],
         expected_sample_rate_hz
     );
-    assert_eq!(report["acquisition_code_phase_validation"]["pass"], true);
+    assert!(report["acquisition_code_phase_validation"]["pass"]
+        .as_bool()
+        .expect("acquisition code phase validation pass"));
     assert_eq!(
         report["acquisition_code_phase_refinement_validation"]["sample_rate_hz"],
         expected_sample_rate_hz
     );
-    assert_eq!(report["acquisition_code_phase_refinement_validation"]["pass"], true);
+    assert!(report["acquisition_code_phase_refinement_validation"]["pass"]
+        .as_bool()
+        .expect("acquisition code phase refinement validation pass"));
     assert_eq!(report["acquisition_doppler_validation"]["sample_rate_hz"], expected_sample_rate_hz);
-    assert_eq!(report["acquisition_doppler_validation"]["pass"], true);
+    assert!(report["acquisition_doppler_validation"]["pass"]
+        .as_bool()
+        .expect("acquisition doppler validation pass"));
     assert_eq!(
         report["acquisition_receiver_clock_offset_validation"]["sample_rate_hz"],
         expected_sample_rate_hz
     );
-    assert_eq!(report["acquisition_receiver_clock_offset_validation"]["pass"], true);
+    assert!(report["acquisition_receiver_clock_offset_validation"]["pass"]
+        .as_bool()
+        .expect("acquisition receiver clock offset validation pass"));
     assert_eq!(
         report["acquisition_code_phase_validation"]["satellites"]
             .as_array()
@@ -217,14 +225,20 @@ fn validate_synthetic_iq_accepts_reference_cn0_bundle() {
     )
     .expect("parse validation report");
     assert_eq!(report["validation"]["scenario_id"], "synthetic_iq_cn0_reference");
-    assert_eq!(report["validation"]["pass"], true);
-    assert_eq!(report["acquisition_code_phase_validation"]["pass"], true);
-    assert_eq!(report["acquisition_code_phase_refinement_validation"]["pass"], true);
-    assert_eq!(report["acquisition_doppler_validation"]["pass"], true);
+    assert!(report["validation"]["pass"].as_bool().expect("validation pass"));
+    assert!(report["acquisition_code_phase_validation"]["pass"]
+        .as_bool()
+        .expect("acquisition code phase validation pass"));
+    assert!(report["acquisition_code_phase_refinement_validation"]["pass"]
+        .as_bool()
+        .expect("acquisition code phase refinement validation pass"));
+    assert!(report["acquisition_doppler_validation"]["pass"]
+        .as_bool()
+        .expect("acquisition doppler validation pass"));
     let rows = report["validation"]["satellites"].as_array().expect("satellite rows");
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0]["sat"]["prn"], 7);
-    assert_eq!(rows[0]["pass"], true);
+    assert!(rows[0]["pass"].as_bool().expect("satellite validation pass"));
     let epochs_measured = rows[0]["epochs_measured"].as_u64().expect("epochs measured");
     assert!(
         epochs_measured >= 5,
@@ -234,7 +248,7 @@ fn validate_synthetic_iq_accepts_reference_cn0_bundle() {
         rows[0]["measured_mean_cn0_dbhz"].as_f64().expect("measured mean cn0");
     let cn0_delta_db = rows[0]["cn0_delta_db"].as_f64().expect("cn0 delta");
     assert!(
-        measured_mean_cn0_dbhz >= 48.0 && measured_mean_cn0_dbhz <= 57.0,
+        (48.0..=57.0).contains(&measured_mean_cn0_dbhz),
         "measured mean cn0 drifted outside the expected tracking estimate band: {measured_mean_cn0_dbhz}"
     );
     assert!(cn0_delta_db.abs() <= 5.0, "cn0 delta out of tolerance: {cn0_delta_db}");
@@ -243,7 +257,7 @@ fn validate_synthetic_iq_accepts_reference_cn0_bundle() {
         .expect("acquisition satellite rows");
     assert_eq!(acquisition_rows.len(), 1);
     assert_eq!(acquisition_rows[0]["sat"]["prn"], 7);
-    assert_eq!(acquisition_rows[0]["pass"], true);
+    assert!(acquisition_rows[0]["pass"].as_bool().expect("acquisition satellite validation pass"));
     assert_eq!(acquisition_rows[0]["code_phase_error_samples"], 0);
     let acquisition_refinement_rows = report["acquisition_code_phase_refinement_validation"]
         ["satellites"]
@@ -251,7 +265,9 @@ fn validate_synthetic_iq_accepts_reference_cn0_bundle() {
         .expect("acquisition refinement rows");
     assert_eq!(acquisition_refinement_rows.len(), 1);
     assert_eq!(acquisition_refinement_rows[0]["sat"]["prn"], 7);
-    assert_eq!(acquisition_refinement_rows[0]["pass"], true);
+    assert!(acquisition_refinement_rows[0]["pass"]
+        .as_bool()
+        .expect("acquisition refinement satellite validation pass"));
     let coarse_error_samples = acquisition_refinement_rows[0]["coarse_error_samples"]
         .as_f64()
         .expect("coarse code phase error");
@@ -267,7 +283,9 @@ fn validate_synthetic_iq_accepts_reference_cn0_bundle() {
         .expect("acquisition doppler rows");
     assert_eq!(acquisition_doppler_rows.len(), 1);
     assert_eq!(acquisition_doppler_rows[0]["sat"]["prn"], 7);
-    assert_eq!(acquisition_doppler_rows[0]["pass"], true);
+    assert!(acquisition_doppler_rows[0]["pass"]
+        .as_bool()
+        .expect("acquisition doppler satellite validation pass"));
     let doppler_error_hz =
         acquisition_doppler_rows[0]["doppler_error_hz"].as_f64().expect("doppler error");
     assert!(

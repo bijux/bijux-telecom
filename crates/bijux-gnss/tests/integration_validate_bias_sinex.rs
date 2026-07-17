@@ -2,8 +2,8 @@
 
 use bijux_gnss_infra::api::core::{
     Constellation, Cycles, Hertz, LockFlags, Meters, ObsEpoch, ObsMetadata, ObsSatellite,
-    ObservationEpochDecision, ObservationStatus, ReceiverRole, ReceiverSampleTrace, SatId,
-    Seconds, SigId, SignalBand, SignalCode,
+    ObservationEpochDecision, ObservationStatus, ReceiverRole, ReceiverSampleTrace, SatId, Seconds,
+    SigId, SignalBand, SignalCode,
 };
 use bijux_gnss_signal::api::{signal_spec_gps_l1_ca, signal_spec_gps_l2_py};
 use std::fs;

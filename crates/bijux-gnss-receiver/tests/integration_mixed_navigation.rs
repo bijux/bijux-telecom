@@ -339,6 +339,7 @@ fn make_glonass_navigation(
             satellite_type: GlonassSatelliteType::GlonassM,
             reported_slot: None,
             system_time: Some(GlonassSystemTime { day_number: 864, four_year_interval: Some(8) }),
+            resolved_day_index: Some(864),
             accuracy_code: Some(2),
         },
         system_time: Some(GlonassAlmanacTimeData {
@@ -528,7 +529,7 @@ fn public_navigation_api_solves_mixed_gps_galileo_epoch() {
     assert_eq!(solution.isb[0].constellation, Constellation::Galileo);
     assert_eq!(solution.isb[0].bias_s.0.signum(), galileo_bias_s.signum());
     assert!((solution.isb[0].bias_s.0 - galileo_bias_s).abs() < 5.0e-8);
-    assert!((solution.clock_bias_s.0 - receiver_clock_bias_s).abs() < 5.0e-8);
+    assert!((solution.clock_bias_s.0 - receiver_clock_bias_s).abs() < 5.0e-8, "{solution:?}");
     assert_eq!(solution.constellation_residual_rms.len(), 2);
     assert_constellation_residual_rms(&solution, Constellation::Gps, 4, 4);
     assert_constellation_residual_rms(&solution, Constellation::Galileo, 2, 2);
@@ -599,7 +600,7 @@ fn public_navigation_api_solves_mixed_gps_beidou_epoch() {
     assert_eq!(solution.isb[0].constellation, Constellation::Beidou);
     assert_eq!(solution.isb[0].bias_s.0.signum(), beidou_bias_s.signum());
     assert!((solution.isb[0].bias_s.0 - beidou_bias_s).abs() < 5.0e-8);
-    assert!((solution.clock_bias_s.0 - receiver_clock_bias_s).abs() < 5.0e-8);
+    assert!((solution.clock_bias_s.0 - receiver_clock_bias_s).abs() < 5.0e-8, "{solution:?}");
     assert_eq!(solution.constellation_residual_rms.len(), 2);
     assert_constellation_residual_rms(&solution, Constellation::Gps, 4, 4);
     assert_constellation_residual_rms(&solution, Constellation::Beidou, 2, 2);
@@ -685,7 +686,7 @@ fn public_navigation_api_solves_mixed_gps_galileo_beidou_epoch() {
         .solve_epoch_with_navigation_data(&obs, &navigation_data)
         .expect("mixed solution");
 
-    assert!(solution.valid);
+    assert!(solution.valid, "{solution:?}");
     assert_eq!(solution.refusal_class, None);
     assert_eq!(solution.used_sat_count, 8);
     assert_eq!(solution.isb.len(), 2);
@@ -703,7 +704,7 @@ fn public_navigation_api_solves_mixed_gps_galileo_beidou_epoch() {
     assert_eq!(beidou_isb.bias_s.0.signum(), beidou_bias_s.signum());
     assert!((galileo_isb.bias_s.0 - galileo_bias_s).abs() < 5.0e-8);
     assert!((beidou_isb.bias_s.0 - beidou_bias_s).abs() < 5.0e-8);
-    assert!((solution.clock_bias_s.0 - receiver_clock_bias_s).abs() < 5.0e-8);
+    assert!((solution.clock_bias_s.0 - receiver_clock_bias_s).abs() < 5.0e-8, "{solution:?}");
     assert_eq!(solution.constellation_residual_rms.len(), 3);
     assert_constellation_residual_rms(&solution, Constellation::Gps, 4, 4);
     assert_constellation_residual_rms(&solution, Constellation::Galileo, 2, 2);
@@ -1031,11 +1032,15 @@ fn public_navigation_api_solves_gps_epoch_when_glonass_navigation_is_missing() {
     assert!(solution.isb.is_empty());
     assert_eq!(solution.constellation_residual_rms.len(), 1);
     assert_constellation_residual_rms(&solution, Constellation::Gps, 4, 4);
-    assert!(solution.residuals.iter().any(|residual| {
-        residual.sat.constellation == Constellation::Glonass
-            && residual.rejected
-            && residual.reject_reason == Some(MeasurementRejectReason::InvalidEphemeris)
-    }));
+    assert!(
+        solution.residuals.iter().any(|residual| {
+            residual.sat.constellation == Constellation::Glonass
+                && residual.rejected
+                && residual.reject_reason == Some(MeasurementRejectReason::InvalidEphemeris)
+        }),
+        "{:?}",
+        solution.residuals
+    );
 }
 
 #[test]

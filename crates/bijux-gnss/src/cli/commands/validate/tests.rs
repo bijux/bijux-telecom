@@ -1,8 +1,8 @@
 use super::*;
 use bijux_gnss_infra::api::core::{
-    Epoch, Meters, NAV_OUTPUT_STABILITY_SIGNATURE_VERSION, NAV_SOLUTION_MODEL_VERSION,
-    NavLifecycleState, NavSolutionEpoch, NavUncertaintyClass, ReceiverSampleTrace, Seconds,
-    SolutionStatus, SolutionValidity,
+    Epoch, Meters, NavLifecycleState, NavSolutionEpoch, NavUncertaintyClass, ReceiverSampleTrace,
+    Seconds, SolutionStatus, SolutionValidity, NAV_OUTPUT_STABILITY_SIGNATURE_VERSION,
+    NAV_SOLUTION_MODEL_VERSION,
 };
 
 fn sample_solution(ecef_x_m: f64, ecef_y_m: f64, ecef_z_m: f64) -> NavSolutionEpoch {
@@ -180,13 +180,11 @@ fn validation_evidence_bundle_surfaces_missing_integrity_claim_support() {
     let evidence = validation_evidence_bundle(&[], &[solution], &report);
 
     assert_eq!(evidence["numerical"]["stable_integrity_evidence_missing_epochs"], 1);
-    assert!(
-        evidence["claim_evidence_guard"]["violations"]
-            .as_array()
-            .expect("violations array")
-            .iter()
-            .any(|value| value == "stable_solutions_missing_integrity_evidence:1/1")
-    );
+    assert!(evidence["claim_evidence_guard"]["violations"]
+        .as_array()
+        .expect("violations array")
+        .iter()
+        .any(|value| value == "stable_solutions_missing_integrity_evidence:1/1"));
 }
 
 #[test]
@@ -207,11 +205,9 @@ fn validation_evidence_bundle_clears_integrity_gap_once_protection_levels_exist(
     let evidence = validation_evidence_bundle(&[], &[solution], &report);
 
     assert_eq!(evidence["numerical"]["stable_integrity_evidence_missing_epochs"], 0);
-    assert!(
-        !evidence["claim_evidence_guard"]["violations"]
-            .as_array()
-            .expect("violations array")
-            .iter()
-            .any(|value| value == "stable_solutions_missing_integrity_evidence:1/1")
-    );
+    assert!(!evidence["claim_evidence_guard"]["violations"]
+        .as_array()
+        .expect("violations array")
+        .iter()
+        .any(|value| value == "stable_solutions_missing_integrity_evidence:1/1"));
 }

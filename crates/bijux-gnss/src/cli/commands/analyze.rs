@@ -1,10 +1,7 @@
 use super::*;
 
 pub(crate) fn handle_analyze(command: GnssCommand) -> Result<()> {
-    let GnssCommand::Analyze {
-        run_dir,
-        reference,
-    } = command else {
+    let GnssCommand::Analyze { run_dir, reference } = command else {
         bail!("invalid command for handler");
     };
 
@@ -43,10 +40,7 @@ pub(crate) fn handle_analyze(command: GnssCommand) -> Result<()> {
         }
     }
 
-    fs::write(
-        out_dir.join("summary.json"),
-        serde_json::to_string_pretty(&summary)?,
-    )?;
+    fs::write(out_dir.join("summary.json"), serde_json::to_string_pretty(&summary)?)?;
 
     #[cfg(feature = "plots")]
     {

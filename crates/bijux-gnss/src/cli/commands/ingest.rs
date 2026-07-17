@@ -113,37 +113,25 @@ pub(crate) fn handle_track(command: GnssCommand) -> Result<()> {
 }
 
 pub(crate) fn handle_inspect(command: GnssCommand) -> Result<()> {
-    let GnssCommand::Inspect {
-        common,
-        input,
-        sampling,
-        max_samples,
-    } = command
-    else {
+    let GnssCommand::Inspect { common, input, sampling, max_samples } = command else {
         bail!("invalid command for handler");
     };
     let RawCaptureInputArgs { file } = input;
     let SamplingRateOverrideArgs { sampling_hz } = sampling;
 
     let _ = runtime_config_from_env(&common, None);
-                    let dataset = load_dataset(&common)?;
-                    let input_file = resolve_input_file(file.as_ref(), dataset.as_ref())?;
-                    let raw_iq_metadata = resolve_raw_iq_metadata(&common, dataset.as_ref())?;
-                    let mut profile = ReceiverConfig::default();
-                    apply_raw_iq_metadata(&mut profile, &raw_iq_metadata, sampling_hz, None)?;
-                    let report = inspect_dataset(&input_file, &raw_iq_metadata, max_samples)?;
-                    match common.report {
-                        ReportFormat::Table => print_inspect_table(&report),
-                        ReportFormat::Json => emit_report(&common, "inspect", &report)?,
-                    }
-                    write_signal_quality_report(&common, "inspect", &report.signal_quality)?;
-                    write_manifest(
-                        &common,
-                        "inspect",
-                        &profile,
-                        dataset.as_ref(),
-                        &report,
-                    )?;
+    let dataset = load_dataset(&common)?;
+    let input_file = resolve_input_file(file.as_ref(), dataset.as_ref())?;
+    let raw_iq_metadata = resolve_raw_iq_metadata(&common, dataset.as_ref())?;
+    let mut profile = ReceiverConfig::default();
+    apply_raw_iq_metadata(&mut profile, &raw_iq_metadata, sampling_hz, None)?;
+    let report = inspect_dataset(&input_file, &raw_iq_metadata, max_samples)?;
+    match common.report {
+        ReportFormat::Table => print_inspect_table(&report),
+        ReportFormat::Json => emit_report(&common, "inspect", &report)?,
+    }
+    write_signal_quality_report(&common, "inspect", &report.signal_quality)?;
+    write_manifest(&common, "inspect", &profile, dataset.as_ref(), &report)?;
 
     Ok(())
 }
@@ -164,12 +152,7 @@ pub(crate) fn handle_validate_config(command: GnssCommand) -> Result<()> {
     } else {
         bail!(
             "config invalid: {}",
-            report
-                .errors
-                .iter()
-                .map(|e| e.message.as_str())
-                .collect::<Vec<_>>()
-                .join(", ")
+            report.errors.iter().map(|e| e.message.as_str()).collect::<Vec<_>>().join(", ")
         );
     }
     let dataset = load_dataset(&common)?;
@@ -185,11 +168,7 @@ pub(crate) fn handle_config(command: GnssCommand) -> Result<()> {
     };
 
     match command {
-        ConfigCommand::Validate {
-            common,
-            file,
-            strict,
-        } => {
+        ConfigCommand::Validate { common, file, strict } => {
             let contents = fs::read_to_string(&file)?;
             let profile: ReceiverConfig = toml::from_str(&contents)?;
             let report = <ReceiverConfig as ValidateConfig>::validate(&profile);
@@ -209,13 +188,7 @@ pub(crate) fn handle_config(command: GnssCommand) -> Result<()> {
                 eprintln!("warning: {warn}");
             }
             let summary = serde_json::json!({ "config": file.display().to_string() });
-            write_manifest(
-                &common,
-                "config_validate",
-                &ReceiverConfig::default(),
-                None,
-                &summary,
-            )?;
+            write_manifest(&common, "config_validate", &ReceiverConfig::default(), None, &summary)?;
         }
         ConfigCommand::PrintDefaults { common, out } => {
             let profile = ReceiverConfig::default();
@@ -251,17 +224,11 @@ pub(crate) fn handle_config_schema(command: GnssCommand) -> Result<()> {
     let ConfigSchemaArgs { common, out } = args;
 
     let _ = runtime_config_from_env(&common, None);
-                        let schema = schema_for!(ReceiverConfig);
-                        fs::write(&out, serde_json::to_string_pretty(&schema)?)?;
-                        println!("wrote {}", out.display());
-                        let summary = serde_json::json!({ "schema": out.display().to_string() });
-                        write_manifest(
-                            &common,
-                            "config_schema",
-                            &ReceiverConfig::default(),
-                            None,
-                            &summary,
-                        )?;
+    let schema = schema_for!(ReceiverConfig);
+    fs::write(&out, serde_json::to_string_pretty(&schema)?)?;
+    println!("wrote {}", out.display());
+    let summary = serde_json::json!({ "schema": out.display().to_string() });
+    write_manifest(&common, "config_schema", &ReceiverConfig::default(), None, &summary)?;
 
     Ok(())
 }
@@ -287,12 +254,7 @@ pub(crate) fn handle_config_upgrade(command: GnssCommand) -> Result<()> {
     if !report.errors.is_empty() {
         bail!(
             "config invalid: {}",
-            report
-                .errors
-                .iter()
-                .map(|e| e.message.as_str())
-                .collect::<Vec<_>>()
-                .join(", ")
+            report.errors.iter().map(|e| e.message.as_str()).collect::<Vec<_>>().join(", ")
         );
     }
     let output_path = out.unwrap_or(config);
@@ -305,36 +267,25 @@ pub(crate) fn handle_config_upgrade(command: GnssCommand) -> Result<()> {
 }
 
 pub(crate) fn handle_rinex(command: GnssCommand) -> Result<()> {
-    let GnssCommand::Rinex {
-                common,
-                obs,
-                eph,
-                strict,
-            } = command else {
+    let GnssCommand::Rinex { common, obs, eph, strict } = command else {
         bail!("invalid command for handler");
     };
 
     let _ = runtime_config_from_env(&common, None);
-                    let obs_epochs = read_obs_epochs(&obs)?;
-                    let ephs = read_ephemeris(&eph)?;
-                    let out_dir = artifacts_dir(&common, "rinex", None)?;
-                    let obs_path = out_dir.join("obs.rnx");
-                    let nav_path = out_dir.join("nav.rnx");
-                    write_rinex_obs(&obs_path, &obs_epochs, strict)?;
-                    write_rinex_nav(&nav_path, &ephs, strict)?;
-                    println!("wrote {}", obs_path.display());
-                    println!("wrote {}", nav_path.display());
-                    let summary = serde_json::json!({
-                        "obs": obs_path.display().to_string(),
-                        "nav": nav_path.display().to_string()
-                    });
-                    write_manifest(
-                        &common,
-                        "rinex",
-                        &ReceiverConfig::default(),
-                        None,
-                        &summary,
-                    )?;
+    let obs_epochs = read_obs_epochs(&obs)?;
+    let ephs = read_ephemeris(&eph)?;
+    let out_dir = artifacts_dir(&common, "rinex", None)?;
+    let obs_path = out_dir.join("obs.rnx");
+    let nav_path = out_dir.join("nav.rnx");
+    write_rinex_obs(&obs_path, &obs_epochs, strict)?;
+    write_rinex_nav(&nav_path, &ephs, strict)?;
+    println!("wrote {}", obs_path.display());
+    println!("wrote {}", nav_path.display());
+    let summary = serde_json::json!({
+        "obs": obs_path.display().to_string(),
+        "nav": nav_path.display().to_string()
+    });
+    write_manifest(&common, "rinex", &ReceiverConfig::default(), None, &summary)?;
 
     Ok(())
 }

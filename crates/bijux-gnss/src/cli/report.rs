@@ -71,8 +71,7 @@ fn summarize_reported_prns(rows: &[AcquisitionRow]) -> Vec<ReportedPrn> {
         }
     }
     let mut reported_prns: Vec<_> = by_prn.into_values().collect();
-    reported_prns
-        .sort_by(|left, right| reported_prn_sort_key(left).cmp(&reported_prn_sort_key(right)));
+    reported_prns.sort_by_key(reported_prn_sort_key);
     reported_prns
 }
 
@@ -579,7 +578,7 @@ mod report_tests {
 
         assert_eq!(attempts.len(), 2);
         assert_eq!(attempts[0].epoch_idx, 10);
-        assert_eq!(attempts[0].valid, false);
+        assert!(!attempts[0].valid);
         assert_eq!(attempts[0].sat_count, 4);
         assert_eq!(attempts[0].used_sat_count, 4);
         assert_eq!(attempts[0].rejected_sat_count, 0);

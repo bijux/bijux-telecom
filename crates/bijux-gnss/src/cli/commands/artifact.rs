@@ -6,14 +6,7 @@ pub(crate) fn handle_artifact(command: GnssCommand) -> Result<()> {
     };
 
     match command {
-        ArtifactCommand::Validate {
-            common,
-            file,
-            kind,
-            strict,
-            report,
-            fail_on,
-        } => {
+        ArtifactCommand::Validate { common, file, kind, strict, report, fail_on } => {
             let _ = runtime_config_from_env(&common, None);
             let result = artifact_validate(&file, kind.as_deref(), strict)?;
             let summary = bijux_gnss_infra::api::core::aggregate_diagnostics(&result.diagnostics);
@@ -39,12 +32,7 @@ pub(crate) fn handle_artifact(command: GnssCommand) -> Result<()> {
             let _ = runtime_config_from_env(&common, None);
             explain_artifact(&common, &file)?;
         }
-        ArtifactCommand::Convert {
-            common,
-            input,
-            output,
-            to,
-        } => {
+        ArtifactCommand::Convert { common, input, output, to } => {
             let _ = runtime_config_from_env(&common, None);
             convert_artifact(&input, &output, &to)?;
             let summary = serde_json::json!({
@@ -94,25 +82,22 @@ fn convert_artifact(input: &Path, output: &Path, to: &str) -> Result<()> {
     Ok(())
 }
 
-fn render_artifact_explain(path: &Path, result: &bijux_gnss_infra::api::ArtifactExplainResult) -> String {
+fn render_artifact_explain(
+    path: &Path,
+    result: &bijux_gnss_infra::api::ArtifactExplainResult,
+) -> String {
     let header = &result.header;
     let mut out = String::new();
     out.push_str(&format!("artifact: {}\n", path.display()));
     out.push_str(&format!("kind: {}\n", result.kind));
     out.push_str(&format!("schema_version: {}\n", header.schema_version));
     out.push_str(&format!("producer: {}\n", header.producer));
-    out.push_str(&format!(
-        "producer_version: {}\n",
-        header.producer_version
-    ));
+    out.push_str(&format!("producer_version: {}\n", header.producer_version));
     out.push_str(&format!("created_at_unix_ms: {}\n", header.created_at_unix_ms));
     out.push_str(&format!("git_sha: {}\n", header.git_sha));
     out.push_str(&format!("git_dirty: {}\n", header.git_dirty));
     out.push_str(&format!("config_hash: {}\n", header.config_hash));
-    out.push_str(&format!(
-        "dataset_id: {}\n",
-        header.dataset_id.as_deref().unwrap_or("none")
-    ));
+    out.push_str(&format!("dataset_id: {}\n", header.dataset_id.as_deref().unwrap_or("none")));
     out.push_str(&format!("toolchain: {}\n", header.toolchain));
     out.push_str(&format!("features: {}\n", header.features.join(", ")));
     out.push_str(&format!("deterministic: {}\n", header.deterministic));
@@ -176,12 +161,8 @@ mod artifact_tests {
     fn validate_obs_fixture_accepts_receiver_time_trace() {
         let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("../bijux-gnss-core/tests/data/obs_fixture.jsonl");
-        let result =
-            bijux_gnss_infra::api::artifact_validate(&path, Some("obs"), true).expect("validate fixture");
-        assert!(
-            result.diagnostics.is_empty(),
-            "diagnostics={:?}",
-            result.diagnostics
-        );
+        let result = bijux_gnss_infra::api::artifact_validate(&path, Some("obs"), true)
+            .expect("validate fixture");
+        assert!(result.diagnostics.is_empty(), "diagnostics={:?}", result.diagnostics);
     }
 }

@@ -19,8 +19,8 @@ pub(crate) fn rtk_advanced_solution_measurements(
     quality: Option<&bijux_gnss_infra::api::receiver::RtkBaselineQuality>,
 ) -> bijux_gnss_infra::api::receiver::AdvancedSolutionMeasurements {
     if let Some(quality) = quality {
-        let sigma_h_m = (quality.sigma_e * quality.sigma_e + quality.sigma_n * quality.sigma_n)
-            .sqrt();
+        let sigma_h_m =
+            (quality.sigma_e * quality.sigma_e + quality.sigma_n * quality.sigma_n).sqrt();
         bijux_gnss_infra::api::receiver::AdvancedSolutionMeasurements {
             sigma_h_m: Some(sigma_h_m),
             sigma_v_m: Some(quality.sigma_u),

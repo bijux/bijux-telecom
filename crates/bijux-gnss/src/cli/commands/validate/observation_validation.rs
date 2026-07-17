@@ -4,16 +4,8 @@ pub(crate) fn handle_validate(command: GnssCommand) -> Result<()> {
     let GnssCommand::Validate { args } = command else {
         bail!("invalid command for handler");
     };
-    let ObservationValidationArgs {
-        common,
-        input,
-        eph,
-        reference,
-        prn,
-        sp3,
-        clk,
-        bias_sinex,
-    } = args;
+    let ObservationValidationArgs { common, input, eph, reference, prn, sp3, clk, bias_sinex } =
+        args;
     let RawCaptureInputArgs { file } = input;
 
     let runtime = runtime_config_from_env(&common, None);
@@ -34,11 +26,7 @@ pub(crate) fn handle_validate(command: GnssCommand) -> Result<()> {
     if !report.errors.is_empty() {
         bail!(
             "config invalid: {}",
-            report.errors
-                .iter()
-                .map(|error| error.message.as_str())
-                .collect::<Vec<_>>()
-                .join(", ")
+            report.errors.iter().map(|error| error.message.as_str()).collect::<Vec<_>>().join(", ")
         );
     }
 
@@ -54,8 +42,8 @@ pub(crate) fn handle_validate(command: GnssCommand) -> Result<()> {
 
     let receiver =
         bijux_gnss_infra::api::receiver::Receiver::new(profile.to_pipeline_config(), runtime);
-    let solutions =
-        receiver.solve_observation_epochs_with_gps_broadcast_navigation(&obs, &broadcast_navigation);
+    let solutions = receiver
+        .solve_observation_epochs_with_gps_broadcast_navigation(&obs, &broadcast_navigation);
 
     #[cfg(feature = "precise-products")]
     let (products_ok, product_fallbacks, code_biases) = {

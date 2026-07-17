@@ -23,8 +23,8 @@ pub(crate) fn validation_evidence_bundle(
         }
     }
 
-    let cn0_mean =
-        (!cn0_values.is_empty()).then_some(cn0_values.iter().sum::<f64>() / cn0_values.len() as f64);
+    let cn0_mean = (!cn0_values.is_empty())
+        .then_some(cn0_values.iter().sum::<f64>() / cn0_values.len() as f64);
     let cn0_min = cn0_values.iter().cloned().reduce(f64::min);
     let cn0_max = cn0_values.iter().cloned().reduce(f64::max);
 
@@ -43,14 +43,14 @@ pub(crate) fn validation_evidence_bundle(
             *refusal_counts.entry(key).or_insert(0usize) += 1;
         }
     }
-    let pdop_mean =
-        (!pdop_values.is_empty()).then_some(pdop_values.iter().sum::<f64>() / pdop_values.len() as f64);
+    let pdop_mean = (!pdop_values.is_empty())
+        .then_some(pdop_values.iter().sum::<f64>() / pdop_values.len() as f64);
     let pdop_max = pdop_values.iter().cloned().reduce(f64::max);
-    let gdop_mean =
-        (!gdop_values.is_empty()).then_some(gdop_values.iter().sum::<f64>() / gdop_values.len() as f64);
+    let gdop_mean = (!gdop_values.is_empty())
+        .then_some(gdop_values.iter().sum::<f64>() / gdop_values.len() as f64);
     let gdop_max = gdop_values.iter().cloned().reduce(f64::max);
-    let residual_rms_mean =
-        (!rms_values.is_empty()).then_some(rms_values.iter().sum::<f64>() / rms_values.len() as f64);
+    let residual_rms_mean = (!rms_values.is_empty())
+        .then_some(rms_values.iter().sum::<f64>() / rms_values.len() as f64);
     let used_sat_mean = (!solutions.is_empty()).then_some(
         solutions.iter().map(|solution| solution.used_sat_count as f64).sum::<f64>()
             / solutions.len() as f64,
@@ -58,10 +58,7 @@ pub(crate) fn validation_evidence_bundle(
     let stable_solution_count = solutions
         .iter()
         .filter(|solution| {
-            matches!(
-                solution.validity,
-                bijux_gnss_infra::api::core::SolutionValidity::Stable
-            )
+            matches!(solution.validity, bijux_gnss_infra::api::core::SolutionValidity::Stable)
         })
         .count();
     let weak_integrity_stable_count = report
@@ -129,8 +126,7 @@ pub(crate) fn validation_evidence_bundle(
             ));
         }
     }
-    let lock_quality_ratio =
-        (lock_total > 0).then_some(lock_good as f64 / lock_total as f64);
+    let lock_quality_ratio = (lock_total > 0).then_some(lock_good as f64 / lock_total as f64);
     if let Some(value) = lock_quality_ratio {
         if value < report.science_policy.min_lock_ratio {
             claim_evidence_violations.push(format!(
