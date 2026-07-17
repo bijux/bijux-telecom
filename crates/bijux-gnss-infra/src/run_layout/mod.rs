@@ -6,7 +6,7 @@ mod provenance;
 mod records;
 
 /// Run directory layout.
-pub type RunDirLayout = directories::layout::RunDirLayout;
+pub type RunDirectoryLayout = directories::layout::RunDirectoryLayout;
 
 /// Run context arguments.
 pub type RunContextArgs<'a> = directories::context::RunContextArgs<'a>;

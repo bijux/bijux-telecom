@@ -2,7 +2,7 @@
 
 /// Run directory layout.
 #[derive(Debug, Clone)]
-pub struct RunDirLayout {
+pub struct RunDirectoryLayout {
     /// Root run directory.
     pub run_dir: std::path::PathBuf,
     /// Artifacts directory.
@@ -15,7 +15,7 @@ pub struct RunDirLayout {
     pub manifest_path: std::path::PathBuf,
 }
 
-impl RunDirLayout {
+impl RunDirectoryLayout {
     /// Create a layout from a run directory.
     pub fn new(run_dir: std::path::PathBuf) -> Self {
         let artifacts_dir = run_dir.join("artifacts");

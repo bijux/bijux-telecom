@@ -8,7 +8,7 @@ use bijux_gnss_receiver::api::ReceiverConfig;
 use crate::datasets::DatasetEntry;
 use crate::hash::hash_config;
 
-use super::layout::RunDirLayout;
+use super::layout::RunDirectoryLayout;
 use crate::run_layout::identity::{dataset_hash, now_unix_ms, run_id};
 
 /// Run context arguments.
@@ -32,7 +32,7 @@ pub struct RunContextArgs<'a> {
 
 #[derive(Debug, Clone)]
 pub(crate) struct RunContext {
-    pub(crate) layout: RunDirLayout,
+    pub(crate) layout: RunDirectoryLayout,
 }
 
 static RUN_CONTEXT: OnceLock<RunContext> = OnceLock::new();
@@ -72,7 +72,7 @@ pub(crate) fn resolve_run_context(
         }
         std::path::PathBuf::from("runs").join(name)
     };
-    let layout = RunDirLayout::new(run_dir);
+    let layout = RunDirectoryLayout::new(run_dir);
     layout.create()?;
     let context = RunContext { layout };
     if should_reuse_cached_context {

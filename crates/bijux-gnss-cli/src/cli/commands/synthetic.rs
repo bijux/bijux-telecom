@@ -43,7 +43,7 @@ fn resolved_scenario_id(
 
 fn emit_synthetic_iq_report(
     report: &SyntheticIqExportReport,
-    layout: &bijux_gnss_infra::api::RunDirLayout,
+    layout: &bijux_gnss_infra::api::RunDirectoryLayout,
     report_format: ReportFormat,
 ) -> Result<()> {
     let summary = serde_json::to_value(report)?;

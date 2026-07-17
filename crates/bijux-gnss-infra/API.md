@@ -7,7 +7,7 @@ Artifacts
 - `ArtifactValidationResult`, `ArtifactExplainResult`.
 
 Run layout
-- `RunContextArgs`, `RunDirLayout`, `RunManifest`, `RunReport`.
+- `RunContextArgs`, `RunDirectoryLayout`, `RunManifest`, `RunReport`.
 - `run_dir`, `artifacts_dir`, `artifact_header`, `write_manifest`, `write_run_report`.
 
 Datasets
