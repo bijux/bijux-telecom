@@ -14,6 +14,7 @@ members = [
 ]
 exclude = [
   "crates/bijux-gnss-infra-fuzz",
+  "crates/bijux-gnss-nav-fuzz",
   "crates/bijux-gnss-receiver-fuzz",
 ]
 
