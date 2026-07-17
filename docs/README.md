@@ -1,6 +1,11 @@
 # Documentation Hub
 
-Welcome to the `bijux-gnss` documentation. Start with **Getting Started**, then follow the concepts and CLI reference.
+Welcome to the `bijux-gnss` documentation.
+
+The root handbook series under `docs/0*-*/` now explains the primary package
+boundaries of the repository. Start there when the question is still about
+which crate owns a concern. Stay with the older flat guides below when the
+question is already repository-wide and does not need package routing.
 
 <!-- bijux-telecom-badges:generated:start -->
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-0F766E)](https://github.com/bijux/bijux-telecom/blob/main/LICENSE)
@@ -18,6 +23,14 @@ Welcome to the `bijux-gnss` documentation. Start with **Getting Started**, then 
 <!-- bijux-telecom-badges:generated:end -->
 
 ## Core Guides
+- `docs/index.md`
+- `docs/01-bijux-gnss/index.md`
+- `docs/02-bijux-gnss-core/index.md`
+- `docs/03-bijux-gnss-infra/index.md`
+- `docs/04-bijux-gnss-nav/index.md`
+- `docs/05-bijux-gnss-receiver/index.md`
+- `docs/06-bijux-gnss-signal/index.md`
+- `docs/07-bijux-gnss-dev/index.md`
 - `docs/GETTING_STARTED.md`
 - `docs/CONCEPTS.md`
 - `docs/CONVENTIONS.md`
