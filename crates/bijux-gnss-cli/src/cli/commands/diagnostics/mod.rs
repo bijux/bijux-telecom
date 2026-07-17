@@ -1,5 +1,6 @@
 use super::*;
 
+mod assurance_dispatch;
 mod ca_code;
 mod doctor;
 mod filesystem_support;

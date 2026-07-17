@@ -69,90 +69,16 @@ pub(crate) fn handle_diagnostics(command: GnssCommand) -> Result<()> {
             guidance_dispatch::handle_operator_ergonomics(common, run_dir)?
         }
         DiagnosticsCommand::AuditTrail { common, run_dir } => {
-            let _ = runtime_config_from_env(&common, None);
-            let report = audit_trail_report(&run_dir)?;
-            match common.report {
-                ReportFormat::Table => print_audit_trail_table(&report),
-                ReportFormat::Json => emit_report(&common, "diagnostics_audit_trail", &report)?,
-            }
-            write_diagnostics_report_artifact(
-                &common,
-                "diagnostics_audit_trail",
-                &report,
-                "diagnostics_audit_trail_report.schema.json",
-            )?;
-            write_manifest(
-                &common,
-                "diagnostics_audit_trail",
-                &ReceiverConfig::default(),
-                None,
-                &report,
-            )?;
+            assurance_dispatch::handle_audit_trail(common, run_dir)?
         }
         DiagnosticsCommand::DependencyTrace { common, run_dir } => {
-            let _ = runtime_config_from_env(&common, None);
-            let report = dependency_trace_report(&run_dir)?;
-            match common.report {
-                ReportFormat::Table => print_dependency_trace_table(&report),
-                ReportFormat::Json => {
-                    emit_report(&common, "diagnostics_dependency_trace", &report)?
-                }
-            }
-            write_diagnostics_report_artifact(
-                &common,
-                "diagnostics_dependency_trace",
-                &report,
-                "diagnostics_dependency_trace_report.schema.json",
-            )?;
-            write_manifest(
-                &common,
-                "diagnostics_dependency_trace",
-                &ReceiverConfig::default(),
-                None,
-                &report,
-            )?;
+            assurance_dispatch::handle_dependency_trace(common, run_dir)?
         }
         DiagnosticsCommand::TrustClass { common, run_dir } => {
-            let _ = runtime_config_from_env(&common, None);
-            let report = trust_class_report(&run_dir)?;
-            match common.report {
-                ReportFormat::Table => print_trust_class_table(&report),
-                ReportFormat::Json => emit_report(&common, "diagnostics_trust_class", &report)?,
-            }
-            write_diagnostics_report_artifact(
-                &common,
-                "diagnostics_trust_class",
-                &report,
-                "diagnostics_trust_class_report.schema.json",
-            )?;
-            write_manifest(
-                &common,
-                "diagnostics_trust_class",
-                &ReceiverConfig::default(),
-                None,
-                &report,
-            )?;
+            assurance_dispatch::handle_trust_class(common, run_dir)?
         }
         DiagnosticsCommand::IntegrityFocus { common, run_dir } => {
-            let _ = runtime_config_from_env(&common, None);
-            let report = integrity_focus_report(&run_dir)?;
-            match common.report {
-                ReportFormat::Table => print_integrity_focus_table(&report),
-                ReportFormat::Json => emit_report(&common, "diagnostics_integrity_focus", &report)?,
-            }
-            write_diagnostics_report_artifact(
-                &common,
-                "diagnostics_integrity_focus",
-                &report,
-                "diagnostics_integrity_focus_report.schema.json",
-            )?;
-            write_manifest(
-                &common,
-                "diagnostics_integrity_focus",
-                &ReceiverConfig::default(),
-                None,
-                &report,
-            )?;
+            assurance_dispatch::handle_integrity_focus(common, run_dir)?
         }
     }
 
