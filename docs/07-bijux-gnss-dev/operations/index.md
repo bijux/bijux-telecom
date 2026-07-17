@@ -55,6 +55,15 @@ flowchart LR
 - `crates/bijux-gnss-dev/docs/WORKFLOWS.md`
 - `crates/bijux-gnss-policies/`
 
+## First Proof Check
+
+Inspect `crates/bijux-gnss-dev/docs/WORKFLOWS.md`,
+`crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md`,
+`crates/bijux-gnss-dev/docs/OUTPUTS.md`, and the operational surfaces above.
+That route shows whether a proposed maintainer change has been mapped to the
+right governed input, evidence path, and workflow owner before execution
+starts.
+
 ## Leave This Section When
 
 - leave for [Quality](../quality/) when the workflow is clear and the next

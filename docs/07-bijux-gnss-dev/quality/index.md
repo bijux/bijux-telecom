@@ -56,6 +56,14 @@ governance surface is drifting.
 - `crates/bijux-gnss-dev/docs/WORKFLOWS.md`
 - `crates/bijux-gnss-policies/`
 
+## First Proof Check
+
+Inspect `crates/bijux-gnss-dev/docs/TESTS.md`,
+`crates/bijux-gnss-dev/docs/WORKFLOWS.md`,
+`crates/bijux-gnss-dev/docs/OUTPUTS.md`, and the proof surfaces above. That
+route shows whether quality claims are still backed by the right maintainer
+workflow tests instead of by broad repository confidence.
+
 ## Leave This Section When
 
 - leave for [Operations](../operations/) when the quality bar is clear and the

@@ -44,3 +44,12 @@ at the same time.
 
 Do not treat one passing guardrail test as proof for a changed governance
 workflow. This crate owns several different maintainer contracts.
+
+## First Proof Check
+
+Use `crates/bijux-gnss-dev/docs/TESTS.md`,
+`crates/bijux-gnss-dev/docs/WORKFLOWS.md`,
+`crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md`, and
+`crates/bijux-gnss-dev/docs/OUTPUTS.md` as the verification map. Then inspect
+the changed command path in `crates/bijux-gnss-dev/src/main.rs` so command
+choice stays tied to the real maintainer workflow.

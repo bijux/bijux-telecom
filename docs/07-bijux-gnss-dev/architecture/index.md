@@ -59,6 +59,14 @@ flowchart LR
 - `crates/bijux-gnss-dev/tests/integration_guardrails.rs`
 - `crates/bijux-gnss-dev/tests/integration_nextest_suite_selection.rs`
 
+## First Proof Check
+
+Inspect `crates/bijux-gnss-dev/docs/ARCHITECTURE.md`,
+`crates/bijux-gnss-dev/docs/WORKFLOWS.md`, and
+`crates/bijux-gnss-dev/docs/TESTS.md` first. Then move through the code roots
+above so architectural claims stay anchored to real maintainer workflows,
+effects, and guardrails.
+
 ## Leave This Section When
 
 - leave for [Foundation](../foundation/) when the real issue is still about
