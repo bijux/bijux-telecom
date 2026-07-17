@@ -7,6 +7,16 @@ boundaries of the repository. Start there when the question is still about
 which crate owns a concern. Stay with the older flat guides below when the
 question is already repository-wide and does not need package routing.
 
+The current numbered series covers the main GNSS ownership chain:
+
+- `01-bijux-gnss`
+- `02-bijux-gnss-core`
+- `03-bijux-gnss-infra`
+- `04-bijux-gnss-nav`
+- `05-bijux-gnss-receiver`
+- `06-bijux-gnss-signal`
+- `07-bijux-gnss-dev`
+
 <!-- bijux-telecom-badges:generated:start -->
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-0F766E)](https://github.com/bijux/bijux-telecom/blob/main/LICENSE)
 [![CI](https://github.com/bijux/bijux-telecom/actions/workflows/ci.yml/badge.svg)](https://github.com/bijux/bijux-telecom/actions/workflows/ci.yml)
