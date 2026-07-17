@@ -18,7 +18,7 @@ default = ["precise-products"]
 precise-products = []
 
 [dev-dependencies]
-criterion = "0.8"
+criterion.workspace = true
 bijux-gnss-policies.workspace = true
 bijux-gnss-testkit = { path = "../bijux-gnss-testkit", version = "0.1.0" }
 serde_json.workspace = true

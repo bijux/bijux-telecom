@@ -38,7 +38,7 @@ bijux-gnss-signal = { path = "../bijux-gnss-signal", version = "0.1.0" }
 eyre = { workspace = true, optional = true }
 hex = { workspace = true, optional = true }
 jsonschema = { workspace = true, optional = true }
-plotters = { version = "0.3", optional = true }
+plotters = { version = "0.3.7", optional = true, default-features = false, features = ["bitmap_backend", "bitmap_encoder", "line_series"] }
 schemars = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }

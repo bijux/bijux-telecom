@@ -34,7 +34,7 @@ jsonschema = "0.46"
 sha2 = "0.11"
 hex = "0.4"
 proptest = "1.11"
-criterion = "0.8"
+criterion = { version = "0.8.2", default-features = false, features = ["cargo_bench_support", "rayon"] }
 toml = "1.1"
 eyre = "0.6"
 time = { version = "=0.3.36", features = ["parsing"] }
