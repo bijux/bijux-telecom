@@ -6,6 +6,8 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
 
+mod path_resolution;
+
 /// Recorded capture provenance for a registered dataset.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct RecordedCaptureProvenance {
@@ -70,14 +72,16 @@ impl DatasetRegistry {
         }
         let base_dir = path.parent().unwrap_or_else(|| Path::new("."));
         for entry in &mut registry.entries {
-            entry.path = resolve_registry_path(base_dir, &entry.path);
+            entry.path = path_resolution::resolve_registry_path(base_dir, &entry.path);
             entry.sidecar =
-                entry.sidecar.as_ref().map(|value| resolve_registry_path(base_dir, value));
+                entry.sidecar
+                    .as_ref()
+                    .map(|value| path_resolution::resolve_registry_path(base_dir, value));
             if let Some(recorded_capture) = &mut entry.recorded_capture {
                 recorded_capture.recommended_config = recorded_capture
                     .recommended_config
                     .as_ref()
-                    .map(|value| resolve_registry_path(base_dir, value));
+                    .map(|value| path_resolution::resolve_registry_path(base_dir, value));
             }
         }
         Ok(registry)
@@ -105,22 +109,6 @@ impl DatasetEntry {
             notes: None,
         })
     }
-}
-
-fn resolve_registry_path(base_dir: &Path, value: &str) -> String {
-    let path = Path::new(value);
-    if path.is_absolute() {
-        return value.to_string();
-    }
-    let anchor = match (base_dir.file_name(), base_dir.parent(), path.components().next()) {
-        (Some(dir_name), Some(parent), Some(first_component))
-            if first_component.as_os_str() == dir_name =>
-        {
-            parent
-        }
-        _ => base_dir,
-    };
-    anchor.join(path).to_string_lossy().into_owned()
 }
 
 fn map_err(err: impl std::fmt::Display) -> InputError {
