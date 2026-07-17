@@ -13,6 +13,7 @@ fn export_synthetic_iq_args<'a>(
 }
 
 use super::*;
+use bijux_gnss_infra::api::core::format_sat;
 
 fn synthetic_navigation_args(common: &CommonArgs) -> bijux_gnss_infra::api::RunContextArgs<'_> {
     bijux_gnss_infra::api::RunContextArgs {
