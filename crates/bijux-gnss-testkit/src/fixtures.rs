@@ -1,4 +1,4 @@
-//! Fixture file loading helpers for deterministic test assets.
+//! Fixture loading helpers for deterministic test assets.
 
 use std::fs;
 use std::path::Path;
