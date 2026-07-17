@@ -106,8 +106,33 @@ fn render_shifted_memory_samples(
     MemorySamples::new(interleaved_i16, config.sampling_freq_hz).expect("shifted memory source")
 }
 
+fn wideband_acquisition_request(
+    sat: SatId,
+    signal_band: SignalBand,
+    signal_code: SignalCode,
+    coherent_ms: u32,
+    noncoherent: u32,
+) -> AcqRequest {
+    AcqRequest {
+        sat,
+        glonass_frequency_channel: None,
+        signal_band,
+        signal_code,
+        doppler_center_hz: 0.0,
+        doppler_rate_center_hz_per_s: 0.0,
+        expected_line_of_sight_doppler_hz: None,
+        assistance_bounds: None,
+        doppler_search_hz: 0,
+        doppler_step_hz: 250,
+        doppler_rate_search_hz_per_s: 0,
+        doppler_rate_step_hz_per_s: 0,
+        coherent_ms,
+        noncoherent,
+    }
+}
+
 #[test]
-fn receiver_default_acquisition_preserves_gps_l5q_component_provenance_on_raw_source() {
+fn receiver_gps_l5q_acquisition_preserves_component_provenance_on_raw_source() {
     let config = wideband_config();
     let sat = SatId { constellation: Constellation::Gps, prn: 24 };
     let scenario = wideband_signal_scenario(
@@ -118,8 +143,10 @@ fn receiver_default_acquisition_preserves_gps_l5q_component_provenance_on_raw_so
     );
     let mut source = render_memory_samples(&config, &scenario);
     let receiver = Receiver::new(config, ReceiverRuntime::default());
+    let request = wideband_acquisition_request(sat, SignalBand::L5, SignalCode::L5Q, 1, 1);
 
-    let artifacts = receiver.run(&mut source).expect("receiver run");
+    let artifacts =
+        receiver.run_with_acquisition_requests(&mut source, &[request]).expect("receiver run");
     let acquisition = artifacts
         .acquisitions
         .iter()
@@ -132,6 +159,15 @@ fn receiver_default_acquisition_preserves_gps_l5q_component_provenance_on_raw_so
         matches!(acquisition.hypothesis, AcqHypothesis::Accepted | AcqHypothesis::Ambiguous),
         "{acquisition:?}"
     );
+    let tracking = artifacts
+        .tracking
+        .iter()
+        .find(|result| result.sat == sat)
+        .expect("GPS L5Q tracking result");
+    assert!(
+        tracking.epochs.iter().all(|epoch| epoch.signal_code == SignalCode::L5Q),
+        "{tracking:?}"
+    );
     assert_eq!(provenance.combination_mode, AcqComponentCombinationMode::SingleComponent);
     assert_eq!(
         provenance.components.iter().map(|component| component.role).collect::<Vec<_>>(),
@@ -140,7 +176,7 @@ fn receiver_default_acquisition_preserves_gps_l5q_component_provenance_on_raw_so
 }
 
 #[test]
-fn receiver_acquisition_reports_shifted_gps_l5q_secondary_code_phase() {
+fn receiver_gps_l5q_acquisition_reports_shifted_secondary_code_phase() {
     let mut config = wideband_config();
     config.acquisition_integration_ms = 20;
     config.acquisition_noncoherent = 1;
@@ -168,22 +204,7 @@ fn receiver_acquisition_reports_shifted_gps_l5q_secondary_code_phase() {
     };
     let mut source = render_shifted_memory_samples(&config, &scenario, 7, 20);
     let receiver = Receiver::new(config, ReceiverRuntime::default());
-    let request = AcqRequest {
-        sat,
-        glonass_frequency_channel: None,
-        signal_band: SignalBand::L5,
-        signal_code: SignalCode::L5Q,
-        doppler_center_hz: 0.0,
-        doppler_rate_center_hz_per_s: 0.0,
-        expected_line_of_sight_doppler_hz: None,
-        assistance_bounds: None,
-        doppler_search_hz: 0,
-        doppler_step_hz: 250,
-        doppler_rate_search_hz_per_s: 0,
-        doppler_rate_step_hz_per_s: 0,
-        coherent_ms: 20,
-        noncoherent: 1,
-    };
+    let request = wideband_acquisition_request(sat, SignalBand::L5, SignalCode::L5Q, 20, 1);
 
     let artifacts =
         receiver.run_with_acquisition_requests(&mut source, &[request]).expect("receiver run");
@@ -204,7 +225,7 @@ fn receiver_acquisition_reports_shifted_gps_l5q_secondary_code_phase() {
 }
 
 #[test]
-fn receiver_default_acquisition_preserves_galileo_e5b_component_provenance_on_raw_source() {
+fn receiver_galileo_e5b_acquisition_preserves_component_provenance_on_raw_source() {
     let config = wideband_config();
     let sat = SatId { constellation: Constellation::Galileo, prn: 11 };
     let scenario = wideband_signal_scenario(
@@ -215,8 +236,10 @@ fn receiver_default_acquisition_preserves_galileo_e5b_component_provenance_on_ra
     );
     let mut source = render_memory_samples(&config, &scenario);
     let receiver = Receiver::new(config, ReceiverRuntime::default());
+    let request = wideband_acquisition_request(sat, SignalBand::E5, SignalCode::E5b, 1, 1);
 
-    let artifacts = receiver.run(&mut source).expect("receiver run");
+    let artifacts =
+        receiver.run_with_acquisition_requests(&mut source, &[request]).expect("receiver run");
     let acquisition = artifacts
         .acquisitions
         .iter()
@@ -229,6 +252,15 @@ fn receiver_default_acquisition_preserves_galileo_e5b_component_provenance_on_ra
     assert!(
         matches!(acquisition.hypothesis, AcqHypothesis::Accepted | AcqHypothesis::Ambiguous),
         "{acquisition:?}"
+    );
+    let tracking = artifacts
+        .tracking
+        .iter()
+        .find(|result| result.sat == sat)
+        .expect("Galileo E5b tracking result");
+    assert!(
+        tracking.epochs.iter().all(|epoch| epoch.signal_code == SignalCode::E5b),
+        "{tracking:?}"
     );
     assert!(matches!(
         (provenance.combination_mode, roles.as_slice()),
