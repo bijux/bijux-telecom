@@ -15,10 +15,7 @@ use bijux_gnss_receiver::api::{
 use bijux_gnss_testkit::geometry::geodetic_to_ecef;
 use bijux_gnss_testkit::position_truth::pseudorange_from_truth;
 
-#[path = "navigation_motion_profile.rs"]
-mod navigation_motion_profile;
-
-use navigation_motion_profile::{receiver_motion_profile, NavigationMotionTruthEpoch};
+use super::navigation_motion_profile::{receiver_motion_profile, NavigationMotionTruthEpoch};
 
 const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
 const GPS_L1_CA_CODE_RATE_HZ: f64 = 1_023_000.0;
@@ -211,11 +208,11 @@ fn truth_seeded_tracking_results_with_delay_steps(
                 .iter()
                 .map(|truth_epoch| {
                     let anomaly_active = truth_epoch.epoch_idx >= ANOMALY_ONSET_EPOCH_INDEX;
-                    let pseudorange_step_m = anomaly_active
-                        .then_some(
-                            delay_steps_by_prn_m.get(&signal.sat.prn).copied().unwrap_or(0.0),
-                        )
-                        .unwrap_or(0.0);
+                    let pseudorange_step_m = if anomaly_active {
+                        delay_steps_by_prn_m.get(&signal.sat.prn).copied().unwrap_or(0.0)
+                    } else {
+                        0.0
+                    };
                     let pseudorange_m = synthetic_pseudorange_m(
                         ephemeris,
                         truth_epoch.receive_time_s,

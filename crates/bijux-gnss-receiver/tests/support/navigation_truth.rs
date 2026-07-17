@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+#![allow(dead_code, missing_docs)]
 
 use bijux_gnss_core::api::{
     AcqCodePhaseRefinement, AcqHypothesis, AcqResult, AcqUncertainty, Hertz, ReceiverSampleTrace,
@@ -11,11 +11,11 @@ use bijux_gnss_receiver::api::{
     sim::{SyntheticScenario, SyntheticSignalParams},
     ReceiverPipelineConfig,
 };
+use bijux_gnss_testkit::position_truth::pseudorange_from_truth;
 use bijux_gnss_testkit::signal::acquisition::{
     gps_l1ca_expected_acquisition_code_phase_samples,
     gps_l1ca_expected_acquisition_code_phase_samples_f64,
 };
-use bijux_gnss_testkit::position_truth::pseudorange_from_truth;
 const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
 const GPS_L1_CA_CODE_RATE_HZ: f64 = 1_023_000.0;
 const GPS_L1_CA_CODE_PERIOD_CHIPS: f64 = 1023.0;
@@ -79,7 +79,7 @@ pub fn multisatellite_pvt_scenario(
             intermediate_freq_hz: config.intermediate_freq_hz,
             receiver_clock_frequency_bias_hz: 0.0,
             duration_s,
-            seed: 0x5EED_66,
+            seed: 0x005E_ED66,
             satellites,
             ephemerides: ephemerides.clone(),
             id: scenario_id.to_string(),

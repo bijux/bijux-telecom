@@ -13,10 +13,7 @@ use bijux_gnss_receiver::api::{
 use bijux_gnss_testkit::geometry::geodetic_to_ecef;
 use bijux_gnss_testkit::position_truth::pseudorange_from_truth;
 
-#[path = "navigation_motion_profile.rs"]
-mod navigation_motion_profile;
-
-use navigation_motion_profile::{receiver_motion_profile, NavigationMotionTruthEpoch};
+use super::navigation_motion_profile::{receiver_motion_profile, NavigationMotionTruthEpoch};
 
 const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
 const GPS_L1_CA_CODE_RATE_HZ: f64 = 1_023_000.0;

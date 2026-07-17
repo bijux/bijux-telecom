@@ -188,9 +188,9 @@ pub fn receiver_clock_drift_doppler_offset_hz(clock_drift_s_per_s: f64) -> f64 {
     -GPS_L1_CA_CARRIER_HZ.value() * clock_drift_s_per_s
 }
 
-pub fn truth_guided_clock_profile_cases<'a>(
-    cases: &'a [NavigationClockCase],
-) -> Vec<SyntheticPvtClockProfileCase<'a>> {
+pub fn truth_guided_clock_profile_cases(
+    cases: &[NavigationClockCase],
+) -> Vec<SyntheticPvtClockProfileCase<'_>> {
     let stable_case = navigation_clock_case(cases, "stable_receiver_clock");
 
     cases

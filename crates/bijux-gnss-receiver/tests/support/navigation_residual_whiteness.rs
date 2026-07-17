@@ -78,8 +78,7 @@ fn residual_whiteness_run(pattern_mode: ResidualPatternMode) -> ResidualWhitenes
 }
 
 fn navigation_test_config() -> ReceiverPipelineConfig {
-    let mut config = ReceiverPipelineConfig::default();
-    config.raim = false;
+    let mut config = ReceiverPipelineConfig { raim: false, ..ReceiverPipelineConfig::default() };
     config.weighting.enabled = false;
     config.weighting.elev_mask_deg = -90.0;
     config.science_thresholds.min_mean_cn0_dbhz = 1.0;

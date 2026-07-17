@@ -122,9 +122,9 @@ pub fn navigation_time_case<'a>(
         .unwrap_or_else(|| panic!("unknown navigation time case: {profile_name}"))
 }
 
-pub fn truth_guided_time_profile_cases<'a>(
-    cases: &'a [NavigationTimeCase],
-) -> Vec<SyntheticPvtTimeProfileCase<'a>> {
+pub fn truth_guided_time_profile_cases(
+    cases: &[NavigationTimeCase],
+) -> Vec<SyntheticPvtTimeProfileCase<'_>> {
     cases
         .iter()
         .map(|case| SyntheticPvtTimeProfileCase {
