@@ -1,4 +1,4 @@
-//! Independent coordinate transforms exposed for test truth and support fixtures.
+//! Independent geometry transforms exposed for test truth and support fixtures.
 
 use crate::reference_models::coordinates::{
     ecef_to_enu_m as reference_ecef_to_enu_m,

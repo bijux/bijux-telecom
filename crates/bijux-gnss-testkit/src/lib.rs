@@ -4,8 +4,8 @@
 mod reference_models;
 
 pub mod antenna;
-pub mod coordinates;
 pub mod fixture_loading;
+pub mod geometry;
 pub mod position_truth;
 pub mod reference_data;
 pub mod signal;

@@ -10,7 +10,7 @@ use bijux_gnss_receiver::api::{
     observations_from_tracking_results_with_gps_anchor, Navigation, ReceiverPipelineConfig,
     ReceiverRuntime, TrackingResult,
 };
-use bijux_gnss_testkit::coordinates::geodetic_to_ecef;
+use bijux_gnss_testkit::geometry::geodetic_to_ecef;
 use bijux_gnss_testkit::position_truth::pseudorange_from_truth;
 
 #[path = "navigation_motion_profile.rs"]

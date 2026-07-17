@@ -24,7 +24,7 @@ use bijux_gnss_receiver::api::{
     },
     Navigation, ReceiverPipelineConfig, ReceiverRuntime,
 };
-use bijux_gnss_testkit::coordinates::{ecef_to_geodetic, geodetic_to_ecef};
+use bijux_gnss_testkit::geometry::{ecef_to_geodetic, geodetic_to_ecef};
 use bijux_gnss_testkit::position_truth::pseudorange_from_truth;
 
 pub struct ReceiverConstellationGeometryCase {

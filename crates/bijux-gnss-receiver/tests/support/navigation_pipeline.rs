@@ -11,7 +11,7 @@ use bijux_gnss_receiver::api::{
     observations_from_tracking_results_with_gps_anchor, Navigation, ReceiverPipelineConfig,
     ReceiverRuntime, TrackingResult, ValidationBudgets,
 };
-use bijux_gnss_testkit::coordinates::{ecef_to_geodetic, geodetic_to_ecef};
+use bijux_gnss_testkit::geometry::{ecef_to_geodetic, geodetic_to_ecef};
 use bijux_gnss_testkit::position_truth::pseudorange_from_truth;
 
 pub const CLEAN_SYNTHETIC_PVT_POSITION_ERROR_MAX_M: f64 = 5.0;

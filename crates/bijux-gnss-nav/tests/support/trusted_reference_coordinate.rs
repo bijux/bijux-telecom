@@ -3,7 +3,7 @@
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
-use bijux_gnss_testkit::coordinates::{ecef_to_enu, geodetic_to_ecef};
+use bijux_gnss_testkit::geometry::{ecef_to_enu, geodetic_to_ecef};
 use bijux_gnss_testkit::reference_data::reference_coordinate::{
     load_trusted_reference_coordinates, trusted_reference_coordinate_by_fixture,
     TrustedReferenceCoordinate, TrustedReferenceCoordinateError,

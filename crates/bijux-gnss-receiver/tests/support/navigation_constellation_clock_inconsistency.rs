@@ -14,7 +14,7 @@ use bijux_gnss_receiver::api::{
     },
     Navigation, ReceiverPipelineConfig, ReceiverRuntime,
 };
-use bijux_gnss_testkit::coordinates::geodetic_to_ecef;
+use bijux_gnss_testkit::geometry::geodetic_to_ecef;
 use bijux_gnss_testkit::position_truth::pseudorange_from_truth;
 
 const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;

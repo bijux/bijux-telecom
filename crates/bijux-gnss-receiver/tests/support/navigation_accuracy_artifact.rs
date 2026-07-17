@@ -27,7 +27,7 @@ use bijux_gnss_receiver::api::{
 #[path = "navigation_truth.rs"]
 mod navigation_truth;
 
-use bijux_gnss_testkit::coordinates::ecef_to_geodetic;
+use bijux_gnss_testkit::geometry::ecef_to_geodetic;
 use navigation_truth::SyntheticPvtScenario;
 
 const SYNTHETIC_REFERENCE_RECEIVE_TIME_S: f64 = 100_000.0;
