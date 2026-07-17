@@ -12,6 +12,20 @@ last_reviewed: 2026-07-17
 Open this section when the question is how to change `bijux-gnss-signal`
 without damaging reference behavior, boundary clarity, or downstream trust.
 
+## Operational Model
+
+```mermaid
+flowchart LR
+    change["proposed signal change"]
+    scope["scope and owner check"]
+    docs["signal contract update"]
+    tests["narrow verification"]
+    review["cross-crate review"]
+    release["merge-ready change"]
+
+    change --> scope --> docs --> tests --> review --> release
+```
+
 ## Read These First
 
 - open [Change Sequence](change-sequence.md) first when the question is how to
@@ -20,6 +34,8 @@ without damaging reference behavior, boundary clarity, or downstream trust.
   what proof to run
 - open [Fixture And Reference Care](fixture-and-reference-care.md) when tests or
   reference catalogs are touched
+- open [Review Scope](review-scope.md) when a change seems to affect both
+  reusable signal code and a higher-level consumer at once
 
 ## Pages In This Section
 
@@ -38,6 +54,7 @@ without damaging reference behavior, boundary clarity, or downstream trust.
 - `crates/bijux-gnss-signal/tests/data/`
 - `crates/bijux-gnss-signal/tests/support/`
 - `crates/bijux-gnss-signal/docs/TESTS.md`
+- `crates/bijux-gnss-testkit/`
 
 ## Leave This Section When
 
@@ -45,3 +62,5 @@ without damaging reference behavior, boundary clarity, or downstream trust.
   question is whether the proof bar itself is strong enough
 - leave for [Interfaces](../interfaces/) when the real issue is public contract
   design rather than safe change procedure
+- leave for [Foundation](../foundation/) when the operational question is
+  actually a boundary dispute

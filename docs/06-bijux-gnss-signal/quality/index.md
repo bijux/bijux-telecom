@@ -12,6 +12,23 @@ last_reviewed: 2026-07-17
 Open this section when the question is whether `bijux-gnss-signal` is proving
 its reusable signal claims honestly enough.
 
+## Trust Model
+
+```mermaid
+flowchart LR
+    tests["test strategy"]
+    invariants["invariants"]
+    validation["change validation"]
+    limits["limitations and risks"]
+    trust["trust decision"]
+
+    tests --> invariants --> validation --> limits --> trust
+```
+
+Quality matters here because downstream crates can reuse signal helpers far
+away from the original author intent. Weak proof at this layer becomes
+amplified coupling elsewhere.
+
 ## Read These First
 
 - open [Test Strategy](test-strategy.md) first when the question is how proof
@@ -36,6 +53,7 @@ its reusable signal claims honestly enough.
 - `crates/bijux-gnss-signal/tests/`
 - `crates/bijux-gnss-signal/docs/TESTS.md`
 - `crates/bijux-gnss-signal/docs/VALIDATION.md`
+- `crates/bijux-gnss-testkit/`
 
 ## Leave This Section When
 
@@ -43,3 +61,5 @@ its reusable signal claims honestly enough.
   next question is execution sequence
 - leave for [Foundation](../foundation/) when the doubt is still about whether
   the crate should own the behavior at all
+- leave for [Interfaces](../interfaces/) when the real question is what the
+  public promise is rather than how well it is defended

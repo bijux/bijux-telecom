@@ -9,6 +9,10 @@ last_reviewed: 2026-07-17
 
 # Dependencies And Adjacencies
 
+This page explains which crates `bijux-gnss-signal` may depend on directly and
+which adjacent owners create more important review pressure than the cargo
+graph alone would show.
+
 ## Direct Dependencies
 
 - `bijux-gnss-core` for shared physical units, signal IDs, observation records,
@@ -19,14 +23,27 @@ last_reviewed: 2026-07-17
   validation reports
 - `thiserror` for signal-layer error reporting
 
-## Adjacency Rules
+## Adjacencies That Matter More Than The Cargo Graph
 
-- new dependencies are acceptable when they support reusable signal math or
-  durable contract serialization
+- `bijux-gnss-receiver` is the main runtime consumer whose orchestration needs
+  can tempt stage policy into reusable signal code
+- `bijux-gnss-nav` consumes signal semantics and validation helpers, but should
+  not pull navigation judgment back into the signal layer
+- `bijux-gnss-infra` handles capture metadata and persisted dataset state, but
+  should not make repository file layout a signal concern
+- `bijux-gnss-testkit` supplies deterministic signal truth and fixtures, but
+  should remain a proof consumer rather than an API-design owner
+- `bijux-gnss-policies` guards crate-shape and surface expectations, but does
+  not own signal behavior itself
+
+## Dependency Rules
+
+- new dependencies are acceptable when they support reusable signal math,
+  stable sample contracts, or durable serialization at the signal boundary
 - new dependencies are suspect when they introduce filesystem I/O, operator
-  policy, or receiver-runtime coupling
+  policy, repository persistence, or receiver-runtime coupling
 - higher-level crates may depend on `bijux-gnss-signal`; this crate must not
-  depend on them
+  depend on them just because a helper would be convenient
 
 ## Review Question
 
