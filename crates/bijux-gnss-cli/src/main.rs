@@ -1,7 +1,7 @@
 #![forbid(unsafe_code)]
 
 include!("cli/mod.rs");
-include!("cli/args_commands.rs");
+include!("cli/command_catalog.rs");
 include!("cli/args.rs");
 include!("cli/report.rs");
 #[path = "cli/command_support/mod.rs"]
