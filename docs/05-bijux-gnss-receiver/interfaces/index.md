@@ -35,13 +35,36 @@ flowchart LR
 
 ## Read These First
 
-- open [Foundation](../foundation/) first if the question is whether a public
-  surface belongs in receiver at all
-- stay in this section when the question is whether an export, trait, or
-  runtime record deserves a durable public promise
+- open [API Surface](api-surface.md) first when the question is whether a type
+  or helper should be part of the durable receiver boundary
+- open [Runtime Contracts](runtime-contracts.md) when the issue starts from
+  configuration, runtime sinks, or top-level receiver types
+- open [Port Contracts](port-contracts.md) when the issue is about samples,
+  clocks, or artifact sinks
+
+## Pages In This Section
+
+- [API Surface](api-surface.md)
+- [Public Imports](public-imports.md)
+- [Runtime Contracts](runtime-contracts.md)
+- [Stage Contracts](stage-contracts.md)
+- [Port Contracts](port-contracts.md)
+- [Artifact Contracts](artifact-contracts.md)
+- [Validation And Simulation Contracts](validation-and-simulation-contracts.md)
+- [Entrypoints And Examples](entrypoints-and-examples.md)
+- [Compatibility Commitments](compatibility-commitments.md)
 
 ## First Proof Check
 
 - `crates/bijux-gnss-receiver/src/api.rs`
 - `crates/bijux-gnss-receiver/API.md`
 - `crates/bijux-gnss-receiver/docs/PUBLIC_API.md`
+
+## Leave This Section When
+
+- leave for [Foundation](../foundation/) when the question is whether a public
+  surface belongs in receiver at all
+- leave for [Architecture](../architecture/) when the contract issue reveals
+  structural drift underneath it
+- leave for [Operations](../operations/) or [Quality](../quality/) when the
+  public shape is clear and the question becomes safe change or proof
