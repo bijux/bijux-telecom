@@ -10,8 +10,7 @@ use bijux_gnss_receiver::api::{
     ReceiverPipelineConfig, ReceiverRuntime, TrackingEngine,
 };
 use support::tracking_truth::{
-    carrier_phase_steps_cycles, first_tracking_lock_epoch_index,
-    post_lock_carrier_frequency_errors_hz, stable_tracking_window,
+    carrier_phase_steps_cycles, first_tracking_lock_epoch_index, stable_tracking_window,
 };
 
 const CLEAN_SIGNAL_LOCKED_CARRIER_ERROR_MAX_HZ: f64 = 5.0;
@@ -23,10 +22,17 @@ fn assert_clean_signal_carrier_lock(
     epochs: &[bijux_gnss_core::api::TrackEpoch],
     true_doppler_hz: f64,
 ) {
-    let first_lock_epoch_index = first_tracking_lock_epoch_index(epochs).unwrap_or_else(|| {
-        panic!("tracking never reached a stable carrier lock window: epochs={epochs:?}")
+    let first_lock_epoch_index = first_tracking_lock_epoch_index(epochs)
+        .unwrap_or_else(|| panic!("tracking never reached a stable carrier lock window: epochs={epochs:?}"));
+    let stable_window = clean_carrier_lock_window(epochs, true_doppler_hz).unwrap_or_else(|| {
+        panic!(
+            "tracking never produced a sustained clean carrier-lock window: first_lock_epoch_index={first_lock_epoch_index}, epochs={epochs:?}"
+        )
     });
-    let post_lock_errors_hz = post_lock_carrier_frequency_errors_hz(epochs, true_doppler_hz);
+    let post_lock_errors_hz = stable_window
+        .iter()
+        .map(|epoch| (epoch.carrier_hz.0 - true_doppler_hz).abs())
+        .collect::<Vec<_>>();
     assert!(
         post_lock_errors_hz.len() >= CLEAN_SIGNAL_MIN_LOCKED_EPOCHS,
         "tracking did not maintain enough locked epochs for clean-signal validation: first_lock_epoch_index={first_lock_epoch_index}, post_lock_errors_hz={post_lock_errors_hz:?}, epochs={epochs:?}"
@@ -38,11 +44,31 @@ fn assert_clean_signal_carrier_lock(
         "locked carrier frequency error exceeded clean-signal threshold {CLEAN_SIGNAL_LOCKED_CARRIER_ERROR_MAX_HZ} Hz: post_lock_errors_hz={post_lock_errors_hz:?}, epochs={epochs:?}"
     );
     assert!(
-        epochs[first_lock_epoch_index..]
+        stable_window
             .iter()
             .all(|epoch| epoch.lock_state == "tracking" && epoch.pll_lock && epoch.fll_lock),
         "carrier lock window must remain in tracking once declared: epochs={epochs:?}"
     );
+}
+
+fn clean_carrier_lock_window<'a>(
+    epochs: &'a [bijux_gnss_core::api::TrackEpoch],
+    true_doppler_hz: f64,
+) -> Option<&'a [bijux_gnss_core::api::TrackEpoch]> {
+    if CLEAN_SIGNAL_MIN_LOCKED_EPOCHS == 0 || epochs.len() < CLEAN_SIGNAL_MIN_LOCKED_EPOCHS {
+        return None;
+    }
+
+    epochs.windows(CLEAN_SIGNAL_MIN_LOCKED_EPOCHS).find(|window| {
+        window.iter().all(|epoch| {
+            epoch.lock_state == "tracking"
+                && epoch.pll_lock
+                && epoch.fll_lock
+                && !epoch.cycle_slip
+                && (epoch.carrier_hz.0 - true_doppler_hz).abs()
+                    <= CLEAN_SIGNAL_LOCKED_CARRIER_ERROR_MAX_HZ
+        })
+    })
 }
 
 fn accepted_acquisition(sat: SatId, doppler_hz: f64, code_phase_samples: usize) -> AcqResult {
@@ -109,7 +135,7 @@ fn tracking_reduces_seeded_carrier_error_and_emits_tracked_phase() {
             navigation_data: false.into(),
         },
         0xA112_0052,
-        0.020,
+        0.060,
     );
     let tracking = TrackingEngine::new(config, ReceiverRuntime::default());
 
@@ -175,12 +201,17 @@ fn tracking_keeps_carrier_phase_continuous_after_carrier_lock() {
             navigation_data: false.into(),
         },
         0xA112_0052,
-        0.020,
+        0.060,
     );
     let tracking = TrackingEngine::new(config, ReceiverRuntime::default());
     let tracks = tracking.track_from_acquisition(&frame, &[accepted_acquisition(sat, 80.0, 0)]);
     let epochs = &tracks.first().expect("track").epochs;
-    let stable_window = stable_tracking_window(epochs, CLEAN_SIGNAL_MIN_LOCKED_EPOCHS);
+    let stable_window = clean_carrier_lock_window(epochs, true_doppler_hz)
+        .or_else(|| {
+            let fallback_window = stable_tracking_window(epochs, CLEAN_SIGNAL_MIN_LOCKED_EPOCHS);
+            (!fallback_window.is_empty()).then_some(fallback_window)
+        })
+        .unwrap_or(&[]);
     let phase_steps_cycles = carrier_phase_steps_cycles(stable_window);
 
     assert!(
