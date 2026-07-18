@@ -1,70 +1,108 @@
 ---
-title: Architecture
+title: Receiver Architecture Guide
 audience: mixed
 type: index
 status: canonical
 owner: bijux-gnss-receiver-docs
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-18
 ---
 
-# Architecture
+# Receiver Architecture Guide
 
-Open this section when the question is structural: where engine, pipeline,
-ports, artifacts, validation, and simulation live in code, and how the crate
-stays broad without becoming a shapeless runtime bucket.
+`bijux-gnss-receiver` owns staged runtime execution. The engine validates
+configuration and composes effects; acquisition, tracking, observations, and
+optional navigation adapters exchange typed state; artifacts and diagnostics
+record what happened without choosing repository placement.
 
-## Structural Shape
+## Runtime Structure
 
 ```mermaid
 flowchart LR
-    api["api.rs<br/>curated receiver surface"]
-    engine["engine/"]
-    pipeline["pipeline/"]
-    ports["ports/ and io/"]
-    artifacts["artifacts and validation"]
-    sim["sim/"]
-    callers["gnss infra tests"]
+    config["validated receiver<br/>configuration"]
+    ports["samples, clock,<br/>sinks, metrics"]
+    engine["receiver engine"]
+    acquisition["acquisition"]
+    tracking["tracking"]
+    observations["observations"]
+    navigation["optional navigation"]
+    artifacts["in-memory artifacts<br/>and diagnostics"]
 
-    engine --> api
-    pipeline --> api
-    ports --> api
-    artifacts --> api
-    sim --> api
-    api --> callers
+    config --> engine
+    ports --> engine
+    engine --> acquisition --> tracking --> observations --> navigation
+    acquisition --> artifacts
+    tracking --> artifacts
+    observations --> artifacts
+    navigation --> artifacts
 ```
 
-## Read These First
+Every stage may enrich evidence, but no stage may erase uncertainty, ambiguity,
+degradation, or refusal from the stage before it.
 
-- open [Module Map](module-map.md) first when you need the fastest route from
-  a runtime concern to the owning code area
-- open [Dependency Direction](dependency-direction.md) when the question is
-  whether receiver runtime is aggregating lower-level behavior honestly
-- open [Integration Seams](integration-seams.md) when a change seems to pull
-  command, repository, or science policy inward
+## Locate The Runtime Owner
 
-## Pages In This Section
+| concern | architecture route | ownership rule |
+| --- | --- | --- |
+| Configuration, defaults, validation, runtime effects, support, or top-level composition | [Module map](module-map.md) | engine code owns receiver policy, not command defaults |
+| Acquisition, tracking, observations, or optional navigation order | [Execution model](execution-model.md) | pipeline stages own handoff and lifecycle evidence |
+| Samples, clocks, artifacts, metrics, tracing, or logs | [Integration seams](integration-seams.md) | effects cross explicit ports rather than hidden globals |
+| Dependency on core, signal, navigation, infrastructure, or command | [Dependency direction](dependency-direction.md) | receiver composes lower science and is consumed by higher repository layers |
+| Channel state, filter state, artifacts, or persisted runs | [State and persistence](state-and-persistence.md) | receiver owns in-memory runtime state; infrastructure owns durable placement |
+| Input, acquisition, tracking, observation, or navigation failure | [Error model](error-model.md) | failure remains attributable to the earliest failing boundary |
+| New stage, adapter, port, or artifact family | [Extensibility model](extensibility-model.md) | additions require durable runtime responsibility and evidence |
+| Cross-stage coupling or imported repository policy | [Architecture risks](architecture-risks.md) | convenience must not blur scientific or persistence ownership |
 
-- [Module Map](module-map.md)
-- [Dependency Direction](dependency-direction.md)
-- [Execution Model](execution-model.md)
-- [State And Persistence](state-and-persistence.md)
-- [Integration Seams](integration-seams.md)
-- [Error Model](error-model.md)
-- [Extensibility Model](extensibility-model.md)
-- [Code Navigation](code-navigation.md)
-- [Architecture Risks](architecture-risks.md)
+## State Moves Forward, Evidence Fans Out
 
-## First Proof Check
+```mermaid
+flowchart TD
+    candidate["acquisition candidate"]
+    channel["tracking channel state"]
+    measurement["observation decision"]
+    solution["optional navigation outcome"]
+    acq_evidence["candidate evidence"]
+    track_evidence["lock and transition evidence"]
+    obs_evidence["quality and refusal evidence"]
+    nav_evidence["solution or refusal evidence"]
+    run["run artifacts"]
 
-- `crates/bijux-gnss-receiver/src/lib.rs`
-- `crates/bijux-gnss-receiver/src/api.rs`
-- `crates/bijux-gnss-receiver/docs/ARCHITECTURE.md`
+    candidate --> channel --> measurement --> solution
+    candidate --> acq_evidence --> run
+    channel --> track_evidence --> run
+    measurement --> obs_evidence --> run
+    solution --> nav_evidence --> run
+```
 
-## Leave This Section When
+The runtime path and evidence path are related but not identical. A rejected
+candidate may never become a channel yet still belongs in acquisition evidence.
+A refused observation may stop navigation input yet remain essential to
+diagnosis.
 
-- leave for [Foundation](../foundation/) when the real dispute is still about
-  ownership rather than structure
-- leave for [Interfaces](../interfaces/) when the structural question is
-  already about public contract shape
-- leave for [Quality](../quality/) when the structure is clear and the next
-  question is proof sufficiency
+## Effects Are Replaceable
+
+Stage math must not open repository files, choose run directories, read
+wall-clock time implicitly, or render command reports. Samples and time enter
+through owned seams; artifacts, diagnostics, metrics, traces, and logs leave
+through explicit runtime boundaries. Tests can replace those effects without
+changing stage semantics.
+
+## Optional Navigation Is An Adapter
+
+The receiver decides when observations are ready for a navigation call and how
+the resulting evidence joins a run. Navigation owns orbit, correction,
+estimation, integrity, PPP, and RTK science. Feature-gating the adapter must not
+change ownership or semantics of acquisition, tracking, or observations.
+
+## Implementation Evidence
+
+Use [code navigation](code-navigation.md) after identifying the concern. The
+implementation authorities are the
+[receiver engine](../../../crates/bijux-gnss-receiver/src/engine/mod.rs),
+[pipeline boundary](../../../crates/bijux-gnss-receiver/src/pipeline/mod.rs),
+[runtime ports](../../../crates/bijux-gnss-receiver/src/ports/mod.rs),
+[sample adapters](../../../crates/bijux-gnss-receiver/src/io/mod.rs),
+[artifact model](../../../crates/bijux-gnss-receiver/src/artifacts.rs), and
+[simulation boundary](../../../crates/bijux-gnss-receiver/src/sim/mod.rs).
+
+The [crate architecture](../../../crates/bijux-gnss-receiver/docs/ARCHITECTURE.md)
+defines the complete runtime dataflow and dependency boundary.
