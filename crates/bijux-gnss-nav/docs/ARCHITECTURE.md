@@ -1,48 +1,102 @@
 # Architecture
 
-`bijux-gnss-nav` is the workspace navigation-science crate.
+`bijux-gnss-nav` turns navigation products and receiver observations into
+satellite state, corrections, estimates, integrity evidence, and typed
+refusals. It owns scientific interpretation after observations exist; it does
+not own sample processing, runtime scheduling, persistence, or command output.
 
-## Source map
+## Scientific Dataflow
 
-- `src/api.rs` is the curated downstream surface.
-- `src/orbits/` owns broadcast and precise orbit state, ephemeris records, and satellite
-  uncertainty helpers.
-- `src/formats/` owns:
-  - GPS LNAV and CNAV decoding
-  - Galileo FNAV and INAV decoding
-  - BeiDou and GLONASS navigation decoding
-  - RINEX navigation and observation parsing
-  - precise-product formats such as SP3, CLK, ANTEX, and bias SINEX
-- `src/corrections/` owns atmosphere, broadcast ionosphere, group-delay, combination, windup, and
-  dual-frequency correction helpers.
-- `src/estimation/` owns:
-  - EKF primitives
-  - position and integrity solvers
-  - PPP measurement and filter logic
-  - RTK ambiguity, baseline, and execution logic
-  - solution-claim reporting and uncertainty helpers
-- `src/models/` owns supporting physical models such as antenna, atmosphere, tides, and NeQuick.
-- `src/linalg.rs` owns small matrix support used by estimators.
-- `src/time/` owns navigation-time helpers and rollover resolution logic.
+```mermaid
+flowchart LR
+    products["broadcast, RINEX, and precise products"]
+    observations["receiver observations"]
+    formats["typed product interpretation"]
+    state["orbit, clock, time, and model state"]
+    corrections["corrections and combinations"]
+    estimator["position, PPP, or RTK estimator"]
+    integrity["residual, covariance, and integrity checks"]
+    outcome["solution, degraded claim, or refusal"]
 
-## Dependency direction
+    products --> formats
+    formats --> state
+    observations --> corrections
+    state --> corrections
+    corrections --> estimator
+    observations --> estimator
+    estimator --> integrity
+    integrity --> outcome
+```
 
-This crate depends on `bijux-gnss-core` and `bijux-gnss-signal`. Higher-level crates such as
-`receiver`, `infra`, `testkit`, and the CLI build on top of it.
+No stage may fabricate missing product context or turn failed prerequisites into
+a plausible-looking position.
 
-## Test map
+## Ownership Boundaries
 
-The test suite is broad because the crate spans several scientific surfaces:
-- format and decoder tests
-- orbit and precise-product reference tests
-- correction and dual-frequency tests
-- SPP, PPP, RAIM, and RTK solution tests
-- public-data and reference-coordinate tests
-- guardrail, fault-injection, and long-run stability tests
+| responsibility | owner |
+| --- | --- |
+| broadcast navigation, RINEX, SP3, CLK, ANTEX, and bias-product parsing | [format boundary](../src/formats.rs) |
+| ephemeris, satellite state, clock interpretation, and uncertainty | [orbit boundary](../src/orbits/mod.rs) |
+| atmosphere, bias, group delay, combinations, windup, and measured-ionosphere corrections | [correction boundary](../src/corrections/mod.rs) |
+| antenna, atmosphere, celestial, tide, and NeQuick models | [model boundary](../src/models/mod.rs) |
+| reusable EKF mathematics | [EKF boundary](../src/estimation/ekf/mod.rs) |
+| position, residual, smoothing, RAIM, and runtime-neutral solution behavior | [position boundary](../src/estimation/position/mod.rs) |
+| precise point positioning state, measurements, filters, and quality | [PPP boundary](../src/estimation/ppp/mod.rs) |
+| RTK differencing, ambiguity, baseline, execution, and quality | [RTK boundary](../src/estimation/rtk/mod.rs) |
+| advanced claim prerequisites, downgrade, and support evidence | [solution claims](../src/estimation/solution_claims.rs) |
+| navigation time and rollover context | [time boundary](../src/time.rs) |
+| small estimator matrix support | [linear algebra support](../src/linalg.rs) |
+| deliberate downstream exports | [curated navigation API](../src/api.rs) |
 
-## Design constraints
+## Dependency Direction
 
-- parsing logic should stay near the format families that own it
-- estimation logic should stay separated from repository and runtime concerns
-- navigation-domain helpers belong here only when they are reused or scientifically central, not
-  simply because they were awkward to place elsewhere
+```mermaid
+flowchart TD
+    facade["command facade"]
+    infra["infrastructure"]
+    receiver["receiver"]
+    nav["navigation"]
+    signal["signal"]
+    core["shared contracts"]
+
+    facade --> nav
+    infra --> receiver
+    receiver --> nav
+    nav --> signal
+    nav --> core
+    receiver --> signal
+    signal --> core
+```
+
+Navigation depends on shared core and signal contracts. Receiver may invoke
+navigation, while infrastructure and the facade consume its outcomes through
+receiver or public navigation APIs.
+
+## Scientific Invariants
+
+- Product parsing preserves provenance, time context, frame, units, and missing
+  fields.
+- Orbit and clock state expose uncertainty and product gaps.
+- Corrections state required context and refuse incompatible observations or
+  absent products.
+- Estimators report residual, covariance, convergence, quality, and integrity
+  evidence appropriate to the claim.
+- PPP and RTK expose lifecycle and prerequisite state instead of reporting only
+  successful endpoints.
+- Time conversion never resolves ambiguous week or rollover context silently.
+
+The [format guide](FORMATS.md), [correction guide](CORRECTIONS.md),
+[orbit guide](ORBITS.md), and [estimation guide](ESTIMATION.md) define these
+contracts in detail.
+
+## Architectural Evidence
+
+- [Format and decoder tests](TESTS.md) cover realistic inputs and malformed
+  cases.
+- [Broadcast orbit reference](../tests/integration_broadcast_orbit_reference.rs)
+  protects satellite-state interpretation.
+- [Position refusal coverage](../tests/integration_position_refusal.rs)
+  protects unsupported solution behavior.
+- [Fault injection](../tests/fault_injection.rs) and
+  [long-run stability](../tests/long_run_stability.rs) protect integrity and
+  numerical lifecycle behavior.
