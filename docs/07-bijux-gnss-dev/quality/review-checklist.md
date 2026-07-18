@@ -9,22 +9,52 @@ last_reviewed: 2026-07-17
 
 # Review Checklist
 
-Use this checklist when reviewing a `bijux-gnss-dev` change.
+Review `bijux-gnss-dev` as maintainer workflow tooling. The crate may validate
+reviewed governance files, prove nextest-roster policy, run curated benchmark
+comparisons, and emit evidence into governed locations. It should not own
+product behavior merely because a maintainer command can call or inspect it.
 
-## Checklist
+```mermaid
+flowchart LR
+    change["maintainer change"]
+    workflow["name governed workflow"]
+    io["identify governed inputs and outputs"]
+    proof["run command, roster, or benchmark proof"]
+    boundary["confirm product crates keep product ownership"]
 
-- is the owning maintainer workflow named clearly
-- does the change preserve the boundary against product behavior
-- if a new file is read or written, is that governed location documented
-- if a command meaning changed, do the handbook pages still match it
-- if benchmark behavior changed, is the evidence path still explicit
-- if a test changed, does it still defend a maintainer contract rather than
-  incidental implementation detail
+    change --> workflow --> io --> proof --> boundary
+```
 
-## First Proof Check
+## Review Gates
 
-Inspect `crates/bijux-gnss-dev/docs/WORKFLOWS.md`,
-`crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md`,
-`crates/bijux-gnss-dev/docs/OUTPUTS.md`, and
-`crates/bijux-gnss-dev/docs/TESTS.md` first. Then inspect the changed command
-or test path so the checklist is answered with repository-backed evidence.
+| changed surface | accept only when | inspect before accepting |
+| --- | --- | --- |
+| command meaning | The command owns a reviewed maintainer workflow, not product runtime behavior. | [Command Surface](../interfaces/command-surface.md), `crates/bijux-gnss-dev/docs/COMMANDS.md` |
+| governed input file | The file is named as reviewed repository input and has typed validation or guarded test proof. | [Governed Input Contracts](../interfaces/governed-input-contracts.md), `crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md` |
+| evidence output | The output path is stable, documented, and tied to a maintainer workflow. | [Output Contracts](../interfaces/output-contracts.md), `crates/bijux-gnss-dev/docs/OUTPUTS.md` |
+| benchmark comparison | The curated package set, raw output, normalized snapshot, and baseline comparison remain explicit. | `crates/bijux-gnss-dev/docs/BENCHMARKS.md`, `crates/bijux-gnss-dev/docs/WORKFLOWS.md` |
+| slow-test roster policy | The roster still resolves to real tests and stays outside `make test`. | [Repository Test Policy](repository-test-policy.md), `crates/bijux-gnss-dev/tests/integration_nextest_suite_selection.rs` |
+
+## Blocking Signs
+
+- A maintainer command starts making product decisions instead of inspecting
+  repository evidence.
+- A new input or output path is introduced without being named in the interface
+  docs.
+- Benchmark evidence moves into an ad hoc location or loses the baseline/current
+  distinction.
+- A roster change is justified by runtime convenience rather than by repository
+  test-lane policy.
+
+## Evidence To Require
+
+- Read `crates/bijux-gnss-dev/docs/WORKFLOWS.md`,
+  `crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md`,
+  `crates/bijux-gnss-dev/docs/OUTPUTS.md`, and
+  `crates/bijux-gnss-dev/docs/TESTS.md` before accepting broad changes.
+- Run `cargo test -p bijux-gnss-dev --test integration_nextest_suite_selection`
+  when the slow roster or test-lane policy changes.
+- State honestly when full benchmark execution is too expensive for the current
+  review; do not present command-shape proof as benchmark-performance proof.
+- Update governed input, workflow, output, or test-policy docs in the same
+  change set as the maintained contract.
