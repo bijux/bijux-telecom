@@ -8,104 +8,116 @@
 [![rust-docs](https://img.shields.io/badge/rust--docs-bijux--gnss-DEA584?logo=rust&logoColor=white)](https://docs.rs/bijux-gnss/latest/bijux_gnss/)
 [![GNSS handbook](https://img.shields.io/badge/docs-GNSS%20handbook-2563EB?logo=materialformkdocs&logoColor=white)](https://github.com/bijux/bijux-telecom/tree/main/docs/01-bijux-gnss)
 
-`bijux-gnss` is the operator and integration entrypoint for the GNSS workspace.
-It provides the `bijux` command and a thin Rust facade over the public core,
-signal, receiver, and optional navigation APIs.
+`bijux-gnss` is the front door to the bijux GNSS stack. Install it for the
+`bijux gnss` command, or depend on it when a Rust application wants the core,
+signal, receiver, and optional navigation crates behind one package.
 
-Use the command for complete workflows and machine-readable reports. Depend on
-the facade when an application needs several GNSS crates through one package.
-Choose a lower crate directly when only one domain API is required.
+It is intentionally thin. Receiver algorithms, signal definitions, navigation
+science, datasets, and persisted run layout remain in their owning crates.
 
-## Use From This Checkout
+## Pick The Interface You Need
 
-The first release has not been published. Run the command from the workspace:
+### Run a workflow
 
-```sh
+The binary accepts operator input, delegates domain work, and presents the
+result as a table or JSON. Before the first registry release, run it from this
+workspace:
+
+```console
 cargo run -q -p bijux-gnss -- gnss --help
+cargo run -q -p bijux-gnss -- gnss inspect \
+  --dataset demo_synthetic \
+  --report json \
+  --out artifacts/inspect_demo
 ```
 
-After publication, the registry package will support:
+The inspect command resolves a registered dataset and writes reviewable
+evidence. It does not imply that acquisition, tracking, or positioning ran.
+Choose a command by the claim you need:
 
-```sh
-cargo install bijux-gnss
-cargo add bijux-gnss
-```
-
-The Cargo package name is `bijux-gnss`; its Rust import name is `bijux_gnss`.
-
-## Choose the Surface
-
-| need | use |
+| Claim or operation | Read next |
 | --- | --- |
-| invoke acquisition, validation, synthetic, or navigation workflows | `bijux gnss ...` and the [command guide](docs/COMMANDS.md) |
-| understand command execution and lower-crate handoff | [execution guide](docs/EXECUTION.md) |
-| consume stable command reports | [reporting guide](docs/REPORTING.md) |
-| import the combined Rust surface | [facade guide](docs/FACADE.md) and [public API guide](docs/PUBLIC_API.md) |
-| assess compatibility or release impact | [package release history](CHANGELOG.md) |
-
-## Owned Boundary
-
-- command names, arguments, and top-level workflow composition
-- runtime setup before handing work to lower-level crates
-- operator-facing report rendering and command result presentation
-- the narrow [facade export surface](src/lib.rs) over lower-level GNSS crates
-
-This crate does not own low-level signal implementations, standalone navigation
-science, receiver-stage internals, or repository persistence contracts.
+| inspect, ingest, acquire, track, run, replay, or diagnose | [Command reference](docs/COMMANDS.md) |
+| export or validate synthetic IQ and navigation scenarios | [Validation behavior](docs/VALIDATION.md) |
+| understand input resolution and lower-crate handoff | [Execution model](docs/EXECUTION.md) |
+| consume table, JSON, and artifact output correctly | [Reporting contract](docs/REPORTING.md) |
+| compose several commands into a reproducible run | [Workflow guide](docs/WORKFLOWS.md) |
 
 ```mermaid
 flowchart LR
-    args["CLI arguments"]
-    runtime["command runtime"]
-    owner["owning lower crate"]
-    report["operator report"]
+    arguments["operator arguments"]
+    command["bijux gnss"]
+    domain["owning domain crate"]
+    typed["typed result or refusal"]
+    presentation["table, JSON,<br/>artifact location"]
 
-    args --> runtime
-    runtime --> owner
-    owner --> runtime
-    runtime --> report
+    arguments --> command --> domain --> typed --> command --> presentation
 ```
 
-## Features
+The command may sequence lower-level calls, but it does not reinterpret their
+scientific meaning. An acquisition candidate is not reported as accepted
+unless the receiver accepted it, and a navigation refusal remains a refusal in
+the command output.
 
-| feature | effect |
+### Import the Rust facade
+
+The library exposes crate modules rather than duplicating their APIs:
+
+```rust
+use bijux_gnss::core::api::{Constellation, SatId};
+
+let satellite = SatId {
+    constellation: Constellation::Gps,
+    prn: 11,
+};
+```
+
+The other unconditional module paths are `bijux_gnss::signal` and
+`bijux_gnss::receiver`. Navigation is available as `bijux_gnss::nav` only when
+the `nav` feature is enabled. Import a focused package directly when your
+application uses one domain heavily or needs the clearest feature control. The
+[facade contract](docs/FACADE.md) explains why this package does not add
+cross-domain convenience APIs.
+
+## Features Change The Available Surface
+
+| Feature | What becomes available |
 | --- | --- |
-| `cli` | builds command parsing, workflow execution, and reports |
-| `nav` | exposes navigation APIs and enables receiver navigation |
-| `precise-products` | enables CLI and navigation support for precise products |
-| `tracing` | enables command-side tracing setup |
-| `schema-validate` | enables JSON Schema generation and validation |
-| `plots` | enables bitmap plot output |
+| `cli` | the `bijux` binary, command parsing, workflows, and reports |
+| `nav` | the navigation facade and receiver navigation support |
+| `precise-products` | CLI support plus navigation and precise-product handling |
+| `tracing` | command-side tracing setup |
+| `schema-validate` | JSON Schema generation and validation commands |
+| `plots` | bitmap plot output for analysis commands |
 
-Default features are `cli` and `precise-products`; precise-product support also
-enables navigation. Applications that only need the facade can disable defaults
-and select features explicitly.
+Default features are `cli` and `precise-products`. Because
+`precise-products` enables `cli` and `nav`, a default build includes the
+command and navigation. A library-only consumer can begin with:
 
-## Implementation Ownership
-
-- The [binary entrypoint](src/main.rs) assembles the command surface.
-- The [argument parser](src/cli/command_line.rs) owns command names, options,
-  and defaults.
-- The [command runtime](src/cli/command_runtime.rs) and
-  [execution support](src/cli/execution_support.rs) assemble workflows and
-  lower-crate handoffs.
-- The [report renderer](src/cli/report.rs) owns operator-facing output.
-- The [facade export surface](src/lib.rs) owns public re-exports.
-
-For design boundaries, continue with the [architecture guide](docs/ARCHITECTURE.md)
-and [contract guide](docs/CONTRACTS.md). For operating behavior, use the
-[workflow guide](docs/WORKFLOWS.md), [validation guide](docs/VALIDATION.md), and
-[test guide](docs/TESTS.md).
-
-## Verification Focus
-
-Use package tests for command semantics before reaching for the full workspace:
-
-```sh
-cargo test -p bijux-gnss --test integration_validate_config
-cargo test -p bijux-gnss --test integration_nav_decode
-cargo test -p bijux-gnss --test integration_validate_synthetic_navigation
+```toml
+[dependencies]
+bijux-gnss = { version = "0.1.0", default-features = false }
 ```
 
-Repository-wide lanes and package routing are documented in the
-[workspace README](../../README.md).
+The first registry release has not been published yet; the dependency example
+describes the prepared release surface. Use the workspace dependency while
+developing in this repository.
+
+## Know Which Contract You Are Changing
+
+- Command names, options, defaults, top-level sequencing, and presentation
+  belong here.
+- Acquisition, tracking, observations, and receiver runtime behavior belong to
+  the [receiver package](../bijux-gnss-receiver/README.md).
+- Codes, replicas, sample conversion, and DSP belong to the
+  [signal package](../bijux-gnss-signal/README.md).
+- Product parsing, corrections, estimation, and integrity belong to the
+  [navigation package](../bijux-gnss-nav/README.md).
+- Dataset identity, provenance, manifests, and persisted run layout belong to
+  the [infrastructure package](../bijux-gnss-infra/README.md).
+
+Compatibility changes are recorded in the
+[package release history](CHANGELOG.md). The
+[architecture guide](docs/ARCHITECTURE.md) and
+[test evidence guide](docs/TESTS.md) connect each public behavior to its
+implementation and proof surface.
