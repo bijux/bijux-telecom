@@ -4,65 +4,148 @@ audience: mixed
 type: operations
 status: canonical
 owner: bijux-gnss-nav-docs
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-18
 ---
 
 # Common Workflows
 
-Use this page to route common navigation edits to the right scientific owner and
-proof. Navigation work is reader-hostile when it lists files but hides the claim
-being made, so every workflow below starts with the claim.
+Begin navigation work with the claim that is wrong, missing, or unsupported.
+The same observed position error can originate in parsing, time conversion,
+orbit state, correction sign, measurement selection, estimator state, or
+integrity policy. Editing the nearest caller before locating that cause usually
+creates a second error.
 
-## Add Or Change A Format Family
+## Diagnose A Wrong Solution
 
-- State the product being decoded or written: RINEX observation, RINEX
-  navigation, SP3, CLK, ANTEX, bias SINEX, or a constellation navigation
-  message.
-- Keep repository discovery and persistence out of the parser.
-- Update `crates/bijux-gnss-nav/docs/FORMATS.md` when public behavior changes.
-- Prove the parser with representative input before relying on downstream
-  workflow tests.
+```mermaid
+flowchart TD
+    symptom["wrong, degraded, or refused solution"]
+    input["confirm product and observation provenance"]
+    frame["confirm epoch, time system, frame, units"]
+    state["compare orbit and clock state with reference"]
+    corrections["inspect applied and missing corrections"]
+    residuals["inspect used/rejected observations and residuals"]
+    policy["inspect geometry, lifecycle, integrity, and refusal policy"]
+    owner["change the first layer where evidence diverges"]
 
-## Change Orbit Or Time Interpretation
+    symptom --> input
+    input --> frame
+    frame --> state
+    state --> corrections
+    corrections --> residuals
+    residuals --> policy
+    policy --> owner
+```
 
-- Identify whether the claim is constellation-local or shared across GPS,
-  Galileo, BeiDou, or GLONASS.
-- Check whether estimators consume the changed clock, orbit, or rollover value.
-- Use reference-backed orbit and time tests; parser acceptance alone is not
-  enough evidence.
+Do not begin by tuning thresholds. First preserve the failing case and identify
+the earliest divergence from independent truth. A downstream position can look
+plausible even when time, frame, or correction provenance is wrong.
 
-## Change Correction Law
+Useful routes:
 
-- Confirm the change is reusable navigation science, not a caller workaround.
-- Keep physical models, signal combinations, atmosphere, bias, and tide logic in
-  the correction or model owner that explains the formula.
-- Run the specific correction test, then a position or estimator test only when
-  the public solution changes.
-- Review evidence fields and thresholds when the correction changes what a
-  downstream report can claim.
+- [time interpretation](../../../crates/bijux-gnss-nav/docs/TIME.md);
+- [orbit and clock behavior](../../../crates/bijux-gnss-nav/docs/ORBITS.md);
+- [correction assumptions](../../../crates/bijux-gnss-nav/docs/CORRECTIONS.md);
+- [estimator and integrity behavior](../../../crates/bijux-gnss-nav/docs/ESTIMATION.md).
 
-## Change Estimator Behavior
+## Add Or Change A Product Decoder
 
-- Identify whether the edit belongs to position, integrity, PPP, RTK, or EKF.
-- Preserve refusal, downgrade, and uncertainty evidence as carefully as success
-  outputs.
-- Run the local solver proof first, then the smallest integration proof that
-  shows the public effect.
+```mermaid
+flowchart LR
+    source["named specification and realistic sample"]
+    fields["typed fields with units and time system"]
+    malformed["truncated, malformed, and unsupported input"]
+    reference["reference values or independent parser"]
+    consumer["smallest consuming model or estimator"]
+    contract["public format contract"]
 
-## Change Public API
+    source --> fields
+    fields --> malformed
+    malformed --> reference
+    reference --> consumer
+    consumer --> contract
+```
 
-- Export by stable scientific role, not by internal file placement.
-- Update `crates/bijux-gnss-nav/docs/PUBLIC_API.md` when downstream-facing names
-  or semantics move.
-- Do not expose a helper just because a command, receiver, or infra caller found
-  it convenient; prove the role is navigation-owned.
+1. Name the product revision, constellation, record family, and unsupported
+   variants.
+2. Decode into navigation-owned types with explicit units, frame, epoch, and
+   provenance.
+3. Add rejection or partial-support evidence before adding downstream use.
+4. Compare representative values against a public reference or independent
+   parser where possible.
+5. Exercise the smallest consumer that relies on the changed field.
+6. Update the [format contract](../../../crates/bijux-gnss-nav/docs/FORMATS.md)
+   when caller-visible interpretation changes.
 
-## Proof Map
+Repository discovery and active-product selection remain outside the parser.
 
-| workflow | primary docs | likely proof |
-| --- | --- | --- |
-| format decode or writer | `FORMATS.md` | product-specific parser or writer test |
-| orbit, clock, or navigation time | `ORBITS.md`, `TIME.md` | constellation-specific orbit or rollover test |
-| correction or physical model | `CORRECTIONS.md`, `MODELS.md` | numeric correction proof |
-| estimator and integrity behavior | `ESTIMATION.md`, `TESTS.md` | solver, integrity, PPP, RTK, or EKF proof |
-| downstream export | `PUBLIC_API.md`, `CONTRACTS.md` | API proof plus behavior proof |
+## Introduce Or Change A Correction
+
+State the uncorrected observable, correction sign, units, applicability,
+required products, uncertainty contribution, and behavior when prerequisites
+are absent. Prove:
+
+- zero or neutral conditions;
+- a reference case with nonzero expected effect;
+- invalid, missing, or incompatible inputs;
+- the downstream residual or solution effect only if the public claim changes.
+
+Keep reusable physical law in navigation. Keep signal carrier and component
+facts in signal, shared record meaning in core, and product location in
+infrastructure. The [model guide](../../../crates/bijux-gnss-nav/docs/MODELS.md)
+and [correction guide](../../../crates/bijux-gnss-nav/docs/CORRECTIONS.md)
+separate those responsibilities.
+
+## Change Estimator Or Integrity Behavior
+
+```mermaid
+flowchart TD
+    change["estimator change"]
+    accepted["nominal accepted case"]
+    degraded["degraded or converging case"]
+    refused["insufficient or inconsistent evidence"]
+    lifecycle["initialization, update, reset, and divergence"]
+    budget["accuracy, residual, covariance, or protection budget"]
+    report["typed status and refusal evidence"]
+
+    change --> accepted
+    change --> degraded
+    change --> refused
+    accepted --> lifecycle
+    degraded --> lifecycle
+    refused --> lifecycle
+    lifecycle --> budget
+    budget --> report
+```
+
+An estimator change is incomplete if it proves only a successful point.
+Exercise the relevant lifecycle and refusal conditions: insufficient
+observations, invalid products, weak geometry, incomplete corrections,
+divergence, failed ambiguity acceptance, or unavailable integrity evidence.
+
+Use the [navigation completion gate](../quality/definition-of-done.md) to record
+the exact scientific claim and evidence.
+
+## Change A Public Contract
+
+Review semantic compatibility even if downstream code still compiles. Units,
+defaults, status ordering, refusal classes, serialized fields, and feature
+expectations can change behavior without changing a function name.
+
+1. Confirm the type or function is navigation-owned.
+2. Inspect direct receiver and command consumers.
+3. Preserve typed status, uncertainty, provenance, and refusal.
+4. Add public-route evidence rather than testing a private module.
+5. Update the
+   [public API contract](../../../crates/bijux-gnss-nav/docs/PUBLIC_API.md) and
+   [compatibility commitments](../interfaces/compatibility-commitments.md).
+
+## Close The Workflow
+
+The change record should identify input provenance, constellation or product
+scope, units, frame, time system, feature set, positive tolerance, negative
+cases, and the first layer where behavior changed. Link the focused evidence and
+state any missing independent or long-duration proof.
+
+The [navigation test strategy](../quality/test-strategy.md) explains when
+fixture, reference, lifecycle, and public-data evidence are required.

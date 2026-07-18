@@ -9,61 +9,118 @@ last_reviewed: 2026-07-18
 
 # Repository Fit
 
-`bijux-gnss-nav` is the scientific middle layer of `bijux-telecom`. It turns
-shared records, decoded navigation products, correction models, and estimator
-state into navigation-domain evidence. It does not own command UX, receiver
-scheduling, repository persistence, or reusable signal substrate.
+`bijux-gnss-nav` owns navigation-domain interpretation and estimation. It turns
+shared observations and navigation products into corrections, orbit and clock
+state, solutions, uncertainty, integrity decisions, or explicit refusal. It
+does not own sample processing, operator commands, dataset discovery, or run
+history.
 
-## Repository Role
+## Compile Direction
 
 ```mermaid
 flowchart LR
-    core["core<br/>ids time units records"]
-    signal["signal<br/>signal facts and DSP substrate"]
-    nav["nav<br/>orbits corrections estimation"]
-    receiver["receiver<br/>runtime stages"]
-    infra["infra<br/>datasets and persisted evidence"]
-    command["command<br/>operator routes"]
+    core["core contracts"]
+    signal["signal facts"]
+    nav["navigation science"]
+    receiver["receiver<br/>optional navigation integration"]
+    infra["infrastructure<br/>navigation feature via receiver"]
+    command["command facade<br/>direct and integrated routes"]
 
+    core --> signal
     core --> nav
     signal --> nav
     nav --> receiver
-    nav --> infra
+    receiver --> infra
+    nav --> command
     receiver --> command
     infra --> command
 ```
 
-Nav is reusable science. Receiver code may call it during runtime, infra may
-store evidence that came from it, and command code may present its results. None
-of those consumers redefine the scientific meaning that nav owns.
+Navigation declares production dependencies on core and signal, not on
+receiver, infrastructure, or command crates. Receiver enables navigation
+through an optional dependency. Infrastructure has no direct navigation
+dependency; its navigation feature is forwarded through receiver. The command
+crate can depend directly on navigation while also composing receiver and
+infrastructure.
 
-## Fit To Defend
+This direction matters during design review. A navigation API must not accept a
+receiver runtime, repository registry, or command argument merely because a
+higher caller already has one.
 
-| neighbor | nav consumes | nav refuses |
+## Evidence Flow Is Different
+
+```mermaid
+flowchart LR
+    product["broadcast or precise product"]
+    observations["receiver observations"]
+    nav["navigation computation"]
+    result["solution, residual, or refusal"]
+    receiver["receiver artifact"]
+    infra["persisted run evidence"]
+    command["operator report"]
+
+    product --> nav
+    observations --> nav
+    nav --> result
+    result --> receiver
+    result --> command
+    receiver --> infra
+    infra --> command
+```
+
+Navigation can parse domain files because RINEX, SP3, CLK, ANTEX, and bias
+formats carry scientific meaning. That does not give the crate ownership of
+where files are discovered, which dataset is active, how a run directory is
+named, or how evidence is registered.
+
+## Decide Where A Change Belongs
+
+| question | navigation owns | neighboring owner |
 | --- | --- | --- |
-| core | shared identity, units, time, coordinate, observation, and artifact records | changing shared record semantics locally |
-| signal | signal identity and reusable signal facts when navigation models need them | spreading-code generation or receiver search policy |
-| receiver | observation and runtime evidence as inputs to estimation | stage scheduling, lock transitions, channel lifecycle |
-| infra | precise-product bytes and persisted evidence after repository resolution | dataset registry, run directory layout, artifact indexing |
-| command | operator-visible results after lower owners finish | command syntax, report routing, CLI validation flow |
+| What does a product field, epoch, frame, clock, or orbit value mean? | parsing and scientific interpretation | infrastructure locates the product |
+| Which correction applies, with what sign, units, uncertainty, and prerequisites? | correction and model behavior | signal owns carrier and component facts |
+| Can observations support SPP, PPP, RTK, or an integrity claim? | estimator readiness, solution, downgrade, and refusal | receiver owns observation production and handoff |
+| How is a shared satellite, signal, time, unit, observation, or solution record represented? | navigation consumes the contract | core owns genuinely cross-crate records |
+| Where is output written, versioned, indexed, or replayed? | navigation supplies typed evidence | infrastructure owns persistence |
+| Which option does an operator invoke and how is the result summarized? | navigation supplies meaning | command owns invocation and presentation |
 
-## Reader Questions
+Use the [navigation boundary](../../../crates/bijux-gnss-nav/docs/BOUNDARY.md)
+for crate-local ownership and the
+[core ownership guide](../../02-bijux-gnss-core/foundation/ownership-boundary.md)
+before moving records downward.
 
-- Is the question about broadcast orbit, precise orbit, clock, correction,
-  estimator, PPP, RTK, or navigation product decoding? Stay in nav.
-- Is the question about field meaning shared across all crates? Start in core.
-- Is the question about sample loops, acquisition, tracking, or observation
-  production? Leave for receiver.
-- Is the question about where a product file lives or how a run is persisted?
-  Leave for infra.
-- Is the question about what an operator invokes or sees? Leave for command
-  docs.
+## Avoid Boundary Leaks
 
-## First Proof Check
+Reject designs that:
 
-Inspect `crates/bijux-gnss-nav/docs/BOUNDARY.md`,
-`crates/bijux-gnss-nav/docs/CONTRACTS.md`,
-`crates/bijux-gnss-nav/docs/FORMATS.md`,
-`crates/bijux-gnss-nav/docs/CORRECTIONS.md`,
-`crates/bijux-gnss-nav/docs/ESTIMATION.md`, and
-`crates/bijux-gnss-nav/docs/ORBITS.md`.
+- pass repository roots or dataset registries into a model or estimator;
+- make a parser choose the active product based on directory convention;
+- add receiver channel lifecycle to navigation state;
+- duplicate signal carrier, component, or wavelength truth;
+- return display-only strings where a caller needs typed refusal or status;
+- persist estimator internals as a durable format without an explicit versioned
+  contract.
+
+A higher crate may adapt navigation evidence for its own runtime or storage
+contract. That adapter does not transfer scientific ownership.
+
+## Review Route
+
+Start with the scientific family, not the caller that exposed the problem:
+
+- [format contracts](../../../crates/bijux-gnss-nav/docs/FORMATS.md) for decoded
+  product meaning;
+- [orbit contracts](../../../crates/bijux-gnss-nav/docs/ORBITS.md) and
+  [time contracts](../../../crates/bijux-gnss-nav/docs/TIME.md) for state and
+  epoch interpretation;
+- [correction contracts](../../../crates/bijux-gnss-nav/docs/CORRECTIONS.md) and
+  [model contracts](../../../crates/bijux-gnss-nav/docs/MODELS.md) for physical
+  assumptions;
+- [estimation contracts](../../../crates/bijux-gnss-nav/docs/ESTIMATION.md) for
+  solution and refusal semantics.
+
+Then follow the result outward through the
+[receiver boundary](../../05-bijux-gnss-receiver/foundation/ownership-boundary.md),
+[infrastructure boundary](../../03-bijux-gnss-infra/foundation/ownership-boundary.md),
+or [command boundary](../../01-bijux-gnss/foundation/ownership-boundary.md) only
+when the public effect reaches that layer.
