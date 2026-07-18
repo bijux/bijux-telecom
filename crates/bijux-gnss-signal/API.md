@@ -1,29 +1,62 @@
 # bijux-gnss-signal API
 
-Stable public API surface exposed via `crates/bijux-gnss-signal/src/api.rs`.
+`bijux-gnss-signal` exposes reusable signal definitions and DSP primitives. Its
+API is meant for callers that need signal identity, spreading-code generation,
+raw-IQ metadata, sample conversion, carrier/code timing, spectra, front-end
+quality, replicas, or tracking-loop math without pulling in receiver runtime
+policy.
 
-Signal generation + helpers
-- `generate_ca_code`: C/A code generator.
-- `code_sample_position_at_index`: absolute sample-index helper for chunk-stable code state.
-- `samples_per_code`: helper for samples per code period.
-- `sample_code`: arbitrary-rate sampled spreading-code helper.
-- `sample_ca_code`: arbitrary-rate GPS L1 C/A sampled-code helper.
-- `advance_code_phase_chips`: wrapped chip-phase advance helper for chunked generation.
-- `advance_code_phase_seconds`: wrapped chip-phase advance helper for elapsed-time validation.
-- `sample_modulated_replica_at_sample_index`: absolute sample-index replica helper.
-- `sample_modulated_replica_at_time`: elapsed-time replica helper.
-- `wipeoff_carrier`: absolute-time-aware carrier wipeoff helper.
-- `code_value_at_phase`: chip lookup at a wrapped chip phase.
-- `LocalCodeModel::sample_block`: chunk-stable local-code block sampler.
-- `ReplicaCodeModel::sample_block`: chunk-stable replica block sampler.
+## API Map
 
-Types
-- `CodeSamplePosition`: absolute sample-index code timing state.
-- `ReplicaSampleIndexRequest`: indexed replica sampling request.
-- `ReplicaSampleTimeRequest`: elapsed-time replica sampling request.
-- `ReplicaBlockRequest`: contiguous replica block sampling request.
-- `Prn`: PRN identifier.
-- `SamplesFrame`: sample buffer type.
+| family | representative items | contract owned here |
+| --- | --- | --- |
+| catalog | `signal_registry`, `resolved_signal_registry_entry`, carrier/wavelength helpers, ionosphere scaling helpers | Canonical signal identities, carriers, wavelengths, components, and default acquisition targets. |
+| spreading codes | GPS L1 C/A, GPS L2C, GPS L5, Galileo E1/E5, BeiDou B1I/B2I, GLONASS L1 helpers | Deterministic code and secondary-code generation with constellation-specific constants. |
+| sample contracts | `SamplesFrame`, `RawIqMetadata`, `IqSampleFormat`, `IqQuantization`, sample conversion and quantization helpers | Represent raw and normalized I/Q samples without receiver scheduling policy. |
+| DSP timing | `code_sample_position_at_index`, `advance_code_phase_*`, wrapped code-phase helpers | Keep chunked code generation and tracking math stable across sample boundaries. |
+| front-end and quality | FIR response helpers, IQ metrics, noise-floor estimation, DC removal | Measure and model reusable front-end behavior. |
+| replicas and spectra | replica code models, carrier trajectories, modulation requests, PSD summaries | Generate and inspect synthetic or local signal references. |
+| tracking primitives | discriminators, loop coefficients, CN0 estimation, lock thresholds, uncertainty helpers | Provide reusable math used by receiver tracking without owning channel state. |
+| traits | `SignalSource`, `SampleSource`, `Correlator`, `SampleSink` | Define lightweight signal-adjacent seams for callers and tests. |
 
-Interfaces
-- `SignalSource`: streaming source trait for samples.
+```mermaid
+flowchart TB
+    catalog["signal catalog"]
+    codes["code families"]
+    samples["sample contracts"]
+    dsp["DSP timing and replicas"]
+    tracking["tracking primitives"]
+    consumers["receiver and validation consumers"]
+
+    catalog --> codes
+    catalog --> dsp
+    samples --> dsp
+    codes --> tracking
+    dsp --> tracking
+    tracking --> consumers
+```
+
+## Boundary Rules
+
+- This crate owns reusable signal math and representation, not receiver channel
+  orchestration.
+- Code and carrier helpers must be stable under chunked processing and absolute
+  sample-index use.
+- Raw-IQ metadata must describe samples honestly; it must not imply receiver
+  performance claims.
+- Tracking-loop primitives may compute updates, but lock lifecycle and channel
+  evidence belong to `bijux-gnss-receiver`.
+
+## Reader Guidance
+
+Use [docs/CATALOG.md](docs/CATALOG.md) before adding a signal, then follow
+[docs/CODE_FAMILIES.md](docs/CODE_FAMILIES.md), [docs/DSP.md](docs/DSP.md),
+[docs/RAW_IQ.md](docs/RAW_IQ.md), and [docs/SAMPLES.md](docs/SAMPLES.md) for
+the owned contract being changed.
+
+## Review Checks
+
+- New public signal constants need source-system meaning and test coverage.
+- New sample helpers need unit and quantization behavior documented.
+- New tracking primitives need deterministic tests across phase wrapping,
+  chunking, and boundary conditions.

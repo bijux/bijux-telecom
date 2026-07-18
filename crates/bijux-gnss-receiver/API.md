@@ -1,43 +1,58 @@
 # bijux-gnss-receiver API
 
-Stable public API surface exposed via `crates/bijux-gnss-receiver/src/api.rs`.
+`bijux-gnss-receiver` exposes receiver runtime behavior: input ports,
+configuration, acquisition, tracking, observation construction, optional
+navigation execution, runtime diagnostics, and receiver-produced artifacts.
 
-Config + errors
-- `ReceiverConfig`: on-disk receiver configuration schema (serde + schema validation).
-- `ReceiverPipelineConfig`: derived pipeline configuration used by engines.
-- `ReceiverRuntimeConfig`: runtime options for side-effectful outputs (run id, trace dir, etc).
-- `ReceiverError`: receiver pipeline error wrapper.
+## API Map
 
-I/O + ports
-- `FileSamples`: file-backed sample source.
-- `MemorySamples`: in-memory sample source.
-- `SampleSourceError`: sample-source error type.
-- `SignalSource`: trait for streaming samples.
-- `SampleSource`, `ArtifactSink`, `Clock`, `SystemClock`: purity-boundary traits for I/O.
+| family | representative items | contract owned here |
+| --- | --- | --- |
+| configuration | `ReceiverConfig`, `ReceiverPipelineConfig`, threshold policy and navigation selection types | Convert operator or profile configuration into validated receiver execution settings. |
+| runtime controls | `ReceiverRuntime`, `ReceiverRuntimeConfig`, `MetricsSink`, `TraceSink`, `NullLogger` | Carry side-effectful logging, metric, trace, and run-context policy at the receiver boundary. |
+| I/O ports | `FileSamples`, `MemorySamples`, `SignalSource`, `SampleSource`, `ArtifactSink`, `Clock`, `SystemClock` | Isolate sample input, artifact output, and time sources from stage logic. |
+| acquisition | `AcquisitionEngine`, assistance helpers, Doppler/carrier conversion helpers | Detect and seed trackable signals from sample input and search assumptions. |
+| tracking | `TrackingEngine`, `TrackingResult`, `TrackingSession`, `ChannelState`, `TrackingArtifacts` | Maintain lock state, code/carrier estimates, CN0, uncertainty, and transition evidence. |
+| observations | `observations_from_tracking_results`, quality reports, residual reports, observation artifacts | Convert tracking state into measurement epochs and receiver-side quality evidence. |
+| navigation bridge | `Navigation`, `NavigationFilter`, `NavigationEngine`, validation reports behind feature `nav` | Connect receiver artifacts to navigation-owned solvers without relocating navigation science. |
+| run result | `RunArtifacts`, `ReceiverEngine`, `Receiver` | Provide a top-level receiver execution contract for callers. |
 
-Engines + helpers
-- `Receiver`: top-level receiver entrypoint (constructed with `ReceiverPipelineConfig` + `ReceiverRuntimeConfig`).
-- `ReceiverEngine`: trait for a receiver pipeline runner.
-- `RunArtifacts`: artifacts captured during a run, including observation residual reports.
-- `AcquisitionEngine`: acquisition engine implementation.
-- `TrackingEngine`: tracking engine implementation.
-- `TrackingResult`, `Channel`, `ChannelState`, `ChannelEvent`, `CorrelatorOutput`.
-- `observations_from_tracking`, `observations_from_tracking_results`.
-- `observation_artifacts_from_tracking_results`, `observation_residuals_from_tracking_results`.
-- `ObservationPipelineArtifacts`, `ObservationResidualEpochReport`, `ObservationResidualSatellite`,
-  `ObservationResidualValue`.
+```mermaid
+flowchart LR
+    source["SignalSource"]
+    acq["AcquisitionEngine"]
+    tracking["TrackingEngine"]
+    obs["observation builders"]
+    nav["feature-gated navigation bridge"]
+    artifacts["RunArtifacts"]
 
-Navigation (feature-gated: `nav`)
-- `NavigationEngine`, `Navigation`, `EkfState`.
-- `Navigation` is a receiver-runtime adapter over the nav-owned `PositionRuntime`.
-- Direct typed navigation science APIs remain in `bijux_gnss_receiver::nav`, including
-  `PositionRuntime`, `PositionRuntimeConfig`, `PositionBroadcastNavigation`, and related solver
-  and correction types.
-- `NavigationFilter`: receiver-configured compatibility surface over the nav-owned broadcast filter.
-- RTK helpers and artifact types are re-exported from `bijux-gnss-nav`.
-- Validation report helpers: `build_validation_report`, `ValidationReport`, `ConvergenceReport`, etc.
+    source --> acq
+    acq --> tracking
+    tracking --> obs
+    obs --> nav
+    acq --> artifacts
+    tracking --> artifacts
+    obs --> artifacts
+    nav --> artifacts
+```
 
-Re-exports
-- `core`: bijux-gnss-core public API module.
-- `signal`: bijux-gnss-signal public API module.
-- `nav`: bijux-gnss-nav public API module (feature-gated).
+## Feature Boundaries
+
+Navigation exports are feature-gated behind `nav`. Receiver code can prepare and
+validate navigation-stage handoff, but solver internals, correction science, and
+advanced solution claims remain owned by `bijux-gnss-nav`.
+
+## Boundary Rules
+
+- Receiver APIs own runtime behavior and evidence emitted by receiver stages.
+- Signal catalogs and code-generation primitives belong to `bijux-gnss-signal`.
+- Navigation estimation and correction models belong to `bijux-gnss-nav`.
+- Repository artifact layout, dataset registry, and command report wording belong
+  outside this crate.
+
+## Review Checks
+
+- New public receiver exports need a stage, runtime, port, or artifact owner.
+- Any API that can refuse a result needs a typed refusal or diagnostic path.
+- New navigation bridge exports must keep feature-gating and owner language
+  visible.
