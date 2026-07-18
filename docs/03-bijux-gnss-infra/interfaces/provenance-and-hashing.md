@@ -4,34 +4,64 @@ audience: mixed
 type: interfaces
 status: canonical
 owner: bijux-gnss-infra-docs
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-18
 ---
 
 # Provenance and Hashing
 
-Hashing in infra is about repository evidence, not about scientific identity.
+Infra hashing describes how repository evidence was produced. It is not a
+general cryptography toolkit and it is not the scientific identity of a GNSS
+record.
 
-## Main Owned Helpers
+The goal is reproducibility: a later reader should be able to see which
+configuration, repository state, dirty-worktree status, CPU features, and
+front-end provenance were attached to a run.
 
-- `hash_config`
-- `git_hash`
-- `git_dirty`
-- `cpu_features`
-- front-end provenance capture persisted alongside run footprints
+## Provenance Flow
 
-## Why They Matter
+```mermaid
+flowchart LR
+    config["receiver or experiment config"]
+    repo["git hash and dirty state"]
+    machine["cpu features"]
+    frontend["front-end provenance"]
+    footprint["run footprint"]
 
-These helpers make it possible to explain how a run was prepared and under
-which repository and machine conditions it was executed.
+    config --> footprint
+    repo --> footprint
+    machine --> footprint
+    frontend --> footprint
+```
 
-## Boundary Rule
+## Contract Families
 
-Infra-owned hashes describe provenance and reproducibility evidence. They should
-not expand into a general cryptographic utility bucket or replace core identity
-semantics.
+| family | owns | first proof |
+| --- | --- | --- |
+| configuration hash | stable hash of run-preparation configuration | `crates/bijux-gnss-infra/src/hash/provenance.rs` |
+| repository state | git commit hash and dirty-state capture | `crates/bijux-gnss-infra/src/hash/provenance.rs` |
+| machine context | CPU feature capture for run explainability | `crates/bijux-gnss-infra/src/hash/provenance.rs` |
+| front-end provenance | persisted front-end capture context beside run footprints | `crates/bijux-gnss-infra/src/run_layout/provenance/front_end.rs` |
 
-## Protecting Proof
+## Boundary Rules
 
-- `crates/bijux-gnss-infra/docs/HASHING.md`
-- `crates/bijux-gnss-infra/src/hash/provenance.rs`
-- `crates/bijux-gnss-infra/src/run_layout/provenance/front_end.rs`
+- Core owns stable identifiers and artifact record meaning.
+- Infra owns reproducibility metadata tied to repository runs.
+- Commands may display provenance, but they should not compute a separate
+  provenance model.
+- Receiver may emit runtime facts; infra decides which repository provenance
+  is persisted with them.
+
+## Reader Checks
+
+- Can a reader distinguish run provenance from scientific truth?
+- Does a hash change only when the governed input meaning changes?
+- Is dirty repository state recorded visibly instead of hidden behind a clean
+  manifest?
+- Does front-end provenance travel with the run footprint that depends on it?
+
+## First Proof Check
+
+Inspect `crates/bijux-gnss-infra/docs/HASHING.md`,
+`crates/bijux-gnss-infra/src/hash/provenance.rs`,
+`crates/bijux-gnss-infra/src/run_layout/provenance/front_end.rs`, and
+provenance-related run-layout tests before changing this contract.
