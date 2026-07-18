@@ -1,84 +1,111 @@
 ---
-title: Foundation
-audience: mixed
+title: Maintainer Workflow Foundations
+audience: maintainers
 type: index
 status: canonical
 owner: bijux-gnss-dev-docs
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-18
 ---
 
-# Foundation
+# Maintainer Workflow Foundations
 
-Open this section when the question is whether a maintainer workflow belongs in
-`bijux-gnss-dev` at all, what repository-owned language this crate uses, and
-how its scope fits inside the GNSS workspace.
+`bijux-gnss-dev` is an unpublished repository-maintenance binary. It turns a
+small set of reviewed local governance rules into repeatable commands for
+maintainers and automation. It is not a general scripting bucket, a shared
+policy authority, or a GNSS product library.
 
-## Boundary Model
+## The Current Trust Surface
+
+| workflow | what a pass establishes | what it does not establish |
+| --- | --- | --- |
+| `audit-allowlist` | advisory exceptions have valid identifiers, owners, rationales, review links, and unexpired dates | the security risk is acceptable |
+| `deny-policy-deviations` | local dependency-policy exceptions are attributable, time-bounded, and linked to standards review | upstream policy changed or the exception should become permanent |
+| `audit-ignore-args` | valid advisory identifiers can be emitted in stable, deduplicated order for Cargo audit | exception records have complete ownership, rationale, links, or expiry |
+| `bench-compare` | the curated benchmark set ran and current evidence was normalized; comparison occurred only if a baseline existed | performance passed a regression gate when no maintained baseline exists |
+
+The validation and derivation commands are deliberately separate.
+`audit-ignore-args` succeeds with empty output when its register is absent so a
+caller can construct a safe command line. `audit-allowlist` treats the same
+absence as a governance failure. Automation that needs both safety and record
+quality must run both operations.
+
+## Follow A Governed Workflow
 
 ```mermaid
 flowchart LR
-    maintain["repository maintenance intent"]
-    dev["bijux-gnss-dev"]
-    contracts["commands governed inputs outputs evidence"]
-    downstream["ci make workflows repo health"]
-    drift["product or scripting creep"]
+    decision["human-reviewed decision"]
+    record["governed repository record"]
+    command["typed maintainer command"]
+    result["focused output and exit status"]
+    automation["Make or CI consumer"]
+    review["maintainer review"]
 
-    maintain --> dev --> contracts --> downstream
-    dev --> drift
+    decision --> record --> command --> result --> automation
+    result --> review
+    record --> review
 ```
 
-The maintainer boundary is only trustworthy when readers can see where
-reviewed repository workflows stop and where product behavior, ad hoc shell
-convenience, or unmanaged side effects must stay out.
+The command validates or derives from a reviewed record. It does not create the
+policy decision that justified the record.
 
-## Read These First
+## Start From The Maintenance Question
 
-- open [Package Overview](package-overview.md) for the shortest accurate
-  explanation of the crate
-- open [Ownership Boundary](ownership-boundary.md) when a maintainer workflow
-  is drifting toward product behavior
-- open [Dependencies And Adjacencies](dependencies-and-adjacencies.md) when the
-  question is whether a dependency or governed file belongs here
+| question | guide |
+| --- | --- |
+| Which commands and options are stable? | [Command surface](../interfaces/command-surface.md) |
+| Which local files are governed inputs? | [Governed input contracts](../interfaces/governed-input-contracts.md) |
+| Which stdout, files, and exit states may automation consume? | [Output contracts](../interfaces/output-contracts.md) |
+| How are commands composed by repository automation? | [Workflow contracts](../interfaces/workflow-contracts.md) |
+| Does a proposed workflow belong in this binary? | [Ownership boundary](ownership-boundary.md) |
+| What can current evidence not prove? | [Known limitations](../quality/known-limitations.md) |
+| How is fast and slow test-lane policy protected? | [Repository test policy](../quality/repository-test-policy.md) |
 
-## The Mistake This Section Prevents
+## Command Or Integration Proof?
 
-The most common mistake here is treating repository automation as harmless
-glue. That is how unowned shell folklore becomes durable maintenance surface.
-This section keeps reviewed maintainer workflows distinct from product logic
-and from generic scripting that no crate should own.
+The binary exposes four commands. Slow-test roster coherence is not a fifth
+command: an integration test executes the repository expression generator and
+proves that the governed slow roster is sorted, unique, resolvable, present in
+the slow expression, and excluded from the fast expression.
 
-## Pages In This Section
+```mermaid
+flowchart TD
+    concern{"maintenance concern"}
+    runtime{"needs a stable operator<br/>or automation entrypoint?"}
+    governed{"has named governed<br/>input or output?"}
+    command["binary command"]
+    proof["integration proof"]
+    owner["existing product, policy,<br/>Make, or CI owner"]
 
-- [Package Overview](package-overview.md)
-- [Scope And Non-Goals](scope-and-non-goals.md)
-- [Ownership Boundary](ownership-boundary.md)
-- [Durable Naming](durable-naming.md)
-- [Repository Fit](repository-fit.md)
-- [Domain Language](domain-language.md)
-- [Dependencies And Adjacencies](dependencies-and-adjacencies.md)
-- [Change Principles](change-principles.md)
+    concern --> runtime
+    runtime -- no --> proof
+    runtime -- yes --> governed
+    governed -- yes --> command
+    governed -- no --> owner
+```
 
-## First Boundary Check
+Do not add a command solely to wrap a shell line. A durable command needs a
+repository-specific rule, named inputs and outputs, honest exit semantics, and
+proof that cannot be owned more clearly by a product package or shared
+standards repository.
 
-- this crate owns repository maintenance workflows, not product features
-- this crate may read and validate governed inputs, but that does not make it a
-  general repository-scripting bucket
-- this crate may emit maintenance evidence, but it does not own arbitrary
-  output policy
+## Benchmark Evidence Is Conditional
 
-## First Proof Check
+Benchmark comparison writes raw evidence and a normalized current snapshot. A
+maintained baseline is required before threshold comparison can support a
+regression claim. Without one, even strict mode reports an explicit skip and a
+successful exit means only that the curated benchmarks executed and evidence
+was written.
 
-- `crates/bijux-gnss-dev/README.md`
-- `crates/bijux-gnss-dev/docs/BOUNDARY.md`
-- `crates/bijux-gnss-dev/src/main.rs`
-- `crates/bijux-gnss-dev/tests/`
-- `crates/bijux-gnss-policies/`
+Use the [package overview](package-overview.md) for the concise role,
+[scope and non-goals](scope-and-non-goals.md) for explicit refusals,
+[durable naming](durable-naming.md) for repository-owned names, and
+[change principles](change-principles.md) before extending the maintenance
+surface.
 
-## Leave This Section When
-
-- leave for [Architecture](../architecture/) when ownership is clear and the
-  question becomes code layout
-- leave for [Interfaces](../interfaces/) when the question is already about
-  commands, governed inputs, or output contracts
-- leave for [Quality](../quality/) when the boundary is clear and the question
-  becomes whether the proof bar is strong enough
+Implementation evidence begins with the
+[command reference](../../../crates/bijux-gnss-dev/docs/COMMANDS.md),
+[governance input guide](../../../crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md),
+[benchmark guide](../../../crates/bijux-gnss-dev/docs/BENCHMARKS.md),
+[test guide](../../../crates/bijux-gnss-dev/docs/TESTS.md),
+[command implementation](../../../crates/bijux-gnss-dev/src/main.rs), and
+[suite-selection proof](../../../crates/bijux-gnss-dev/tests/integration_nextest_suite_selection.rs).
