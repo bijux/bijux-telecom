@@ -4,58 +4,74 @@ audience: mixed
 type: architecture
 status: canonical
 owner: bijux-gnss-docs
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-18
 ---
 
 # Module Map
 
-This page maps the main command-boundary families in `bijux-gnss` to the code
-that owns them.
+Enter `bijux-gnss` through the operator interaction you are changing. The
+command crate is a composition boundary: it parses intent, prepares repository
+and runtime context, dispatches a lower-owner workflow, and renders the result.
 
-## Top-Level Surface
+```mermaid
+flowchart LR
+    operator["operator or automation"]
+    catalog["command catalog"]
+    parse["command-line parsing"]
+    runtime["runtime preparation"]
+    workflow["workflow dispatch"]
+    owners["infra, receiver,<br/>navigation, signal"]
+    report["operator report"]
 
-- `src/main.rs` assembles the binary surface by including and wiring the CLI
-  modules
-- `src/lib.rs` owns the thin package facade over lower-level crates
+    operator --> catalog --> parse --> runtime --> workflow --> owners
+    owners --> report --> operator
+```
 
-## Command Shape
+## Choose A Command Route
 
-- `src/cli/command_catalog/` owns stable command families and argument shapes
-- `src/cli/command_catalog/artifact_commands.rs`,
-  `configuration_commands.rs`, `diagnostics_commands.rs`, and
-  `navigation_commands.rs` split those stable families by durable command
-  surface rather than by incidental delivery order
-- `src/cli/command_line.rs` owns the command-line assembly and parsing layer
+| question | owning subsystem | what belongs there |
+| --- | --- | --- |
+| Which command, subcommand, flag, or argument group is public? | [Command catalog](../../../crates/bijux-gnss/src/cli/command_catalog/) | stable vocabulary and typed argument shape |
+| How are catalog types assembled into the binary parser? | [Command-line parser](../../../crates/bijux-gnss/src/cli/command_line.rs) | parser composition and top-level dispatch selection |
+| How is the process environment prepared before execution? | [Command runtime](../../../crates/bijux-gnss/src/cli/command_runtime/) | runtime environment, dataset inspection, and acquisition or synthetic reporting support |
+| Which top-level operator workflow runs? | [Command workflows](../../../crates/bijux-gnss/src/cli/commands/) | artifact, ingest, analyze, synthetic, pipeline, validation, and diagnostics dispatch |
+| How does a workflow adapt lower-owner artifacts and inputs? | [Command support](../../../crates/bijux-gnss/src/cli/command_support/) | capture windows, artifact loading, receiver outputs, navigation outputs, and raw-IQ quality adapters |
+| Which setup is shared by several execution paths? | [Execution support](../../../crates/bijux-gnss/src/cli/execution_support.rs) | common orchestration scaffolding that remains command-owned |
+| How is a result rendered for an operator? | [Report renderer](../../../crates/bijux-gnss/src/cli/report.rs) | human and machine-facing command output |
 
-## Command Execution
+## Binary And Library Boundaries
 
-- `src/cli/commands/` owns the top-level operator workflows through
-  `analyze.rs`, `artifact.rs`, `ingest.rs`, `run_pipeline.rs`, `synthetic.rs`,
-  and the `validate/` and `diagnostics/` families
-- `src/cli/commands/diagnostics/` owns diagnostics-facing workflows and report
-  publication helpers
-- `src/cli/commands/validate/` owns validation-specific command flows
-- `src/cli/commands/run_pipeline_tests/` owns command-level harnesses that
-  prove pipeline-command composition
+The [binary entrypoint](../../../crates/bijux-gnss/src/main.rs) assembles the
+CLI. The [library facade](../../../crates/bijux-gnss/src/lib.rs) exposes a thin
+package surface over lower-level GNSS APIs. Neither is a second home for
+receiver, navigation, signal, or persistence behavior.
 
-## Runtime Setup And Support
+## Find A Workflow
 
-- `src/cli/command_runtime.rs` plus `src/cli/command_runtime/` own
-  runtime-environment setup, dataset inspection, acquisition reporting, and
-  synthetic-reporting support needed during command execution
-- `src/cli/command_support/` owns workflow-facing adapters for artifacts,
-  capture windows, receiver artifacts, navigation outputs, and raw-IQ quality
-- `src/cli/execution_support.rs` provides shared execution scaffolding
+The workflow directory separates durable operator concerns:
 
-## Reporting
+- [Artifact workflows](../../../crates/bijux-gnss/src/cli/commands/artifact.rs)
+  explain and validate existing artifacts.
+- [Ingest workflows](../../../crates/bijux-gnss/src/cli/commands/ingest.rs)
+  convert declared inputs into repository-supported forms.
+- [Pipeline execution](../../../crates/bijux-gnss/src/cli/commands/run_pipeline.rs)
+  composes infra and receiver behavior.
+- [Synthetic workflows](../../../crates/bijux-gnss/src/cli/commands/synthetic.rs)
+  expose deterministic receiver scenarios.
+- [Diagnostics workflows](../../../crates/bijux-gnss/src/cli/commands/diagnostics/)
+  assemble operator evidence and gates.
+- [Validation workflows](../../../crates/bijux-gnss/src/cli/commands/validate/)
+  route schema and artifact checks.
 
-- `src/cli/report.rs` owns operator-facing output rendering
+## Boundary Tests
 
-## Closest Proof
+- A new flag belongs in the catalog, but its domain meaning belongs to the
+  lower-owner configuration or contract.
+- Dataset and run placement rules stay in infra.
+- Receiver stage policy stays in receiver.
+- Navigation and signal science stay in their packages.
+- Command support may adapt outputs; it must not redefine them.
 
-- `crates/bijux-gnss/src/main.rs`
-- `crates/bijux-gnss/src/cli/command_catalog/`
-- `crates/bijux-gnss/src/cli/commands/`
-- `crates/bijux-gnss/src/cli/command_runtime.rs`
-- `crates/bijux-gnss/src/cli/command_runtime/`
-- `crates/bijux-gnss/src/cli/command_support/`
+Use [Execution Model](execution-model.md) for control flow and
+[Integration Seams](integration-seams.md) when a command change appears to move
+ownership into the facade.
