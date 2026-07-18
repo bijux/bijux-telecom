@@ -18,11 +18,11 @@ allowed to hide ownership.
 
 | changed surface | done means | proof to start from |
 | --- | --- | --- |
-| command name or flags | the public invocation is documented and stable enough for operators | `crates/bijux-gnss/docs/COMMANDS.md` plus a focused CLI integration test |
-| workflow sequencing | the command still hands work to the owning lower crate in a readable order | `crates/bijux-gnss/docs/WORKFLOWS.md` plus the integration test for that workflow |
-| reporting | output explains the lower-crate result without inventing new scientific or repository meaning | `crates/bijux-gnss/docs/REPORTING.md` plus report assertions |
-| validation command | accepted and rejected cases identify the owner of the failed contract | `crates/bijux-gnss/docs/VALIDATION.md` plus validation integration proof |
-| Rust facade | exports remain a deliberate convenience layer, not an accidental mixed library | `crates/bijux-gnss/docs/FACADE.md`, `PUBLIC_API.md`, and guardrail tests |
+| command name or flags | the public invocation is documented and stable enough for operators | [command guide](../../../crates/bijux-gnss/docs/COMMANDS.md) plus a focused CLI integration test |
+| workflow sequencing | the command still hands work to the owning lower crate in a readable order | [workflow guide](../../../crates/bijux-gnss/docs/WORKFLOWS.md) plus the integration test for that workflow |
+| reporting | output explains the lower-crate result without inventing new scientific or repository meaning | [reporting guide](../../../crates/bijux-gnss/docs/REPORTING.md) plus report assertions |
+| validation command | accepted and rejected cases identify the owner of the failed contract | [validation guide](../../../crates/bijux-gnss/docs/VALIDATION.md) plus validation integration proof |
+| Rust facade | exports remain a deliberate convenience layer, not an accidental mixed library | [facade guide](../../../crates/bijux-gnss/docs/FACADE.md), [public API](../../../crates/bijux-gnss/docs/PUBLIC_API.md), and guardrail tests |
 
 ## Reader Questions Before Commit
 
@@ -35,10 +35,10 @@ allowed to hide ownership.
 
 ## Proof Route
 
-1. Read `crates/bijux-gnss/docs/BOUNDARY.md`.
-2. Read the relevant command-local file: `COMMANDS.md`, `WORKFLOWS.md`,
-   `REPORTING.md`, `VALIDATION.md`, or `FACADE.md`.
-3. Select the focused test from `crates/bijux-gnss/docs/TESTS.md`.
+1. Read the [command boundary guide](../../../crates/bijux-gnss/docs/BOUNDARY.md).
+2. Read the relevant command-local guide: command, workflow, reporting,
+   validation, or facade.
+3. Select the focused test from the [command test guide](../../../crates/bijux-gnss/docs/TESTS.md).
 4. Update this handbook only when the reader-facing command contract moved.
 
 Do not call a command change done because a lower crate test passed. The

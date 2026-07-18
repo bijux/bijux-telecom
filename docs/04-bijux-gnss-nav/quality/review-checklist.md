@@ -30,11 +30,11 @@ flowchart TB
 
 | changed surface | accept only when | inspect before accepting |
 | --- | --- | --- |
-| navigation product parser or provider | Product meaning is documented and reusable without repository-file policy. | [Format And Product Contracts](../interfaces/format-and-product-contracts.md), `crates/bijux-gnss-nav/docs/CONTRACTS.md` |
+| navigation product parser or provider | Product meaning is documented and reusable without repository-file policy. | [Format and product contracts](../interfaces/format-and-product-contracts.md) and [navigation contract guide](../../../crates/bijux-gnss-nav/docs/CONTRACTS.md) |
 | orbit, clock, time, or model logic | Scientific assumptions and units are explicit enough for downstream callers. | [Orbit Contracts](../interfaces/orbit-contracts.md), [Time And Model Contracts](../interfaces/time-and-model-contracts.md) |
-| correction law | The correction remains a reusable navigation surface, not receiver tuning. | [Correction Contracts](../interfaces/correction-contracts.md), `crates/bijux-gnss-nav/tests/integration_precise_correction_queries.rs` |
-| estimator or positioning behavior | Refusal, downgrade, residual, and integrity outcomes are backed by targeted tests. | [Estimation Contracts](../interfaces/estimation-contracts.md), `crates/bijux-gnss-nav/docs/ESTIMATION.md` |
-| public export | The export represents durable navigation science rather than a caller shortcut. | [API Surface](../interfaces/api-surface.md), `crates/bijux-gnss-nav/docs/PUBLIC_API.md`, `crates/bijux-gnss-nav/tests/integration_guardrails.rs` |
+| correction law | The correction remains a reusable navigation surface, not receiver tuning. | [Correction contracts](../interfaces/correction-contracts.md) and precise-correction query proof |
+| estimator or positioning behavior | Refusal, downgrade, residual, and integrity outcomes are backed by targeted tests. | [Estimation contracts](../interfaces/estimation-contracts.md) and [estimation guide](../../../crates/bijux-gnss-nav/docs/ESTIMATION.md) |
+| public export | The export represents durable navigation science rather than a caller shortcut. | [API surface](../interfaces/api-surface.md), [public API](../../../crates/bijux-gnss-nav/docs/PUBLIC_API.md), and guardrail proof |
 
 ## Blocking Signs
 
@@ -49,9 +49,10 @@ flowchart TB
 
 ## Evidence To Require
 
-- Read `crates/bijux-gnss-nav/docs/TESTS.md`,
-  `crates/bijux-gnss-nav/docs/ESTIMATION.md`, and
-  `crates/bijux-gnss-nav/docs/PUBLIC_API.md` before accepting broad changes.
+- Read the [navigation test guide](../../../crates/bijux-gnss-nav/docs/TESTS.md),
+  [estimation guide](../../../crates/bijux-gnss-nav/docs/ESTIMATION.md), and
+  [public API](../../../crates/bijux-gnss-nav/docs/PUBLIC_API.md) before
+  accepting broad changes.
 - Require the narrow test family that matches the changed scientific claim:
   product, orbit, correction, estimator, integrity, or refusal behavior.
 - Update interface docs when public navigation meaning changes.
