@@ -1,61 +1,98 @@
 ---
-title: Operations
-audience: mixed
+title: Navigation Change Guide
+audience: maintainers
 type: index
 status: canonical
 owner: bijux-gnss-nav-docs
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-18
 ---
 
-# Operations
+# Navigation Change Guide
 
-Open this section when the question is how to change `bijux-gnss-nav` without
-quietly moving scientific meaning, broadening public contracts carelessly, or
-breaking reference-backed trust.
+Begin a navigation change with the scientific claim, not the module. Name the
+input product or observation, time system, frame, units, model assumptions,
+quality evidence, and accepted, degraded, and refused outcomes before choosing
+implementation.
 
-## Operational Model
+## Define The Claim Before The Code
 
 ```mermaid
 flowchart LR
-    change["proposed nav change"]
-    scope["scope and owner check"]
-    docs["scientific contract update"]
-    tests["narrow verification"]
-    review["cross-crate review"]
-    release["merge-ready change"]
+    claim["scientific claim"]
+    inputs["inputs and provenance"]
+    assumptions["time, frame, units,<br/>models, prerequisites"]
+    outcomes["success, degradation,<br/>and refusal"]
+    reference["independent reference<br/>or invariant"]
+    owner["scientific owner"]
+    implementation["implementation"]
+    evidence["focused evidence"]
 
-    change --> scope --> docs --> tests --> review --> release
+    claim --> inputs --> assumptions --> outcomes --> reference --> owner
+    owner --> implementation --> evidence
 ```
 
-## Read These First
+If the expected value comes only from the implementation under test, the change
+does not yet have independent scientific evidence.
 
-- open [Change Sequence](change-sequence.md) first when the work touches
-  formats, corrections, orbit logic, or any estimator family
-- open [Verification Commands](verification-commands.md) when you need the
-  narrowest executable proof for a local change
-- open [Review Scope](review-scope.md) when a change seems to affect more than
-  one scientific family at once
+## Choose The Maintenance Route
 
-## Pages In This Section
+| changed science | operational route | minimum evidence |
+| --- | --- | --- |
+| Message decoder, RINEX, or precise-product parser | [Navigation extension guide](navigation-extension-guide.md) | realistic valid input, malformed input, time context, typed rejection, and semantic round trip where applicable |
+| Orbit, clock, time, or product interpolation | [Change sequence](change-sequence.md) | independent reference, frame and epoch, coverage edges, uncertainty, and unavailable-product behavior |
+| Atmospheric, bias, antenna, combination, or physical model | [Common workflows](common-workflows.md) | formula or dataset independent of implementation, units, domain bounds, and missing-context refusal |
+| Position, integrity, EKF, PPP, or RTK | [Review scope](review-scope.md) | prerequisites, lifecycle, residuals, covariance, convergence, quality, downgrade, and refusal |
+| Public or precise-product fixture | [Precise product and fixture care](precise-product-and-fixture-care.md) | provenance, reference epoch, frame, original data, and tolerance rationale |
+| Focused local proof | [Local development](local-development.md) and [verification commands](verification-commands.md) | exact scientific family and bounded claim |
+| Published behavior | [Release and versioning](release-and-versioning.md) | public API, accepted data, result meaning, feature behavior, and migration |
 
-- [Common Workflows](common-workflows.md)
-- [Local Development](local-development.md)
-- [Change Sequence](change-sequence.md)
-- [Navigation Extension Guide](navigation-extension-guide.md)
-- [Verification Commands](verification-commands.md)
-- [Precise Product And Fixture Care](precise-product-and-fixture-care.md)
-- [Review Scope](review-scope.md)
-- [Release And Versioning](release-and-versioning.md)
+## Carry Evidence Through The Change
 
-## First Proof Check
+```mermaid
+flowchart LR
+    fixture["reference or fixture"]
+    interpretation["format and time<br/>interpretation"]
+    model["orbit, correction,<br/>or physical model"]
+    estimator["estimator family"]
+    result["result and refusal evidence"]
+    consumer["receiver or command consumer"]
 
-- `crates/bijux-gnss-nav/README.md`
-- `crates/bijux-gnss-nav/docs/TESTS.md`
-- `crates/bijux-gnss-nav/tests/`
+    fixture --> interpretation --> model --> estimator --> result --> consumer
+```
 
-## Leave This Section When
+A parser change that reaches an estimator needs evidence at both boundaries.
+An estimator-only change does not justify rewriting a parser fixture. Select
+proof according to where meaning moved.
 
-- leave for [Interfaces](../interfaces/) when the question is what nav
-  promises rather than how to change it safely
-- leave for [Quality](../quality/) when the operational sequence is clear and
-  the next question is proof sufficiency
+## Protect Fixture Integrity
+
+- Preserve source, license or public origin, epoch, frame, units, and any
+  preprocessing needed to reproduce the expected value.
+- Do not broaden a tolerance until a test passes. Tie tolerance to reference
+  uncertainty, numerical conditioning, or model limits.
+- Keep malformed and partial products alongside accepted cases.
+- Distinguish missing data, invalid data, unsupported claims, non-convergence,
+  and integrity refusal.
+- Keep parser fixtures with format proof and solver fixtures with estimator
+  proof.
+
+## Review Downstream Effects
+
+Receiver decides when navigation runs, infrastructure persists results, and the
+command package presents them. Review those consumers when public fields,
+feature gates, status, quality, or refusal meaning changes. Do not move their
+runtime or repository policy into navigation to simplify adaptation.
+
+## Commit Boundary
+
+Commit when one scientific family, its assumptions, implementation, accepted
+and refused outcomes, independent evidence, public contract, and necessary
+consumer adaptations agree. Keep unrelated estimator families separate even
+when they share mathematical helpers.
+
+The [format guide](../../../crates/bijux-gnss-nav/docs/FORMATS.md),
+[orbit guide](../../../crates/bijux-gnss-nav/docs/ORBITS.md),
+[correction guide](../../../crates/bijux-gnss-nav/docs/CORRECTIONS.md),
+[estimation guide](../../../crates/bijux-gnss-nav/docs/ESTIMATION.md), and
+[test guide](../../../crates/bijux-gnss-nav/docs/TESTS.md) are the package-level
+authorities.
