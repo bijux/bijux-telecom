@@ -12,6 +12,22 @@ last_reviewed: 2026-07-17
 Changes to `bijux-gnss-nav` should preserve scientific legibility, not only
 compile or benchmark behavior.
 
+## Change Flow
+
+```mermaid
+flowchart LR
+    input["scientific change"]
+    contract["format, model, or estimator contract"]
+    evidence["solution, residual, or refusal evidence"]
+    proof["reference or integration proof"]
+    docs["reader route"]
+
+    input --> contract
+    contract --> evidence
+    evidence --> proof
+    contract --> docs
+```
+
 ## Principles
 
 - prefer exposing scientific families through durable public surfaces rather
@@ -25,8 +41,23 @@ compile or benchmark behavior.
 - widen public API only when multiple downstream owners genuinely need a stable
   scientific contract
 
+## Reader Impact
+
+| reader | needs to know |
+| --- | --- |
+| solver maintainer | which estimator, residual, or refusal behavior changed |
+| product-format maintainer | which external product fields or validity rules changed |
+| receiver maintainer | whether observation handoff assumptions changed |
+| evidence reviewer | which proof shows scientific correctness and unsafe refusal |
+
 ## Warning Signs
 
 - a new helper is easier to describe by its caller than by its scientific role
 - a solver change adds file-path or command-default knowledge
 - product parsing begins to depend on repository layout assumptions
+
+## Review Checks
+
+- Does the change name the scientific family it belongs to?
+- Does validation prove the science, not only the caller route?
+- Are refusal and uncertainty semantics preserved or deliberately changed?
