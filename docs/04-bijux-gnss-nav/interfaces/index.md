@@ -1,75 +1,109 @@
 ---
-title: Interfaces
+title: Navigation Interface Guide
 audience: mixed
 type: index
 status: canonical
 owner: bijux-gnss-nav-docs
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-18
 ---
 
-# Interfaces
+# Navigation Interface Guide
 
-Open this section when the question is contractual: which decoders, orbit
-records, correction helpers, estimator types, and time surfaces are safe for
-another crate or tool to rely on.
+Callers use `bijux_gnss_nav::api` to interpret navigation products, compute
+satellite state and corrections, and request position, integrity, PPP, or RTK
+outcomes. Every public contract must preserve the assumptions needed to
+distinguish a parsed input from a scientifically supported claim.
 
-## Contract Surface
+## Choose The Scientific Contract
 
-`bijux-gnss-nav` publishes one curated public surface through
-`bijux_gnss_nav::api`, but that surface spans several real contract families:
-product parsing, orbit state, corrections, positioning and integrity, PPP,
-RTK, models, and time interpretation.
+| caller need | contract | evidence that must remain visible |
+| --- | --- | --- |
+| Decode broadcast messages, RINEX, SP3, CLK, ANTEX, or bias products | [Navigation product trust boundary](format-and-product-contracts.md) | format revision, constellation, time context, units, provenance, gaps, and rejection |
+| Propagate ephemeris or query precise satellite and clock state | [Orbit contracts](orbit-contracts.md) | epoch, frame, clock convention, source, uncertainty, and availability |
+| Apply atmosphere, bias, antenna, combination, or phase effects | [Correction contracts](correction-contracts.md) | required observations and products, model assumptions, sign, units, and refusal |
+| Resolve rollover or apply navigation-specific physical models | [Time and model contracts](time-and-model-contracts.md) | reference context, time system, validity interval, and model inputs |
+| Produce position, integrity, PPP, RTK, or filter evidence | [Estimation contracts](estimation-contracts.md) | prerequisites, residuals, covariance, convergence, lifecycle, quality, downgrade, and refusal |
+
+## Trust Is Layered
 
 ```mermaid
 flowchart LR
-    caller["caller or tool"]
-    api["bijux_gnss_nav::api"]
-    formats["format contracts"]
-    orbits["orbit contracts"]
-    corrections["correction contracts"]
-    estimation["estimator contracts"]
-    time["time and model contracts"]
+    bytes["bits, bytes, or text"]
+    parsed["syntax accepted"]
+    product["typed product"]
+    state["usable state with<br/>time and provenance"]
+    corrected["compatible corrected<br/>measurements"]
+    estimate["estimator outcome"]
+    claim["supported claim<br/>or typed refusal"]
 
-    caller --> api
-    api --> formats
-    api --> orbits
-    api --> corrections
-    api --> estimation
-    api --> time
+    bytes --> parsed --> product --> state --> corrected --> estimate --> claim
 ```
 
-## Read These First
+Passing one layer does not establish the next. Valid RINEX syntax does not prove
+resolved epochs. A typed orbit record does not prove current coverage. A
+converged numeric state does not prove integrity or support for the requested
+claim.
 
-- open [API Surface](api-surface.md) first when the question is whether a
-  type or helper should be part of the durable navigation boundary
-- open [Format And Product Contracts](format-and-product-contracts.md) when the
-  issue starts from navigation messages, RINEX, or precise products
-- open [Estimation Contracts](estimation-contracts.md) when the issue is
-  whether a solver type, refusal, or evidence record deserves public stability
+## Missing And Invalid Are Different
 
-## Pages In This Section
+```mermaid
+flowchart TD
+    request["navigation request"]
+    available{"required input available?"}
+    valid{"input valid and compatible?"}
+    supported{"requested claim supported?"}
+    compute["compute outcome"]
+    absent["typed absence"]
+    reject["typed rejection"]
+    refusal["typed claim refusal"]
 
-- [API Surface](api-surface.md)
-- [Public Imports](public-imports.md)
-- [Format And Product Contracts](format-and-product-contracts.md)
-- [Orbit Contracts](orbit-contracts.md)
-- [Correction Contracts](correction-contracts.md)
-- [Estimation Contracts](estimation-contracts.md)
-- [Time And Model Contracts](time-and-model-contracts.md)
-- [Entrypoints And Examples](entrypoints-and-examples.md)
-- [Compatibility Commitments](compatibility-commitments.md)
+    request --> available
+    available -- no --> absent
+    available -- yes --> valid
+    valid -- no --> reject
+    valid -- yes --> supported
+    supported -- no --> refusal
+    supported -- yes --> compute
+```
 
-## First Proof Check
+Do not map absence, malformed data, scientific incompatibility, unsupported
+claims, and estimator non-convergence to one generic error. Callers need the
+distinction to choose wait, fallback, downgrade, or stop behavior.
 
-- `crates/bijux-gnss-nav/src/api.rs`
-- `crates/bijux-gnss-nav/API.md`
-- `crates/bijux-gnss-nav/docs/PUBLIC_API.md`
+## Public Surface Rules
 
-## Leave This Section When
+- Import supported contracts through the [API surface](api-surface.md) and
+  [public imports](public-imports.md), not private parser or solver modules.
+- Keep parser-local records and solver workspaces private unless another
+  package needs the same durable scientific meaning.
+- Preserve constellation, signal, time system, frame, unit, and provenance
+  through every conversion.
+- Expose quality and refusal evidence with successful numeric results.
+- Document feature-gated behavior as an API and compatibility concern, not only
+  as a build detail.
 
-- leave for [Foundation](../foundation/) when the question is whether a public
-  surface belongs in nav at all
-- leave for [Architecture](../architecture/) when the contract issue reveals
-  structural drift underneath it
-- leave for [Operations](../operations/) or [Quality](../quality/) when the
-  public shape is clear and the question becomes safe change or proof
+The current `precise-products` feature does not conditionally remove the broad
+public precise-product surface. Treat actual compiled behavior as the present
+contract; changing feature semantics requires default and feature-disabled API
+evidence. The detailed limitation is recorded in the
+[product trust boundary](format-and-product-contracts.md).
+
+## Compatibility Questions
+
+Before changing a parser, record, correction, model, or estimator interface,
+ask whether existing callers will assign the same time, frame, units,
+availability, quality, and refusal meaning. Use
+[compatibility commitments](compatibility-commitments.md) and
+[entrypoints and examples](entrypoints-and-examples.md) before widening or
+reshaping the public surface.
+
+## Sources Of Truth
+
+The [curated navigation API](../../../crates/bijux-gnss-nav/src/api.rs) is the
+supported import boundary. The
+[public API guide](../../../crates/bijux-gnss-nav/docs/PUBLIC_API.md),
+[format guide](../../../crates/bijux-gnss-nav/docs/FORMATS.md),
+[correction guide](../../../crates/bijux-gnss-nav/docs/CORRECTIONS.md),
+[orbit guide](../../../crates/bijux-gnss-nav/docs/ORBITS.md), and
+[estimation guide](../../../crates/bijux-gnss-nav/docs/ESTIMATION.md) define
+the contract families behind it.
