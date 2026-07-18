@@ -4,58 +4,70 @@ audience: mixed
 type: foundation
 status: canonical
 owner: bijux-gnss-nav-docs
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-18
 ---
 
 # Package Overview
 
-`bijux-gnss-nav` is the scientific owner for GNSS navigation interpretation and
-solution behavior in `bijux-telecom`.
+`bijux-gnss-nav` owns navigation-domain science: external navigation products
+become typed satellite state, corrections become explicit model evidence, and
+observations become solution claims through estimators.
 
-## One-Sentence Role
+This crate is not generic file I/O and not receiver runtime scheduling. It is
+where navigation meaning is interpreted after bytes, observations, or product
+records have reached the navigation boundary.
 
-This crate turns constellation-specific navigation products and measurements
-into typed orbit state, correction evidence, and estimator outcomes that other
-packages can trust.
+## Navigation Flow
 
-## What Readers Should Remember
+```mermaid
+flowchart LR
+    formats["formats<br/>broadcast, RINEX, SP3, CLK, ANTEX, bias SINEX"]
+    orbits["orbits and clocks"]
+    corrections["corrections<br/>atmosphere, bias, combinations"]
+    estimation["estimation<br/>PVT, EKF, PPP, RTK"]
+    claims["solution claims<br/>quality, integrity, downgrade"]
 
-- formats here are not generic I/O; they are domain decoders for GNSS truth
-- orbits, corrections, and estimation are kept together because they share
-  physical assumptions and evidence models
-- runtime orchestration stays outside this crate even when it consumes these
-  solvers heavily
+    formats --> orbits --> corrections --> estimation --> claims
+```
 
-## Major Scientific Families
+## Owned Families
 
-- `src/formats/` decodes navigation messages, RINEX products, and precise
-  reference products such as SP3, CLK, ANTEX, and bias SINEX
-- `src/orbits/` interprets broadcast and precise orbital state for GPS,
-  Galileo, BeiDou, and GLONASS
-- `src/corrections/` owns atmosphere, broadcast ionosphere, bias,
-  dual-frequency, phase-windup, and signal-combination law
-- `src/estimation/position/` owns PVT, integrity, runtime-neutral filter
-  behavior, RAIM evidence, and solution smoothing
-- `src/estimation/ppp/` owns precise point positioning state, lifecycle, and
-  product-consumption policy
-- `src/estimation/rtk/` owns differencing, ambiguity logic, baseline solving,
-  and RTK quality evidence
-- `src/time.rs` and `src/time/rollover.rs` own GNSS-specific time conversions
-  and rollover interpretation above core
-- `src/models/` owns supporting atmosphere, antenna, tide, celestial, and
-  NeQuick surfaces needed by navigation computations
+| family | owns | first proof |
+| --- | --- | --- |
+| formats | GPS LNAV/CNAV, Galileo FNAV/INAV, BeiDou, GLONASS, RINEX navigation and observation, SP3, CLK, ANTEX, bias SINEX | `crates/bijux-gnss-nav/src/formats/`, `crates/bijux-gnss-nav/docs/FORMATS.md` |
+| orbits | broadcast and precise satellite state for supported constellations | `crates/bijux-gnss-nav/src/orbits/`, `crates/bijux-gnss-nav/docs/ORBITS.md` |
+| corrections | atmosphere, ionosphere, group delay, code and phase bias, combinations, phase windup, measured ionosphere | `crates/bijux-gnss-nav/src/corrections/`, `crates/bijux-gnss-nav/docs/CORRECTIONS.md` |
+| estimation | position, integrity, smoothing, EKF, PPP, RTK, ambiguity and baseline evidence | `crates/bijux-gnss-nav/src/estimation/`, `crates/bijux-gnss-nav/docs/ESTIMATION.md` |
+| models | antenna, atmosphere, celestial, NeQuick, ocean tide loading, solid earth tide support | `crates/bijux-gnss-nav/src/models/`, `crates/bijux-gnss-nav/docs/MODELS.md` |
+| navigation time | GNSS-specific time utilities and rollover interpretation above core time types | `crates/bijux-gnss-nav/src/time.rs`, `crates/bijux-gnss-nav/src/time/rollover.rs` |
 
-## Why This Package Is Heavy
+## Reader Rules
 
-The crate is large because the scientific boundary is large. A trustworthy
-navigation solution is not only least squares or only product parsing. It is
-the agreement between product interpretation, time-scale handling, correction
-law, solver design, and integrity evidence.
+- Start here when a claim depends on navigation interpretation, not just on
+  how a command found a file or how a receiver scheduled a run.
+- Leave for `bijux-gnss-infra` when the question is repository file discovery,
+  dataset registry state, sidecars, run layout, or persisted provenance.
+- Leave for `bijux-gnss-receiver` when the question is how observations were
+  produced or how navigation solving was invoked inside a receiver run.
+- Leave for `bijux-gnss-core` when the question is shared observation,
+  navigation-epoch, unit, diagnostic, or artifact-envelope meaning.
+- Leave for `bijux-gnss-signal` when the question is signal code, carrier,
+  wavelength, raw-IQ, or DSP behavior before navigation interpretation.
 
-## Closest Code Proof
+## Scientific Guardrails
 
-- `crates/bijux-gnss-nav/src/api.rs`
-- `crates/bijux-gnss-nav/src/formats.rs`
-- `crates/bijux-gnss-nav/src/corrections/`
-- `crates/bijux-gnss-nav/src/estimation.rs`
-- `crates/bijux-gnss-nav/src/time.rs`
+Navigation changes must preserve the route from input product to solution
+claim. A parser change without estimator proof can still be correct, but the
+reader needs to know which tests prove parse semantics and which tests prove
+solution behavior. PPP and RTK claims need especially clear downgrade and
+quality evidence because higher-level crates can render those results without
+owning their scientific validity.
+
+## First Proof Check
+
+Inspect `crates/bijux-gnss-nav/README.md`,
+`crates/bijux-gnss-nav/docs/FORMATS.md`,
+`crates/bijux-gnss-nav/docs/CORRECTIONS.md`,
+`crates/bijux-gnss-nav/docs/ESTIMATION.md`,
+`crates/bijux-gnss-nav/src/api.rs`, and the integration tests named in the
+crate README.
