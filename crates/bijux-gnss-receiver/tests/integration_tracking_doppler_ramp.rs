@@ -31,7 +31,12 @@ const ACQUISITION_DOPPLER_RAMP_RATE_HZ_PER_S: f64 = 20_000.0;
 const ACQUISITION_DOPPLER_RAMP_RATE_STEP_HZ_PER_S: i32 = 5_000;
 const ACQUISITION_DOPPLER_RAMP_RATE_SEARCH_HZ_PER_S: i32 = 25_000;
 
-fn accepted_acquisition(sat: SatId, doppler_hz: f64, code_phase_samples: usize) -> AcqResult {
+fn accepted_ramp_acquisition(
+    sat: SatId,
+    doppler_hz: f64,
+    doppler_rate_hz_per_s: f64,
+    code_phase_samples: usize,
+) -> AcqResult {
     AcqResult {
         sat,
         signal_band: SignalBand::L1,
@@ -41,7 +46,7 @@ fn accepted_acquisition(sat: SatId, doppler_hz: f64, code_phase_samples: usize) 
         candidate_rank: 1,
         is_primary_candidate: true,
         doppler_hz: Hertz(doppler_hz),
-        doppler_rate_hz_per_s: 0.0,
+        doppler_rate_hz_per_s,
         carrier_hz: Hertz(doppler_hz),
         code_phase_samples,
         peak: 1.0,
@@ -138,7 +143,12 @@ fn track_clean_doppler_ramp_case(
     let tracking = TrackingEngine::new(config.clone(), ReceiverRuntime::default());
     let tracks = tracking.track_from_acquisition(
         &frame,
-        &[accepted_acquisition(sat, initial_doppler_hz, seeded_code_phase_samples)],
+        &[accepted_ramp_acquisition(
+            sat,
+            initial_doppler_hz,
+            doppler_rate_hz_per_s,
+            seeded_code_phase_samples,
+        )],
     );
 
     tracks.first().expect("track").epochs.clone()

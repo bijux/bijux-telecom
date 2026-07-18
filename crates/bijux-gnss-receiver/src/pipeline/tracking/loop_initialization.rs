@@ -2,6 +2,7 @@
 struct TrackingLoopInitialization<'a> {
     signal_model: &'a TrackingSignalModel,
     carrier_hz: f64,
+    carrier_rate_hz_per_s: f64,
     code_phase_samples: f64,
     acquisition_cn0_proxy_dbhz: f64,
     signal_delay_alignment: Option<SignalDelayAlignment>,
@@ -41,6 +42,7 @@ impl Tracking {
         let TrackingLoopInitialization {
             signal_model,
             carrier_hz,
+            carrier_rate_hz_per_s,
             code_phase_samples,
             acquisition_cn0_proxy_dbhz,
             signal_delay_alignment,
@@ -53,7 +55,7 @@ impl Tracking {
         LoopState {
             carrier_hz,
             carrier_phase_cycles: pilot_carrier_phase_offset_cycles(signal_model),
-            carrier_rate_hz_per_s: 0.0,
+            carrier_rate_hz_per_s,
             code_rate_hz: code_rate_reference_hz,
             code_rate_reference_hz,
             code_phase_samples,

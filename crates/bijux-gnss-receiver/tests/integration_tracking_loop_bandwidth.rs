@@ -187,15 +187,15 @@ fn wider_dll_bandwidth_produces_stronger_first_epoch_code_correction() {
     let wide_tracks = TrackingEngine::new(wide, ReceiverRuntime::default())
         .track_from_acquisition(&frame, &[acquisition]);
 
-    let narrow_first_epoch = &narrow_tracks.first().expect("narrow track").epochs[0];
-    let wide_first_epoch = &wide_tracks.first().expect("wide track").epochs[0];
+    let narrow_feedback_epoch = &narrow_tracks.first().expect("narrow track").epochs[1];
+    let wide_feedback_epoch = &wide_tracks.first().expect("wide track").epochs[1];
     let narrow_correction =
-        (narrow_first_epoch.code_phase_samples.0 - seeded_code_phase_samples as f64).abs();
+        (narrow_feedback_epoch.code_phase_samples.0 - seeded_code_phase_samples as f64).abs();
     let wide_correction =
-        (wide_first_epoch.code_phase_samples.0 - seeded_code_phase_samples as f64).abs();
+        (wide_feedback_epoch.code_phase_samples.0 - seeded_code_phase_samples as f64).abs();
 
     assert!(
         wide_correction > narrow_correction,
-        "wide_first_epoch={wide_first_epoch:?} narrow_first_epoch={narrow_first_epoch:?}"
+        "wide_feedback_epoch={wide_feedback_epoch:?} narrow_feedback_epoch={narrow_feedback_epoch:?}"
     );
 }

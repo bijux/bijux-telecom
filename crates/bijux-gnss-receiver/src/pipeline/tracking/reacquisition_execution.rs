@@ -56,6 +56,7 @@ impl Tracking {
         channel.state = self.initial_loop_state(TrackingLoopInitialization {
             signal_model: &channel.signal_model,
             carrier_hz: seed.carrier_hz,
+            carrier_rate_hz_per_s: 0.0,
             code_phase_samples: seed.code_phase_samples,
             acquisition_cn0_proxy_dbhz: reacquisition_tracking_cn0_proxy_dbhz(
                 channel.state.lock_reference_cn0_dbhz,

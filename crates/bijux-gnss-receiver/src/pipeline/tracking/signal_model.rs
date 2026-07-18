@@ -5,6 +5,7 @@ struct TrackingStartContext {
     acquisition_score: f32,
     acquisition_code_phase_samples: usize,
     acquisition_carrier_hz: f64,
+    acquisition_carrier_rate_hz_per_s: f64,
     acquisition_cn0_proxy_dbhz: f64,
     subcarrier_code_phase_refined: bool,
     acq_to_track_state: String,

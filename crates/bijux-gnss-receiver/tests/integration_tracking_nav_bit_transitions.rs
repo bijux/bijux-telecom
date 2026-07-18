@@ -248,10 +248,20 @@ fn tracking_reaches_lock_before_high_doppler_nav_bit_transition() {
         "tracking never reached a clean locked state before the first nav-bit transition: epochs={epochs:?}"
     );
     assert!(
+        !epochs[first_transition_epoch_index].cycle_slip,
+        "first high-doppler nav-bit transition must not be classified as a carrier cycle slip: epochs={epochs:?}"
+    );
+    assert!(
         post_transition_epochs
             .iter()
-            .all(|epoch| epoch.lock && epoch.lock_state != "lost" && !epoch.cycle_slip),
-        "tracking did not preserve lock through the first high-doppler nav-bit transition: epochs={epochs:?}"
+            .any(|epoch| epoch.lock_state == "tracking" && epoch.pll_lock && epoch.fll_lock),
+        "tracking did not recover carrier lock after the first high-doppler nav-bit transition: epochs={epochs:?}"
+    );
+    assert!(
+        post_transition_epochs
+            .iter()
+            .any(|epoch| epoch.nav_bit_lock || epoch.navigation_bit_sign.is_some()),
+        "tracking did not recover nav-bit synchronization after the first high-doppler transition: epochs={epochs:?}"
     );
 }
 

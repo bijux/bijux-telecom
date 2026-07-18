@@ -185,6 +185,7 @@ impl Tracking {
             acquisition_score: acquisition.score,
             acquisition_code_phase_samples: acquisition.code_phase_samples,
             acquisition_carrier_hz,
+            acquisition_carrier_rate_hz_per_s: acquisition.doppler_rate_hz_per_s,
             acquisition_cn0_proxy_dbhz: acquisition.cn0_proxy as f64,
             subcarrier_code_phase_refined: acquisition.code_phase_refinement.is_some(),
             acq_to_track_state: acq_to_track_state(&acquisition.hypothesis).to_string(),
@@ -645,6 +646,7 @@ impl Tracking {
         let mut state = self.initial_loop_state(TrackingLoopInitialization {
             signal_model,
             carrier_hz: initial_estimate.carrier_hz,
+            carrier_rate_hz_per_s: 0.0,
             code_phase_samples: initial_estimate.code_phase_samples,
             acquisition_cn0_proxy_dbhz,
             signal_delay_alignment: None,
@@ -707,6 +709,7 @@ impl Tracking {
                     state: self.initial_loop_state(TrackingLoopInitialization {
                         signal_model: &signal_model,
                         carrier_hz: context.acquisition_carrier_hz,
+                        carrier_rate_hz_per_s: context.acquisition_carrier_rate_hz_per_s,
                         code_phase_samples: context.seed.code_phase_samples.0,
                         acquisition_cn0_proxy_dbhz: context.acquisition_cn0_proxy_dbhz,
                         signal_delay_alignment: context.seed.signal_delay_alignment.clone(),
