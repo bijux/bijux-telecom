@@ -1,5 +1,13 @@
 # bijux-gnss-signal
 
+[![Rust 1.86+](https://img.shields.io/badge/rust-1.86%2B-DEA584?logo=rust&logoColor=white)](https://crates.io/crates/bijux-gnss-signal)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-0F766E)](https://github.com/bijux/bijux-telecom/blob/main/LICENSE)
+[![GitHub Repository](https://img.shields.io/badge/github-bijux%2Fbijux--telecom-181717?logo=github)](https://github.com/bijux/bijux-telecom)
+[![signal](https://img.shields.io/crates/v/bijux-gnss-signal?label=signal&logo=rust)](https://crates.io/crates/bijux-gnss-signal)
+[![ghcr-signal](https://img.shields.io/badge/ghcr-signal-181717?logo=github)](https://github.com/bijux/bijux-telecom/pkgs/container/bijux-telecom%2Fbijux-gnss-signal)
+[![rust-docs](https://img.shields.io/badge/rust--docs-signal-DEA584?logo=rust&logoColor=white)](https://docs.rs/bijux-gnss-signal/latest/bijux_gnss_signal/)
+[![Signal handbook](https://img.shields.io/badge/docs-signal%20handbook-2563EB?logo=materialformkdocs&logoColor=white)](https://github.com/bijux/bijux-telecom/tree/main/docs/06-bijux-gnss-signal)
+
 `bijux-gnss-signal` owns reusable GNSS signal definitions and DSP primitives:
 signal catalogs, spreading codes, secondary codes, raw-IQ metadata,
 sample conversion, NCOs, replicas, spectra, front-end helpers, and tracking-loop
@@ -8,6 +16,16 @@ building blocks.
 Start here when a value or algorithm is reusable signal meaning. Do not start
 here for receiver scheduling, persisted run layout, navigation estimation, or
 operator command behavior.
+
+## Install
+
+```sh
+cargo add bijux-gnss-signal
+```
+
+The Cargo package name is `bijux-gnss-signal`; its Rust import name is
+`bijux_gnss_signal`. All public packages in this repository share one release
+version.
 
 ## Reader Route
 

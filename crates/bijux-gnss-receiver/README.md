@@ -1,5 +1,13 @@
 # bijux-gnss-receiver
 
+[![Rust 1.86+](https://img.shields.io/badge/rust-1.86%2B-DEA584?logo=rust&logoColor=white)](https://crates.io/crates/bijux-gnss-receiver)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-0F766E)](https://github.com/bijux/bijux-telecom/blob/main/LICENSE)
+[![GitHub Repository](https://img.shields.io/badge/github-bijux%2Fbijux--telecom-181717?logo=github)](https://github.com/bijux/bijux-telecom)
+[![receiver](https://img.shields.io/crates/v/bijux-gnss-receiver?label=receiver&logo=rust)](https://crates.io/crates/bijux-gnss-receiver)
+[![ghcr-receiver](https://img.shields.io/badge/ghcr-receiver-181717?logo=github)](https://github.com/bijux/bijux-telecom/pkgs/container/bijux-telecom%2Fbijux-gnss-receiver)
+[![rust-docs](https://img.shields.io/badge/rust--docs-receiver-DEA584?logo=rust&logoColor=white)](https://docs.rs/bijux-gnss-receiver/latest/bijux_gnss_receiver/)
+[![Receiver handbook](https://img.shields.io/badge/docs-receiver%20handbook-2563EB?logo=materialformkdocs&logoColor=white)](https://github.com/bijux/bijux-telecom/tree/main/docs/05-bijux-gnss-receiver)
+
 `bijux-gnss-receiver` owns receiver runtime behavior: configuration,
 acquisition, tracking, observation generation, optional navigation-stage
 execution, diagnostics, and receiver-owned artifacts.
@@ -7,6 +15,16 @@ execution, diagnostics, and receiver-owned artifacts.
 Start here when the question is about how a receiver run behaves at runtime.
 Do not start here for signal-code definitions, standalone navigation science,
 repository persistence policy, or operator-facing command wording.
+
+## Install
+
+```sh
+cargo add bijux-gnss-receiver
+```
+
+The Cargo package name is `bijux-gnss-receiver`; its Rust import name is
+`bijux_gnss_receiver`. All public packages in this repository share one release
+version.
 
 ## Reader Route
 
