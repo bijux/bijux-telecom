@@ -9,15 +9,33 @@ last_reviewed: 2026-07-17
 
 # Risk Register
 
-This page records the main trust risks in `bijux-gnss`.
+This page records the main trust risks in the command crate. The risks are not
+about implementation tidiness; they are about misleading operators or making
+the command crate look like it owns lower-crate behavior.
+
+```mermaid
+flowchart TD
+    change["command change"]
+    public["public command promise"]
+    facade["facade import"]
+    lower["lower-owner claim"]
+    report["operator report"]
+    risk["reader trust risk"]
+
+    change --> public --> risk
+    change --> facade --> risk
+    change --> lower --> risk
+    change --> report --> risk
+```
 
 ## Risks
 
-- a command or flag may become durable by accident without enough review
-- workflow integration tests may stay green while the command boundary quietly
-  drifts if the wrong slice is exercised
-- the Rust facade may accumulate convenience exports that blur lower ownership
-- reporting may start encoding lower-owner policy rather than presenting it
+| risk | how it appears | why it matters |
+| --- | --- | --- |
+| accidental public command | a flag, report field, or exit shape lands without compatibility review | operators and scripts may rely on it immediately |
+| false workflow confidence | a broad integration test passes while the changed command family is not directly exercised | command drift can hide behind lower-crate success |
+| facade sprawl | convenience exports accumulate in the package facade | downstream users lose the real owner of the behavior |
+| report ownership drift | report wording starts deciding lower-crate policy | the command output becomes a second source of truth |
 
 ## Mitigations
 
@@ -25,9 +43,12 @@ This page records the main trust risks in `bijux-gnss`.
 - choose validation by command family, not by convenience
 - keep facade scope narrow and documented
 - maintain the refusal ledger in [This Package Does Not Own](../this-package-does-not-own.md)
+- record operator-visible or facade-visible changes in the package changelog
+- link lower-crate claims back to the lower owner instead of restating them here
 
-## Protecting Proof
+## Proof Path
 
-- `crates/bijux-gnss/docs/COMMANDS.md`
-- `crates/bijux-gnss/docs/FACADE.md`
-- `crates/bijux-gnss/tests/integration_guardrails.rs`
+Use the [command guide](../../../crates/bijux-gnss/docs/COMMANDS.md),
+[facade guide](../../../crates/bijux-gnss/docs/FACADE.md), and command
+guardrail tests as the first proof. If the risk involves a lower crate, stop
+here and inspect the lower owner before changing command wording.

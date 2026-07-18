@@ -9,7 +9,26 @@ last_reviewed: 2026-07-17
 
 # Invariants
 
-These expectations should remain true as the crate grows.
+These expectations should remain true as the signal crate grows. They are the
+rules that keep reusable signal math from turning into receiver orchestration
+or navigation judgment.
+
+```mermaid
+flowchart LR
+    catalog["catalog"]
+    codes["code families"]
+    samples["raw samples"]
+    dsp["DSP"]
+    receiver["receiver"]
+    nav["navigation"]
+
+    catalog --> codes
+    samples --> dsp
+    codes --> receiver
+    dsp --> receiver
+    receiver -. owns lock lifecycle .-> receiver
+    nav -. owns navigation judgment .-> nav
+```
 
 ## Boundary Invariants
 
@@ -23,17 +42,28 @@ These expectations should remain true as the crate grows.
 - reusable DSP helpers remain runtime-neutral
 - long-duration sampling and phase helpers stay stable across chunk boundaries
 - public exports stay grouped by signal meaning rather than convenience
+- observation compatibility checks name signal constraints without deciding
+  navigation solution quality
+- raw-sample conversions preserve units and quantization meaning across APIs
 
 ## Review Invariant
 
 If a change moves public signal behavior, the matching proof family and
 handbook page should move with it.
 
-## Protecting Proof
+## Invariant Table
 
-- `crates/bijux-gnss-signal/docs/TESTS.md`
-- `crates/bijux-gnss-signal/src/api.rs`
-- `crates/bijux-gnss-signal/tests/integration_guardrails.rs`
-- `crates/bijux-gnss-signal/tests/integration_ca_code_reference.rs`
-- `crates/bijux-gnss-signal/tests/integration_nco_long_duration_phase.rs`
-- `crates/bijux-gnss-signal/tests/prop_obs_epoch_validation.rs`
+| invariant | first proof |
+| --- | --- |
+| canonical code generation | code-family docs and sequence-reference tests |
+| runtime-neutral DSP | DSP docs and numeric primitive tests |
+| stable chunk boundaries | long-duration NCO and phase-continuity tests |
+| public export ownership | public API docs and guardrail tests |
+| signal-level validation | observation compatibility property tests |
+
+## Proof Path
+
+Use the [signal test guide](../../../crates/bijux-gnss-signal/docs/TESTS.md),
+[public API](../../../crates/bijux-gnss-signal/docs/PUBLIC_API.md), and focused
+signal tests for the family that moved. A receiver tracking test can support
+the change, but it must not replace signal-owned proof.

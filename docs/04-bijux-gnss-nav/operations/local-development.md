@@ -12,6 +12,20 @@ last_reviewed: 2026-07-17
 When editing `bijux-gnss-nav`, start from the scientific family, not from the
 file that happened to fail first.
 
+```mermaid
+flowchart TD
+    failure["local failure"]
+    family["scientific family"]
+    docs["family docs"]
+    tests["focused proof"]
+    public_api["public API check"]
+
+    failure --> family
+    family --> docs
+    family --> tests
+    family --> public_api
+```
+
 ## Good Local Loop
 
 - find the owning family in `src/formats/`, `src/orbits/`,
@@ -27,8 +41,18 @@ file that happened to fail first.
 - using one broad integration test as the only proof for a low-level change
 - widening exports to make local development easier
 
+## Local Decision Table
+
+| change | start with | prove with |
+| --- | --- | --- |
+| format parsing | [Format guide](../../../crates/bijux-gnss-nav/docs/FORMATS.md) | format and reference-product tests |
+| orbit behavior | [Orbit guide](../../../crates/bijux-gnss-nav/docs/ORBITS.md) | broadcast and precise-orbit tests |
+| correction model | [Correction guide](../../../crates/bijux-gnss-nav/docs/CORRECTIONS.md) | correction-focused numeric tests |
+| position, PPP, RTK, or RAIM | [Estimation guide](../../../crates/bijux-gnss-nav/docs/ESTIMATION.md) | solver and integrity tests |
+| public export | [Public API](../../../crates/bijux-gnss-nav/docs/PUBLIC_API.md) | public API and guardrail tests |
+
 ## Useful Local Anchors
 
-- `crates/bijux-gnss-nav/README.md`
-- `crates/bijux-gnss-nav/docs/`
-- `crates/bijux-gnss-nav/tests/`
+- [Navigation crate README](../../../crates/bijux-gnss-nav/README.md)
+- [Navigation crate docs](../../../crates/bijux-gnss-nav/docs/)
+- navigation crate tests

@@ -12,6 +12,22 @@ last_reviewed: 2026-07-17
 When editing `bijux-gnss`, start from the owning command family, not from the
 lower crate that the command eventually invokes.
 
+```mermaid
+flowchart TD
+    edit["local edit"]
+    command["command family"]
+    report["report contract"]
+    facade["facade contract"]
+    tests["focused command proof"]
+
+    edit --> command
+    edit --> report
+    edit --> facade
+    command --> tests
+    report --> tests
+    facade --> tests
+```
+
 ## Good Local Loop
 
 - find the owning family in `src/cli/command_catalog/`, `src/cli/commands/`,
@@ -27,8 +43,18 @@ lower crate that the command eventually invokes.
 - using one broad integration test as the only proof for a command-shape change
 - widening facade exports to make local development easier
 
+## Local Decision Table
+
+| change | start with | prove with |
+| --- | --- | --- |
+| command argument or command name | [Command guide](../../../crates/bijux-gnss/docs/COMMANDS.md) | command-family integration tests |
+| runtime handoff | [Execution guide](../../../crates/bijux-gnss/docs/EXECUTION.md) | focused command runtime tests |
+| operator output | [Reporting guide](../../../crates/bijux-gnss/docs/REPORTING.md) | report and validation-output tests |
+| facade import | [Facade guide](../../../crates/bijux-gnss/docs/FACADE.md) | public API and guardrail tests |
+| workflow contract | [Workflow guide](../../../crates/bijux-gnss/docs/WORKFLOWS.md) | workflow-specific integration tests |
+
 ## Useful Local Anchors
 
-- `crates/bijux-gnss/README.md`
-- `crates/bijux-gnss/docs/`
-- `crates/bijux-gnss/tests/`
+- [Command crate README](../../../crates/bijux-gnss/README.md)
+- [Command crate docs](../../../crates/bijux-gnss/docs/)
+- command crate tests
