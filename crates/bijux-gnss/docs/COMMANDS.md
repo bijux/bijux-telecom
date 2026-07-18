@@ -1,33 +1,44 @@
 # Commands
 
-This file is the single source of truth for the command families owned by the `bijux` binary.
+This file is the command-family reference for the `bijux` binary. It describes
+which workflows the CLI owns and which lower crate owns the behavior behind each
+workflow.
 
-## Top-level command family
+## Command Flow
+
+```mermaid
+flowchart LR
+    args["command arguments"]
+    cli["bijux-gnss CLI"]
+    runtime["command runtime"]
+    owner["owning lower crate"]
+    report["operator output"]
+
+    args --> cli
+    cli --> runtime
+    runtime --> owner
+    owner --> report
+```
+
+## Top-Level Command Family
 
 - `bijux gnss ...`
 
-## Stable workflow families
+## Stable Workflow Families
 
-- acquisition and capture inspection workflows
-- run-pipeline workflows
-- artifact validation, explanation, and conversion workflows
-- synthetic signal generation and export workflows
-- navigation-format and RINEX workflows
-- configuration validation and schema workflows
-- diagnostics and reporting workflows
-- validation workflows over capture, synthetic IQ, synthetic navigation, and bias/reference data
-- analysis and comparison workflows over produced runs and artifacts
+| family | CLI ownership | lower-crate ownership |
+| --- | --- | --- |
+| acquisition and capture inspection | Command shape, input paths, report selection. | Receiver acquisition, signal metadata, infra dataset handling. |
+| run-pipeline | Runtime setup, profile selection, operator report. | Receiver pipeline behavior and infra run layout. |
+| artifact validation and explanation | User command shape and result presentation. | Core schemas and infra artifact inspection. |
+| synthetic signal generation and export | Command routing and output options. | Signal DSP and receiver simulation helpers. |
+| navigation-format and RINEX workflows | Input selection and report wording. | Navigation product parsing and writer behavior. |
+| configuration validation and diagnostics | Operator-facing validation output. | Core, receiver, nav, and infra validation contracts. |
+| analysis and comparison | Command routing and report shape. | Owning crate comparison or validation logic. |
 
-## Command-shape ownership
+## Review Checks
 
-The CLI crate owns:
-- command names
-- argument and flag structure
-- report-format selection
-- operator-facing output shape
-
-The underlying science and persistence behavior still belong to the lower-level crates the commands
-delegate into.
-
-The workflow-composition boundary for these command families is described in
-[WORKFLOWS.md](WORKFLOWS.md).
+- New commands need an owned workflow family and a lower-crate handoff.
+- Flag names should describe operator intent, not internal helper names.
+- A command that writes files needs artifact or run-layout docs updated in the
+  owning crate.

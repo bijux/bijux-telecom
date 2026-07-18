@@ -1,24 +1,50 @@
 # Public API
 
-`bijux-gnss` has two different public surfaces.
+`bijux-gnss` has two public surfaces: the `bijux` command-line binary and the
+small Rust facade exposed from `src/lib.rs`. They serve different readers and
+must not be collapsed into one mixed-responsibility API.
 
-## Binary surface
+## Public Surface Flow
 
-The primary public surface is the `bijux` command-line binary. That is where operator workflows are
-owned and versioned.
+```mermaid
+flowchart LR
+    operator["operator"]
+    binary["bijux binary"]
+    rust_user["rust user"]
+    facade["src/lib.rs facade"]
+    owners["owning lower crates"]
 
-## Rust surface
+    operator --> binary
+    binary --> owners
+    rust_user --> facade
+    facade --> owners
+```
 
-`src/lib.rs` exposes a small façade of lower-level crates:
+## Binary Surface
+
+The binary owns operator workflows:
+
+- command names and subcommand families
+- argument and flag structure
+- report-format selection
+- user-facing success, failure, and validation output
+- top-level orchestration of lower-crate calls
+
+## Rust Surface
+
+`src/lib.rs` exposes a narrow facade:
+
 - `core`
 - `receiver`
 - `signal`
 - `nav` when the `nav` feature is enabled
 
-This façade is intentionally small. It exists so downstream Rust users can reach the main GNSS
-stack through one package without treating the CLI crate as a place for bespoke helpers.
+The facade exists for package discoverability and simple imports. It is not a
+home for bespoke helpers that belong to lower crates.
 
-## Extension rule
+## Review Checks
 
-If a new Rust export is really owned by `core`, `signal`, `receiver`, `nav`, or `infra`, keep it in
-the owning crate instead of growing `bijux-gnss` into a second mixed-responsibility API layer.
+- A new command needs a documented workflow and an owning lower-crate handoff.
+- A new Rust export needs a downstream-user reason and visible owner.
+- Feature-gated exports need documentation that matches the Rust feature gate.
+- Operator output changes belong in reporting and command docs, not only tests.
