@@ -1,5 +1,5 @@
 ---
-title: Entrypoints and Examples
+title: Getting Started with Bijux GNSS
 audience: mixed
 type: interfaces
 status: canonical
@@ -7,61 +7,173 @@ owner: bijux-gnss-docs
 last_reviewed: 2026-07-18
 ---
 
-# Entrypoints and Examples
+# Getting Started with Bijux GNSS
 
-Use this page to choose the public starting point before opening source files.
-The command crate has two reader paths: operator workflows through the binary,
-and Rust discovery through the facade.
+Choose the command interface for operator workflows and the Rust facade for
+library integration. Start with the smallest operation that answers the
+question; acquisition, tracking, navigation, and diagnostics have different
+inputs and evidence.
 
-## Reader Route
+## Choose an Entrypoint
 
 ```mermaid
 flowchart TD
-    question["reader question"]
-    operator{"operator workflow?"}
-    command["command contracts"]
-    workflow["workflow validation<br/>or reporting docs"]
-    facade["facade contracts"]
-    source["matching CLI source"]
+    need["what do you need?"]
+    operate{"run or inspect<br/>from a shell?"}
+    cli["bijux gnss"]
+    import["bijux_gnss facade"]
+    existing{"existing capture,<br/>artifact, or run?"}
+    capture["inspect, acquire,<br/>track, or run"]
+    evidence["artifact, analyze,<br/>diff, or diagnostics"]
+    generate["ca-code or<br/>synthetic workflows"]
 
-    question --> operator
-    operator -- yes --> command --> workflow --> source
-    operator -- no --> facade --> source
+    need --> operate
+    operate -- yes --> cli --> existing
+    operate -- no --> import
+    existing -- capture --> capture
+    existing -- evidence --> evidence
+    existing -- neither --> generate
 ```
 
-## Starting Points
-
-| reader question | start here | then inspect |
-| --- | --- | --- |
-| Which command owns this workflow? | command contracts | workflow contracts and `src/cli/commands/` |
-| Why does this validation output look this way? | validation contracts | reporting contracts and validation command support |
-| Where should a new CLI flag live? | command contracts | command catalog and common argument structs |
-| Is this a Rust facade export? | facade contracts | `src/lib.rs` and the owning lower crate |
-| Why is a dataset or run directory interpreted this way? | workflow contracts | infra docs and command runtime support |
-
-## Minimal Examples
-
-Operator entrypoint:
+Discover the installed command tree rather than guessing subcommands:
 
 ```sh
-bijux gnss inspect --dataset recorded-clean --report json
+bijux gnss --help
+bijux gnss artifact --help
+bijux gnss diagnostics --help
+bijux gnss nav --help
 ```
 
-Rust facade entrypoint:
+Navigation help depends on the build features used for the binary.
+
+## Check a Signal Definition
+
+This command has no capture or repository-write requirement:
+
+```sh
+bijux gnss ca-code --prn 1 --count 16 --with-reference
+```
+
+It prints the requested GPS L1 C/A chip range and published assignment
+metadata. Add autocorrelation or cross-correlation options only when those
+properties are the question being investigated.
+
+## Inspect a Registered Capture
+
+The repository registry contains a recorded GPS L1 excerpt:
+
+```sh
+bijux gnss inspect \
+  --dataset gps_l1_2022_03_27_excerpt \
+  --max-samples 4096 \
+  --report json
+```
+
+Inspection resolves the registered capture and raw-IQ metadata, then reports
+sample statistics. It does not perform acquisition or establish satellite
+visibility.
+
+For an unregistered capture, provide the file and metadata required by the
+selected workflow. Use the
+[dataset contract](../../../crates/bijux-gnss-infra/docs/DATASETS.md) to
+understand registry and sidecar precedence rather than supplying contradictory
+overrides until a command happens to accept them.
+
+## Move from Capture to Receiver Evidence
+
+```mermaid
+flowchart LR
+    inspect["inspect metadata<br/>and sample quality"]
+    acquire["acquire signal<br/>hypotheses"]
+    track["track accepted<br/>channels"]
+    run["run staged<br/>pipeline"]
+    artifacts["inspect artifacts<br/>and diagnostics"]
+    compare["analyze or compare<br/>run evidence"]
+
+    inspect --> acquire --> track --> run --> artifacts --> compare
+```
+
+These are separate claims:
+
+- inspection establishes how samples and metadata are interpreted
+- acquisition reports candidates, ambiguity, Doppler, code phase, and
+  uncertainty
+- tracking reports channel state, continuity, lock, degradation, and recovery
+- a pipeline run assembles observations and optional navigation evidence
+- artifact and diagnostic commands interpret persisted results
+- analysis and comparison summarize recorded evidence without recreating the
+  run
+
+Do not skip directly to a broad pipeline conclusion when the open question is
+raw-IQ interpretation or acquisition refusal.
+
+## Work with Artifacts
+
+The artifact family provides nested commands:
+
+```sh
+bijux gnss artifact validate --help
+bijux gnss artifact explain --help
+bijux gnss artifact convert --help
+```
+
+Validation checks schema and invariants, explanation reports header and summary
+evidence, and conversion writes a requested target representation. Conversion
+is an explicit write operation; validation and explanation should not be
+described as equivalent to migration.
+
+Use the [artifact workflow guide](../../../crates/bijux-gnss/docs/WORKFLOWS.md)
+and [reporting contract](../../../crates/bijux-gnss/docs/REPORTING.md) before
+building automation around report fields or exit behavior.
+
+## Use the Rust Facade
+
+Add the package as a dependency, then import the owning package through the
+facade:
 
 ```rust
 use bijux_gnss::{core, receiver, signal};
 
-let _ = (core::api::GPS_L1_CA_CARRIER_HZ, signal::api::CA_CODE_PERIOD_CHIPS);
+let carrier_hz = core::api::GPS_L1_CA_CARRIER_HZ;
+let code_length = signal::api::CA_CODE_PERIOD_CHIPS;
+let config = receiver::api::ReceiverConfig::default();
+
+let _ = (carrier_hz, code_length, config);
 ```
 
-These examples are intentionally small. Full workflows belong in command docs
-or lower-crate docs; this page exists to route the reader to the correct owner.
+Navigation is feature-gated:
 
-## First Proof Check
+```rust
+#[cfg(feature = "nav")]
+use bijux_gnss::nav;
+```
 
-Inspect `crates/bijux-gnss/docs/COMMANDS.md`,
-`crates/bijux-gnss/docs/WORKFLOWS.md`,
-`crates/bijux-gnss/docs/VALIDATION.md`,
-`crates/bijux-gnss/docs/REPORTING.md`, `crates/bijux-gnss/src/lib.rs`, and the
-matching CLI source under `crates/bijux-gnss/src/cli/`.
+The facade does not flatten lower-package APIs. Continue through each package's
+`api` module so ownership remains visible and detailed documentation stays with
+the implementation owner.
+
+## Route Questions to the Owner
+
+| Question | Reader destination |
+| --- | --- |
+| command names, flags, reports, and operator workflow | [command reference](../../../crates/bijux-gnss/docs/COMMANDS.md) |
+| facade imports and feature availability | [facade guide](../../../crates/bijux-gnss/docs/FACADE.md) |
+| identities, units, records, diagnostics, and artifact envelopes | [core API](../../../crates/bijux-gnss-core/API.md) |
+| signal catalogs, codes, samples, and DSP | [signal API](../../../crates/bijux-gnss-signal/API.md) |
+| acquisition, tracking, observations, and receiver artifacts | [receiver API](../../../crates/bijux-gnss-receiver/API.md) |
+| products, corrections, positioning, integrity, PPP, and RTK | [navigation API](../../../crates/bijux-gnss-nav/API.md) |
+| datasets, run layout, persistence, and artifact inspection | [infrastructure API](../../../crates/bijux-gnss-infra/API.md) |
+
+## Avoid Misleading Starts
+
+- Do not invent a dataset identifier; use the registry or an explicit capture.
+- Do not treat inspection as acquisition, lock, or navigation proof.
+- Do not parse table output when JSON is the machine contract.
+- Do not assume an optional command or facade export exists in every feature
+  build.
+- Do not import private command modules from Rust.
+- Do not move lower-package behavior into the facade for convenience.
+
+A good starting point identifies the intended claim, required inputs, selected
+feature set, expected evidence, possible refusal, side effects, and package that
+owns the result.
