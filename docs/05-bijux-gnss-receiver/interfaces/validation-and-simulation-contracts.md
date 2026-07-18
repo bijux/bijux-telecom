@@ -32,11 +32,11 @@ flowchart LR
 
 | family | receiver-owned surface | reader promise |
 | --- | --- | --- |
-| reference alignment | `src/reference_validation.rs` | receiver outputs can be compared to reference epochs without repository policy |
-| validation reports | `src/validation_report.rs` and `src/validation_report/` | runtime decisions, budgets, and integrity classifications stay typed |
-| validation helpers | `src/validation_helpers.rs` and related report builders | receiver evidence can be summarized without hiding stage meaning |
-| synthetic execution | `src/sim/synthetic/` | synthetic scenarios exercise acquisition, tracking, observations, and artifacts through the receiver boundary |
-| covariance realism | `src/covariance_realism.rs` when navigation support is enabled | covariance claims remain tied to receiver-produced evidence |
+| reference alignment | reference-validation source | receiver outputs can be compared to reference epochs without repository policy |
+| validation reports | validation-report source | runtime decisions, budgets, and integrity classifications stay typed |
+| validation helpers | validation-helper source and report builders | receiver evidence can be summarized without hiding stage meaning |
+| synthetic execution | synthetic simulation source | synthetic scenarios exercise acquisition, tracking, observations, and artifacts through the receiver boundary |
+| covariance realism | covariance-realism source when navigation support is enabled | covariance claims remain tied to receiver-produced evidence |
 
 ## Boundary Decisions
 
@@ -51,11 +51,9 @@ flowchart LR
 
 ## First Proof Check
 
-Inspect `crates/bijux-gnss-receiver/docs/REFERENCE_VALIDATION.md`,
-`crates/bijux-gnss-receiver/docs/SIMULATION.md`,
-`crates/bijux-gnss-receiver/docs/TESTS.md`,
-`crates/bijux-gnss-receiver/src/reference_validation.rs`,
-`crates/bijux-gnss-receiver/src/validation_report.rs`,
-`crates/bijux-gnss-receiver/src/sim/synthetic/`,
-`crates/bijux-gnss-receiver/tests/integration_navigation_validation_run.rs`,
-and `crates/bijux-gnss-receiver/tests/integration_synthetic.rs`.
+Inspect the [receiver reference-validation guide](../../../crates/bijux-gnss-receiver/docs/REFERENCE_VALIDATION.md),
+[simulation guide](../../../crates/bijux-gnss-receiver/docs/SIMULATION.md), and
+[receiver test guide](../../../crates/bijux-gnss-receiver/docs/TESTS.md). Then
+inspect reference-validation source, validation-report source, synthetic
+simulation source, and focused integration tests for navigation validation runs
+and synthetic receiver execution.

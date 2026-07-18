@@ -33,16 +33,15 @@ usually the crate that should own it.
 
 The durable centers of gravity are:
 
-- `src/datasets/registry.rs` plus `src/datasets/registry/` for dataset lookup
-  and entry parsing
-- `src/datasets/raw_iq_metadata.rs` plus `src/datasets/raw_iq_metadata/` for
-  sidecar loading, sample metadata, and capture validation
-- `src/run_layout.rs` plus `src/run_layout/` for run identity, directories,
-  persisted records, and provenance capture
-- `src/artifact_inspection/` and `src/validate_reference.rs` for repository
-  inspection and validation adapters
-- `src/overrides/`, `src/experiments.rs`, `src/sweep.rs`, and `src/hash/` for
-  typed experiment variation, override application, and provenance helpers
+- dataset registry source for dataset lookup and entry parsing
+- raw-IQ metadata source for sidecar loading, sample metadata, and capture
+  validation
+- run-layout source for run identity, directories, persisted records, and
+  provenance capture
+- artifact inspection and validation-adapter source for repository inspection
+  workflows
+- override, experiment, sweep, and hashing source for typed variation,
+  override application, and provenance helpers
 
 ## Boundary Verdict
 
@@ -69,11 +68,7 @@ command UX, it has crossed the boundary.
 
 ## First Proof Check
 
-- `crates/bijux-gnss-infra/src/api.rs`
-- `crates/bijux-gnss-infra/src/datasets/registry.rs`
-- `crates/bijux-gnss-infra/src/datasets/raw_iq_metadata.rs`
-- `crates/bijux-gnss-infra/src/run_layout.rs`
-- `crates/bijux-gnss-infra/src/run_layout/`
-- `crates/bijux-gnss-infra/src/overrides/receiver_profile.rs`
-- `crates/bijux-gnss-infra/src/sweep.rs`
-- `crates/bijux-gnss-infra/src/artifact_inspection/`
+Inspect curated public API source, dataset registry source, raw-IQ metadata
+source, run-layout source, receiver-profile override source, sweep source, and
+artifact-inspection source. Use the [infra contract guide](../../../crates/bijux-gnss-infra/docs/CONTRACTS.md)
+as the reader-facing map before trusting an ownership claim.

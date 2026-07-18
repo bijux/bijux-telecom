@@ -30,8 +30,8 @@ flowchart LR
 
 | command-owned surface | reader promise | lower proof owner |
 | --- | --- | --- |
-| command names and flags | validation is discoverable from the binary surface | `crates/bijux-gnss/docs/COMMANDS.md` |
-| argument interpretation | inputs are routed to the right lower owner | `crates/bijux-gnss/docs/VALIDATION.md` |
+| command names and flags | validation is discoverable from the binary surface | [command guide](../../../crates/bijux-gnss/docs/COMMANDS.md) |
+| argument interpretation | inputs are routed to the right lower owner | [validation guide](../../../crates/bijux-gnss/docs/VALIDATION.md) |
 | evidence-bundle publication | the command packages evidence without changing meaning | infra and receiver docs |
 | config validation routing | schema and user-facing failures are reported coherently | core config contracts and command tests |
 | synthetic validation routing | generated IQ or navigation outputs are checked through owning crates | receiver, signal, and nav docs |
@@ -46,9 +46,6 @@ flowchart LR
 
 ## First Proof Check
 
-Inspect `crates/bijux-gnss/src/cli/commands/validate/`,
-`crates/bijux-gnss/docs/VALIDATION.md`,
-`crates/bijux-gnss/tests/integration_validate_config.rs`,
-`crates/bijux-gnss/tests/integration_validate_capture.rs`,
-`crates/bijux-gnss/tests/integration_validate_synthetic_iq.rs`, and
-`crates/bijux-gnss/tests/integration_validate_synthetic_navigation.rs`.
+Inspect validate-command source, the [validation guide](../../../crates/bijux-gnss/docs/VALIDATION.md),
+and focused command tests for config validation, capture validation, synthetic
+IQ validation, and synthetic navigation validation.
