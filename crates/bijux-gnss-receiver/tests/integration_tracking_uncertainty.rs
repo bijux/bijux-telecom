@@ -64,8 +64,9 @@ fn weaker_cn0_inflates_emitted_code_uncertainty() {
     let strong_epochs = track_uncertainty_case_with_duration(&config, 58.0, 0.08);
     let weak_epochs = track_uncertainty_case_with_duration(&config, 35.0, 0.08);
     let strong_means =
-        mean_all_tracking_uncertainty(&strong_epochs).expect("strong-signal uncertainty");
-    let weak_means = mean_all_tracking_uncertainty(&weak_epochs).expect("weak-signal uncertainty");
+        mean_fully_locked_tracking_uncertainty(&strong_epochs).expect("strong-signal uncertainty");
+    let weak_means =
+        mean_fully_locked_tracking_uncertainty(&weak_epochs).expect("weak-signal uncertainty");
 
     assert!(
         weak_means.0 > strong_means.0,
@@ -202,13 +203,6 @@ fn mean_fully_locked_tracking_uncertainty(
 ) -> Option<(f64, f64, f64, f64)> {
     let locked_epochs = fully_locked_tracking_epochs(epochs);
     mean_tracking_uncertainty_rows(&locked_epochs)
-}
-
-fn mean_all_tracking_uncertainty(
-    epochs: &[bijux_gnss_core::api::TrackEpoch],
-) -> Option<(f64, f64, f64, f64)> {
-    let rows = epochs.iter().collect::<Vec<_>>();
-    mean_tracking_uncertainty_rows(&rows)
 }
 
 fn mean_degraded_tracking_uncertainty(

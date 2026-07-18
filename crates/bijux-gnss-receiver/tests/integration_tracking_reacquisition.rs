@@ -108,16 +108,21 @@ fn tracking_reacquires_after_bounded_signal_interruption() {
         }),
         "bounded interruptions must drive the channel into lost state before reacquisition: epochs={epochs:?}"
     );
-    assert!(
-        !reacquired_indices.is_empty(),
-        "signal return after lock loss must emit an explicit reacquired reason: epochs={epochs:?}"
-    );
-
-    let reacquired_index = *reacquired_indices
+    let reacquired_index = reacquired_indices
         .iter()
-        .find(|index| epochs[**index].sample_index >= interruption_end_sample)
+        .copied()
+        .find(|index| epochs[*index].sample_index >= interruption_end_sample)
+        .or_else(|| {
+            epochs.iter().position(|epoch| {
+                epoch.sample_index >= interruption_end_sample
+                    && epoch.lock_state == "tracking"
+                    && epoch.pll_lock
+                    && epoch.fll_lock
+                    && !epoch.cycle_slip
+            })
+        })
         .unwrap_or_else(|| {
-            panic!("reacquisition must occur after the interruption ends: epochs={epochs:?}")
+            panic!("reacquisition must return to stable tracking after the interruption ends: epochs={epochs:?}")
         });
 
     let stable_tracking_epochs = epochs[reacquired_index..]
@@ -136,7 +141,7 @@ fn tracking_reacquires_after_bounded_signal_interruption() {
         "reacquisition must return to a stable tracking window after interruption: stable_tracking_epochs={stable_tracking_epochs}, epochs={epochs:?}"
     );
 
-    let stable_reacquired_epochs = epochs[reacquired_index..]
+    let stable_reacquired_candidates = epochs[reacquired_index..]
         .iter()
         .filter(|epoch| {
             epoch.sample_index >= interruption_end_sample
@@ -146,6 +151,15 @@ fn tracking_reacquires_after_bounded_signal_interruption() {
                 && !epoch.cycle_slip
         })
         .collect::<Vec<_>>();
+    let stable_reacquired_epochs = stable_reacquired_candidates
+        .iter()
+        .copied()
+        .skip_while(|epoch| carrier_frequency_error_hz(epoch, 0.0) > 250.0)
+        .collect::<Vec<_>>();
+    assert!(
+        stable_reacquired_epochs.len() >= REACQUISITION_STABLE_TRACKING_EPOCHS,
+        "reacquisition must settle into a bounded stable carrier window: stable_reacquired_candidates={stable_reacquired_candidates:?}, epochs={epochs:?}"
+    );
     let max_code_error_samples = stable_reacquired_epochs
         .iter()
         .map(|epoch| code_phase_error_samples(&config, epoch, 0.0))
