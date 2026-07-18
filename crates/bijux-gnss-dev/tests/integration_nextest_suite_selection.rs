@@ -47,6 +47,7 @@ fn slow_roster_feeds_nextest_lane_expressions() -> anyhow::Result<()> {
     let roster = load_slow_roster(&roster_path)?;
     let fast_expr = nextest_expr(&repo_root, "fast")?;
     let slow_expr = nextest_expr(&repo_root, "slow")?;
+    let roster_regex = slow_roster_regex(&slow_expr)?;
 
     assert!(
         fast_expr.starts_with("not ("),
@@ -56,16 +57,15 @@ fn slow_roster_feeds_nextest_lane_expressions() -> anyhow::Result<()> {
         slow_expr.contains("test(/::slow__/)"),
         "slow nextest expression must preserve legacy slow__ namespace selection: {slow_expr}"
     );
+    assert!(
+        fast_expr.contains(&slow_expr),
+        "fast nextest expression must exclude the exact generated slow lane: {fast_expr}"
+    );
 
     for entry in roster {
-        let escaped = regex::escape(&entry);
         assert!(
-            slow_expr.contains(&escaped),
+            roster_regex.is_match(&entry),
             "slow nextest expression must include roster entry: {entry}"
-        );
-        assert!(
-            fast_expr.contains(&escaped),
-            "fast nextest expression must exclude roster entry through the negated slow lane: {entry}"
         );
     }
 
@@ -90,6 +90,16 @@ fn nextest_expr(repo_root: &Path, mode: &str) -> anyhow::Result<String> {
         String::from_utf8_lossy(&output.stderr)
     );
     Ok(String::from_utf8(output.stdout)?.trim().to_string())
+}
+
+fn slow_roster_regex(slow_expr: &str) -> anyhow::Result<regex::Regex> {
+    let (_, after_prefix) = slow_expr.split_once("test(/^(?:").ok_or_else(|| {
+        anyhow::anyhow!("slow nextest expression missing roster regex: {slow_expr}")
+    })?;
+    let (roster_body, _) = after_prefix.split_once(")$/)").ok_or_else(|| {
+        anyhow::anyhow!("slow nextest expression has malformed roster regex: {slow_expr}")
+    })?;
+    Ok(regex::Regex::new(&format!("^(?:{roster_body})$"))?)
 }
 
 fn collect_test_function_names(root: &Path) -> anyhow::Result<BTreeSet<String>> {
