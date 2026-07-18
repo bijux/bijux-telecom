@@ -1,73 +1,114 @@
 ---
-title: Foundation
+title: Repository Evidence Foundations
 audience: mixed
 type: index
 status: canonical
 owner: bijux-gnss-infra-docs
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-18
 ---
 
-# Foundation
+# Repository Evidence Foundations
 
-Open this section when the question is why `bijux-gnss-infra` owns repository
-state and persisted run structure before any command or runtime layer starts
-explaining behavior away.
+`bijux-gnss-infra` turns declared inputs and runtime outputs into repository
+evidence that another process can locate, attribute, and inspect. It owns
+dataset resolution, run identity, layout, provenance, persisted manifests,
+typed overrides, sweep expansion, and artifact inspection. It does not decide
+whether a receiver lock or navigation solution is scientifically correct.
 
-## Boundary Model
+## Follow The Evidence
 
 ```mermaid
 flowchart LR
-    repo["repository state"]
-    infra["bijux-gnss-infra"]
-    contracts["datasets run layout overrides validation"]
-    downstream["commands receiver nav signal core"]
-    drift["runtime or CLI creep"]
+    declaration["dataset, sidecar,<br/>profile, run context"]
+    resolution["typed resolution"]
+    identity["identity and provenance"]
+    execution["domain execution"]
+    records["typed records"]
+    footprint["manifest, reports,<br/>artifacts, history"]
+    review["inspection or replay"]
 
-    repo --> infra --> contracts --> downstream
-    infra --> drift
+    declaration --> resolution --> identity --> execution --> records --> footprint --> review
 ```
 
-The infrastructure boundary is only trustworthy when a reader can see where
-repository-facing concerns stop and where runtime, science, or command policy
-must take back ownership.
+Infrastructure owns the path around domain execution, not the execution itself.
+It resolves what will be used, prepares where evidence belongs, and preserves
+what the producing crate returns.
 
-## Read These First
+## Start From The Repository Question
 
-- open [Ownership Boundary](ownership-boundary.md) first when a feature feels
-  adjacent to receiver, nav, or CLI behavior
-- open [Package Overview](package-overview.md) when you need the shortest
-  durable description of the crate role
-- open [Scope and Non-Goals](scope-and-non-goals.md) when the question is what
-  infra should explicitly refuse
+| question | contract |
+| --- | --- |
+| Which facts identify and describe a capture? | [Dataset contracts](../interfaces/dataset-contracts.md) |
+| Where should a run and its evidence live? | [Run footprint contracts](../interfaces/run-footprint-contracts.md) |
+| Why do two runs have matching or different identities? | [Provenance and hashing](../interfaces/provenance-and-hashing.md) |
+| What may a profile override or experiment sweep change? | [Override and sweep contracts](../interfaces/override-and-sweep-contracts.md) |
+| Can an existing artifact be identified, explained, and validated? | [Artifact inspection contracts](../interfaces/artifact-inspection-contracts.md) |
+| Where does repository ownership stop? | [Ownership boundary](ownership-boundary.md) |
 
-## The Mistake This Section Prevents
+## What Infra Can Establish
 
-The most common mistake here is smuggling product behavior into infrastructure
-because files, manifests, or datasets happen to be involved.
+Infrastructure can establish that:
 
-## Pages In This Section
+- a dataset or sidecar supplied explicit capture metadata;
+- a declared run context resolved to a governed footprint;
+- configuration, dataset, build, repository, and front-end provenance were
+  recorded according to the run contract;
+- artifacts occupy the expected layout and conform to the selected schema and
+  semantic inspection policy;
+- typed overrides and sweep dimensions expanded deterministically.
 
-- [Package Overview](package-overview.md)
-- [Scope and Non-Goals](scope-and-non-goals.md)
-- [Ownership Boundary](ownership-boundary.md)
-- [Repository Fit](repository-fit.md)
-- [Domain Language](domain-language.md)
-- [Dependencies and Adjacencies](dependencies-and-adjacencies.md)
-- [Change Principles](change-principles.md)
+Infrastructure alone cannot establish that a signal was truly present, a
+tracking loop remained locked, an observation is physically accurate, or a
+navigation result supports a positioning claim. Those conclusions require
+evidence from the producing scientific package.
 
-## First Proof Check
+```mermaid
+flowchart TD
+    manifest["valid run manifest"]
+    attributable["evidence is attributable"]
+    artifacts["schema-valid artifacts"]
+    interpretable["records are structurally interpretable"]
+    science["scientific claim"]
+    owner["receiver, signal, or navigation proof"]
 
-- `crates/bijux-gnss-infra/src/datasets/`
-- `crates/bijux-gnss-infra/src/run_layout/`
-- `crates/bijux-gnss-infra/src/artifact_inspection/`
-- `crates/bijux-gnss-infra/src/overrides/`
-- `crates/bijux-gnss-infra/docs/CONTRACTS.md`
+    manifest --> attributable
+    artifacts --> interpretable
+    attributable --> science
+    interpretable --> science
+    owner --> science
+```
 
-## Leave This Section When
+The lower two infrastructure conclusions are necessary for durable review, but
+they are not sufficient for the scientific conclusion.
 
-- leave for [Interfaces](../interfaces/) when the dispute is already about
-  manifest shape, dataset records, or override contracts
-- leave for [Architecture](../architecture/) when the ownership question is
-  settled and the next question is where the code lives
-- leave for [Quality](../quality/) when the boundary is clear and the question
-  becomes whether the infrastructure trust story is strong enough
+## Investigate A Broken Evidence Chain
+
+| symptom | inspect first |
+| --- | --- |
+| The capture cannot be resolved | dataset identity, sidecar completeness, and explicit unregistered-dataset policy |
+| The run appears in an unexpected location | resume target, output override, dataset context, and derived run identity |
+| Two apparently identical runs differ | configuration hash, repository state, build context, dataset hash, and front-end provenance |
+| An artifact exists without clear attribution | artifact header, run report, manifest, and history entry |
+| A valid artifact supports no scientific conclusion | the producing receiver, signal, or navigation evidence |
+| A persisted record is rejected by a newer reader | schema version, read policy, and compatibility rules before field values |
+
+Do not repair these symptoms by assembling paths manually, rewriting manifests,
+or weakening validation. Such changes break the evidence chain while making the
+repository look superficially complete.
+
+## Boundary Decisions
+
+Use the [package overview](package-overview.md) for the concise package role,
+[scope and non-goals](scope-and-non-goals.md) for explicit refusals, and
+[dependencies and adjacencies](dependencies-and-adjacencies.md) for each
+handoff. [Repository fit](repository-fit.md) explains why infrastructure sits
+between commands and scientific packages, while
+[change principles](change-principles.md) states the durability expectations
+for persisted contracts.
+
+Implementation evidence begins with the
+[infrastructure contracts](../../../crates/bijux-gnss-infra/docs/CONTRACTS.md),
+[dataset guide](../../../crates/bijux-gnss-infra/docs/DATASETS.md),
+[run-layout guide](../../../crates/bijux-gnss-infra/docs/RUN_LAYOUT.md),
+[hashing guide](../../../crates/bijux-gnss-infra/docs/HASHING.md), and
+[validation guide](../../../crates/bijux-gnss-infra/docs/VALIDATION.md).
