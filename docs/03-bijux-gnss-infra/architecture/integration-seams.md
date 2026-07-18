@@ -4,37 +4,73 @@ audience: mixed
 type: architecture
 status: canonical
 owner: bijux-gnss-infra-docs
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-18
 ---
 
 # Integration Seams
 
-Infra’s seams matter because it touches many owners while trying not to become
-one of them.
+Infrastructure crosses repository, receiver, signal, core, and command
+boundaries. Each seam must add typed repository meaning without taking
+ownership of the underlying science.
 
-## Main Seams
+## Trust Crossings
 
-- dataset registry and sidecars are the seam between repository files and
-  typed metadata through `src/datasets/registry.rs` and
-  `src/datasets/raw_iq_metadata.rs`
-- run layout is the seam between execution context and persisted footprint
-  through `src/run_layout.rs` and the nested `src/run_layout/` families
-- override and sweep logic are the seam between maintained configuration and
-  variant expansion
-- artifact inspection is the seam between produced artifacts and later review
-  through `src/artifact_inspection/` and its validation subfamily
-- validation adapters are the seam between persisted evidence and reference
-  comparison workflows
+```mermaid
+flowchart LR
+    files["repository files and sidecars"]
+    dataset["typed dataset"]
+    profile["maintained receiver profile"]
+    variant["typed variant"]
+    context["declared run context"]
+    footprint["deterministic run footprint"]
+    artifact["persisted artifact"]
+    review["inspection or reference review"]
 
-## Why These Seams Matter
+    files --> dataset
+    profile --> variant
+    dataset --> context
+    variant --> context
+    context --> footprint
+    footprint --> artifact
+    artifact --> review
+```
 
-Weak seams here create duplicated repository logic in commands, tests, and
-tooling. Strong seams keep repository behavior typed and reusable.
+## Seam Contracts
 
-## First Proof Check
+| seam | accepted input | output and refusal |
+| --- | --- | --- |
+| dataset registry | registered identity plus repository metadata | typed dataset with provenance, or a specific missing/invalid-field error |
+| raw-IQ sidecar | explicit format, sample rate, intermediate frequency, offset, and timestamp context | validated metadata, or refusal to infer absent capture facts |
+| override and sweep | maintained profile plus typed parameter names and values | deterministic variants, or rejection of unsupported mutation |
+| run identity | command, profile, dataset, version, feature, and replay context | deterministic directories and provenance fingerprint, or invalid-context refusal |
+| persistence | typed manifest, report, history, and artifact records | governed files with explicit schema versions, or visible write failure |
+| artifact inspection | known artifact kind, payload version, and read policy | typed explanation or validation result, never silent acceptance |
+| reference adaptation | persisted evidence and explicit reference context | comparison-ready values or a typed prerequisite failure |
 
-- `crates/bijux-gnss-infra/src/datasets/`
-- `crates/bijux-gnss-infra/src/run_layout.rs`
-- `crates/bijux-gnss-infra/src/run_layout/`
-- `crates/bijux-gnss-infra/src/artifact_inspection/`
-- `crates/bijux-gnss-infra/src/validate_reference.rs`
+## Implementation Owners
+
+- [Dataset resolution](../../../crates/bijux-gnss-infra/src/datasets/mod.rs)
+  owns registry and sidecar trust.
+- [Typed overrides](../../../crates/bijux-gnss-infra/src/overrides/mod.rs) and
+  [sweep expansion](../../../crates/bijux-gnss-infra/src/sweep.rs) own
+  reproducible variants.
+- [Run layout](../../../crates/bijux-gnss-infra/src/run_layout.rs) owns identity,
+  paths, persistence, records, and provenance.
+- [Artifact inspection](../../../crates/bijux-gnss-infra/src/artifact_inspection/mod.rs)
+  owns schema policy and later review.
+- [Reference adaptation](../../../crates/bijux-gnss-infra/src/validate_reference.rs)
+  bridges evidence into comparison without owning scientific truth.
+
+## Boundary Failures
+
+- Commands must not construct run paths or manifests independently.
+- Receiver code must not discover datasets or write repository histories.
+- Inspection must not repair invalid artifacts while reading them.
+- Reference adapters must not invent truth, tolerances, or missing provenance.
+- Convenience re-exports are not permission to move receiver or signal behavior
+  into infrastructure.
+
+The [architecture guide](../../../crates/bijux-gnss-infra/docs/ARCHITECTURE.md)
+maps these seams to package ownership, and the
+[release guide](../operations/release-and-versioning.md) defines compatibility
+for persisted behavior.

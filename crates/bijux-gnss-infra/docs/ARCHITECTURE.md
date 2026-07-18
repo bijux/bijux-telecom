@@ -1,61 +1,95 @@
 # Architecture
 
-`bijux-gnss-infra` is the infrastructure boundary for the GNSS workspace.
+`bijux-gnss-infra` makes repository inputs and outputs deterministic,
+typed, and reviewable. It owns dataset interpretation, run identity,
+persistence layout, provenance, variant expansion, and artifact inspection. It
+does not own receiver or navigation science.
 
-## Architecture Flow
+## Repository Evidence Flow
 
 ```mermaid
-flowchart TB
-    datasets["datasets"]
-    overrides["profile overrides"]
-    runs["run layout"]
-    inspect["artifact inspection"]
-    validation["reference validation"]
-    api["curated API"]
+flowchart LR
+    inputs["dataset, profile, and run context"]
+    resolution["typed resolution and overrides"]
+    identity["run identity and provenance"]
+    execution["receiver execution"]
+    artifacts["typed receiver artifacts"]
+    persistence["manifest, report, history, and files"]
+    inspection["artifact inspection and reference adapters"]
 
-    datasets --> api
-    overrides --> api
-    runs --> api
-    inspect --> api
-    validation --> api
+    inputs --> resolution
+    resolution --> identity
+    identity --> execution
+    execution --> artifacts
+    artifacts --> persistence
+    persistence --> inspection
 ```
 
-## Source Map
+Receiver execution appears in the flow because infrastructure prepares and
+records its boundary. The receiver crate still owns execution behavior.
 
-- `src/api.rs` is the curated downstream surface.
-- `src/artifact_inspection/` owns artifact validation and explanation workflows.
-- `src/commands.rs` owns run-preparation helpers used by higher-level adapters.
-- `src/datasets/` owns dataset-registry parsing, raw-IQ metadata loading, and coordinate parsing.
-- `src/experiments.rs` plus `src/sweep.rs` own experiment specs and sweep expansion.
-- `src/hash/` owns configuration and provenance hashing helpers.
-- `src/overrides/` owns typed receiver-profile override application.
-- `src/parse/` owns small parsing helpers used by infrastructure workflows.
-- `src/run_layout/` owns run identity, directories, manifests, history, and reports.
-- `src/validate_reference.rs` owns validation-reference checks and adapters.
+## Ownership Boundaries
+
+| responsibility | owner |
+| --- | --- |
+| dataset registry, capture provenance, sidecar loading, and metadata resolution | [dataset boundary](../src/datasets/mod.rs) |
+| infrastructure-specific coordinate parsing | [coordinate parser](../src/parse/coordinates.rs) |
+| maintained experiment specifications and sweep parameters | [experiment contracts](../src/experiments.rs) |
+| deterministic sweep expansion | [sweep expansion](../src/sweep.rs) |
+| typed receiver-profile mutation | [override boundary](../src/overrides/mod.rs) |
+| configuration and provenance identity | [provenance hashing](../src/hash/mod.rs) |
+| run identity, directories, paths, manifests, reports, history, and replay context | [run-layout boundary](../src/run_layout.rs) |
+| artifact schema policy, validation, and explanation | [artifact inspection](../src/artifact_inspection/mod.rs) |
+| standard run preparation | [run preparation](../src/commands.rs) |
+| persisted-evidence adaptation for reference comparison | [reference adapter](../src/validate_reference.rs) |
+| supported downstream exports | [curated infrastructure API](../src/api.rs) |
 
 ## Dependency Direction
 
-This crate may depend on `receiver` and `signal` because it wraps persisted
-artifacts, profiles, and validation flows around those contracts. Higher-level
-crates such as the CLI and testkit consume this infrastructure surface.
+```mermaid
+flowchart TD
+    facade["command facade"]
+    infra["infrastructure"]
+    receiver["receiver contracts"]
+    signal["signal contracts"]
+    core["shared contracts"]
+    nav["optional navigation contracts"]
 
-## Test Map
+    facade --> infra
+    infra --> receiver
+    infra --> signal
+    receiver --> signal
+    receiver --> core
+    receiver --> nav
+```
 
-- `tests/integration_overrides.rs` checks infrastructure-owned override application behavior.
-- `tests/integration_guardrails.rs` keeps the crate aligned with workspace guardrails.
+Infrastructure may adapt receiver and signal contracts for persistence, but it
+must not duplicate their algorithms. The command facade may select repository
+operations, but it must not invent its own run layout or manifest shape.
 
-## Design Constraints
+## Durability Invariants
 
-- Filesystem and repository layout rules live here instead of leaking through
-  CLI commands.
-- Infrastructure helpers expose typed behavior rather than forcing callers to
-  manipulate file paths and manifests by hand.
-- If a helper only re-exports product behavior without adding an infrastructure
-  boundary, it belongs elsewhere.
+- The same declared run context resolves to the same identity inputs and
+  governed footprint.
+- Dataset resolution never guesses sample rate, intermediate frequency, format,
+  station coordinates, or provenance.
+- Overrides mutate typed configuration fields and reject unsupported names or
+  values.
+- Manifests and reports remain understandable independently of the command
+  process that wrote them.
+- Hashing records enough input context to explain equality and difference.
+- Artifact inspection applies schema and semantic policy without changing
+  scientific meaning.
 
-## Review Checks
+The [run-layout guide](RUN_LAYOUT.md) defines persisted behavior, while the
+[dataset guide](DATASETS.md) and [validation guide](VALIDATION.md) define input
+and inspection trust.
 
-- Does the API expose a repository contract rather than a convenience shortcut?
-- Does the source location match the artifact, dataset, override, or validation
-  responsibility it changes?
-- Can a downstream reader trace a persisted output back to typed inputs?
+## Architectural Evidence
+
+- [Override integration](../tests/integration_overrides.rs) protects typed
+  profile mutation.
+- [Package guardrails](../tests/integration_guardrails.rs) protect dependency
+  and ownership boundaries.
+- Module-level tests beside dataset, run-layout, and inspection owners protect
+  parsing, identity, persistence, and schema behavior.
