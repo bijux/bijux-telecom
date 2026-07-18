@@ -4,32 +4,60 @@ audience: mixed
 type: interfaces
 status: canonical
 owner: bijux-gnss-docs
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-18
 ---
 
 # Command Contracts
 
-These contracts define the stable operator-facing command shape.
+Command contracts define what operators and automation can rely on when they
+invoke `bijux gnss ...`. The CLI owns command names, arguments, workflow
+selection, and report shape. It does not own the scientific meaning produced by
+core, signal, receiver, nav, or infra.
 
-## Owned Command Surfaces
+## Command Route
 
-- command families and subcommands, especially artifact, ingest, synthetic,
-  validate, analyze, and diagnostics routes
-- stable argument and flag shape
-- operator-facing success and failure routing
-- top-level workflow selection across lower-level crates
+```mermaid
+flowchart LR
+    argv["operator argv"]
+    catalog["command catalog<br/>families flags"]
+    inputs["input resolution<br/>config dataset sidecar"]
+    workflow["workflow runtime"]
+    owners["lower crate behavior"]
+    report["operator report<br/>exit status"]
 
-## Stability Expectations
+    argv --> catalog --> inputs --> workflow --> owners --> report
+```
 
-- command names and flag meaning should be reviewable as durable public surface
-- workflow composition may evolve, but the command layer must remain honest
-  about what changed
-- lower-owner science should remain behind command orchestration rather than
-  being redefined here
+## Owned Command Families
 
-## Closest Proof
+| family | operator question answered | lower owner called |
+| --- | --- | --- |
+| acquisition and tracking | can this capture produce receiver evidence? | signal, receiver, infra |
+| capture inspection and ingest | what does this raw input or dataset mean? | signal, infra |
+| run pipeline | how is a configured run executed and persisted? | receiver, infra |
+| artifacts | can this persisted output be explained, validated, or converted? | core, receiver, nav, infra |
+| synthetic outputs | can deterministic generated data be created and checked? | signal, receiver, infra |
+| navigation and RINEX | can navigation products be decoded, exported, or solved? | nav, core, infra |
+| configuration and diagnostics | is the operator input valid and explainable? | core, infra, receiver |
+| validation and analysis | do runs, references, and artifacts satisfy stated budgets? | receiver, nav, infra |
 
-- `crates/bijux-gnss/src/cli/command_catalog/`
-- `crates/bijux-gnss/src/cli/command_line.rs`
-- `crates/bijux-gnss/src/cli/commands/`
-- `crates/bijux-gnss/docs/COMMANDS.md`
+## Stability Rules
+
+- Treat command names, flag meaning, report format selection, and exit behavior
+  as public surface.
+- Keep lower-crate behavior behind orchestration calls; do not redefine it in
+  command support modules.
+- Add a command only when it has a durable operator job, not because a helper is
+  easy to expose.
+- Keep report text honest about skipped inputs, degraded evidence, unsupported
+  formats, and validation failures.
+- Update command docs and CLI tests together when a workflow route changes.
+
+## First Proof Check
+
+Inspect `crates/bijux-gnss/src/cli/command_catalog/`,
+`crates/bijux-gnss/src/cli/command_line.rs`,
+`crates/bijux-gnss/src/cli/commands/`,
+`crates/bijux-gnss/src/cli/command_runtime/`,
+`crates/bijux-gnss/src/cli/command_support/`, and
+`crates/bijux-gnss/docs/COMMANDS.md`.
