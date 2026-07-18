@@ -143,15 +143,15 @@ The live-sky dataset provenance and redistribution details live in
 
 | package | owns | start here |
 | --- | --- | --- |
-| `bijux-gnss` | public facade and `bijux` command workflow | [crates/bijux-gnss/README.md](crates/bijux-gnss/README.md), [docs/01-bijux-gnss/](docs/01-bijux-gnss/) |
-| `bijux-gnss-core` | shared IDs, units, time, records, diagnostics, and artifact envelopes | [crates/bijux-gnss-core/README.md](crates/bijux-gnss-core/README.md), [docs/02-bijux-gnss-core/](docs/02-bijux-gnss-core/) |
-| `bijux-gnss-infra` | datasets, run layout, provenance, hashing, overrides, and experiment infrastructure | [crates/bijux-gnss-infra/README.md](crates/bijux-gnss-infra/README.md), [docs/03-bijux-gnss-infra/](docs/03-bijux-gnss-infra/) |
-| `bijux-gnss-nav` | navigation products, corrections, orbit propagation, estimators, RTK, PPP, and RAIM | [crates/bijux-gnss-nav/README.md](crates/bijux-gnss-nav/README.md), [docs/04-bijux-gnss-nav/](docs/04-bijux-gnss-nav/) |
-| `bijux-gnss-receiver` | receiver runtime, acquisition, tracking, observations, diagnostics, and receiver artifacts | [crates/bijux-gnss-receiver/README.md](crates/bijux-gnss-receiver/README.md), [docs/05-bijux-gnss-receiver/](docs/05-bijux-gnss-receiver/) |
-| `bijux-gnss-signal` | signal registry, code families, raw sample contracts, and reusable DSP | [crates/bijux-gnss-signal/README.md](crates/bijux-gnss-signal/README.md), [docs/06-bijux-gnss-signal/](docs/06-bijux-gnss-signal/) |
-| `bijux-gnss-dev` | maintainer commands, audit policy, benchmark evidence, and test-lane governance | [crates/bijux-gnss-dev/README.md](crates/bijux-gnss-dev/README.md), [docs/07-bijux-gnss-dev/](docs/07-bijux-gnss-dev/) |
-| `bijux-gnss-policies` | executable repository-shape guardrails and policy snapshots | [crates/bijux-gnss-policies/README.md](crates/bijux-gnss-policies/README.md) |
-| `bijux-gnss-testkit` | shared fixtures, independent truth models, and test evidence | [crates/bijux-gnss-testkit/README.md](crates/bijux-gnss-testkit/README.md) |
+| `bijux-gnss` | public facade and `bijux` command workflow | [Command crate README](crates/bijux-gnss/README.md), [Command handbook](docs/01-bijux-gnss/) |
+| `bijux-gnss-core` | shared IDs, units, time, records, diagnostics, and artifact envelopes | [Core crate README](crates/bijux-gnss-core/README.md), [Core handbook](docs/02-bijux-gnss-core/) |
+| `bijux-gnss-infra` | datasets, run layout, provenance, hashing, overrides, and experiment infrastructure | [Infra crate README](crates/bijux-gnss-infra/README.md), [Infra handbook](docs/03-bijux-gnss-infra/) |
+| `bijux-gnss-nav` | navigation products, corrections, orbit propagation, estimators, RTK, PPP, and RAIM | [Navigation crate README](crates/bijux-gnss-nav/README.md), [Navigation handbook](docs/04-bijux-gnss-nav/) |
+| `bijux-gnss-receiver` | receiver runtime, acquisition, tracking, observations, diagnostics, and receiver artifacts | [Receiver crate README](crates/bijux-gnss-receiver/README.md), [Receiver handbook](docs/05-bijux-gnss-receiver/) |
+| `bijux-gnss-signal` | signal registry, code families, raw sample contracts, and reusable DSP | [Signal crate README](crates/bijux-gnss-signal/README.md), [Signal handbook](docs/06-bijux-gnss-signal/) |
+| `bijux-gnss-dev` | maintainer commands, audit policy, benchmark evidence, and test-lane governance | [Maintainer crate README](crates/bijux-gnss-dev/README.md), [Maintainer handbook](docs/07-bijux-gnss-dev/) |
+| `bijux-gnss-policies` | executable repository-shape guardrails and policy snapshots | [Policy crate README](crates/bijux-gnss-policies/README.md) |
+| `bijux-gnss-testkit` | shared fixtures, independent truth models, and test evidence | [Testkit crate README](crates/bijux-gnss-testkit/README.md) |
 
 ## Evidence And Artifacts
 
@@ -161,11 +161,11 @@ manifests, sidecars, quality reports, truth JSON, stage summaries, and accuracy
 artifacts. Start with the command output path, then follow the manifest into the
 owning crate docs:
 
-- command behavior: `crates/bijux-gnss/docs/`
-- persisted run layout: `crates/bijux-gnss-infra/docs/`
+- command behavior: [Command crate docs](crates/bijux-gnss/docs/)
+- persisted run layout: [Infra crate docs](crates/bijux-gnss-infra/docs/)
 - receiver artifacts and validation reports:
-  `crates/bijux-gnss-receiver/docs/`
-- shared artifact envelopes: `crates/bijux-gnss-core/docs/`
+  [Receiver crate docs](crates/bijux-gnss-receiver/docs/)
+- shared artifact envelopes: [Core crate docs](crates/bijux-gnss-core/docs/)
 
 ## Verification Lanes
 
@@ -179,7 +179,7 @@ make test-all
 
 `make test` is the fast lane. Slow proof tests belong in `make test-slow` and
 the full lanes. Repository test policy lives in
-[docs/07-bijux-gnss-dev/quality/repository-test-policy.md](docs/07-bijux-gnss-dev/quality/repository-test-policy.md).
+[Repository test policy](docs/07-bijux-gnss-dev/quality/repository-test-policy.md).
 
 ## Documentation
 
@@ -188,7 +188,7 @@ the full lanes. Repository test policy lives in
   public entry pages.
 - [Workspace changelog](CHANGELOG.md) summarizes unreleased workspace-level
   documentation and release-history changes.
-- Package changelogs live at `crates/<package>/CHANGELOG.md`.
+- Package changelogs live beside each [package README](crates/).
 
 ## Maturity
 

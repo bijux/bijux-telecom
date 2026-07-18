@@ -38,13 +38,13 @@ API, one algorithm, one persisted artifact, or one test family.
 
 | reader question | handbook | first proof after the handbook |
 | --- | --- | --- |
-| How does an operator command map to work? | [01-bijux-gnss](01-bijux-gnss/) | `crates/bijux-gnss/src/cli/`, `crates/bijux-gnss/docs/` |
-| Which shared type, unit, time, diagnostic, or artifact meaning is canonical? | [02-bijux-gnss-core](02-bijux-gnss-core/) | `crates/bijux-gnss-core/src/`, `crates/bijux-gnss-core/docs/` |
-| How are datasets, run identity, overrides, and persisted evidence interpreted? | [03-bijux-gnss-infra](03-bijux-gnss-infra/) | `crates/bijux-gnss-infra/src/`, `crates/bijux-gnss-infra/docs/` |
-| Which navigation format, correction, orbit, or estimator owns the science? | [04-bijux-gnss-nav](04-bijux-gnss-nav/) | `crates/bijux-gnss-nav/src/`, `crates/bijux-gnss-nav/docs/` |
-| How does a receiver run stage acquisition, tracking, observations, and runtime validation? | [05-bijux-gnss-receiver](05-bijux-gnss-receiver/) | `crates/bijux-gnss-receiver/src/`, `crates/bijux-gnss-receiver/docs/` |
-| Which signal catalog, code family, raw-IQ contract, or DSP primitive is reusable? | [06-bijux-gnss-signal](06-bijux-gnss-signal/) | `crates/bijux-gnss-signal/src/`, `crates/bijux-gnss-signal/docs/` |
-| Which maintainer command governs audits, deny policy, benchmarks, or suite selection? | [07-bijux-gnss-dev](07-bijux-gnss-dev/) | `crates/bijux-gnss-dev/src/main.rs`, `crates/bijux-gnss-dev/docs/` |
+| How does an operator command map to work? | [Command handbook](01-bijux-gnss/) | [Command source](../crates/bijux-gnss/src/cli/) and [command docs](../crates/bijux-gnss/docs/) |
+| Which shared type, unit, time, diagnostic, or artifact meaning is canonical? | [Core handbook](02-bijux-gnss-core/) | [Core source](../crates/bijux-gnss-core/src/) and [core docs](../crates/bijux-gnss-core/docs/) |
+| How are datasets, run identity, overrides, and persisted evidence interpreted? | [Infra handbook](03-bijux-gnss-infra/) | [Infra source](../crates/bijux-gnss-infra/src/) and [infra docs](../crates/bijux-gnss-infra/docs/) |
+| Which navigation format, correction, orbit, or estimator owns the science? | [Navigation handbook](04-bijux-gnss-nav/) | [Navigation source](../crates/bijux-gnss-nav/src/) and [navigation docs](../crates/bijux-gnss-nav/docs/) |
+| How does a receiver run stage acquisition, tracking, observations, and runtime validation? | [Receiver handbook](05-bijux-gnss-receiver/) | [Receiver source](../crates/bijux-gnss-receiver/src/) and [receiver docs](../crates/bijux-gnss-receiver/docs/) |
+| Which signal catalog, code family, raw-IQ contract, or DSP primitive is reusable? | [Signal handbook](06-bijux-gnss-signal/) | [Signal source](../crates/bijux-gnss-signal/src/) and [signal docs](../crates/bijux-gnss-signal/docs/) |
+| Which maintainer command governs audits, deny policy, benchmarks, or suite selection? | [Maintainer handbook](07-bijux-gnss-dev/) | [Maintainer command source](../crates/bijux-gnss-dev/src/main.rs) and [maintainer docs](../crates/bijux-gnss-dev/docs/) |
 | What changed at workspace or package level? | [Workspace changelog](../CHANGELOG.md), package changelogs | `crates/<package>/CHANGELOG.md` |
 
 ```mermaid
@@ -93,8 +93,8 @@ carry critical proof:
 
 | support crate | owns | inspect first |
 | --- | --- | --- |
-| `bijux-gnss-policies` | executable repository-shape and governance guardrails | `crates/bijux-gnss-policies/README.md`, `crates/bijux-gnss-policies/docs/` |
-| `bijux-gnss-testkit` | reusable scientific fixtures, truth packets, and reference-model support | `crates/bijux-gnss-testkit/README.md`, `crates/bijux-gnss-testkit/docs/` |
+| `bijux-gnss-policies` | executable repository-shape and governance guardrails | [Policy crate README](../crates/bijux-gnss-policies/README.md) and [policy docs](../crates/bijux-gnss-policies/docs/) |
+| `bijux-gnss-testkit` | reusable scientific fixtures, truth packets, and reference-model support | [Testkit crate README](../crates/bijux-gnss-testkit/README.md) and [testkit docs](../crates/bijux-gnss-testkit/docs/) |
 
 Leave the seven-handbook chain when the strongest proof depends on one of
 those support crates. Do not copy their claims into the root handbook as if the
@@ -104,14 +104,14 @@ root owns them.
 
 The root `docs/` tree owns exactly:
 
-- [01-bijux-gnss](01-bijux-gnss/)
-- [02-bijux-gnss-core](02-bijux-gnss-core/)
-- [03-bijux-gnss-infra](03-bijux-gnss-infra/)
-- [04-bijux-gnss-nav](04-bijux-gnss-nav/)
-- [05-bijux-gnss-receiver](05-bijux-gnss-receiver/)
-- [06-bijux-gnss-signal](06-bijux-gnss-signal/)
-- [07-bijux-gnss-dev](07-bijux-gnss-dev/)
-- [badges.md](badges.md)
+- [Command handbook](01-bijux-gnss/)
+- [Core handbook](02-bijux-gnss-core/)
+- [Infra handbook](03-bijux-gnss-infra/)
+- [Navigation handbook](04-bijux-gnss-nav/)
+- [Receiver handbook](05-bijux-gnss-receiver/)
+- [Signal handbook](06-bijux-gnss-signal/)
+- [Maintainer handbook](07-bijux-gnss-dev/)
+- [Badge catalog](badges.md)
 - this index
 
 That structure is a reader contract. Extra root handbook directories should
@@ -133,11 +133,11 @@ status as the seven package handbooks.
 
 Before trusting a repository-level claim, inspect these surfaces together:
 
-- `README.md` for the public landing claim
-- `CHANGELOG.md` for unreleased workspace-level changes
-- `Cargo.toml` for workspace membership and feature shape
-- `Makefile` for maintained verification entrypoints
-- `docs/` for package routing
+- [Public landing page](../README.md) for the public landing claim
+- [Workspace changelog](../CHANGELOG.md) for unreleased workspace-level changes
+- [Workspace manifest](../Cargo.toml) for workspace membership and feature shape
+- [Maintained command entrypoints](../Makefile) for verification routes
+- this [repository handbook](index.md) for package routing
 - the owning crate README, crate changelog, crate `docs/`, source, and tests for any
   crate-owned claim
 
