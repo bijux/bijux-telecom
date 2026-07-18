@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the bijux-telecom Rust publication boundary."""
+"""Validate the bijux-gnss Rust publication boundary."""
 
 from __future__ import annotations
 

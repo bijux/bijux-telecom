@@ -1,6 +1,6 @@
 # Changelog
 
-This file records changes that affect the `bijux-telecom` workspace as a whole.
+This file records changes that affect the `bijux-gnss` workspace as a whole.
 Package changelogs record API, command, signal, navigation, receiver, and
 infrastructure changes owned by one crate.
 

@@ -18,8 +18,8 @@ version = "0.1.0"
 license = "Apache-2.0"
 rust-version = "1.86.0"
 description = "Rust GNSS toolkit for signal modeling, receiver processing, navigation, and reproducible evidence"
-repository = "https://github.com/bijux/bijux-telecom.git"
-homepage = "https://bijux.io/bijux-telecom/"
+repository = "https://github.com/bijux/bijux-gnss.git"
+homepage = "https://bijux.io/bijux-gnss/"
 keywords = ["gnss", "gps", "galileo", "receiver", "navigation"]
 
 [workspace.dependencies]
