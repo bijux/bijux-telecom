@@ -4,40 +4,61 @@ audience: mixed
 type: interfaces
 status: canonical
 owner: bijux-gnss-core-docs
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-18
 ---
 
 # Configuration and Diagnostics
 
-Configuration and diagnostics are contract surfaces because multiple crates
-consume them, even though neither surface is the top-level product workflow.
+Core owns the shared shape of configuration validation and diagnostic language.
+It does not own how commands find config files, how receiver defaults are
+chosen, or how operators see diagnostics.
 
-## Configuration Surface
+## Contract Flow
 
-Core owns:
+```mermaid
+flowchart LR
+    config["BijuxGnssConfig"]
+    validation["ValidateConfig and ValidationReport"]
+    diagnostic["DiagnosticEvent and codes"]
+    summary["DiagnosticSummary"]
+    callers["receiver, infra, nav, command"]
 
-- `BijuxGnssConfig`
-- `SchemaVersion`
-- `ValidateConfig`
-- `ValidationReport`
+    config --> validation --> callers
+    diagnostic --> summary --> callers
+```
 
-This is contract-level validation shape, not repository config discovery or CLI
-config UX.
+## Configuration Contracts
 
-## Diagnostic Surface
+| surface | owns | not owned here |
+| --- | --- | --- |
+| `BijuxGnssConfig` | cross-crate config record shape | CLI config discovery and output paths |
+| `SchemaVersion` | schema-version language shared by validators | repository migration workflow policy |
+| `ValidateConfig` | contract-level validation trait | receiver-specific default policy |
+| `ValidationReport` | shared validation result shape | operator report styling |
 
-Core owns:
+## Diagnostic Contracts
 
-- diagnostic codes and metadata
-- structured diagnostic events
-- summaries, summary entries, and severity levels
-- canonical error family names
+| surface | owns | not owned here |
+| --- | --- | --- |
+| diagnostic codes | stable machine-readable warning and error vocabulary | runtime log routing |
+| diagnostic events | structured event payload shape | command presentation |
+| diagnostic summaries | aggregation shape and severity language | repository persistence layout |
+| canonical error families | shared error taxonomy for higher crates | local error recovery policy |
 
-This lets downstream crates emit structured evidence using one vocabulary even
-when their runtime behavior differs.
+## Boundary Rules
 
-## Protecting Proof
+- Core diagnostic codes must be stable enough for receiver, infra, nav, and
+  command layers to emit or aggregate without translating private strings.
+- Runtime sinks and logging belong to receiver or command layers.
+- Config file discovery, upgrade commands, and schema emission belong above
+  core.
+- Receiver-specific config defaults belong in receiver, even when validation
+  reports use core shapes.
 
-- `crates/bijux-gnss-core/src/config.rs`
-- `crates/bijux-gnss-core/src/diagnostic/`
-- `crates/bijux-gnss-core/docs/DIAGNOSTICS.md`
+## First Proof Check
+
+Inspect `crates/bijux-gnss-core/src/config.rs`,
+`crates/bijux-gnss-core/src/diagnostic/`,
+`crates/bijux-gnss-core/docs/DIAGNOSTICS.md`,
+`crates/bijux-gnss-core/docs/CONTRACTS.md`, and any downstream tests that emit
+or aggregate core diagnostics.
