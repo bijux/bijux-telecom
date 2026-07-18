@@ -50,7 +50,8 @@ Resolution follows declared intent:
 1. A resume target reuses that run location.
 2. An output override selects the caller-provided location.
 3. Otherwise infra derives a run identity from configuration, dataset, build
-   version, command, and determinism policy.
+   version, command, and determinism policy, then places the run under
+   `artifacts/runs/`.
 4. A dataset is required unless the caller explicitly permits an unregistered
    dataset.
 

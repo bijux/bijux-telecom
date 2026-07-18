@@ -117,9 +117,9 @@ Compatibility review is required for:
 
 The run ID is derived from the configuration hash, optional normalized dataset
 hash, and package version. It excludes command, Git state, CPU features, and
-timestamp. The default run directory adds dataset label and command; a
-non-deterministic run also adds a timestamp. Explicit output or resume arguments
-select their supplied location instead.
+timestamp. The default run directory lives under `artifacts/runs/` and adds the
+dataset label and command; a non-deterministic run also adds a timestamp.
+Explicit output or resume arguments select their supplied location instead.
 
 Consequently:
 

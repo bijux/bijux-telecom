@@ -39,6 +39,12 @@ manifest fields outside this layer. The same logical run context should always
 resolve to the same repository footprint unless the caller changes a declared
 run identity input.
 
+An explicit resume target takes precedence over an explicit output directory.
+Without either argument, infrastructure places the derived run directory under
+`artifacts/runs/`. This default keeps generated evidence inside the governed
+artifact root; caller-provided output and resume paths retain their declared
+locations.
+
 ## Boundary Rules
 
 - CLI commands may choose a run context, but they do not own the layout shape.
