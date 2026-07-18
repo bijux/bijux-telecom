@@ -34,13 +34,13 @@ flowchart LR
 
 | surface | owns | first proof |
 | --- | --- | --- |
-| binary entrypoint | `bijux` and the `gnss` command tree | `crates/bijux-gnss/src/main.rs`, `crates/bijux-gnss/src/cli/command_line.rs` |
-| command catalog | stable subcommand and argument families | `crates/bijux-gnss/src/cli/command_catalog/` |
-| command handlers | operator workflow routing and lower-crate calls | `crates/bijux-gnss/src/cli/commands/` |
-| runtime setup | config loading, dataset resolution, synthetic reporting, acquisition reporting | `crates/bijux-gnss/src/cli/command_runtime.rs`, `crates/bijux-gnss/src/cli/command_runtime/` |
-| command support | artifact loading, capture windows, raw-IQ quality, navigation output adapters | `crates/bijux-gnss/src/cli/command_support/` |
-| operator reports | table and JSON output shape | `crates/bijux-gnss/src/cli/report.rs` |
-| Rust facade | convenience re-exports over lower crates | `crates/bijux-gnss/src/lib.rs` |
+| binary entrypoint | `bijux` and the `gnss` command tree | binary entrypoint and command-line source |
+| command catalog | stable subcommand and argument families | command catalog source |
+| command handlers | operator workflow routing and lower-crate calls | command handler source |
+| runtime setup | config loading, dataset resolution, synthetic reporting, acquisition reporting | command runtime source |
+| command support | artifact loading, capture windows, raw-IQ quality, navigation output adapters | command support source |
+| operator reports | table and JSON output shape | report source |
+| Rust facade | convenience re-exports over lower crates | facade source |
 
 ## Reader Rules
 
@@ -76,8 +76,9 @@ or persistence semantics behind that route.
 
 ## First Proof Check
 
-Inspect `crates/bijux-gnss/README.md`, `crates/bijux-gnss/docs/COMMANDS.md`,
-`crates/bijux-gnss/docs/PUBLIC_API.md`, `crates/bijux-gnss/src/cli/`, and the
-integration tests named in the crate README. A package overview is stale if it
-cannot point from an operator route to the exact lower owner that proves the
-route.
+Inspect the [command crate README](../../../crates/bijux-gnss/README.md),
+[command guide](../../../crates/bijux-gnss/docs/COMMANDS.md),
+[public API](../../../crates/bijux-gnss/docs/PUBLIC_API.md), command source,
+and the integration tests named in the crate README. A package overview is
+stale if it cannot point from an operator route to the exact lower owner that
+proves the route.

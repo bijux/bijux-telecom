@@ -42,12 +42,12 @@ flowchart TD
 
 | surface | compatibility promise | proof anchor |
 | --- | --- | --- |
-| curated public API | stable cross-crate exports enter through `bijux_gnss_core::api` | `src/api.rs`, `tests/public_api_guardrail.rs` |
-| serialized artifacts | field meaning changes through explicit version boundaries | `docs/SERIALIZATION.md`, artifact validation tests |
-| shared units and time | typed wrappers and time records keep meaning explicit | `src/units.rs`, `src/time.rs`, timekeeping tests |
-| identifiers | constellation, satellite, signal, band, and code identity stay shared | `src/ids.rs`, support-matrix tests |
-| observations and navigation records | higher crates exchange records without importing private layout | `src/observation/`, `src/nav_solution.rs` |
-| diagnostics | severity, code, and event shape remain machine-readable | `src/diagnostic/`, `docs/DIAGNOSTICS.md` |
+| curated public API | stable cross-crate exports enter through `bijux_gnss_core::api` | curated API source and public API guardrail |
+| serialized artifacts | field meaning changes through explicit version boundaries | [serialization guide](../../../crates/bijux-gnss-core/docs/SERIALIZATION.md) and artifact validation tests |
+| shared units and time | typed wrappers and time records keep meaning explicit | unit, time, and timekeeping proof |
+| identifiers | constellation, satellite, signal, band, and code identity stay shared | identity source and support-matrix tests |
+| observations and navigation records | higher crates exchange records without importing private layout | observation and navigation-solution source |
+| diagnostics | severity, code, and event shape remain machine-readable | diagnostic source and [diagnostic guide](../../../crates/bijux-gnss-core/docs/DIAGNOSTICS.md) |
 
 ## Non-Commitments
 
@@ -69,9 +69,9 @@ flowchart TD
 
 ## First Proof Check
 
-Inspect `crates/bijux-gnss-core/docs/CHANGE_RULES.md`,
-`crates/bijux-gnss-core/docs/PUBLIC_API.md`,
-`crates/bijux-gnss-core/docs/CONTRACTS.md`,
-`crates/bijux-gnss-core/docs/SERIALIZATION.md`,
-`crates/bijux-gnss-core/docs/INVARIANTS.md`, and
-`crates/bijux-gnss-core/tests/public_api_guardrail.rs`.
+Inspect the [core change rules](../../../crates/bijux-gnss-core/docs/CHANGE_RULES.md),
+[public API](../../../crates/bijux-gnss-core/docs/PUBLIC_API.md),
+[contract guide](../../../crates/bijux-gnss-core/docs/CONTRACTS.md),
+[serialization guide](../../../crates/bijux-gnss-core/docs/SERIALIZATION.md),
+[invariant guide](../../../crates/bijux-gnss-core/docs/INVARIANTS.md), and
+public API guardrail proof.

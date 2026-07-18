@@ -66,11 +66,9 @@ record the same way. Move the explanation out of core when the issue becomes:
 
 ## First Proof Check
 
-Inspect `crates/bijux-gnss-core/src/conventions.rs`,
-`crates/bijux-gnss-core/src/units.rs`,
-`crates/bijux-gnss-core/src/time.rs`,
-`crates/bijux-gnss-core/src/geo.rs`,
-`crates/bijux-gnss-core/src/observation/`,
-`crates/bijux-gnss-core/docs/CONTRACTS.md`,
-`crates/bijux-gnss-core/docs/INVARIANTS.md`, and
-`crates/bijux-gnss-core/docs/SERIALIZATION.md`.
+Inspect convention, unit, time, coordinate, and observation source together
+with the [core contract guide](../../../crates/bijux-gnss-core/docs/CONTRACTS.md),
+[invariant guide](../../../crates/bijux-gnss-core/docs/INVARIANTS.md), and
+[serialization guide](../../../crates/bijux-gnss-core/docs/SERIALIZATION.md).
+The review should prove that downstream crates are sharing the same meaning,
+not just compiling against the same type names.
