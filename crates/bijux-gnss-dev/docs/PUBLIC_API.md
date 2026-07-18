@@ -1,21 +1,41 @@
 # Public API
 
-`bijux-gnss-dev` does not publish a Rust library API.
+`bijux-gnss-dev` does not publish a Rust library API. Its durable public surface
+is the `bijux-gnss-dev` binary command set used by maintainers.
 
-## Public surface
+## Public Surface Flow
 
-- the durable public surface is the `bijux-gnss-dev` binary command set
-- `src/main.rs` is intentionally binary-owned
-- there is no `lib.rs`, and downstream crates should not depend on this crate as a library
+```mermaid
+flowchart LR
+    maintainer["maintainer"]
+    binary["bijux-gnss-dev binary"]
+    governed["governed repository files"]
+    report["maintainer report"]
 
-## Why that is intentional
+    maintainer --> binary
+    binary --> governed
+    governed --> report
+```
 
-This crate owns repository maintenance workflows. A Rust library surface would encourage other
-crates to couple themselves to maintainer-only internals instead of keeping repository governance at
-the edge.
+## Public Surface
 
-## Stability rule
+| surface | responsibility |
+| --- | --- |
+| binary command set | Maintainer workflows for audit allowlists, deny deviations, benchmark comparison, and repository checks. |
+| `src/main.rs` | Binary-owned implementation boundary. |
+| absence of `lib.rs` | Prevents product crates from depending on maintainer-only internals. |
 
-If a capability here needs reuse by product crates, the reusable part should move into the owning
-product or policy crate and this binary should call into that stable surface. `bijux-gnss-dev`
-itself should remain a binary boundary.
+## Boundary Rules
+
+- Downstream crates should not depend on this package as a library.
+- Reusable product behavior belongs in the owning product crate.
+- Reusable policy execution belongs in `bijux-gnss-policies`.
+- This binary may orchestrate maintainer workflows, but it should not become a
+  general-purpose product API.
+
+## Review Checks
+
+- New command behavior needs docs and tests or documented verification.
+- If a capability here needs reuse by product crates, extract it to the owning
+  crate and call it from this binary.
+- Do not add a library surface only to make command internals easier to test.

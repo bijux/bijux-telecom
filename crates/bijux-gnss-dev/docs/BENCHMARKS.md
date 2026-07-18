@@ -1,24 +1,51 @@
 # Benchmarks
 
-`bijux-gnss-dev` does not own benchmark definitions, but it does own benchmark governance.
+`bijux-gnss-dev` does not own benchmark definitions, but it does own benchmark
+governance. The product crates decide what to measure; the dev crate decides how
+maintainers compare current evidence to the governed baseline.
 
-## What this crate governs
+## Benchmark Governance Flow
 
-`bench-compare` currently owns:
+```mermaid
+flowchart LR
+    benchmark["product benchmark"]
+    run["bench-compare"]
+    snapshot["normalized current evidence"]
+    baseline["governed baseline"]
+    report["comparison report"]
+    decision["maintainer decision"]
 
-- the curated benchmark package set
-- normalized snapshot extraction from bencher output
-- current-run evidence emission into `artifacts/`
-- baseline comparison against `benchmarks/bencher_baseline.txt`
-- strict-mode failure when regressions exceed the configured threshold
+    benchmark --> run
+    run --> snapshot
+    snapshot --> report
+    baseline --> report
+    report --> decision
+```
 
-## What this crate does not own
+## Governed Surface
 
-- the benchmark code inside product crates
-- receiver or navigation performance semantics themselves
-- permanent storage policy outside the governed benchmark locations
+| surface | responsibility |
+| --- | --- |
+| curated benchmark package set | Names which product benchmark groups are compared by the maintainer command. |
+| normalized snapshot extraction | Converts bencher output into stable comparison evidence. |
+| `artifacts/` evidence emission | Keeps current-run evidence in the repository-owned run-output location. |
+| `benchmarks/bencher_baseline.txt` | Stores the maintained comparison baseline. |
+| strict-mode threshold | Fails when regressions exceed the configured tolerance. |
 
-## Change discipline
+## Boundary Rules
 
-If the curated benchmark set changes, update this file and [WORKFLOWS.md](WORKFLOWS.md) in the same
-change set so maintainers can see what the repository is actually gating.
+- Benchmark code belongs in the product crate that owns the measured behavior.
+- Receiver or navigation performance semantics belong to those crates, not to
+  dev tooling.
+- Permanent storage policy outside governed benchmark locations belongs to
+  repository workflow docs.
+- A benchmark comparison is evidence for review; it is not proof that scientific
+  behavior is correct.
+
+## Review Checks
+
+- If the curated benchmark set changes, update this file and workflow docs in
+  the same change.
+- Baseline changes need a reason a maintainer can review later.
+- Strict-mode threshold changes need the tradeoff stated: noise tolerance versus
+  regression sensitivity.

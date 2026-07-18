@@ -1,32 +1,49 @@
 # Contract Map
 
-This file maps the main `bijux-gnss-core` modules to the contract families they own.
+This file maps the main `bijux-gnss-core` modules to the contract families they
+own. Core is intentionally dense because it is foundational; the map exists so a
+reader can place shared types before adding another cross-crate record.
 
-## Module-to-contract ownership
+## Contract Flow
 
-- `src/artifact/`
-  owns versioned artifact envelopes, headers, kind tagging, and payload validation traits
-- `src/config.rs`
-  owns schema versioning and configuration validation-report contracts
-- `src/diagnostic/` and `src/error.rs`
-  own shared failure taxonomies, severity, and event/summarization records
-- `src/ids.rs`
-  owns constellation, satellite, signal, and related identity contracts
-- `src/time.rs`
-  owns GPS, UTC, TAI, sample-time, and leap-second contracts
-- `src/units.rs`
-  owns strong physical unit wrappers and conversion semantics
-- `src/geo.rs`
-  owns geodetic and Cartesian coordinate contracts
-- `src/observation/` and `src/observation_quality.rs`
-  own acquisition, tracking, observation, differencing, and quality records
-- `src/nav_solution.rs`
-  owns navigation-solution, residual, refusal, and inter-system-bias records
-- `src/support_matrix.rs`
-  owns supported-signal inventory contracts
+```mermaid
+flowchart LR
+    module["core module"]
+    contract["shared contract"]
+    api["src/api.rs"]
+    consumer["downstream crate"]
 
-## Why this map exists
+    module --> contract
+    contract --> api
+    api --> consumer
+```
 
-This crate is intentionally dense because it is foundational. The point of this file is to make
-ownership visible before contributors add one more "shared" type to the wrong module or the wrong
-crate.
+## Module-To-Contract Ownership
+
+| module | owned contract |
+| --- | --- |
+| `src/artifact/` | Versioned artifact envelopes, headers, kind tagging, and payload validation traits. |
+| `src/config.rs` | Schema versioning and configuration validation-report contracts. |
+| `src/diagnostic/` and `src/error.rs` | Shared failure taxonomies, severity, event, and summary records. |
+| `src/ids.rs` | Constellation, satellite, signal, and related identity contracts. |
+| `src/time.rs` | GPS, UTC, TAI, sample-time, and leap-second contracts. |
+| `src/units.rs` | Strong physical unit wrappers and conversion semantics. |
+| `src/geo.rs` | Geodetic and Cartesian coordinate contracts. |
+| `src/observation/` and `src/observation_quality.rs` | Acquisition, tracking, observation, differencing, covariance, and quality records. |
+| `src/nav_solution.rs` | Navigation-solution, residual, refusal, and inter-system-bias records. |
+| `src/support_matrix.rs` | Supported-signal inventory contracts. |
+
+## Placement Rules
+
+- Put a type in core only when more than one crate needs the same durable
+  meaning.
+- Put runtime behavior in receiver, signal math in signal, navigation science in
+  nav, and persistence policy in infra.
+- Re-export deliberate public contracts through `src/api.rs`; avoid downstream
+  dependencies on implementation module paths.
+
+## Review Checks
+
+- Does the new type carry shared meaning, or is it only local convenience?
+- Are units, time systems, coordinate frames, and serialization behavior clear?
+- Is the owning module obvious from this map?
