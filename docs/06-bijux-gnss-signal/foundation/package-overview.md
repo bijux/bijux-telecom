@@ -37,14 +37,14 @@ flowchart LR
 
 | family | owns | first proof |
 | --- | --- | --- |
-| catalog | supported signal identities, carrier and wavelength helpers, default acquisition signal selection | `crates/bijux-gnss-signal/src/catalog.rs`, `crates/bijux-gnss-signal/docs/CATALOG.md` |
-| code families | GPS L1 C/A, GPS L2C, GPS L5, Galileo E1/E5, BeiDou B1I/B2I/D1 helpers, GLONASS L1 | `crates/bijux-gnss-signal/src/codes/`, `crates/bijux-gnss-signal/docs/CODE_FAMILIES.md` |
-| front-end quality | I/Q metrics, noise-floor estimation, DC-offset handling, front-end response measurement | `crates/bijux-gnss-signal/src/dsp/quality.rs`, `crates/bijux-gnss-signal/src/dsp/front_end.rs` |
-| replica and timing | local code models, sample timing, carrier trajectories, modulated replicas, wipeoff helpers | `crates/bijux-gnss-signal/src/dsp/local_code.rs`, `crates/bijux-gnss-signal/src/dsp/replica/` |
-| oscillator and spectrum | NCO state, spectrum summaries, power spectral density, spectrum nulls | `crates/bijux-gnss-signal/src/dsp/nco.rs`, `crates/bijux-gnss-signal/src/dsp/spectrum.rs` |
-| tracking primitives | reusable correlators, loop coefficients, discriminators, lock thresholds, CN0 and uncertainty helpers | `crates/bijux-gnss-signal/src/dsp/tracking.rs` |
-| sample contracts | raw-IQ metadata, quantization, sample conversion, sample-source traits | `crates/bijux-gnss-signal/src/raw_iq.rs`, `crates/bijux-gnss-signal/src/samples.rs`, `crates/bijux-gnss-signal/src/api.rs` |
-| signal validation | dual-frequency compatibility and inter-frequency alignment checks | `crates/bijux-gnss-signal/src/obs_validation.rs` |
+| catalog | supported signal identities, carrier and wavelength helpers, default acquisition signal selection | catalog source and [signal catalog guide](../../../crates/bijux-gnss-signal/docs/CATALOG.md) |
+| code families | GPS L1 C/A, GPS L2C, GPS L5, Galileo E1/E5, BeiDou B1I/B2I/D1 helpers, GLONASS L1 | code-family source and [code family guide](../../../crates/bijux-gnss-signal/docs/CODE_FAMILIES.md) |
+| front-end quality | I/Q metrics, noise-floor estimation, DC-offset handling, front-end response measurement | front-end and quality source |
+| replica and timing | local code models, sample timing, carrier trajectories, modulated replicas, wipeoff helpers | local-code and replica source |
+| oscillator and spectrum | NCO state, spectrum summaries, power spectral density, spectrum nulls | NCO and spectrum source |
+| tracking primitives | reusable correlators, loop coefficients, discriminators, lock thresholds, CN0 and uncertainty helpers | tracking DSP source |
+| sample contracts | raw-IQ metadata, quantization, sample conversion, sample-source traits | raw-IQ, sample, and public API source |
+| signal validation | dual-frequency compatibility and inter-frequency alignment checks | observation-validation source |
 
 ## Reader Rules
 
@@ -68,9 +68,8 @@ to patch downstream crates independently.
 
 ## First Proof Check
 
-Inspect `crates/bijux-gnss-signal/README.md`,
-`crates/bijux-gnss-signal/docs/CATALOG.md`,
-`crates/bijux-gnss-signal/docs/CODE_FAMILIES.md`,
-`crates/bijux-gnss-signal/docs/DSP.md`,
-`crates/bijux-gnss-signal/src/api.rs`, and the integration tests named in the
-crate README.
+Inspect the [signal crate README](../../../crates/bijux-gnss-signal/README.md),
+[signal catalog guide](../../../crates/bijux-gnss-signal/docs/CATALOG.md),
+[code family guide](../../../crates/bijux-gnss-signal/docs/CODE_FAMILIES.md),
+[DSP guide](../../../crates/bijux-gnss-signal/docs/DSP.md), curated public API
+source, and the integration tests named in the crate README.

@@ -18,13 +18,13 @@ meaning.
 
 | module | contract | first proof |
 | --- | --- | --- |
-| `front_end` | FIR front-end specification and response measurement | `crates/bijux-gnss-signal/src/dsp/front_end.rs` |
-| `quality` | I/Q metrics, noise-floor estimation, DC-offset handling | `crates/bijux-gnss-signal/src/dsp/quality.rs` |
-| `local_code`, `sample_timing`, `signal` | code phase, samples-per-code, wrapping, carrier wipeoff, sample-index timing | `crates/bijux-gnss-signal/src/dsp/local_code.rs`, `crates/bijux-gnss-signal/src/dsp/sample_timing.rs`, `crates/bijux-gnss-signal/src/dsp/signal.rs` |
-| `nco` | oscillator state and phase progression | `crates/bijux-gnss-signal/src/dsp/nco.rs` |
-| `replica` | acquisition signal models, code models, carrier trajectories, synthetic modulation | `crates/bijux-gnss-signal/src/dsp/replica/` |
-| `spectrum` | PSD estimation, expected spectra, transfer application, null finding | `crates/bijux-gnss-signal/src/dsp/spectrum.rs` |
-| `tracking` | correlators, DLL/FLL/PLL helpers, discriminators, lock thresholds, CN0, tracking uncertainty | `crates/bijux-gnss-signal/src/dsp/tracking.rs` |
+| `front_end` | FIR front-end specification and response measurement | front-end source |
+| `quality` | I/Q metrics, noise-floor estimation, DC-offset handling | quality source |
+| `local_code`, `sample_timing`, `signal` | code phase, samples-per-code, wrapping, carrier wipeoff, sample-index timing | local-code, sample-timing, and signal source |
+| `nco` | oscillator state and phase progression | NCO source |
+| `replica` | acquisition signal models, code models, carrier trajectories, synthetic modulation | replica source |
+| `spectrum` | PSD estimation, expected spectra, transfer application, null finding | spectrum source |
+| `tracking` | correlators, DLL/FLL/PLL helpers, discriminators, lock thresholds, CN0, tracking uncertainty | tracking DSP source |
 
 ## Contract Flow
 
@@ -62,13 +62,9 @@ flowchart TD
 
 ## First Proof Check
 
-Inspect `crates/bijux-gnss-signal/docs/DSP.md`,
-`crates/bijux-gnss-signal/src/dsp/`, and the focused signal integration tests:
-
-- `crates/bijux-gnss-signal/tests/integration_nco_long_duration_phase.rs`
-- `crates/bijux-gnss-signal/tests/integration_replica_continuity.rs`
-- `crates/bijux-gnss-signal/tests/integration_signal_spectrum_cboc.rs`
-- `crates/bijux-gnss-signal/tests/integration_local_code_continuity.rs`
+Inspect the [DSP guide](../../../crates/bijux-gnss-signal/docs/DSP.md), DSP
+source, and the focused signal integration tests for long-duration NCO phase,
+replica continuity, CBOC spectrum behavior, and local-code continuity.
 
 If a downstream receiver test changes because a DSP primitive changed, update
 the signal proof first, then update receiver expectations only when the runtime

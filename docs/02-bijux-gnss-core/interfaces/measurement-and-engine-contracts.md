@@ -33,12 +33,12 @@ flowchart LR
 
 | family | owns | first proof |
 | --- | --- | --- |
-| sample bridge | sample-frame records that cross source, signal, and receiver boundaries | `crates/bijux-gnss-core/src/observation/`, `crates/bijux-gnss-core/docs/CONTRACTS.md` |
-| acquisition records | request/result records and explainability payload meaning | `crates/bijux-gnss-core/src/observation/` |
-| tracking records | tracking epochs, transitions, uncertainty, and channel-state language | `crates/bijux-gnss-core/src/observation/` |
-| observation records | `ObsEpoch`, metadata, receiver roles, timing, rejection, and uncertainty classes | `crates/bijux-gnss-core/src/observation/` |
-| navigation-solution records | solution epochs, residuals, validity, lifecycle, and refusal classes | `crates/bijux-gnss-core/src/nav_solution.rs` |
-| artifact envelopes | versioned cross-crate artifact headers, payload kinds, and validation traits | `crates/bijux-gnss-core/src/artifact.rs`, `crates/bijux-gnss-core/src/artifact/` |
+| sample bridge | sample-frame records that cross source, signal, and receiver boundaries | observation source and [core contract guide](../../../crates/bijux-gnss-core/docs/CONTRACTS.md) |
+| acquisition records | request/result records and explainability payload meaning | observation source |
+| tracking records | tracking epochs, transitions, uncertainty, and channel-state language | observation source |
+| observation records | `ObsEpoch`, metadata, receiver roles, timing, rejection, and uncertainty classes | observation source |
+| navigation-solution records | solution epochs, residuals, validity, lifecycle, and refusal classes | navigation-solution source |
+| artifact envelopes | versioned cross-crate artifact headers, payload kinds, and validation traits | artifact source |
 
 ## Boundary Rules
 
@@ -61,10 +61,8 @@ flowchart LR
 
 ## First Proof Check
 
-Inspect `crates/bijux-gnss-core/docs/CONTRACTS.md`,
-`crates/bijux-gnss-core/docs/CONTRACT_MAP.md`,
-`crates/bijux-gnss-core/docs/SERIALIZATION.md`,
-`crates/bijux-gnss-core/src/artifact.rs`,
-`crates/bijux-gnss-core/src/artifact/`,
-`crates/bijux-gnss-core/src/observation/`, and
-`crates/bijux-gnss-core/src/nav_solution.rs`.
+Inspect the [core contract guide](../../../crates/bijux-gnss-core/docs/CONTRACTS.md),
+[contract map](../../../crates/bijux-gnss-core/docs/CONTRACT_MAP.md), and
+[serialization guide](../../../crates/bijux-gnss-core/docs/SERIALIZATION.md).
+Then inspect artifact, observation, and navigation-solution source for the
+record family that moved.
