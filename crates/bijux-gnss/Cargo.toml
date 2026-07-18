@@ -1,9 +1,16 @@
 [package]
 name = "bijux-gnss"
-version = "0.1.0"
+version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
+description = "GNSS facade and command-line workflows for receiver processing, validation, and evidence"
+repository.workspace = true
+homepage.workspace = true
+documentation = "https://docs.rs/bijux-gnss/latest/bijux_gnss/"
+readme = "README.md"
+categories = ["aerospace", "science::geo", "command-line-utilities"]
+keywords = ["gnss", "gps", "galileo", "receiver", "navigation"]
 
 [features]
 default = ["cli", "precise-products"]

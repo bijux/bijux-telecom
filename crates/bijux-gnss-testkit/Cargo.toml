@@ -1,8 +1,15 @@
 [package]
 name = "bijux-gnss-testkit"
-version = "0.1.0"
+version.workspace = true
 edition.workspace = true
 license.workspace = true
+rust-version.workspace = true
+description = "Repository-only GNSS fixtures, truth models, and scientific test support"
+repository.workspace = true
+homepage.workspace = true
+readme = "README.md"
+keywords = ["bijux", "gnss", "fixtures", "testing", "validation"]
+publish = false
 
 [dependencies]
 bijux-gnss-core = { path = "../bijux-gnss-core", version = "0.1.0" }

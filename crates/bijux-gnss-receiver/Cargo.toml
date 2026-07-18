@@ -1,8 +1,16 @@
 [package]
 name = "bijux-gnss-receiver"
-version = "0.1.0"
+version.workspace = true
 edition.workspace = true
 license.workspace = true
+rust-version.workspace = true
+description = "GNSS receiver runtime for acquisition, tracking, observations, diagnostics, and artifacts"
+repository.workspace = true
+homepage.workspace = true
+documentation = "https://docs.rs/bijux-gnss-receiver/latest/bijux_gnss_receiver/"
+readme = "README.md"
+categories = ["aerospace", "science::geo", "algorithms"]
+keywords = ["gnss", "receiver", "acquisition", "tracking", "observations"]
 
 [dependencies]
 thiserror.workspace = true

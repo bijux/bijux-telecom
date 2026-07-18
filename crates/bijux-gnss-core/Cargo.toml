@@ -1,8 +1,16 @@
 [package]
 name = "bijux-gnss-core"
-version = "0.1.0"
+version.workspace = true
 edition.workspace = true
 license.workspace = true
+rust-version.workspace = true
+description = "Shared GNSS identities, units, time, observations, diagnostics, and artifact contracts"
+repository.workspace = true
+homepage.workspace = true
+documentation = "https://docs.rs/bijux-gnss-core/latest/bijux_gnss_core/"
+readme = "README.md"
+categories = ["aerospace", "science::geo", "data-structures"]
+keywords = ["gnss", "coordinates", "time", "observations", "diagnostics"]
 
 [dependencies]
 thiserror.workspace = true

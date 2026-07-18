@@ -1,8 +1,16 @@
 [package]
 name = "bijux-gnss-nav"
-version = "0.1.0"
+version.workspace = true
 edition.workspace = true
 license.workspace = true
+rust-version.workspace = true
+description = "GNSS navigation products, corrections, positioning, RTK, PPP, and integrity algorithms"
+repository.workspace = true
+homepage.workspace = true
+documentation = "https://docs.rs/bijux-gnss-nav/latest/bijux_gnss_nav/"
+readme = "README.md"
+categories = ["aerospace", "science::geo", "algorithms"]
+keywords = ["gnss", "navigation", "positioning", "rtk", "ppp"]
 
 [dependencies]
 thiserror.workspace = true
