@@ -4,36 +4,51 @@ audience: mixed
 type: interfaces
 status: canonical
 owner: bijux-gnss-docs
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-18
 ---
 
 # Validation Contracts
 
-Validation contracts define what the command crate owns when presenting
-validation workflows to operators.
+Command validation contracts define how an operator invokes validation and how
+the result is presented. The command crate assembles lower-owner checks; it does
+not become the owner of receiver validation, navigation science, signal models,
+or repository artifact semantics.
+
+## Validation Route
+
+```mermaid
+flowchart LR
+    operator["operator validation request"]
+    command["bijux-gnss<br/>validate command"]
+    lower["lower owner<br/>infra receiver nav signal core"]
+    evidence["operator result<br/>status report bundle"]
+
+    operator --> command --> lower --> evidence
+```
 
 ## Owned Validation Surfaces
 
-- validation command families and argument shape
-- command-boundary composition over lower-owner validation capabilities
-- validation-facing output rendering and evidence-bundle publication
+| command-owned surface | reader promise | lower proof owner |
+| --- | --- | --- |
+| command names and flags | validation is discoverable from the binary surface | `crates/bijux-gnss/docs/COMMANDS.md` |
+| argument interpretation | inputs are routed to the right lower owner | `crates/bijux-gnss/docs/VALIDATION.md` |
+| evidence-bundle publication | the command packages evidence without changing meaning | infra and receiver docs |
+| config validation routing | schema and user-facing failures are reported coherently | core config contracts and command tests |
+| synthetic validation routing | generated IQ or navigation outputs are checked through owning crates | receiver, signal, and nav docs |
 
-## Boundary Rule
+## Boundary Decisions
 
-The command crate owns the operator-facing validation workflow. The lower-level
-meaning of repository artifacts, receiver validation, and navigation science
-still belongs to their owning crates.
+- Capture metadata and persisted artifacts route to infra.
+- Runtime validation and reference alignment route to receiver.
+- Signal assumptions and raw sample semantics route to signal.
+- Navigation products, corrections, and science-policy results route to nav.
+- Shared schema, diagnostics, and artifact record meaning route to core.
 
-## Closest Proof
-
-- `crates/bijux-gnss/src/cli/commands/validate/`
-- `crates/bijux-gnss/docs/VALIDATION.md`
-
-## Protecting Proof
+## First Proof Check
 
 Inspect `crates/bijux-gnss/src/cli/commands/validate/`,
 `crates/bijux-gnss/docs/VALIDATION.md`,
-`crates/bijux-gnss/tests/integration_validate_config.rs`, and
-`crates/bijux-gnss/tests/integration_validate_synthetic_navigation.rs` to
-confirm the operator-facing validation workflow still assembles lower-owner
-proof honestly.
+`crates/bijux-gnss/tests/integration_validate_config.rs`,
+`crates/bijux-gnss/tests/integration_validate_capture.rs`,
+`crates/bijux-gnss/tests/integration_validate_synthetic_iq.rs`, and
+`crates/bijux-gnss/tests/integration_validate_synthetic_navigation.rs`.

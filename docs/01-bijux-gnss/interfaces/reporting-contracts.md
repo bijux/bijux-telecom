@@ -4,35 +4,53 @@ audience: mixed
 type: interfaces
 status: canonical
 owner: bijux-gnss-docs
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-18
 ---
 
 # Reporting Contracts
 
-Reporting contracts define the operator-facing output shape owned by the
-command crate.
+Reporting contracts define what the command crate may say to operators. Reports
+may summarize lower-owner outcomes, but they must preserve the meaning of
+receiver diagnostics, infra artifact state, signal assumptions, navigation
+science, and core record semantics.
+
+## Reporting Flow
+
+```mermaid
+flowchart LR
+    lower["lower crate output"]
+    command["command report renderer"]
+    formats["human json or bundle output"]
+    operator["operator or automation"]
+
+    lower --> command --> formats --> operator
+```
 
 ## Owned Reporting Surfaces
 
-- rendered success and failure output
-- command-facing summaries over lower-owner artifacts
-- diagnostics and validation publication at the command boundary
+| surface | command-owned decision | forbidden drift |
+| --- | --- | --- |
+| report-format selection | choose human-readable or machine-readable output shape | redefining lower-owner fields |
+| success and failure summaries | present status, warnings, and next evidence route | hiding degraded or refused lower-owner states |
+| validation publication | package validation results for operators | changing validation thresholds owned elsewhere |
+| diagnostic rendering | display stage, severity, and reason clearly | converting typed evidence into ambiguous prose |
+| synthetic and raw-IQ summaries | expose operator-relevant metrics | claiming signal, receiver, or infra proof not present in artifacts |
 
-## Contract Rule
+## Reader Standard
 
-Reporting belongs here because operators consume it here. But reporting should
-present lower-owner outcomes, not quietly redefine their scientific or
-repository meaning.
+A report is strong enough when an operator can answer:
 
-## Closest Proof
+- What command ran?
+- What input or artifact was inspected?
+- Which lower owner produced the decisive evidence?
+- Was the outcome accepted, degraded, refused, or failed?
+- Which artifact, diagnostic, or validation result supports the claim?
 
-- `crates/bijux-gnss/src/cli/report.rs`
-- `crates/bijux-gnss/docs/REPORTING.md`
-
-## Protecting Proof
+## First Proof Check
 
 Inspect `crates/bijux-gnss/src/cli/report.rs`,
-`crates/bijux-gnss/docs/REPORTING.md`, and the reporting-facing workflow tests
-under `crates/bijux-gnss/tests/` such as raw-IQ metrics, validation, and
-synthetic export flows. Those proofs confirm that command-boundary reporting is
-still presenting lower-owner results without redefining their meaning.
+`crates/bijux-gnss/src/cli/commands/diagnostics/report_dispatch.rs`,
+`crates/bijux-gnss/src/cli/commands/diagnostics/report_publishing.rs`,
+`crates/bijux-gnss/src/cli/commands/diagnostics/report_rendering.rs`,
+`crates/bijux-gnss/docs/REPORTING.md`, and the reporting-facing integration
+tests under `crates/bijux-gnss/tests/`.
