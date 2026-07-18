@@ -1,78 +1,100 @@
 ---
-title: Interfaces
+title: Signal Interface Guide
 audience: mixed
 type: index
 status: canonical
 owner: bijux-gnss-signal-docs
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-18
 ---
 
-# Interfaces
+# Signal Interface Guide
 
-Open this section when the question is what `bijux-gnss-signal` publicly
-promises to downstream crates.
+All supported downstream imports pass through `bijux_gnss_signal::api`. The
+facade is broad because GNSS signal work spans catalogs, code families, sample
+conversion, DSP, validation, and streaming seams. Its ownership remains narrow:
+every export must describe reusable signal behavior rather than receiver
+lifecycle or repository effects.
 
-## Contract Surface
-
-`bijux-gnss-signal` publishes one curated surface through
-`bijux_gnss_signal::api`, but that surface carries several real contract
-families: signal identity, code generation, DSP helpers, raw-sample contracts,
-validation helpers, and integration traits.
+## Choose The Public Contract
 
 ```mermaid
-flowchart LR
-    caller["downstream crate or tool"]
-    api["bijux_gnss_signal::api"]
-    codes["code contracts"]
-    dsp["dsp contracts"]
-    samples["raw iq and sample contracts"]
-    validation["validation contracts"]
-    traits["trait contracts"]
+flowchart TD
+    need{"What does the caller need?"}
+    identity["physical signal facts"]
+    code["code or modulation values"]
+    samples["capture metadata or conversion"]
+    dsp["runtime-neutral computation"]
+    validation["signal compatibility evidence"]
+    traits["polymorphic frame boundary"]
 
-    caller --> api
-    api --> codes
-    api --> dsp
-    api --> samples
-    api --> validation
-    api --> traits
+    need --> identity --> identity_page["model assumptions"]
+    need --> code --> code_page["code contracts"]
+    need --> samples --> sample_page["raw IQ and samples"]
+    need --> dsp --> dsp_page["DSP contracts"]
+    need --> validation --> validation_page["validation contracts"]
+    need --> traits --> trait_page["trait contracts"]
 ```
 
-## Read These First
+| need | start here | required context |
+| --- | --- | --- |
+| Resolve signal specifications, wavelengths, carriers, components, or shared-path scaling | [Signal model assumptions](signal-model-assumptions.md) | constellation, satellite, signal code, component, and GLONASS channel where applicable |
+| Generate or sample a spreading, secondary, data, pilot, or multiplexed code | [Code contracts](code-contracts.md) | assignment, code epoch or sample origin, channel role, and wrapping behavior |
+| Convert encoded IQ or describe a capture | [Raw IQ and sample contracts](raw-iq-and-sample-contracts.md) | format, quantization, sampling rate, intermediate frequency, offset, and capture time |
+| Advance timing, build replicas, estimate spectra, correlate, or calculate loop updates | [DSP contracts](dsp-contracts.md) | units, normalization, phase origin, rates, integration interval, and state |
+| Check dual-frequency or inter-frequency observation compatibility | [Validation contracts](validation-contracts.md) | signal identities, timing, alignment, and observation context |
+| Abstract a source, sink, or correlator implementation | [Trait contracts](trait-contracts.md) | caller-owned scheduling, errors, buffering, effects, and lifecycle |
 
-- open [API Surface](api-surface.md) first when the question is what this
-  crate exports at all
-- open [Trait Contracts](trait-contracts.md) when the question is about the
-  public integration seams
-- open [Raw IQ And Sample Contracts](raw-iq-and-sample-contracts.md) when the
-  change touches metadata or normalized samples
+## Public Surface Rules
 
-## Pages In This Section
+- Import through the [curated API](api-surface.md), not private module layout.
+- Treat units, time origins, normalization, wrapping, and error behavior as part
+  of the contract even when Rust types do not encode every assumption.
+- Prefer a free computational function over a trait method unless callers
+  genuinely need polymorphic behavior.
+- Preserve constellation-specific information instead of forcing every signal
+  through a lowest-common-denominator representation.
+- Keep receiver policy, file discovery, run layout, navigation acceptance, and
+  command wording outside the facade.
 
-- [API Surface](api-surface.md)
-- [Public Imports](public-imports.md)
-- [Code Contracts](code-contracts.md)
-- [DSP Contracts](dsp-contracts.md)
-- [Raw IQ And Sample Contracts](raw-iq-and-sample-contracts.md)
-- [Signal Model Assumptions](signal-model-assumptions.md)
-- [Validation Contracts](validation-contracts.md)
-- [Trait Contracts](trait-contracts.md)
-- [Entrypoints And Examples](entrypoints-and-examples.md)
-- [Compatibility Commitments](compatibility-commitments.md)
+## Understand Stateful APIs
 
-## First Proof Check
+```mermaid
+sequenceDiagram
+    participant Caller
+    participant State as Signal state
+    participant Primitive as DSP primitive
+    participant Runtime as Receiver runtime
 
-- `crates/bijux-gnss-signal/src/api.rs`
-- `crates/bijux-gnss-signal/docs/PUBLIC_API.md`
-- `crates/bijux-gnss-signal/docs/CONTRACTS.md`
-- `crates/bijux-gnss-signal/src/raw_iq.rs`
-- `crates/bijux-gnss-signal/src/samples.rs`
-- `crates/bijux-gnss-signal/src/obs_validation.rs`
+    Caller->>State: initialize with explicit origin and rates
+    Caller->>Primitive: process block with state
+    Primitive-->>Caller: value and advanced state
+    Caller->>Primitive: process adjacent block
+    Primitive-->>Runtime: reusable measurement or update
+    Note over Runtime: Runtime owns channel lifecycle and evidence
+```
 
-## Leave This Section When
+An NCO, filter, adaptation helper, or replica generator may be stateful and
+still belong to signal. The interface remains reusable only when callers
+control initialization and can explain how state advances across blocks.
 
-- leave for [Foundation](../foundation/) when the question is whether a public
-  surface belongs in the signal crate at all
-- leave for [Architecture](../architecture/) when the question is about module
-  placement rather than public contract
-- leave for [Operations](../operations/) or [Quality](../quality/) when the
-  interface is clear and the next question is safe change or proof
+## Interpret Validation Correctly
+
+Signal validation reports compatibility, alignment, or malformed signal-layer
+state. It does not decide whether a receiver should accept an observation or
+whether a navigation estimator should trust it. Preserve the validation report
+as input evidence for those higher decisions rather than converting it to a
+single boolean prematurely.
+
+## Compatibility And Proof
+
+Use [public imports](public-imports.md) for supported import patterns,
+[entrypoints and examples](entrypoints-and-examples.md) for representative
+calls, and [compatibility commitments](compatibility-commitments.md) before
+changing an export.
+
+The source of truth is the
+[public facade](../../../crates/bijux-gnss-signal/src/api.rs), supported by the
+[public API guide](../../../crates/bijux-gnss-signal/docs/PUBLIC_API.md),
+[contract guide](../../../crates/bijux-gnss-signal/docs/CONTRACTS.md),
+[trait guide](../../../crates/bijux-gnss-signal/docs/TRAITS.md), and
+[validation guide](../../../crates/bijux-gnss-signal/docs/VALIDATION.md).
