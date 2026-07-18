@@ -9,26 +9,53 @@ last_reviewed: 2026-07-17
 
 # Architecture Risks
 
+`bijux-gnss-signal` is pulled on by every GNSS crate because signal identity,
+code generation, sampling, and DSP touch almost every workflow. The main risk is
+not missing helper functions; the main risk is accepting behavior that belongs
+to receiver runtime, infra persistence, nav estimation, or command orchestration.
+
+## Risk Map
+
+```mermaid
+flowchart TD
+    request[new helper request] --> signal{is the durable meaning signal-owned?}
+    signal -- yes --> family{which owner?}
+    signal -- no --> refuse[route to receiver, infra, nav, or command owner]
+    family --> catalog[catalog and wavelengths]
+    family --> codes[code families and secondary codes]
+    family --> dsp[DSP primitives]
+    family --> samples[raw-IQ and sample contracts]
+    family --> api[public API contract]
+    api --> proof[guardrail and behavior proof]
+    catalog --> proof
+    codes --> proof
+    dsp --> proof
+    samples --> proof
+```
+
 ## Main Risks
 
-- the signal crate can become a dumping ground for receiver-adjacent logic
-  because many features touch signal math
-- code-family growth can encourage duplicate near-equivalent helpers rather
-  than one canonical signal implementation
-- broad re-exports from `api.rs` can blur the difference between public
-  contract and internal implementation detail
-- raw-IQ metadata and sample utilities can drift toward repository ingestion
-  policy if ownership is not defended
+| pressure | failure mode | durable response |
+| --- | --- | --- |
+| receiver runtime asks for a helper | signal crate starts owning channel scheduling or lock policy | keep reusable DSP math here; keep runtime policy in receiver |
+| many code families grow together | duplicate near-equivalent generators appear under different names | add one canonical signal-family implementation with reference proof |
+| downstream crates request broad exports | `api.rs` becomes a shortcut around internal boundaries | export by stable public contract only |
+| raw-IQ utilities expand | sample metadata turns into repository ingestion or artifact layout policy | keep in-memory signal metadata here; route persistence to infra |
+| tests pass only through a high-level workflow | signal behavior cannot be proven independently | require direct code, DSP, catalog, sample, or validation proof |
 
 ## Mitigations
 
-- keep runtime and persistence behavior out of the crate
-- add new code families by explicit signal meaning, not generic expansion
-- review `api.rs` changes as public-boundary changes
-- use the refusal ledger in [This Package Does Not Own](../this-package-does-not-own.md)
-  when pressure repeats
+- Keep runtime and persistence behavior out of the crate even when the data type
+  is signal-shaped.
+- Add code families by explicit signal meaning: constellation, band, channel,
+  component, and code role.
+- Review every `api.rs` export as a public-boundary change, not a convenience
+  re-export.
+- Use the refusal ledger in
+  [This Package Does Not Own](../this-package-does-not-own.md) when pressure
+  repeats from another crate.
 
-## First Proof Check
+## Proof Check
 
 Inspect `crates/bijux-gnss-signal/docs/BOUNDARY.md`,
 `crates/bijux-gnss-signal/docs/ARCHITECTURE.md`, and
@@ -37,3 +64,9 @@ Inspect `crates/bijux-gnss-signal/docs/BOUNDARY.md`,
 `crates/bijux-gnss-signal/src/dsp/mod.rs`, and
 `crates/bijux-gnss-signal/tests/integration_guardrails.rs` to confirm the
 architectural risk register still matches the enforced crate shape.
+
+## Reader Check
+
+A new reader should be able to tell whether a proposed helper is signal-owned
+without knowing the history of the request. If the answer depends on who asked
+for it, the design is not ready.
