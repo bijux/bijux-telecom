@@ -1,61 +1,99 @@
 ---
-title: Operations
-audience: mixed
+title: Command Change Guide
+audience: maintainers
 type: index
 status: canonical
 owner: bijux-gnss-docs
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-18
 ---
 
-# Operations
+# Command Change Guide
 
-Open this section when the question is how to change `bijux-gnss` without
-quietly moving command meaning, widening public contracts carelessly, or
-breaking top-level workflow composition.
+Change `bijux-gnss` from the operator boundary inward. Start with the invocation,
+workflow, report, validation result, or facade export that will move; identify
+the package that owns the underlying behavior; then prove both the command
+handoff and any changed lower contract.
 
-## Operational Model
+## Route A Change
+
+```mermaid
+flowchart TD
+    change["proposed change"]
+    visible{"operator invocation,<br/>output, or facade changes?"}
+    surface["name the public surface"]
+    owner["identify lower owner"]
+    implementation["change command composition"]
+    command_proof["prove observable command behavior"]
+    owner_proof["prove changed domain behavior"]
+    review["review evidence and compatibility"]
+
+    change --> visible
+    visible -- yes --> surface --> owner
+    visible -- no --> owner
+    owner --> implementation --> command_proof
+    owner --> owner_proof
+    command_proof --> review
+    owner_proof --> review
+```
+
+If no operator job or facade contract changes, the implementation may belong
+entirely in a lower package.
+
+## Choose The Workflow
+
+| change | operational route | evidence to preserve |
+| --- | --- | --- |
+| Command, option, default, or help-visible relationship | [Change sequence](change-sequence.md) | parser behavior, invocation compatibility, and focused command result |
+| Multi-stage handoff or lower-package composition | [Common workflows](common-workflows.md) | selected owner, input adaptation, stage order, and resulting artifacts |
+| Human or JSON report | [Operator journeys](operator-journeys.md) | status, refusal, stable fields, and route to decisive evidence |
+| Validation command or acceptance route | [Fixture and workflow care](fixture-and-workflow-care.md) | accepted, degraded, refused, and malformed cases without regenerated expectations |
+| Umbrella facade export | [Review scope](review-scope.md) | feature gate, defining owner, consumer need, and supported import |
+| Local build or focused execution | [Local development](local-development.md) and [verification commands](verification-commands.md) | exact command and bounded claim |
+| Published command or facade compatibility | [Release and versioning](release-and-versioning.md) | user-visible change, migration, and release evidence |
+
+## Keep One Change Coherent
 
 ```mermaid
 flowchart LR
-    change["proposed command change"]
-    scope["scope and owner check"]
-    docs["command contract update"]
-    tests["narrow verification"]
-    review["cross-crate review"]
-    release["merge-ready change"]
+    contract["operator contract"]
+    catalog["catalog and parser"]
+    handler["workflow handler"]
+    adapter["typed adapter"]
+    owner["lower owner"]
+    report["report or artifact route"]
+    proof["focused proof"]
 
-    change --> scope --> docs --> tests --> review --> release
+    contract --> catalog --> handler --> adapter --> owner --> report --> proof
 ```
 
-## Read These First
+A coherent command change can cross several files while preserving one durable
+intent. Do not combine unrelated command families merely because they share a
+runtime helper. Commit when one public route, its documentation, and its
+focused evidence agree.
 
-- open [Change Sequence](change-sequence.md) first when the work touches
-  command shape, workflow wiring, reporting, or facade exports
-- open [Verification Commands](verification-commands.md) when you need the
-  narrowest executable proof for a local command change
-- open [Review Scope](review-scope.md) when a change seems to affect more than
-  one command family at once
+## Preserve Failure Meaning
 
-## Pages In This Section
+Command changes must keep operator misconfiguration, unsupported science,
+unreadable repository state, degraded runtime outcomes, and internal faults
+distinguishable. Rendering may add context; it must not convert a typed refusal
+into generic success or hide the lower owner that produced it.
 
-- [Common Workflows](common-workflows.md)
-- [Local Development](local-development.md)
-- [Change Sequence](change-sequence.md)
-- [Operator Journeys](operator-journeys.md)
-- [Verification Commands](verification-commands.md)
-- [Fixture And Workflow Care](fixture-and-workflow-care.md)
-- [Review Scope](review-scope.md)
-- [Release And Versioning](release-and-versioning.md)
+When a command writes evidence, use infrastructure-owned run and artifact
+contracts. Do not construct parallel path conventions in handlers or tests.
 
-## First Proof Check
+## Review Before Completion
 
-- `crates/bijux-gnss/README.md`
-- `crates/bijux-gnss/docs/TESTS.md`
-- `crates/bijux-gnss/tests/`
+- The public invocation and defaults still mean what the documentation says.
+- The command delegates behavior instead of duplicating it.
+- Machine-readable fields remain stable or carry an explicit compatibility
+  decision.
+- Tests assert observable behavior rather than private helper layout.
+- Lower-package tests cover any moved scientific, runtime, or persistence
+  meaning.
+- Fixtures are independent evidence, not output regenerated by the code under
+  test.
 
-## Leave This Section When
-
-- leave for [Interfaces](../interfaces/) when the question is what the command
-  boundary promises rather than how to change it safely
-- leave for [Quality](../quality/) when the operational sequence is clear and
-  the next question is proof sufficiency
+The [command test guide](../../../crates/bijux-gnss/docs/TESTS.md),
+[execution guide](../../../crates/bijux-gnss/docs/EXECUTION.md), and
+[workflow reference](../../../crates/bijux-gnss/docs/WORKFLOWS.md) are the
+package-level authorities for these decisions.
