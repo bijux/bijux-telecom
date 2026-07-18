@@ -1,70 +1,99 @@
 ---
-title: Architecture
+title: Command Architecture Guide
 audience: mixed
 type: index
 status: canonical
 owner: bijux-gnss-docs
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-18
 ---
 
-# Architecture
+# Command Architecture Guide
 
-Open this section when the question is structural: where command parsing,
-workflow dispatch, runtime support, reporting, and facade ownership live in
-code, and how the crate stays thin without becoming shapeless.
+`bijux-gnss` is a composition boundary. It parses operator intent, resolves
+command context, delegates work to the package that owns the behavior, and
+publishes evidence without reinterpreting it. The architecture is successful
+when a reader can trace every option to a workflow and every result back to its
+scientific or repository owner.
 
-## Structural Shape
+## Trace A Request
 
 ```mermaid
 flowchart LR
-    main["main.rs<br/>binary assembly"]
-    catalog["command_catalog/"]
-    commands["commands/"]
-    runtime["command_runtime/"]
-    support["command_support/"]
-    report["report.rs"]
-    facade["lib.rs"]
+    input["operator arguments"]
+    catalog["typed command catalog"]
+    parser["parser assembly"]
+    handler["workflow handler"]
+    context["runtime and input adapters"]
+    owner["domain owner"]
+    evidence["typed evidence"]
+    report["operator report"]
 
-    main --> catalog
-    main --> commands
-    main --> runtime
-    main --> support
-    main --> report
-    facade --> main
+    input --> catalog --> parser --> handler --> context --> owner
+    owner --> evidence --> report
 ```
 
-## Read These First
+The command package owns the catalog, parser assembly, workflow selection,
+adapters, and report presentation. The delegated package owns the behavior and
+meaning of the evidence.
 
-- open [Module Map](module-map.md) first when you need the fastest route from
-  a command concern to the owning code area
-- open [Dependency Direction](dependency-direction.md) when the question is
-  whether the command crate is aggregating lower-level behavior honestly
-- open [Integration Seams](integration-seams.md) when a change seems to pull
-  runtime, repository, or science policy inward
+## Locate The Concern
 
-## Pages In This Section
+| concern | architectural route | boundary |
+| --- | --- | --- |
+| Add or change a command, subcommand, option, or argument group | [Module map](module-map.md) | the catalog owns syntax, not domain semantics |
+| Understand dispatch and workflow order | [Execution model](execution-model.md) | handlers compose work but do not absorb lower-package algorithms |
+| Follow dependencies into infrastructure, receiver, navigation, signal, or core | [Dependency direction](dependency-direction.md) | lower packages never depend on the command package |
+| Adapt datasets, captures, artifacts, or lower-package results | [Integration seams](integration-seams.md) | adaptation preserves typed meaning |
+| Determine which state survives execution | [State and persistence](state-and-persistence.md) | infrastructure owns persisted layout and run identity |
+| Classify operator, science, and internal failures | [Error model](error-model.md) | reporting must preserve the original failure class |
+| Add a durable workflow family | [Extensibility model](extensibility-model.md) | a new family needs an operator job and a lower owner |
+| Investigate excessive command-layer responsibility | [Architecture risks](architecture-risks.md) | convenience is not ownership |
 
-- [Module Map](module-map.md)
-- [Dependency Direction](dependency-direction.md)
-- [Execution Model](execution-model.md)
-- [State And Persistence](state-and-persistence.md)
-- [Integration Seams](integration-seams.md)
-- [Error Model](error-model.md)
-- [Extensibility Model](extensibility-model.md)
-- [Code Navigation](code-navigation.md)
-- [Architecture Risks](architecture-risks.md)
+## Keep The Handler Thin
 
-## First Proof Check
+```mermaid
+flowchart TD
+    change["proposed handler behavior"]
+    syntax{"parses or validates<br/>operator intent?"}
+    compose{"coordinates an existing<br/>owned operation?"}
+    present{"renders typed evidence?"}
+    command["keep in command package"]
+    lower["move to domain owner"]
 
-- `crates/bijux-gnss/src/main.rs`
-- `crates/bijux-gnss/src/cli/`
-- `crates/bijux-gnss/docs/ARCHITECTURE.md`
+    change --> syntax
+    syntax -- yes --> command
+    syntax -- no --> compose
+    compose -- yes --> command
+    compose -- no --> present
+    present -- yes --> command
+    present -- no --> lower
+```
 
-## Leave This Section When
+A handler may select configuration, request a dataset, prepare run context, and
+adapt a typed result for presentation. It must not implement acquisition math,
+tracking lifecycle, navigation estimation, signal generation, artifact schema
+meaning, or run-directory rules.
 
-- leave for [Foundation](../foundation/) when the real dispute is still about
-  ownership rather than structure
-- leave for [Interfaces](../interfaces/) when the structural question is
-  already about public contract shape
-- leave for [Quality](../quality/) when the structure is clear and the next
-  question is proof sufficiency
+## Effects And Evidence
+
+Input resolution and persistence are explicit seams. Commands can request a
+dataset, sidecar, output location, or resume target, but infrastructure resolves
+their repository meaning. Commands can render receiver or navigation outcomes,
+but degraded and refused states must remain visible.
+
+A successful process exit proves that the workflow completed its command
+contract. It does not replace stage evidence or scientific validation.
+
+## Implementation Evidence
+
+Use the [code navigation guide](code-navigation.md) after identifying the
+concern. The implementation authorities are the
+[command catalog](../../../crates/bijux-gnss/src/cli/command_catalog/mod.rs),
+[parser assembly](../../../crates/bijux-gnss/src/cli/command_line.rs),
+[runtime dispatcher](../../../crates/bijux-gnss/src/cli/command_runtime.rs),
+[workflow handlers](../../../crates/bijux-gnss/src/cli/commands/mod.rs),
+[command adapters](../../../crates/bijux-gnss/src/cli/command_support/mod.rs),
+and [report renderer](../../../crates/bijux-gnss/src/cli/report.rs).
+
+The [crate architecture](../../../crates/bijux-gnss/docs/ARCHITECTURE.md)
+states the same ownership boundary from the package perspective.

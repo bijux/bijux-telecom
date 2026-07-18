@@ -1,70 +1,94 @@
 ---
-title: Interfaces
+title: Command Interface Guide
 audience: mixed
 type: index
 status: canonical
 owner: bijux-gnss-docs
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-18
 ---
 
-# Interfaces
+# Command Interface Guide
 
-Open this section when the question is contractual: which command, reporting,
-workflow, and facade surfaces are safe for an operator or downstream Rust user
-to rely on.
+`bijux-gnss` exposes two public surfaces with different consumers. Operators
+and automation use the `bijux gnss` command family. Rust callers use a small
+facade that re-exports owned lower-package APIs. A command promise must not be
+mistaken for a library contract, and the facade must not become a second
+implementation layer.
 
-## Contract Surface
+## Choose The Surface
+
+```mermaid
+flowchart TD
+    caller{"Who is the caller?"}
+    operator["person or automation"]
+    rust["Rust application"]
+    binary["command-line surface"]
+    facade["Rust facade"]
+    owners["lower-package APIs"]
+
+    caller --> operator --> binary
+    caller --> rust --> facade --> owners
+```
+
+| caller need | public contract |
+| --- | --- |
+| Discover commands, options, defaults, and argument relationships | [CLI reference](cli-reference.md) |
+| Rely on command names, workflow selection, and exit behavior | [Command contracts](command-contracts.md) |
+| Supply receiver configuration, dataset context, sidecars, or overrides | [Configuration contracts](configuration-contracts.md) |
+| Understand a multi-stage operator journey | [Workflow contracts](workflow-contracts.md) |
+| Parse or display human and machine-readable results | [Reporting contracts](reporting-contracts.md) |
+| Distinguish schema, capture, reference, and scientific validation | [Validation contracts](validation-contracts.md) |
+| Import GNSS packages through the umbrella library | [Facade contracts](facade-contracts.md) and [public imports](public-imports.md) |
+
+## What Is Stable?
+
+For the binary, treat command and option meaning, required relationships,
+defaults, report-format selection, exit behavior, and persisted evidence
+references as public. Exact prose may evolve, but automation must not depend on
+undocumented text fragments when typed JSON or artifacts exist.
+
+For the Rust facade, only deliberate exports are supported. Private CLI modules
+and handler types are not library API.
 
 ```mermaid
 flowchart LR
-    caller["operator or rust user"]
-    binary["bijux binary"]
-    facade["bijux_gnss facade"]
-    commands["command contracts"]
-    reports["reporting contracts"]
-    workflows["workflow contracts"]
+    request["operator request"]
+    command["command contract"]
+    workflow["workflow contract"]
+    evidence["owned result"]
+    report["report contract"]
+    consumer["human or automation"]
 
-    caller --> binary
-    caller --> facade
-    binary --> commands
-    binary --> reports
-    binary --> workflows
+    request --> command --> workflow --> evidence --> report --> consumer
 ```
 
-## Read These First
+Each interface layer adds context but must preserve the layer before it. A
+report may summarize a receiver refusal; it may not convert that refusal into
+success. A workflow may persist an artifact; it may not redefine the artifact
+schema.
 
-- open [API Surface](api-surface.md) first when the question is whether a
-  binary or facade surface belongs in the durable command boundary
-- open [Command Contracts](command-contracts.md) when the issue starts from
-  commands, flags, or argument shape
-- open [Facade Contracts](facade-contracts.md) when the issue is about Rust
-  package exports rather than the binary
+## Compatibility Questions
 
-## Pages In This Section
+Before changing a public surface, ask:
 
-- [API Surface](api-surface.md)
-- [Public Imports](public-imports.md)
-- [Command Contracts](command-contracts.md)
-- [CLI Reference](cli-reference.md)
-- [Configuration Contracts](configuration-contracts.md)
-- [Workflow Contracts](workflow-contracts.md)
-- [Reporting Contracts](reporting-contracts.md)
-- [Validation Contracts](validation-contracts.md)
-- [Facade Contracts](facade-contracts.md)
-- [Entrypoints And Examples](entrypoints-and-examples.md)
-- [Compatibility Commitments](compatibility-commitments.md)
+- Will an existing invocation parse with the same meaning?
+- Will defaults select the same operation and evidence policy?
+- Can automation still distinguish success, degradation, refusal, and failure?
+- Does JSON retain field meaning and version expectations?
+- Do output references still point to infrastructure-governed evidence?
+- Does a facade export still follow the feature gate and lower-package owner?
 
-## First Proof Check
+Use [compatibility commitments](compatibility-commitments.md) for the review
+standard and [entrypoints and examples](entrypoints-and-examples.md) for
+representative use.
 
-- `crates/bijux-gnss/src/main.rs`
-- `crates/bijux-gnss/API.md`
-- `crates/bijux-gnss/docs/PUBLIC_API.md`
+## Sources Of Truth
 
-## Leave This Section When
-
-- leave for [Foundation](../foundation/) when the question is whether a public
-  surface belongs in the command crate at all
-- leave for [Architecture](../architecture/) when the contract issue reveals
-  structural drift underneath it
-- leave for [Operations](../operations/) or [Quality](../quality/) when the
-  public shape is clear and the question becomes safe change or proof
+The [public API guide](../../../crates/bijux-gnss/docs/PUBLIC_API.md)
+distinguishes binary and Rust callers. The
+[command reference](../../../crates/bijux-gnss/docs/COMMANDS.md),
+[workflow reference](../../../crates/bijux-gnss/docs/WORKFLOWS.md), and
+[reporting guide](../../../crates/bijux-gnss/docs/REPORTING.md) define the
+operator-facing contract. Confirm exact parser behavior in the
+[command catalog](../../../crates/bijux-gnss/src/cli/command_catalog/mod.rs)
+and [parser assembly](../../../crates/bijux-gnss/src/cli/command_line.rs).
