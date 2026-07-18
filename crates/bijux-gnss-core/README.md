@@ -1,5 +1,13 @@
 # bijux-gnss-core
 
+[![Rust 1.86+](https://img.shields.io/badge/rust-1.86%2B-DEA584?logo=rust&logoColor=white)](https://crates.io/crates/bijux-gnss-core)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-0F766E)](https://github.com/bijux/bijux-telecom/blob/main/LICENSE)
+[![GitHub Repository](https://img.shields.io/badge/github-bijux%2Fbijux--telecom-181717?logo=github)](https://github.com/bijux/bijux-telecom)
+[![core](https://img.shields.io/crates/v/bijux-gnss-core?label=core&logo=rust)](https://crates.io/crates/bijux-gnss-core)
+[![ghcr-core](https://img.shields.io/badge/ghcr-core-181717?logo=github)](https://github.com/bijux/bijux-telecom/pkgs/container/bijux-telecom%2Fbijux-gnss-core)
+[![rust-docs](https://img.shields.io/badge/rust--docs-core-DEA584?logo=rust&logoColor=white)](https://docs.rs/bijux-gnss-core/latest/bijux_gnss_core/)
+[![Core handbook](https://img.shields.io/badge/docs-core%20handbook-2563EB?logo=materialformkdocs&logoColor=white)](https://github.com/bijux/bijux-telecom/tree/main/docs/02-bijux-gnss-core)
+
 `bijux-gnss-core` defines the GNSS contracts shared across `bijux-telecom`:
 identities, units, time, coordinates, diagnostics, observations, navigation
 results, support records, and versioned artifact envelopes.
@@ -7,6 +15,16 @@ results, support records, and versioned artifact envelopes.
 Use this crate when two packages must agree on what data means. Use the signal,
 navigation, receiver, infrastructure, or command package when the concern is an
 algorithm, runtime policy, repository effect, or operator workflow.
+
+## Install
+
+```sh
+cargo add bijux-gnss-core
+```
+
+The Cargo package name is `bijux-gnss-core`; its Rust import name is
+`bijux_gnss_core`. All public packages in this repository share one release
+version.
 
 ## Start With The Need
 
