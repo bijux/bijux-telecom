@@ -63,6 +63,17 @@ defines the publication boundary, commands, channels, version rules, and
 failure policy. The [facade changelog](crates/bijux-gnss/CHANGELOG.md) records
 changes to the `bijux` command and the top-level Rust API.
 
+## Package Histories
+
+| changed responsibility | release history |
+| --- | --- |
+| commands and public facade | [Facade and command history](crates/bijux-gnss/CHANGELOG.md) |
+| shared identities, units, time, and artifacts | [Core contract history](crates/bijux-gnss-core/CHANGELOG.md) |
+| signal definitions, codes, samples, and DSP | [Signal behavior history](crates/bijux-gnss-signal/CHANGELOG.md) |
+| products, corrections, positioning, and integrity | [Navigation science history](crates/bijux-gnss-nav/CHANGELOG.md) |
+| acquisition, tracking, observations, and runtime evidence | [Receiver runtime history](crates/bijux-gnss-receiver/CHANGELOG.md) |
+| datasets, provenance, run layout, and inspection | [Infrastructure history](crates/bijux-gnss-infra/CHANGELOG.md) |
+
 ## Entry Rules
 
 - Record a change here when it alters the publication boundary, shared version,

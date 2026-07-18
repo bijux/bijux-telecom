@@ -42,16 +42,20 @@ and command behavior included in that release.
 ## What Belongs Here
 
 - CLI command names, arguments, reports, and operator workflow behavior.
-- Facade exports from `src/lib.rs`.
+- [Public facade exports](src/lib.rs).
 - Command-level validation, routing, and artifact handoff behavior.
 - Breaking changes in command output or public facade imports.
 
 ## What Belongs Elsewhere
 
-- Receiver-stage internals belong to `bijux-gnss-receiver`.
-- Signal math and raw-IQ contracts belong to `bijux-gnss-signal`.
-- Navigation science belongs to `bijux-gnss-nav`.
-- Repository persistence contracts belong to `bijux-gnss-infra`.
+- Receiver-stage internals belong in the
+  [receiver runtime history](../bijux-gnss-receiver/CHANGELOG.md).
+- Signal math and raw-IQ contracts belong in the
+  [signal behavior history](../bijux-gnss-signal/CHANGELOG.md).
+- Navigation science belongs in the
+  [navigation science history](../bijux-gnss-nav/CHANGELOG.md).
+- Repository persistence contracts belong in the
+  [infrastructure history](../bijux-gnss-infra/CHANGELOG.md).
 
 ## Entry Rules
 
