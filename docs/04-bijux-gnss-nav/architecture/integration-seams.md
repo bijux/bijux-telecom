@@ -28,7 +28,7 @@ flowchart LR
 
 | seam | owned purpose | should not carry |
 | --- | --- | --- |
-| `src/api.rs` | curated downstream surface for navigation science | private module layout |
+| public API facade | curated downstream surface for navigation science | private module layout |
 | `EphemerisProvider` | orbit and ephemeris access without one storage shape | repository path discovery |
 | `ProductsProvider` | precise product access for PPP and correction logic | CLI product policy wording |
 | bias providers | code and phase bias lookup with source evidence | receiver scheduling state |
@@ -38,7 +38,7 @@ flowchart LR
 
 ## Seam Use Standard
 
-- Use `api.rs` before reaching for an internal module path.
+- Use the public API facade before reaching for an internal module path.
 - Pass scientific inputs and outputs through typed seams.
 - Keep repository paths, operator flags, and receiver scheduling state outside
   nav.
@@ -48,10 +48,10 @@ flowchart LR
 
 ## First Proof Check
 
-Inspect `crates/bijux-gnss-nav/src/api.rs`,
-`crates/bijux-gnss-nav/src/orbits/ephemeris.rs`,
-`crates/bijux-gnss-nav/src/formats/precise_products/mod.rs`,
-`crates/bijux-gnss-nav/src/corrections/biases.rs`,
-`crates/bijux-gnss-nav/src/estimation/ekf/traits.rs`,
-`crates/bijux-gnss-nav/src/estimation/position/`, and
-`crates/bijux-gnss-nav/docs/BOUNDARY.md`.
+Start with the navigation [public API facade](../../../crates/bijux-gnss-nav/src/api.rs),
+[ephemeris provider](../../../crates/bijux-gnss-nav/src/orbits/ephemeris.rs),
+[precise-product provider](../../../crates/bijux-gnss-nav/src/formats/precise_products/mod.rs),
+[bias provider source](../../../crates/bijux-gnss-nav/src/corrections/biases.rs),
+[EKF trait source](../../../crates/bijux-gnss-nav/src/estimation/ekf/traits.rs),
+and [positioning source](../../../crates/bijux-gnss-nav/src/estimation/position/).
+Then confirm ownership against the navigation [boundary guide](../../../crates/bijux-gnss-nav/docs/BOUNDARY.md).

@@ -51,10 +51,10 @@ Review execution changes by asking:
 
 ## First Proof Check
 
-Inspect `crates/bijux-gnss-infra/src/commands.rs`,
-`crates/bijux-gnss-infra/src/datasets/`,
-`crates/bijux-gnss-infra/src/run_layout/`,
-`crates/bijux-gnss-infra/src/overrides/`,
-`crates/bijux-gnss-infra/src/sweep.rs`,
-`crates/bijux-gnss-infra/src/artifact_inspection/`, and
-`crates/bijux-gnss-infra/docs/RUN_LAYOUT.md`.
+Start with the infra [command adapter](../../../crates/bijux-gnss-infra/src/commands.rs),
+[dataset source](../../../crates/bijux-gnss-infra/src/datasets/),
+[run-layout source](../../../crates/bijux-gnss-infra/src/run_layout/),
+[override source](../../../crates/bijux-gnss-infra/src/overrides/),
+[sweep source](../../../crates/bijux-gnss-infra/src/sweep.rs), and
+[artifact inspection source](../../../crates/bijux-gnss-infra/src/artifact_inspection/).
+Then confirm the persisted shape against the [run-layout guide](../../../crates/bijux-gnss-infra/docs/RUN_LAYOUT.md).

@@ -23,13 +23,16 @@ behavior separate from operational policy.
 
 ## Neighbor Crates Own The Rest
 
-- `bijux-gnss-core` owns cross-package types, units, identifiers, and
-  observation record shapes
-- `bijux-gnss-receiver` owns runtime composition, ports, stage sequencing, and
-  receiver artifacts
-- `bijux-gnss-nav` owns navigation-domain interpretation and estimator science
-- `bijux-gnss-infra` owns repository-side dataset and run-layout persistence
-- `bijux-gnss` owns operator commands, workflows, and top-level reports
+- [Core](../../02-bijux-gnss-core/foundation/package-overview.md) owns
+  cross-package types, units, identifiers, and observation record shapes
+- [Receiver](../../05-bijux-gnss-receiver/foundation/package-overview.md) owns
+  runtime composition, ports, stage sequencing, and receiver artifacts
+- [Navigation](../../04-bijux-gnss-nav/foundation/package-overview.md) owns
+  navigation-domain interpretation and estimator science
+- [Infra](../../03-bijux-gnss-infra/foundation/package-overview.md) owns
+  repository-side dataset and run-layout persistence
+- [Command](../../01-bijux-gnss/foundation/package-overview.md) owns operator
+  commands, workflows, and top-level reports
 
 ## Boundary Test
 
@@ -39,12 +42,12 @@ assuming one receiver runtime, one repository layout, or one operator workflow.
 
 ## First Proof Check
 
-Read `crates/bijux-gnss-signal/docs/BOUNDARY.md` and
-`crates/bijux-gnss-signal/docs/CONTRACTS.md` first. Then inspect
-`crates/bijux-gnss-signal/src/api.rs`,
-`crates/bijux-gnss-signal/src/catalog.rs`,
-`crates/bijux-gnss-signal/src/dsp/mod.rs`,
-`crates/bijux-gnss-signal/src/raw_iq.rs`, and
-`crates/bijux-gnss-signal/src/obs_validation.rs` to confirm the crate still
-owns reusable signal contracts rather than runtime, persistence, or operator
-policy.
+Read the signal [boundary guide](../../../crates/bijux-gnss-signal/docs/BOUNDARY.md)
+and [contract guide](../../../crates/bijux-gnss-signal/docs/CONTRACTS.md)
+first. Then inspect the [public API facade](../../../crates/bijux-gnss-signal/src/api.rs),
+[signal catalog](../../../crates/bijux-gnss-signal/src/catalog.rs),
+[DSP source](../../../crates/bijux-gnss-signal/src/dsp/mod.rs),
+[raw-IQ model](../../../crates/bijux-gnss-signal/src/raw_iq.rs), and
+[observation validation source](../../../crates/bijux-gnss-signal/src/obs_validation.rs)
+to confirm the crate still owns reusable signal contracts rather than runtime,
+persistence, or operator policy.
