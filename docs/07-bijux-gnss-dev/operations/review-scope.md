@@ -11,17 +11,31 @@ last_reviewed: 2026-07-17
 
 Reviewers should align their depth to the changed maintainer workflow.
 
+## Review Scope Flow
+
+```mermaid
+flowchart LR
+    diff["changed file"]
+    workflow["maintainer workflow"]
+    contract["governed contract"]
+    proof["required proof"]
+    decision["review depth"]
+
+    diff --> workflow
+    workflow --> contract
+    contract --> proof
+    proof --> decision
+```
+
 ## Scope By Change Type
 
-- audit workflow change:
-  inspect field requirements, expiry discipline, and derived-ignore behavior
-- deviation workflow change:
-  inspect ownership, review-link, and expiry requirements
-- benchmark workflow change:
-  inspect curated benchmark scope, evidence writing, normalization, and
-  threshold comparison
-- repository guardrail test change:
-  inspect whether the new policy still belongs to maintainer governance
+| change type | review focus |
+| --- | --- |
+| audit workflow | field requirements, expiry discipline, and derived-ignore behavior |
+| deviation workflow | ownership, review-link, and expiry requirements |
+| benchmark workflow | curated benchmark scope, evidence writing, normalization, and threshold comparison |
+| repository guardrail test | whether the policy still belongs to maintainer governance |
+| slow-test roster | real test resolution, sorted ledger, and fast/slow expression behavior |
 
 ## Review Shortcut
 
@@ -36,3 +50,9 @@ Use `crates/bijux-gnss-dev/docs/WORKFLOWS.md`,
 `crates/bijux-gnss-dev/docs/TESTS.md` as the review map. Then inspect the
 changed command path or integration test so review depth follows actual
 maintainer risk rather than diff size.
+
+## Review Checks
+
+- Does the review name the repository contract at risk?
+- Is the expected evidence path or failure message inspectable?
+- Does the proof match the changed workflow family?
