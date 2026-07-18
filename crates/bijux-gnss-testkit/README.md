@@ -1,79 +1,134 @@
 # bijux-gnss-testkit
 
-`bijux-gnss-testkit` owns shared GNSS test truth, fixtures, and independent
-reference models. It exists so product crates can test against evidence that is
-not just a wrapper around the implementation under test.
+`bijux-gnss-testkit` supplies reusable GNSS test evidence: checked-in reference
+data, deterministic scenarios, typed fixture loading, and calculations designed
+to remain independent from production algorithms. It is a workspace support
+crate and is not published or linked into product runtime.
 
-Start here when a test needs reusable truth data, fixture loading, independent
-reference-model calculations, or deterministic signal/observation synthesis. Do
-not start here for production receiver orchestration, navigation solver
-implementation, repository persistence rules, or one-off wrappers.
+Use it when a test needs an expected value that should be shared, reviewed, and
+traceable. Keep setup beside the test when it only shortens one test case or
+replays the implementation being tested.
 
-## Reader Route
-
-| question | go next |
-| --- | --- |
-| Which fixture or reference dataset is shared? | [Fixture guide](docs/FIXTURES.md), [Reference data guide](docs/REFERENCE_DATA.md) |
-| Which independent model computes expected behavior? | [Truth model guide](docs/TRUTH_MODELS.md), `src/reference_models/` |
-| Which antenna or signal truth helper is available? | [Antenna guide](docs/ANTENNA.md), [Signal guide](docs/SIGNAL.md) |
-| Which Rust API is public? | [Package API](API.md), `src/lib.rs` |
-| How is independence protected? | [Independence guide](docs/INDEPENDENCE.md), `tests/scientific_independence.rs` |
-| What changed in this package? | [Package changelog](CHANGELOG.md) |
-
-## Owned Boundary
-
-- deterministic fixture loading across crates
-- checked-in reference datasets used as shared test evidence
-- independent reference models used to compute expected behavior
-- truth generation for acquisition, antenna, observation, and position tests
-
-This crate does not own production receiver orchestration, navigation solver
-implementations, repository persistence rules, or throwaway test-only wrappers
-around the same helper being tested.
+## Choose The Evidence First
 
 ```mermaid
-flowchart TB
-    fixture["fixture or reference data"]
-    model["independent model"]
-    truth["test truth"]
-    product["product crate test"]
+flowchart TD
+    claim["claim to prove"]
+    source{"trusted external value available?"}
+    reference["checked-in reference data"]
+    formula{"independent formula or simpler model?"}
+    model["reference model"]
+    scenario{"shared deterministic scenario?"}
+    synthetic["synthetic truth"]
+    local["test-local setup"]
+    product["product result"]
+    compare["domain comparison"]
 
-    fixture --> model
-    model --> truth
-    truth --> product
+    claim --> source
+    source -->|"yes"| reference --> compare
+    source -->|"no"| formula
+    formula -->|"yes"| model --> compare
+    formula -->|"no"| scenario
+    scenario -->|"yes"| synthetic --> compare
+    scenario -->|"no"| local --> compare
+    product --> compare
 ```
 
-## Source Map
+Prefer evidence in this order:
 
-- `src/fixtures.rs` owns deterministic typed fixture loading.
-- `src/reference_data/` owns checked-in public truth inputs and derived records.
-- `src/reference_models/` owns private independent scientific models.
-- `src/position_truth/`, `src/antenna/`, and `src/signal/` own reusable
-  truth-generation helpers.
+1. a public or curated reference with provenance, units, frame, and epoch;
+2. an independent formula or deliberately simpler algorithm;
+3. deterministic synthetic truth whose assumptions are explicit;
+4. a stable golden record when behavior, rather than scientific truth, is the
+   contract.
 
-## Documentation Map
+A golden file produced by the product implementation is regression evidence,
+not independent truth. Label it accordingly.
 
-- [Architecture guide](docs/ARCHITECTURE.md)
-- [Package API](API.md)
-- [Antenna guide](docs/ANTENNA.md)
-- [Boundary guide](docs/BOUNDARY.md)
-- [Contract guide](docs/CONTRACTS.md)
-- [Fixture guide](docs/FIXTURES.md)
-- [Signal guide](docs/SIGNAL.md)
-- [Public API](docs/PUBLIC_API.md)
-- [Reference data guide](docs/REFERENCE_DATA.md)
-- [Test guide](docs/TESTS.md)
-- [Truth model guide](docs/TRUTH_MODELS.md)
-- [Independence guide](docs/INDEPENDENCE.md)
+## What You Can Use
 
-## Verification Focus
+| need | supported surface | read before use |
+| --- | --- | --- |
+| load shared TOML, dataset-style, or JSON evidence | typed fixture loaders | [Fixture contracts](docs/FIXTURES.md) |
+| compare against trusted coordinates, stations, atmosphere, PPP, or RTK records | reference-data modules | [Reference-data provenance](docs/REFERENCE_DATA.md) |
+| build observations and position scenarios with known truth | position-truth helpers | [Truth-model boundary](docs/TRUTH_MODELS.md) |
+| generate deterministic acquisition or signal expectations | signal truth helpers | [Signal evidence](docs/SIGNAL.md) |
+| model controlled antenna effects | antenna truth helpers | [Antenna evidence](docs/ANTENNA.md) |
+| understand which modules are supported for test consumers | direct public module surface | [Public API](docs/PUBLIC_API.md) |
 
-Use independence tests when changing shared truth:
+The complete public module set is declared by the
+[crate entrypoint](src/lib.rs). Private reference models remain implementation
+detail; consumers use the evidence they produce rather than binding to their
+layout.
+
+## Independence Is A Design Property
+
+```mermaid
+flowchart LR
+    source["standard, reference, or explicit formula"]
+    testkit["testkit evidence path"]
+    product["product implementation path"]
+    assertion["comparison in domain units"]
+
+    source --> testkit --> assertion
+    product --> assertion
+    testkit -. "must not call the behavior under test" .-> product
+```
+
+The [scientific-independence test](tests/scientific_independence.rs) rejects
+known production helper calls from truth-producing modules. It is useful but
+not exhaustive: a text check cannot prove that two algorithms do not share the
+same mistaken constant, assumption, or derivation. Review every new truth helper
+for:
+
+- the independent source of the expected value;
+- units, coordinate frame, signal identity, and time system;
+- deterministic ordering and reproducible failure;
+- the product operation it is intended to challenge;
+- a concrete consuming assertion.
+
+If independence is incomplete, state exactly what the evidence can still prove.
+
+## Where New Test Support Belongs
+
+```mermaid
+flowchart TD
+    helper["proposed helper"]
+    runtime{"needed outside tests?"}
+    shared{"reusable truth or fixture?"}
+    independent{"independent enough to challenge product code?"}
+    product["owning product crate"]
+    local["owning test"]
+    testkit["bijux-gnss-testkit"]
+
+    helper --> runtime
+    runtime -->|"yes"| product
+    runtime -->|"no"| shared
+    shared -->|"no"| local
+    shared -->|"yes"| independent
+    independent -->|"yes"| testkit
+    independent -->|"no"| local
+```
+
+Do not move convenience wrappers here merely to reduce duplication. Shared
+support earns a public home when its scientific meaning, provenance, and
+cross-test value are durable.
+
+## Verification
+
+Run the independence backstop after changing truth-producing code:
 
 ```sh
 cargo test -p bijux-gnss-testkit --test scientific_independence
-cargo test -p bijux-gnss-testkit --test integration_guardrails
 ```
 
-Repository-wide lanes and package routing are documented in the
-[workspace README](../../README.md).
+Run the package suite when fixture parsing, public helpers, or reference records
+change:
+
+```sh
+cargo test -p bijux-gnss-testkit
+```
+
+The [architecture guide](docs/ARCHITECTURE.md) explains dependency direction,
+the [test evidence guide](docs/TESTS.md) states what the package suite proves,
+and the [package changelog](CHANGELOG.md) records reader-visible changes.
