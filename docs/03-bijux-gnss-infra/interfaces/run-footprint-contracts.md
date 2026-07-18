@@ -9,53 +9,77 @@ last_reviewed: 2026-07-18
 
 # Run Footprint Contracts
 
-Run-footprint contracts are the repository memory of an execution. They define
-how a run context becomes directories, manifests, reports, artifact headers, and
-history entries that remain readable after the command process exits.
+A run footprint is the durable account of an execution: where its evidence
+lives, which inputs shaped it, which build produced it, and how a later reader
+can compare or replay it. Callers provide intent through `RunContextArgs`; infra
+resolves and persists the repository representation.
 
-## Footprint Flow
+## Footprint Lifecycle
 
 ```mermaid
-flowchart LR
-    context["run context"]
-    layout["directory layout"]
-    manifest["manifest"]
-    report["run report"]
-    history["history entry"]
-    readers["later readers<br/>automation reviewers"]
+sequenceDiagram
+    participant Caller
+    participant Infra
+    participant Run as Run directory
+    participant History as Repository history
 
-    context --> layout
-    layout --> manifest
-    layout --> report
-    report --> history
-    manifest --> readers
-    report --> readers
-    history --> readers
+    Caller->>Infra: RunContextArgs + command + dataset
+    Infra->>Run: create artifact and log locations
+    Infra->>Run: write run report
+    Caller->>Infra: write manifest with summary
+    Infra->>Run: persist manifest
+    Infra->>History: append discoverable run entry
 ```
 
-## Owned Records And Helpers
+## Records And Their Jobs
 
-| surface | role | compatibility expectation |
+| record or helper | answers | important side effect |
 | --- | --- | --- |
-| `RunContextArgs` | captures inputs that determine a run footprint | same context resolves predictably |
-| `RunDirectoryLayout` | names repository directories for run output | paths stay explainable without command memory |
-| `RunManifest` | records durable run identity and inputs | old manifests remain interpretable |
-| `RunReport` | records high-level run outcome and evidence pointers | report fields preserve repository meaning |
-| `RunHistoryEntry` | appends run evidence into repository history | history supports later indexing and audit |
-| `artifact_header` | bridges core artifact shape into infra persistence | header meaning stays aligned with core |
-| `write_manifest`, `write_run_report`, `append_run_history_entry` | persistence operations | writes are explicit and reviewable |
+| `RunContextArgs` | Which config, dataset, output override, resume target, sidecar, and determinism policy apply? | none until resolved |
+| `RunDirectoryLayout` | Where do artifacts, logs, summary, and manifest belong? | `create` establishes artifact and log locations |
+| `prepare_run` | What standard layout and artifact header should a command use? | creates the layout and writes the run report |
+| `RunReport` | Which deterministic identity, dataset hash, build, replay scope, and front-end provenance describe the run? | writing it also publishes `BIJUX_RUN_ID` to the process |
+| `RunManifest` | Which command, configuration snapshot, dataset metadata, provenance, and summary should survive? | writing it persists the manifest and appends history |
+| `RunHistoryEntry` | How can later tooling discover the run without scanning every directory? | append-only repository history |
+| `artifact_header` | Which shared envelope should produced artifacts carry? | none; core still owns envelope semantics |
 
-## Boundary Decisions
+## Directory Resolution
 
-- Receiver and nav produce runtime or science evidence before persistence.
-- Infra records where evidence lives and how later readers find it.
-- Command code may select output intent but does not define run layout.
-- Core owns artifact payload meaning; infra owns repository placement.
+Resolution follows declared intent:
 
-## First Proof Check
+1. A resume target reuses that run location.
+2. An output override selects the caller-provided location.
+3. Otherwise infra derives a run identity from configuration, dataset, build
+   version, command, and determinism policy.
+4. A dataset is required unless the caller explicitly permits an unregistered
+   dataset.
 
-Inspect `crates/bijux-gnss-infra/docs/RUN_LAYOUT.md`,
-`crates/bijux-gnss-infra/src/run_layout.rs`,
-`crates/bijux-gnss-infra/src/run_layout/directories/`,
-`crates/bijux-gnss-infra/src/run_layout/records/`,
-`crates/bijux-gnss-infra/src/run_layout/persistence.rs`, and run-layout tests.
+Callers must not reproduce this logic or assemble child paths themselves. Doing
+so can separate artifacts from their report, manifest, or history record.
+
+## Durability Rules
+
+- Treat layout and report schema versions as compatibility boundaries.
+- Preserve enough configuration and dataset context to explain a run after the
+  producing command is unavailable.
+- Keep replay scope and front-end provenance explicit; a matching command line
+  alone does not establish equivalent input conditions.
+- Do not rewrite history while appending a new run.
+- Keep product claims in their producing package. A manifest can record a
+  receiver outcome, but infra does not establish its scientific validity.
+
+## What To Read After A Failure
+
+| symptom | inspect first |
+| --- | --- |
+| run location differs from expectation | resolved output, resume, dataset, and deterministic inputs |
+| manifest exists but discovery misses the run | history append result and manifest write completion |
+| two runs cannot be compared | report schema, configuration hash, dataset hash, replay scope, and front-end provenance |
+| artifact cannot be attributed | artifact header and the run report that supplied its identity |
+| an old reader rejects a footprint | layout or report schema compatibility before field-level content |
+
+The [run layout guide](../../../crates/bijux-gnss-infra/docs/RUN_LAYOUT.md)
+defines the crate-local contract. Verify behavior against the
+[run context resolver](../../../crates/bijux-gnss-infra/src/run_layout/directories/context.rs),
+[manifest persistence](../../../crates/bijux-gnss-infra/src/run_layout/records/manifest.rs),
+and [report persistence](../../../crates/bijux-gnss-infra/src/run_layout/records/report.rs).

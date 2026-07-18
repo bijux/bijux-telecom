@@ -9,71 +9,113 @@ last_reviewed: 2026-07-18
 
 # Entrypoints and Examples
 
-The best infra examples are repository-state examples. Start here when the
-question is about datasets, sidecars, run directories, persisted artifacts,
-provenance, sweeps, overrides, or reference comparison after evidence exists.
+Start with the object you have and the repository state you need. Infra
+entrypoints turn registered files, run context, or persisted artifacts into
+typed results; they do not execute acquisition, tracking, or navigation.
 
-## Entrypoint Flow
+## Find The Right Entrypoint
 
 ```mermaid
-flowchart LR
-    file["repository file<br/>registry sidecar artifact"]
-    api["infra api"]
-    typed["typed repository<br/>state"]
-    workflow["command receiver<br/>or validation workflow"]
+flowchart TD
+    input{"what do you have?"}
+    registry["dataset registry<br/>or sidecar"]
+    context["run context"]
+    artifact["persisted artifact"]
+    sweep["declared sweep values"]
+    reference["solutions and<br/>reference epochs"]
 
-    file --> api --> typed --> workflow
+    input --> registry --> datasets["load or resolve metadata"]
+    input --> context --> runs["prepare run or write records"]
+    input --> artifact --> inspect["explain or validate"]
+    input --> sweep --> cases["parse and expand cases"]
+    input --> reference --> align["validate reference alignment"]
 ```
 
-## Starting Points
-
-| reader need | public entrypoint | first owner to inspect |
+| need | entrypoint | result or effect |
 | --- | --- | --- |
-| load dataset registry | `DatasetRegistry::load` | dataset docs |
-| load or resolve raw-IQ metadata | `load_raw_iq_metadata`, `resolve_raw_iq_metadata` | signal metadata plus dataset docs |
-| build run footprint | `run_dir`, `artifacts_dir`, `write_manifest`, `write_run_report` | run-layout docs |
-| expand experiment matrix | `parse_sweep`, `expand_sweep` | experiment and override docs |
-| explain or validate artifact | `artifact_explain`, `artifact_validate` | artifact inspection docs |
-| compare reference output | `validate_reference` | validation docs |
-| attach provenance | `hash_config`, `git_hash`, `git_dirty`, `cpu_features` | hashing docs |
+| read registered capture identity | `DatasetRegistry::load` | normalized `DatasetEntry` records |
+| resolve raw-IQ ingest metadata | `resolve_raw_iq_metadata` | validated signal metadata from an explicit or registered sidecar |
+| create the standard run context | `prepare_run` | directory layout, artifact header, and persisted run report |
+| persist execution context | `write_manifest`, `write_run_report` | versioned repository records |
+| inspect an existing artifact | `artifact_explain`, `artifact_validate` | typed summary or diagnostic events |
+| expand experiment cases | `parse_sweep`, `expand_sweep` | Cartesian products of typed override pairs |
+| align reference epochs | `validate_reference` | aligned epochs, or an error when none align |
+| capture build context | `hash_config`, `git_hash`, `git_dirty`, `cpu_features` | provenance fields for reports |
 
-## Example: Load a Dataset Registry
+## Load A Registered Dataset
 
 ```rust
 use std::path::Path;
-use bijux_gnss_infra::api::DatasetRegistry;
+use bijux_gnss_infra::api::{core::InputError, DatasetEntry, DatasetRegistry};
 
-let registry = DatasetRegistry::load(Path::new("datasets/registry.toml"))?;
+fn load_capture(registry_path: &Path, dataset_id: &str) -> Result<DatasetEntry, InputError> {
+    let registry = DatasetRegistry::load(registry_path)?;
+    registry.find(dataset_id).ok_or_else(|| InputError {
+        message: format!("dataset is not registered: {dataset_id}"),
+    })
+}
 ```
 
-## Example: Expand a Sweep
+Registry loading normalizes relative dataset and sidecar locations against the
+registry location. Looking up an unknown identifier returns `None`; the caller
+must decide whether that is a refusal or whether an explicitly unregistered
+workflow is allowed.
+
+For raw-IQ input, prefer `resolve_raw_iq_metadata` over separately loading every
+possible source. It validates an explicit sidecar against registered metadata
+when both are present and refuses input when neither source provides metadata.
+
+## Expand Declared Experiment Cases
 
 ```rust
 use bijux_gnss_infra::api::expand_sweep;
 
 let spec = vec![
-    ("sampling_hz".to_string(), vec!["1023000".to_string(), "4092000".to_string()]),
+    (
+        "tracking.pll_bandwidth_hz".to_string(),
+        vec!["12.0".to_string(), "18.0".to_string()],
+    ),
+    (
+        "navigation.elevation_mask_deg".to_string(),
+        vec!["5.0".to_string(), "10.0".to_string()],
+    ),
 ];
 let cases = expand_sweep(&spec);
+assert_eq!(cases.len(), 4);
 ```
 
-## Example: Validate Persisted References
+`expand_sweep` returns the Cartesian product. An empty specification produces
+one empty case, which lets a caller use the same loop for baseline and swept
+runs. Use `apply_sweep_value` to validate each key and value against the receiver
+profile rather than treating the returned strings as trusted configuration.
+
+## Align Persisted Solutions With Reference Epochs
 
 ```rust
 use bijux_gnss_infra::api::{validate_reference, ReferenceAlign};
 
-let _aligned = validate_reference(&solutions, &reference_epochs, ReferenceAlign::Closest)?;
+let aligned = validate_reference(
+    &solutions,
+    &reference_epochs,
+    ReferenceAlign::Closest,
+)?;
 ```
 
-These examples stay small on purpose. The crate's public value is typed
-repository interpretation, not full workflow narration. Commands and receiver
-stages should call these entrypoints rather than duplicating registry parsing,
-run-layout construction, or persisted validation rules.
+The adapter guarantees that at least one reference epoch aligned. It does not
+claim the resulting navigation solution is accurate; use receiver or navigation
+validation for that scientific judgment.
 
-## First Proof Check
+## Error Handling
 
-Inspect `crates/bijux-gnss-infra/src/api.rs`,
-`crates/bijux-gnss-infra/docs/PUBLIC_API.md`,
-`crates/bijux-gnss-infra/docs/CONTRACTS.md`, and the most relevant dataset,
-run-layout, or validation tests to confirm these examples still match real
-repository entrypoints.
+Most entrypoints return the shared `InputError`. Preserve its specific message
+when reporting a missing dataset, invalid sidecar, unsupported override, failed
+write, or empty reference alignment. Replacing these failures with a generic
+"infrastructure error" removes the evidence an operator needs.
+
+For deeper contracts, continue with the
+[dataset guide](../../../crates/bijux-gnss-infra/docs/DATASETS.md),
+[run layout guide](../../../crates/bijux-gnss-infra/docs/RUN_LAYOUT.md),
+[validation guide](../../../crates/bijux-gnss-infra/docs/VALIDATION.md), or
+[override guide](../../../crates/bijux-gnss-infra/docs/OVERRIDES.md). The
+[curated API source](../../../crates/bijux-gnss-infra/src/api.rs) remains the
+authoritative list of available names.
