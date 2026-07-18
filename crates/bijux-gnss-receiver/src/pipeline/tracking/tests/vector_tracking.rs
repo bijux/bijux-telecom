@@ -130,7 +130,8 @@ fn vector_tracking_state_reports_latest_common_frequency_estimate() {
     assert_eq!(estimate.support_count, 2);
     assert_eq!(estimate.sample_index, 120);
     assert!((estimate.estimated_frequency_error_hz - 4.5).abs() < 1.0e-9);
-    assert!(estimate.supporting_channels.iter().all(|channel| channel.frequency_error_hz >= 4.0));
+    assert!(estimate.supporting_channels.iter().all(|channel| channel.sample_index >= 118));
+    assert!(estimate.max_supporting_residual_hz <= 1.5, "{estimate:?}");
 }
 
 #[test]

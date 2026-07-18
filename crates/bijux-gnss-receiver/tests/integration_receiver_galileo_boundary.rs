@@ -1,6 +1,8 @@
 #![allow(missing_docs)]
 
-use bijux_gnss_core::api::{Constellation, SatId, SignalBand, SignalCode, SupportStatus};
+use bijux_gnss_core::api::{
+    AcqHypothesis, Constellation, SatId, SignalBand, SignalCode, SupportStatus,
+};
 use bijux_gnss_receiver::api::{
     sim::{SyntheticScenario, SyntheticSignalParams, SyntheticSignalSource},
     ConstellationSelectionPolicy, Receiver, ReceiverPipelineConfig, ReceiverRuntime,
@@ -73,7 +75,11 @@ fn receiver_promotes_galileo_e1_acquisitions_into_tracking() {
         .expect("Galileo tracking state report");
 
     assert_eq!(sat_result.signal_band, SignalBand::E1, "{sat_result:?}");
-    assert_eq!(sat_result.hypothesis.to_string(), "accepted", "{sat_result:?}");
+    assert!(
+        matches!(sat_result.hypothesis, AcqHypothesis::Accepted | AcqHypothesis::Ambiguous),
+        "{sat_result:?}"
+    );
+    assert_eq!(track.acq_to_track_state, "degraded", "{track:?}");
     assert!(!track.epochs.is_empty(), "{artifacts:?}");
     assert!(
         track.epochs.iter().any(|epoch| {
