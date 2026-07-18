@@ -1,21 +1,48 @@
 # Public API
 
-`bijux-gnss-policies` publishes one small Rust surface through `bijux_gnss_policies::api`.
+`bijux-gnss-policies` publishes one small Rust surface through
+`bijux_gnss_policies::api`. The API exists so tests and maintainer tooling can
+run guardrails without importing internal rule modules or depending on source
+tree layout.
 
-## Exported items
+## API Flow
 
-- `check` runs guardrail validation for a crate root
-- `GuardrailConfig` describes the rule configuration for a crate
-- `GuardrailError` is the canonical failure type
-- `Result` is the crate-local result alias
+```mermaid
+flowchart LR
+    caller["test or maintainer tool"]
+    config["GuardrailConfig"]
+    check["check"]
+    result["Result"]
+    failure["GuardrailError"]
 
-## Intent
+    caller --> config
+    config --> check
+    check --> result
+    check --> failure
+```
 
-The public surface is intentionally narrow. Downstream crates should be able to say “run the
-guardrails for this crate” without importing internal rule modules or depending on internal file
-layout.
+## Exported Items
 
-## Extension rule
+| export | responsibility |
+| --- | --- |
+| `check` | Runs guardrail validation for a crate root. |
+| `GuardrailConfig` | Describes the rule configuration for a crate. |
+| `GuardrailError` | Carries the canonical policy failure type. |
+| `Result` | Provides the crate-local result alias for callers. |
 
-If a new export does not help another crate invoke or configure guardrails, it probably does not
-belong in the public API.
+## Boundary Rules
+
+- The API is intentionally narrow and read-only.
+- Callers choose the crate root and configuration; the policy crate evaluates
+  what it is asked to evaluate.
+- Internal rule modules stay private until another crate has a durable reason to
+  configure or run them directly.
+- Product runtime behavior and scientific semantics are not policy API
+  concerns.
+
+## Review Checks
+
+- A new export needs a reusable guardrail invocation or configuration use case.
+- Public errors need enough context for actionable repository review.
+- Do not expose internals to make one test shorter; add helper code in the test
+  when the behavior is not a reusable policy contract.

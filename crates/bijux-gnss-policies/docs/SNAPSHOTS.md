@@ -1,21 +1,46 @@
 # Snapshots
 
-`bijux-gnss-policies` uses snapshots where policy configuration needs a durable serialized shape.
+`bijux-gnss-policies` uses snapshots where policy configuration needs a durable
+serialized shape. A snapshot is review evidence for policy behavior; it is not
+noise to refresh without explanation.
 
-## Current snapshot surface
+## Snapshot Flow
 
-- `tests/snapshots/guardrail_default.json`
+```mermaid
+flowchart LR
+    config["GuardrailConfig"]
+    snapshot["snapshot file"]
+    test["snapshot test"]
+    review["policy review"]
 
-## What the snapshot protects
+    config --> snapshot
+    snapshot --> test
+    test --> review
+```
 
-The snapshot protects the default guardrail configuration shape. It makes policy drift visible when
-configuration is added, renamed, removed, or reordered in a meaningful way.
+## Current Snapshot Surface
 
-## Change discipline
+| snapshot | protects |
+| --- | --- |
+| `tests/snapshots/guardrail_default.json` | The default guardrail configuration shape, including rule-family names and serialized defaults. |
 
-When the snapshot changes:
+## What A Snapshot Change Means
 
-1. explain the policy reason in the same change set
-2. keep [GUARDRAILS.md](GUARDRAILS.md) and [CONTRACTS.md](CONTRACTS.md) aligned when rule families
-   or configuration meaning changes
-3. treat the snapshot as evidence of policy evolution, not as noisy generated clutter
+A snapshot diff is meaningful when configuration is added, renamed, removed,
+reordered in a semantically relevant way, or assigned a new default. It should
+make policy drift visible before a downstream crate discovers the change through
+a harder-to-debug guardrail failure.
+
+## Change Discipline
+
+- Explain the policy reason in the same change set.
+- Keep [GUARDRAILS.md](GUARDRAILS.md) and [CONTRACTS.md](CONTRACTS.md) aligned
+  when rule families or configuration meaning changes.
+- Treat the snapshot as evidence of policy evolution, not generated clutter.
+- Do not accept a snapshot diff only because a test told you to update it.
+
+## Review Checks
+
+- Can a reviewer tell which policy behavior changed?
+- Does the snapshot still describe a stable serialized contract?
+- Are downstream repository expectations affected by the new default?
