@@ -1,76 +1,98 @@
 ---
-title: Foundation
+title: Command Foundations
 audience: mixed
 type: index
 status: canonical
 owner: bijux-gnss-docs
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-18
 ---
 
-# Foundation
+# Command Foundations
 
-Open this section when the question is why `bijux-gnss` owns command-boundary
-behavior before runtime, repository, signal, or navigation layers start
-pulling the answer toward convenience.
+`bijux-gnss` is the operator boundary of the workspace. It turns command-line
+intent into typed requests, delegates scientific and persistence work, and
+returns reports and artifacts that identify what happened. It does not acquire
+ownership of receiver algorithms, signal processing, navigation models, shared
+records, or repository layout merely because it invokes them.
 
-## Boundary Model
+## Follow The Request
 
 ```mermaid
 flowchart LR
-    operator["operator intent"]
-    gnss["bijux-gnss"]
-    contracts["commands workflows reports facade"]
-    downstream["receiver infra nav signal core"]
-    drift["runtime or science creep"]
+    intent["operator intent"]
+    syntax["command and options"]
+    request["typed request"]
+    owner["domain owner"]
+    evidence["records and artifacts"]
+    report["operator report"]
 
-    operator --> gnss --> contracts --> downstream
-    gnss --> drift
+    intent --> syntax --> request --> owner --> evidence --> report
 ```
 
-The command boundary is only trustworthy when readers can see where command
-vocabulary, workflow composition, and operator-facing reporting stop, and where
-runtime, persistence, or science owners take over.
+The command crate owns the first three transitions and the final presentation.
+The lower crate owns the domain behavior and the meaning of the evidence it
+produces. A trustworthy command preserves that distinction in its errors,
+reports, and documentation.
 
-## Read These First
+## Start With Your Question
 
-- open [Ownership Boundary](ownership-boundary.md) first when a feature feels
-  adjacent to `receiver`, `infra`, `nav`, `signal`, or `core`
-- open [Package Overview](package-overview.md) when you need the shortest
-  durable description of the crate role
-- open [Scope And Non-Goals](scope-and-non-goals.md) when the question is what
-  the command crate should explicitly refuse
+| question | read next |
+| --- | --- |
+| Which command matches an operator intent? | [Operator questions](operator-faq.md) |
+| Which options and output fields are part of the interface? | [Command contracts](../interfaces/command-contracts.md) and [report contracts](../interfaces/reporting-contracts.md) |
+| What sequence does a multi-stage command perform? | [Workflow contracts](../interfaces/workflow-contracts.md) |
+| Is this behavior owned by the command crate at all? | [Ownership boundary](ownership-boundary.md) |
+| What must the command crate refuse? | [Scope and non-goals](scope-and-non-goals.md) |
+| Where does an implementation concern live? | [Architecture map](../architecture/) |
+| What evidence supports an operator-facing claim? | [Quality model](../quality/) |
 
-## The Mistake This Section Prevents
+## What The Boundary Promises
 
-The most common mistake here is assuming that because a command invokes lower
-layers, the command crate should own their behavior. This section keeps command
-composition, runtime execution, repository persistence, and science boundaries
-from collapsing into one owner.
+- **Intent remains visible.** Option names and command families describe the
+  operation a user requested, not an internal helper that happens to implement
+  it.
+- **Delegation remains typed.** Runtime, signal, navigation, and repository
+  inputs cross explicit crate boundaries instead of being reinterpreted in
+  command handlers.
+- **Outputs remain attributable.** Reports identify the command and the
+  resulting evidence; persisted layout and manifest semantics remain owned by
+  the infrastructure crate.
+- **Failure remains honest.** Invalid operator input, unsupported science, and
+  internal faults must not collapse into an ambiguous success or a generic
+  degraded result.
 
-## Pages In This Section
+```mermaid
+flowchart TD
+    claim["operator-facing claim"]
+    report["report field or exit status"]
+    artifact["persisted evidence"]
+    contract["owning crate contract"]
+    proof["tests and source"]
 
-- [Package Overview](package-overview.md)
-- [Scope And Non-Goals](scope-and-non-goals.md)
-- [Ownership Boundary](ownership-boundary.md)
-- [Operator FAQ](operator-faq.md)
-- [Repository Fit](repository-fit.md)
-- [Domain Language](domain-language.md)
-- [Dependencies And Adjacencies](dependencies-and-adjacencies.md)
-- [Change Principles](change-principles.md)
+    claim --> report
+    report --> artifact
+    artifact --> contract
+    contract --> proof
+```
 
-## First Proof Check
+Read this chain from top to bottom before trusting a command result. A clean
+table is presentation, not proof. A schema-valid artifact proves structure, not
+scientific validity. The decisive claim belongs to the contract and evidence
+that produced it.
 
-- `crates/bijux-gnss/README.md`
-- `crates/bijux-gnss/docs/BOUNDARY.md`
-- `crates/bijux-gnss/src/main.rs`
-- `crates/bijux-gnss/src/cli/command_catalog/`
-- `crates/bijux-gnss/src/cli/commands/`
+## Command Context
 
-## Leave This Section When
+Use the [package overview](package-overview.md) for the shortest role
+description. The [repository fit](repository-fit.md) explains how the binary
+relates to the six publishable GNSS libraries, while
+[dependencies and adjacencies](dependencies-and-adjacencies.md) identifies the
+handoff to each one. [Domain language](domain-language.md) defines the terms
+used across command documentation, and [change principles](change-principles.md)
+sets the review standard for extending the boundary.
 
-- leave for [Interfaces](../interfaces/) when the dispute is already about a
-  public command, report, or facade contract
-- leave for [Architecture](../architecture/) when the ownership question is
-  settled and the next question is where the code lives
-- leave for [Quality](../quality/) when the boundary is clear and the question
-  becomes whether the trust story is honest enough
+For implementation-level confirmation, inspect the
+[command parser](../../../crates/bijux-gnss/src/cli/command_line.rs),
+[command catalog](../../../crates/bijux-gnss/src/cli/command_catalog/mod.rs),
+[runtime dispatcher](../../../crates/bijux-gnss/src/cli/command_runtime.rs),
+[command-family reference](../../../crates/bijux-gnss/docs/COMMANDS.md), and
+[workflow reference](../../../crates/bijux-gnss/docs/WORKFLOWS.md).
