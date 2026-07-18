@@ -9,61 +9,129 @@ last_reviewed: 2026-07-18
 
 # Workflow Contracts
 
-`bijux-gnss-dev` commands are small because each command owns one narrow
-maintenance workflow. The contract is not command size; it is that repository
-checks, derived audit arguments, and benchmark evidence are typed, reviewable,
-and reproducible.
+Maintainer workflows are safe only when validation, derivation, execution, and
+review happen in the right order. A command returning success does not always
+mean a gate was evaluated: missing optional input and advisory modes are
+intentional states that callers must distinguish.
 
-## Workflow Map
+## Security Exception Workflow
+
+```mermaid
+flowchart TD
+    edit["edit current advisory record"]
+    validate["validate identifier, why, owner, link, and expiry"]
+    valid{"validation succeeds?"}
+    derive["derive sorted audit ignore arguments"]
+    audit["run cargo audit with derived arguments"]
+    review["review advisory and expiration"]
+    stop["stop without deriving exceptions"]
+
+    edit --> validate
+    validate --> valid
+    valid -- no --> stop
+    valid -- yes --> derive
+    derive --> audit
+    audit --> review
+```
+
+The derivation command is not a validator. Safe automation must:
+
+1. require the audit exception ledger;
+2. run `audit-allowlist`;
+3. stop on validation failure;
+4. run `audit-ignore-args`;
+5. pass the resulting arguments to the audit tool without maintaining a second
+   exception list.
+
+Current advisory records use `why`, owner, link, and expiry. Legacy ignore-only
+entries are consumed by derivation but do not receive the same governance
+validation. Migrate them before treating the workflow as fully reviewed.
+
+The [audit policy](../../../crates/bijux-gnss-dev/docs/AUDIT_POLICY.md) defines
+the human review expectation.
+
+## Local Standards Deviation Workflow
 
 ```mermaid
 flowchart LR
-    allowlist["audit-allowlist.toml"]
-    deviations["deny deviations"]
-    auditcheck["audit-allowlist check"]
-    denycheck["deny-policy-deviations check"]
-    ignore["audit-ignore-args"]
-    bench["bench-compare"]
-    evidence["governed evidence"]
+    upstream["upstream standards review"]
+    record["local deviation with id, owner, reason, review, expiry"]
+    validate["deny-policy-deviations"]
+    gate["repository policy gate"]
+    remove["remove deviation when upstream resolution lands"]
 
-    allowlist --> auditcheck
-    allowlist --> ignore
-    deviations --> denycheck
-    bench --> evidence
+    upstream --> record
+    record --> validate
+    validate --> gate
+    gate --> remove
 ```
 
-## Contract Families
+The review link must use HTTP(S) and reference `bijux-std`. This command checks
+that local deviations remain attributable and time-bounded; it does not decide
+shared policy or update synchronized standards. Empty deviation lists are valid.
 
-| workflow | guarantee | failure means |
-| --- | --- | --- |
-| audit allowlist | every security exception has a valid advisory id, rationale, owner, link, and unexpired review date | the repository is hiding or aging an audit exception |
-| deny-policy deviations | every local dependency-policy deviation has an owner, reason, upstream standards link, and unexpired review date | local policy drift is no longer reviewable |
-| audit-ignore derivation | automation consumes ignore arguments from the same reviewed allowlist maintainers validate | CI or Makefile exceptions may diverge from reviewed state |
-| benchmark comparison | receiver and navigation benchmark evidence is rerunnable, normalized, and compared against a checked baseline | performance evidence is not reproducible or violates the configured threshold |
+## Benchmark Evidence Workflow
 
-## Boundary Rules
+```mermaid
+flowchart TD
+    change["performance-sensitive product change"]
+    run["run curated benchmarks"]
+    snapshot["write raw and normalized evidence"]
+    baseline{"baseline exists?"}
+    compare["compare configured ratio"]
+    strict{"strict mode?"}
+    advisory["report finding and succeed"]
+    gate["fail on regression"]
+    absent["record that comparison was skipped"]
+    review["review product cause and evidence"]
 
-- This crate owns workflow validation logic, not upstream dependency policy.
-- This crate owns benchmark comparison mechanics, not receiver or navigation
-  algorithm performance claims.
-- Makefile and CI may call these commands, but they should not duplicate their
-  validation rules in shell.
-- Any new maintainer workflow needs a named input, named output, and testable
-  failure mode before it belongs here.
+    change --> run
+    run --> snapshot
+    snapshot --> baseline
+    baseline -- no --> absent
+    baseline -- yes --> compare
+    compare --> strict
+    strict -- no --> advisory
+    strict -- yes --> gate
+    advisory --> review
+    gate --> review
+    absent --> review
+```
 
-## Reader Checks
+Use non-strict mode for investigation and strict mode for a gate. In either
+mode, reviewers need the baseline identity, threshold, toolchain, benchmark
+inventory, and raw evidence. A successful run without a baseline is execution
+evidence, not regression evidence.
 
-- What governed input does the workflow read?
-- What output does it produce, if any?
-- What exact condition makes it fail?
-- Which repository owner must review a changed exception, deviation, or
-  benchmark baseline?
+The [benchmark contract](../../../crates/bijux-gnss-dev/docs/BENCHMARKS.md) and
+[output contract](../../../crates/bijux-gnss-dev/docs/OUTPUTS.md) define the
+reviewed files.
 
-## First Proof Check
+## Slow-Test Lane Governance
 
-Inspect `crates/bijux-gnss-dev/docs/WORKFLOWS.md`,
-`crates/bijux-gnss-dev/docs/CONTRACTS.md`,
-`crates/bijux-gnss-dev/docs/COMMANDS.md`,
-`crates/bijux-gnss-dev/src/main.rs`,
-`crates/bijux-gnss-dev/tests/integration_guardrails.rs`, and
-`crates/bijux-gnss-dev/tests/integration_nextest_suite_selection.rs`.
+The [slow-test roster](../../../configs/rust/nextest-slow-roster.txt) is
+validated by the
+[lane selection integration test](../../../crates/bijux-gnss-dev/tests/integration_nextest_suite_selection.rs).
+That evidence checks sorted uniqueness, resolution to known test functions, and
+agreement between fast and slow nextest expressions.
+
+This is a repository test workflow, not one of the binary’s four commands.
+Changes to the roster must update lane evidence, but they do not expand the
+public command surface.
+
+## Add A Maintainer Workflow
+
+A new workflow belongs in this executable only when it has:
+
+- a repository-maintenance owner rather than product behavior;
+- a named governed input or explicit no-input contract;
+- documented output, filesystem effects, and missing-input behavior;
+- a failure mode that tells maintainers what to correct;
+- deterministic behavior suitable for local and CI use;
+- process-level evidence for observable command behavior;
+- no duplicated rule already owned by shared standards or the policy crate.
+
+Update the [binary boundary](binary-boundary.md),
+[command surface](command-surface.md), and crate-local
+[workflow guide](../../../crates/bijux-gnss-dev/docs/WORKFLOWS.md) together when
+the command inventory changes.
