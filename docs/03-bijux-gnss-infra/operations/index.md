@@ -1,65 +1,112 @@
 ---
-title: Operations
-audience: mixed
+title: Infrastructure Change Guide
+audience: maintainers
 type: index
 status: canonical
 owner: bijux-gnss-infra-docs
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-18
 ---
 
-# Operations
+# Infrastructure Change Guide
 
-Open this section when the question is how to change `bijux-gnss-infra`
-without destabilizing repository footprints, dataset interpretation, or
-validation behavior.
+Infrastructure changes rewrite how the repository remembers inputs and runs.
+Treat dataset metadata, run identity, manifests, reports, history, hashes,
+overrides, and artifact inspection as durable contracts rather than incidental
+file handling.
 
-## Operational Model
+## Start With The Repository Object
+
+```mermaid
+flowchart TD
+    change["proposed infrastructure change"]
+    object{"which durable object<br/>or interpretation moves?"}
+    dataset["dataset or sidecar"]
+    footprint["run footprint"]
+    artifact["artifact inspection"]
+    variation["override or sweep"]
+    provenance["identity or provenance"]
+    adapter["reference adapter"]
+    compatibility["reader and compatibility decision"]
+    evidence["focused proof"]
+
+    change --> object
+    object --> dataset
+    object --> footprint
+    object --> artifact
+    object --> variation
+    object --> provenance
+    object --> adapter
+    dataset --> compatibility
+    footprint --> compatibility
+    artifact --> compatibility
+    variation --> compatibility
+    provenance --> compatibility
+    adapter --> compatibility
+    compatibility --> evidence
+```
+
+If the changed meaning is acquisition, tracking, signal processing, or
+navigation science, route it to the producing package before editing
+infrastructure.
+
+## Choose The Maintenance Route
+
+| changed surface | operational route | required evidence |
+| --- | --- | --- |
+| Registry entry, sidecar, coordinates, or reusable capture | [Dataset registration](dataset-registration.md) | source precedence, required metadata, provenance, contradiction, and consumer resolution |
+| Run identity, output, resume, manifest, report, or history | [Change sequence](change-sequence.md) | deterministic resolution, old-reader impact, persistence, and discoverability |
+| Artifact kind, parser, strict behavior, diagnostics, or sequence checks | [Fixture and artifact care](fixture-and-artifact-care.md) | supported and malformed inputs, current-schema policy, empty behavior, and diagnostic meaning |
+| Profile override, experiment, or sweep dimension | [Common workflows](common-workflows.md) | typed mutation, unsupported value refusal, deterministic expansion, and receiver ownership |
+| Hash or provenance field | [Review scope](review-scope.md) | governed inputs, equality meaning, dirty state, and replay interpretation |
+| Local focused work | [Local development](local-development.md) and [verification commands](verification-commands.md) | exact proof and residual gap |
+| Published repository contract | [Release and versioning](release-and-versioning.md) | compatibility for stored records, hashes, paths, and readers |
+
+## Preserve The Evidence Chain
 
 ```mermaid
 flowchart LR
-    change["proposed infra change"]
-    scope["scope and owner check"]
-    docs["contract docs update"]
-    tests["narrow verification"]
-    review["repository review"]
-    release["merge-ready change"]
+    declaration["declared input"]
+    resolution["typed resolution"]
+    identity["identity and provenance"]
+    output["domain output"]
+    persistence["manifest and artifacts"]
+    discovery["history and inspection"]
+    future["future reader"]
 
-    change --> scope --> docs --> tests --> review --> release
+    declaration --> resolution --> identity --> output --> persistence --> discovery --> future
 ```
 
-Infra changes often look harmless because they are "only" about files or
-manifests. In practice they can silently rewrite repository memory, so the
-change sequence has to stay explicit.
+A change is incomplete if a future reader cannot explain which input produced
+an artifact, why a run identity changed, or whether an older record is
+unsupported rather than corrupt.
 
-## Read These First
+Do not repair a broken chain by assembling paths manually, editing generated
+manifests, accepting contradictory metadata, or weakening artifact validation.
 
-- open [Change Sequence](change-sequence.md) first when the work touches
-  datasets, run layout, overrides, or validation adapters
-- open [Verification Commands](verification-commands.md) when you need the
-  minimum executable proof for an infra change
-- open [Fixture and Artifact Care](fixture-and-artifact-care.md) when the
-  change touches persisted footprints or artifact interpretation
+## Generated Evidence And Fixtures
 
-## First Proof Check
+Keep generated run evidence under governed output locations. Tests must isolate
+their files from real run history and must not leave repository state behind.
+Checked-in examples should represent an intentional contract and include an
+active reader or validator before being cited as compatibility proof.
 
-- `crates/bijux-gnss-infra/README.md`
-- `crates/bijux-gnss-infra/docs/TESTS.md`
-- `crates/bijux-gnss-infra/tests/`
+When artifact interpretation changes, state whether:
 
-## Pages In This Section
+- stored payload meaning changed;
+- only repository dispatch or schema policy changed;
+- older records remain readable;
+- diagnostics changed severity or meaning;
+- strict and non-strict empty behavior changed.
 
-- [Common Workflows](common-workflows.md)
-- [Local Development](local-development.md)
-- [Change Sequence](change-sequence.md)
-- [Dataset Registration](dataset-registration.md)
-- [Verification Commands](verification-commands.md)
-- [Fixture and Artifact Care](fixture-and-artifact-care.md)
-- [Review Scope](review-scope.md)
-- [Release and Versioning](release-and-versioning.md)
+## Commit Boundary
 
-## Leave This Section When
+Commit when one repository contract, its docs, reader or writer behavior,
+focused evidence, and compatibility decision agree. Keep generated output
+separate from handwritten contract changes unless correctness requires them to
+move together.
 
-- leave for [Interfaces](../interfaces/) when the question is what infra
-  promises rather than how to change it safely
-- leave for [Quality](../quality/) when the operational sequence is clear and
-  the question becomes proof sufficiency
+The [infrastructure test guide](../../../crates/bijux-gnss-infra/docs/TESTS.md),
+[run-layout guide](../../../crates/bijux-gnss-infra/docs/RUN_LAYOUT.md),
+[dataset guide](../../../crates/bijux-gnss-infra/docs/DATASETS.md), and
+[validation guide](../../../crates/bijux-gnss-infra/docs/VALIDATION.md) are the
+package-level authorities.
