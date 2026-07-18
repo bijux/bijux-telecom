@@ -13,29 +13,33 @@ signal catalogs, spreading codes, secondary codes, raw-IQ metadata,
 sample conversion, NCOs, replicas, spectra, front-end helpers, and tracking-loop
 building blocks.
 
-Start here when a value or algorithm is reusable signal meaning. Do not start
-here for receiver scheduling, persisted run layout, navigation estimation, or
-operator command behavior.
+Use this crate for reusable signal meaning that remains valid outside one
+receiver run. Receiver scheduling, persisted run layout, navigation estimation,
+and operator command behavior belong to higher crates.
 
-## Install
+## Availability
+
+The first registry release has not been published. In this workspace, build or
+test the package directly:
 
 ```sh
-cargo add bijux-gnss-signal
+cargo test -p bijux-gnss-signal
 ```
 
-The Cargo package name is `bijux-gnss-signal`; its Rust import name is
-`bijux_gnss_signal`. All public packages in this repository share one release
-version.
+After publication, add it with `cargo add bijux-gnss-signal`. The Cargo package
+name is `bijux-gnss-signal`; its Rust import name is `bijux_gnss_signal`. All
+public packages in this repository share one release version.
 
-## Reader Route
+## Choose the Signal Contract
 
 | question | go next |
 | --- | --- |
-| Which signal identity or wavelength is registered? | [Signal catalog guide](docs/CATALOG.md), `src/catalog.rs` |
-| Which code family or secondary code is implemented? | [Code family guide](docs/CODE_FAMILIES.md), `src/codes/` |
-| Which DSP primitive owns timing, NCO, replica, or spectrum behavior? | [DSP guide](docs/DSP.md), `src/dsp/` |
+| Which signal identity, component, carrier, code rate, or wavelength is registered? | [signal catalog](docs/CATALOG.md) |
+| Which primary or secondary code behavior is implemented? | [code-family guide](docs/CODE_FAMILIES.md) |
+| Which DSP primitive owns timing, NCO, replica, spectrum, or tracking math? | [DSP guide](docs/DSP.md) |
 | Which raw sample or metadata contract applies? | [Raw IQ guide](docs/RAW_IQ.md), [Sample guide](docs/SAMPLES.md) |
-| What changed in this package? | [Package changelog](CHANGELOG.md) |
+| Which source, sink, or correlator interface is public? | [trait guide](docs/TRAITS.md) |
+| What compatibility changed? | [package release history](CHANGELOG.md) |
 
 ## Owned Boundary
 
@@ -63,29 +67,40 @@ flowchart TB
     dsp --> receiver
 ```
 
-## Source Map
+## Behavioral Invariants
 
-- `src/catalog.rs` owns signal lookup and wavelength helpers.
-- `src/codes/` owns constellation-specific code families.
-- `src/dsp/` owns reusable signal-processing primitives.
-- `src/obs_validation.rs` owns signal-level observation compatibility checks.
-- `src/raw_iq.rs` and `src/samples.rs` own raw-sample contracts and
-  conversions.
+- Signal identity determines physical metadata; receiver configuration must not
+  redefine carrier, code-rate, wavelength, or component roles.
+- Code generation and replica sampling remain deterministic across chunk
+  boundaries and long-running sample indices.
+- Raw-IQ formats preserve explicit sample rate, intermediate frequency,
+  quantization, offset, and timestamp meaning.
+- DSP outputs state units, normalization, phase origin, and wrapping behavior.
+- Observation compatibility reports refusal or misalignment instead of silently
+  accepting an unsupported signal pair.
 
-## Documentation Map
+The [signal release guide](../../docs/06-bijux-gnss-signal/operations/release-and-versioning.md)
+defines the evidence required when one of these behaviors changes.
 
-- [Architecture guide](docs/ARCHITECTURE.md)
-- [Boundary guide](docs/BOUNDARY.md)
-- [Signal catalog guide](docs/CATALOG.md)
-- [Code family guide](docs/CODE_FAMILIES.md)
-- [Contract guide](docs/CONTRACTS.md)
-- [DSP guide](docs/DSP.md)
-- [Raw IQ guide](docs/RAW_IQ.md)
-- [Sample guide](docs/SAMPLES.md)
-- [Trait guide](docs/TRAITS.md)
-- [Public API](docs/PUBLIC_API.md)
-- [Test guide](docs/TESTS.md)
-- [Validation guide](docs/VALIDATION.md)
+## Implementation Ownership
+
+- The [signal catalog](src/catalog.rs) owns physical metadata, lookup, default
+  acquisition selection, and wavelength helpers.
+- The [code families](src/codes/mod.rs) own constellation-specific primary,
+  secondary, and multiplexed code behavior.
+- The [DSP boundary](src/dsp/mod.rs) owns runtime-neutral processing
+  primitives.
+- The [observation compatibility layer](src/obs_validation.rs) owns
+  dual-frequency and inter-frequency checks.
+- The [raw-IQ metadata](src/raw_iq.rs) and
+  [sample conversion](src/samples.rs) implementations own capture vocabulary
+  and numeric conversion.
+- The [public API](src/api.rs) owns deliberate exports and source, sink, and
+  correlator traits.
+
+For package boundaries and proof, continue with the
+[architecture guide](docs/ARCHITECTURE.md), [contract guide](docs/CONTRACTS.md),
+[validation guide](docs/VALIDATION.md), and [test guide](docs/TESTS.md).
 
 ## Verification Focus
 
