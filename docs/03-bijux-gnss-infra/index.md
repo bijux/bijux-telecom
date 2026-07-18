@@ -73,20 +73,20 @@ flowchart LR
 ## Strongest Proof Surfaces
 
 - crate README:
-  [`crates/bijux-gnss-infra/README.md`](../../crates/bijux-gnss-infra/README.md)
+  [Infra crate README](../../crates/bijux-gnss-infra/README.md)
 - dataset, run-layout, and validation docs:
-  [`crates/bijux-gnss-infra/docs/DATASETS.md`](../../crates/bijux-gnss-infra/docs/DATASETS.md),
-  [`crates/bijux-gnss-infra/docs/RUN_LAYOUT.md`](../../crates/bijux-gnss-infra/docs/RUN_LAYOUT.md),
-  [`crates/bijux-gnss-infra/docs/VALIDATION.md`](../../crates/bijux-gnss-infra/docs/VALIDATION.md)
+  [Dataset contracts](../../crates/bijux-gnss-infra/docs/DATASETS.md),
+  [Run layout contracts](../../crates/bijux-gnss-infra/docs/RUN_LAYOUT.md),
+  [Validation adapters](../../crates/bijux-gnss-infra/docs/VALIDATION.md)
 - override and experiment docs:
-  [`crates/bijux-gnss-infra/docs/OVERRIDES.md`](../../crates/bijux-gnss-infra/docs/OVERRIDES.md),
-  [`crates/bijux-gnss-infra/docs/EXPERIMENTS.md`](../../crates/bijux-gnss-infra/docs/EXPERIMENTS.md)
+  [Override guide](../../crates/bijux-gnss-infra/docs/OVERRIDES.md),
+  [Experiment guide](../../crates/bijux-gnss-infra/docs/EXPERIMENTS.md)
 - source roots:
-  [`crates/bijux-gnss-infra/src/datasets`](../../crates/bijux-gnss-infra/src/datasets),
-  [`crates/bijux-gnss-infra/src/run_layout`](../../crates/bijux-gnss-infra/src/run_layout),
-  [`crates/bijux-gnss-infra/src/overrides`](../../crates/bijux-gnss-infra/src/overrides)
+  [dataset source](../../crates/bijux-gnss-infra/src/datasets),
+  [run-layout source](../../crates/bijux-gnss-infra/src/run_layout),
+  [override source](../../crates/bijux-gnss-infra/src/overrides)
 - proof tests:
-  [`crates/bijux-gnss-infra/tests`](../../crates/bijux-gnss-infra/tests)
+  [infra integration tests](../../crates/bijux-gnss-infra/tests)
 
 ## Support Crates That Matter Here
 
@@ -131,23 +131,23 @@ flowchart LR
 ## Leave This Handbook When
 
 - the question becomes about the command that invokes the workflow:
-  [01-bijux-gnss](../01-bijux-gnss/)
+  [Command handbook](../01-bijux-gnss/)
 - the question becomes about receiver artifacts produced in memory before
   persistence:
-  [05-bijux-gnss-receiver](../05-bijux-gnss-receiver/)
+  [Receiver handbook](../05-bijux-gnss-receiver/)
 - the question becomes about the shared artifact schema or observation meaning:
-  [02-bijux-gnss-core](../02-bijux-gnss-core/)
+  [Core handbook](../02-bijux-gnss-core/)
 - the question becomes about navigation reference truth or estimation logic:
-  [04-bijux-gnss-nav](../04-bijux-gnss-nav/)
+  [Navigation handbook](../04-bijux-gnss-nav/)
 
 ## First Proof Check
 
-- `crates/bijux-gnss-infra/src/datasets/registry.rs`
-- `crates/bijux-gnss-infra/src/datasets/raw_iq_metadata.rs`
-- `crates/bijux-gnss-infra/src/run_layout/`
-- `crates/bijux-gnss-infra/src/overrides/`
-- `crates/bijux-gnss-infra/src/sweep.rs`
-- `crates/bijux-gnss-infra/docs/RUN_LAYOUT.md`
+- [dataset registry source](../../crates/bijux-gnss-infra/src/datasets/registry.rs)
+- [raw-IQ metadata source](../../crates/bijux-gnss-infra/src/datasets/raw_iq_metadata.rs)
+- [run-layout source](../../crates/bijux-gnss-infra/src/run_layout/)
+- [override source](../../crates/bijux-gnss-infra/src/overrides/)
+- [sweep source](../../crates/bijux-gnss-infra/src/sweep.rs)
+- [run layout contracts](../../crates/bijux-gnss-infra/docs/RUN_LAYOUT.md)
 
 ## Design Pressure
 

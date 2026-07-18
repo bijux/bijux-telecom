@@ -86,21 +86,21 @@ them into one generic "nav logic" bucket.
 ## Strongest Proof Surfaces
 
 - crate README:
-  [`crates/bijux-gnss-nav/README.md`](../../crates/bijux-gnss-nav/README.md)
+  [Navigation crate README](../../crates/bijux-gnss-nav/README.md)
 - crate-local scientific docs:
-  [`crates/bijux-gnss-nav/docs/ARCHITECTURE.md`](../../crates/bijux-gnss-nav/docs/ARCHITECTURE.md),
-  [`crates/bijux-gnss-nav/docs/CONTRACTS.md`](../../crates/bijux-gnss-nav/docs/CONTRACTS.md),
-  [`crates/bijux-gnss-nav/docs/ORBITS.md`](../../crates/bijux-gnss-nav/docs/ORBITS.md),
-  [`crates/bijux-gnss-nav/docs/CORRECTIONS.md`](../../crates/bijux-gnss-nav/docs/CORRECTIONS.md),
-  [`crates/bijux-gnss-nav/docs/ESTIMATION.md`](../../crates/bijux-gnss-nav/docs/ESTIMATION.md),
-  [`crates/bijux-gnss-nav/docs/TIME.md`](../../crates/bijux-gnss-nav/docs/TIME.md)
+  [Navigation architecture](../../crates/bijux-gnss-nav/docs/ARCHITECTURE.md),
+  [Navigation contracts](../../crates/bijux-gnss-nav/docs/CONTRACTS.md),
+  [Orbit guide](../../crates/bijux-gnss-nav/docs/ORBITS.md),
+  [Correction guide](../../crates/bijux-gnss-nav/docs/CORRECTIONS.md),
+  [Estimation guide](../../crates/bijux-gnss-nav/docs/ESTIMATION.md),
+  [Navigation time guide](../../crates/bijux-gnss-nav/docs/TIME.md)
 - source roots:
-  [`crates/bijux-gnss-nav/src/formats`](../../crates/bijux-gnss-nav/src/formats),
-  [`crates/bijux-gnss-nav/src/orbits`](../../crates/bijux-gnss-nav/src/orbits),
-  [`crates/bijux-gnss-nav/src/corrections`](../../crates/bijux-gnss-nav/src/corrections),
-  [`crates/bijux-gnss-nav/src/estimation`](../../crates/bijux-gnss-nav/src/estimation)
+  [format source](../../crates/bijux-gnss-nav/src/formats),
+  [orbit source](../../crates/bijux-gnss-nav/src/orbits),
+  [correction source](../../crates/bijux-gnss-nav/src/corrections),
+  [estimation source](../../crates/bijux-gnss-nav/src/estimation)
 - proof tests:
-  [`crates/bijux-gnss-nav/tests`](../../crates/bijux-gnss-nav/tests)
+  [navigation integration tests](../../crates/bijux-gnss-nav/tests)
 
 ## Support Crates That Matter Here
 
@@ -150,24 +150,24 @@ them into one generic "nav logic" bucket.
 ## Leave This Handbook When
 
 - the question becomes about user-facing commands:
-  [01-bijux-gnss](../01-bijux-gnss/)
+  [Command handbook](../01-bijux-gnss/)
 - the question becomes about shared observation or artifact schemas:
-  [02-bijux-gnss-core](../02-bijux-gnss-core/)
+  [Core handbook](../02-bijux-gnss-core/)
 - the question becomes about persisted repository evidence:
-  [03-bijux-gnss-infra](../03-bijux-gnss-infra/)
+  [Infra handbook](../03-bijux-gnss-infra/)
 - the question becomes about runtime scheduling and acquisition or tracking
   orchestration:
-  [05-bijux-gnss-receiver](../05-bijux-gnss-receiver/)
+  [Receiver handbook](../05-bijux-gnss-receiver/)
 
 ## First Proof Check
 
-- `crates/bijux-gnss-nav/src/api.rs`
-- `crates/bijux-gnss-nav/src/formats/`
-- `crates/bijux-gnss-nav/src/orbits/`
-- `crates/bijux-gnss-nav/src/corrections/`
-- `crates/bijux-gnss-nav/src/estimation/`
-- `crates/bijux-gnss-nav/src/models/`
-- `crates/bijux-gnss-nav/src/time/rollover.rs`
+- [curated navigation API source](../../crates/bijux-gnss-nav/src/api.rs)
+- [format source](../../crates/bijux-gnss-nav/src/formats/)
+- [orbit source](../../crates/bijux-gnss-nav/src/orbits/)
+- [correction source](../../crates/bijux-gnss-nav/src/corrections/)
+- [estimation source](../../crates/bijux-gnss-nav/src/estimation/)
+- [model source](../../crates/bijux-gnss-nav/src/models/)
+- [rollover handling source](../../crates/bijux-gnss-nav/src/time/rollover.rs)
 - `crates/bijux-gnss-nav/docs/PUBLIC_API.md`
 
 ## Design Pressure
