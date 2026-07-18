@@ -114,8 +114,8 @@ flowchart LR
   maintenance workflows around the crate
 - [Quality](quality/) for invariants, trust boundaries, validation commands,
   and known risks
-- [This Package Does Not Own](this-package-does-not-own.md) for the shortest
-  explicit refusal ledger
+- [Shared contract ownership boundaries](ownership-boundaries.md) for deciding
+  whether a type or invariant is truly cross-package
 
 ## Start Here When
 

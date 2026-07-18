@@ -42,7 +42,8 @@ flowchart TD
 - review command-shape changes as public contract changes
 - choose validation by command family, not by convenience
 - keep facade scope narrow and documented
-- maintain the refusal ledger in [This Package Does Not Own](../this-package-does-not-own.md)
+- maintain placement decisions in the
+  [command ownership boundaries](../ownership-boundaries.md)
 - record operator-visible or facade-visible changes in the package changelog
 - link lower-crate claims back to the lower owner instead of restating them here
 

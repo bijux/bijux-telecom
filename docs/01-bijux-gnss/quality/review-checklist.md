@@ -31,7 +31,7 @@ flowchart LR
 | changed surface | reviewer question | inspect before accepting |
 | --- | --- | --- |
 | CLI name, flag, or output field | Does the public workflow still say exactly what the command can prove? | `crates/bijux-gnss/src/cli`, `crates/bijux-gnss/docs/COMMANDS.md`, [CLI Reference](../interfaces/cli-reference.md) |
-| command orchestration | Is the command only routing work, or did it absorb runtime, signal, navigation, or infrastructure policy? | [This Package Does Not Own](../this-package-does-not-own.md), [Workflow Contracts](../interfaces/workflow-contracts.md) |
+| command orchestration | Is the command only routing work, or did it absorb runtime, signal, navigation, or infrastructure policy? | [Command ownership boundaries](../ownership-boundaries.md), [Workflow contracts](../interfaces/workflow-contracts.md) |
 | Rust facade export | Is the facade making a durable user entrypoint, not a shortcut around the owning crate? | `crates/bijux-gnss/docs/FACADE.md`, `crates/bijux-gnss/src/lib.rs`, [Facade Contracts](../interfaces/facade-contracts.md) |
 | report or validation output | Can an operator tell which lower-owner proof backs the report field? | [Reporting Contracts](../interfaces/reporting-contracts.md), `crates/bijux-gnss/docs/TESTS.md` |
 | fixture or workflow example | Does the example prove a real operator path instead of documenting one lucky invocation? | [Operator Journeys](../operations/operator-journeys.md), [Verification Commands](../operations/verification-commands.md) |
