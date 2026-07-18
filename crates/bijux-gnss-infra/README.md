@@ -8,120 +8,107 @@
 [![rust-docs](https://img.shields.io/badge/rust--docs-infra-DEA584?logo=rust&logoColor=white)](https://docs.rs/bijux-gnss-infra/latest/bijux_gnss_infra/)
 [![Infrastructure handbook](https://img.shields.io/badge/docs-infrastructure%20handbook-2563EB?logo=materialformkdocs&logoColor=white)](https://github.com/bijux/bijux-telecom/tree/main/docs/03-bijux-gnss-infra)
 
-`bijux-gnss-infra` owns repository-side infrastructure: dataset registry,
-run identity, persisted artifact layout, provenance hashing, receiver-profile
-overrides, and experiment sweep expansion.
+`bijux-gnss-infra` makes GNSS inputs and outputs reproducible at the repository
+boundary. It resolves registered datasets, records provenance, derives run
+locations, writes manifests and reports, applies typed configuration
+overrides, expands experiment sweeps, and inspects persisted artifacts.
 
-Use this crate when an input must become a governed repository object or runtime
-evidence must remain interpretable after the producing command exits.
-Acquisition science, signal math, navigation estimation, and operator wording
-remain with their owning crates.
+Use it when evidence must still be understandable after the process that
+created it has exited. It does not decide whether an acquisition is valid,
+which correction model is scientific, or how an operator-facing report should
+be worded.
 
-## Availability
-
-The first registry release has not been published. In this workspace, build or
-test the package directly:
-
-```sh
-cargo test -p bijux-gnss-infra
-```
-
-After publication, add it with `cargo add bijux-gnss-infra`. The Cargo package
-name is `bijux-gnss-infra`; its Rust import name is `bijux_gnss_infra`. All
-public packages in this repository share one release version.
-
-## Choose the Repository Contract
-
-| question | go next |
-| --- | --- |
-| Which dataset facts and raw-IQ sidecars are trusted? | [dataset guide](docs/DATASETS.md) |
-| How are run identity, directories, manifests, reports, and history defined? | [run-layout guide](docs/RUN_LAYOUT.md) |
-| How are provenance and content identities computed? | [hashing guide](docs/HASHING.md) |
-| How do overrides and sweeps expand? | [Override guide](docs/OVERRIDES.md), [Experiment guide](docs/EXPERIMENTS.md) |
-| How are artifacts inspected and reference results adapted? | [validation guide](docs/VALIDATION.md) |
-| What compatibility changed? | [package release history](CHANGELOG.md) |
-
-## Owned Boundary
-
-- dataset registration and metadata interpretation
-- deterministic run-directory layout and manifest persistence
-- artifact inspection and validation adapters
-- receiver-profile overrides and experiment sweep expansion
-- provenance hashing helpers for repository-owned inputs and outputs
-
-This crate does not own receiver execution algorithms, signal generation,
-navigation estimation, or operator-facing report language.
+## From Input Identity To Reviewable Run
 
 ```mermaid
 flowchart LR
-    input["dataset or profile"]
-    registry["registry and overrides"]
-    run["run layout"]
-    artifact["manifest and artifacts"]
-    review["review evidence"]
+    registry["dataset registry<br/>and sidecar"]
+    resolved["typed input<br/>and provenance"]
+    variation["overrides or<br/>experiment sweep"]
+    context["deterministic<br/>run identity"]
+    output["artifacts, manifest,<br/>report, history"]
+    reviewer["later reader"]
 
-    input --> registry
-    registry --> run
-    run --> artifact
-    artifact --> review
+    registry --> resolved
+    resolved --> context
+    variation --> context
+    context --> output --> reviewer
 ```
 
-## Durability Contract
+Infrastructure preserves what was selected, how it was varied, where evidence
+was written, and enough provenance to explain the run later. The receiver and
+navigation packages remain the authorities for the scientific payload inside
+that evidence.
 
-- Dataset resolution preserves capture location, sample metadata, station
-  coordinates, and provenance without guessing missing scientific facts.
-- The same declared run identity resolves to the same repository footprint.
-- Manifests, reports, histories, and artifact summaries remain understandable
-  after the command version that wrote them has changed.
-- Hash inputs and algorithms are explicit enough to explain why two provenance
-  identities match or differ.
-- Overrides and experiment sweeps expand typed fields deterministically.
-- Inspection validates artifact meaning and schema policy without reimplementing
-  receiver or navigation science.
+## Choose The Durable Contract
 
-The [infrastructure release guide](../../docs/03-bijux-gnss-infra/operations/release-and-versioning.md)
-defines compatibility treatment for persisted fields, dataset interpretation,
-hashes, and run footprints.
-
-## Features
-
-| feature | effect |
+| You are working with... | Read first |
 | --- | --- |
-| `nav` | enables navigation-aware receiver infrastructure |
-| `precise-products` | forwards precise-product support through the receiver boundary |
-| `tracing` | forwards receiver tracing support |
+| registered captures, station coordinates, raw-IQ sidecars, or source provenance | [Dataset resolution](docs/DATASETS.md) |
+| deterministic directories, manifests, reports, or append-only history | [Run layout](docs/RUN_LAYOUT.md) |
+| configuration or input content identity | [Provenance hashing](docs/HASHING.md) |
+| typed one-run configuration changes | [Override semantics](docs/OVERRIDES.md) |
+| Cartesian expansion of controlled variations | [Experiment sweeps](docs/EXPERIMENTS.md) |
+| persisted artifact explanation or validation adaptation | [Artifact inspection](docs/VALIDATION.md) |
+| supported downstream exports | [Public API](docs/PUBLIC_API.md) |
+
+The public API exposes these infrastructure families and re-exports receiver,
+core, signal, and optional navigation APIs for command integration. Consumers
+that only need receiver or scientific behavior should depend on the owning
+package directly rather than treating infrastructure as a universal facade.
+
+## Do Not Guess Missing Dataset Facts
+
+A dataset entry is more than a file location. A resolved capture may carry
+sample format, sample rate, intermediate frequency, capture time, byte offset,
+station coordinates, and recorded-capture provenance. Infrastructure may parse
+and preserve those declarations; it must not invent them from a receiver
+profile or filename.
+
+Signal owns the types that describe raw samples. Infrastructure owns loading a
+sidecar and associating it with a registered input. The receiver owns decoding
+and processing the resulting stream. Keeping those responsibilities separate
+prevents a convenient local default from becoming false capture metadata.
+
+## Treat Paths And Manifests As Public Behavior
+
+Callers should derive locations through `RunContextArgs` and
+`RunDirectoryLayout`, then use the provided manifest, report, and history
+writers. Building paths or record shapes by hand forks the persistence
+contract.
+
+Review a run-layout change for:
+
+- deterministic output for the same declared run identity;
+- explicit schema and provenance fields;
+- old manifests and reports that remain interpretable;
+- stable history append behavior;
+- clear separation between transient command output and durable evidence;
+- generated output remaining under its governed repository location.
+
+Receiver `RunArtifacts` are in-memory scientific results. They become durable
+repository evidence only when a caller persists them with an explicit run
+context and manifest. The [receiver package](../bijux-gnss-receiver/README.md)
+documents the payload side of this boundary.
+
+## Feature Forwarding
 
 Navigation-aware infrastructure is enabled by default.
 
-## Implementation Ownership
+| Feature | Forwarded behavior |
+| --- | --- |
+| `nav` | enables navigation support through the receiver dependency |
+| `precise-products` | enables receiver precise-product forwarding |
+| `tracing` | enables receiver tracing forwarding |
 
-- The [dataset boundary](src/datasets/mod.rs) owns registry entries, raw-IQ
-  sidecars, loading, validation, and path resolution.
-- The [run-layout boundary](src/run_layout.rs) owns run identity, directories,
-  paths, persistence, provenance, manifests, reports, and history.
-- The [artifact inspector](src/artifact_inspection/mod.rs) owns type-aware
-  summaries, schema policy, and validation adapters.
-- The [override boundary](src/overrides/mod.rs) and
-  [sweep expansion](src/sweep.rs) own typed experiment variation.
-- The [provenance hasher](src/hash/mod.rs) owns content identity.
-- The [reference adapter](src/validate_reference.rs) bridges persisted inputs to
-  validation without owning scientific truth.
-- The [public API](src/api.rs) owns deliberate downstream exports.
+These features integrate lower packages; they do not transfer ownership of
+navigation science or receiver runtime behavior into infrastructure.
 
-For package architecture and contracts, continue with the
-[architecture guide](docs/ARCHITECTURE.md), [boundary guide](docs/BOUNDARY.md),
-[contract guide](docs/CONTRACTS.md), and [public API guide](docs/PUBLIC_API.md).
-The [test guide](docs/TESTS.md) maps persistence and inspection behavior to
-proof.
+The first registry release has not been published. The prepared Cargo package
+name is `bijux-gnss-infra`, and the Rust import name is
+`bijux_gnss_infra`.
 
-## Verification Focus
-
-Use infra tests when changing repository semantics:
-
-```sh
-cargo test -p bijux-gnss-infra --test integration_overrides
-cargo test -p bijux-gnss-infra --test integration_guardrails
-```
-
-Repository-wide lanes and package routing are documented in the
-[workspace README](../../README.md).
+Use the [test evidence guide](docs/TESTS.md) to match dataset, persistence,
+hashing, override, sweep, and inspection changes with focused proof.
+Compatibility changes belong in the [package release history](CHANGELOG.md)
+and follow the [infrastructure release guide](../../docs/03-bijux-gnss-infra/operations/release-and-versioning.md).
