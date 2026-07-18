@@ -1,5 +1,5 @@
 ---
-title: Glossary Routes
+title: Shared GNSS Vocabulary
 audience: mixed
 type: foundation
 status: canonical
@@ -7,58 +7,126 @@ owner: bijux-gnss-core-docs
 last_reviewed: 2026-07-18
 ---
 
-# Glossary Routes
+# Shared GNSS Vocabulary
 
-Use this page when a reader knows the GNSS word but not the owning crate. Core
-owns shared vocabulary only when the term describes a record, identity, unit,
-time, coordinate, diagnostic, or artifact shape that multiple crates must read
-the same way.
+Use this page when a term appears in more than one package and you need to know
+which meaning is shared. Core owns the vocabulary exchanged between packages;
+it does not own every algorithm or workflow that uses those words.
 
-## Route From Term To Owner
+## Find The Meaning You Need
 
 ```mermaid
 flowchart TD
-    term["reader term"]
-    shared["shared record, unit, time,<br/>identity, coordinate, or artifact?"]
-    core["bijux-gnss-core"]
-    signal["bijux-gnss-signal<br/>signal family or DSP substrate"]
-    receiver["bijux-gnss-receiver<br/>runtime stage evidence"]
-    nav["bijux-gnss-nav<br/>estimation and corrections"]
-    infra["bijux-gnss-infra<br/>datasets and persistence"]
+    question["reader question"]
+    meaning{"what kind of meaning?"}
+    identity["identity and signal designation"]
+    time["time and sample trace"]
+    units["units, frames, and conventions"]
+    stage["acquisition, tracking, and observations"]
+    nav["navigation outcome"]
+    evidence["artifact, diagnostic, and support records"]
 
-    term --> shared
-    shared -- yes --> core
-    shared -- signal behavior --> signal
-    shared -- runtime behavior --> receiver
-    shared -- navigation model --> nav
-    shared -- stored evidence --> infra
+    question --> meaning
+    meaning --> identity
+    meaning --> time
+    meaning --> units
+    meaning --> stage
+    meaning --> nav
+    meaning --> evidence
 ```
 
-## Core-Owned Terms
-
-| term family | core owner | when to leave core |
+| reader question | shared vocabulary | continue with |
 | --- | --- | --- |
-| constellation, satellite, PRN, signal identity | `src/ids.rs` | signal generation details live in signal |
-| GPS, UTC, TAI, sample time, leap seconds | `src/time.rs` | receiver clock policy lives in receiver |
-| meters, seconds, hertz, chips, cycles | `src/units.rs` and `src/conventions.rs` | DSP implementation details live in signal or receiver |
-| WGS-84, ECEF, ENU, geodetic position | `src/geo.rs` | estimator strategy lives in nav |
-| acquisition, tracking, observation record shapes | `src/observation/` | stage scheduling and runtime transitions live in receiver |
-| navigation solution records and residual records | `src/nav_solution.rs` | solver algorithms and correction models live in nav |
-| diagnostics and support matrix records | `src/diagnostic/`, `src/support_matrix.rs` | command reporting and infra persistence live above core |
+| Which constellation, satellite, signal, band, code, component, slot, or GLONASS channel is this? | `Constellation`, `SatId`, `SigId`, `SignalBand`, `SignalCode`, component specifications, and frequency-channel types | [Identity contracts](../../../crates/bijux-gnss-core/src/ids.rs) |
+| When did this value occur, and is the timestamp based on GPS, UTC, TAI, an epoch, or a receiver sample? | `GpsTime`, `UtcTime`, `TaiTime`, `Epoch`, `SampleClock`, and `ReceiverSampleTrace` | [Time contracts](../../../crates/bijux-gnss-core/src/time.rs) |
+| What physical quantity, sign, or coordinate frame does this number use? | meters, seconds, hertz, chips, cycles, WGS-84, ECEF, ENU, and LLH | [Unit contracts](../../../crates/bijux-gnss-core/src/units.rs), [coordinate contracts](../../../crates/bijux-gnss-core/src/geo.rs), and [engineering conventions](../interfaces/engineering-conventions.md) |
+| What evidence crossed the acquisition, tracking, or observation boundary? | requests, hypotheses, results, tracking epochs, transitions, observation epochs, uncertainty, quality, and differencing records | [Observation and tracking contracts](../interfaces/observation-and-tracking-contracts.md) |
+| What did navigation produce without exposing solver internals? | solution status, validity, lifecycle, residuals, inter-system bias, uncertainty, refusal, and position fields | [Navigation result contracts](../interfaces/navigation-solution-contracts.md) |
+| How is evidence versioned, diagnosed, validated, or declared supported? | artifact envelopes, payload kinds, diagnostic events, validation reports, and support rows | [Artifact contracts](../interfaces/artifact-contracts.md) and [configuration and diagnostics](../interfaces/configuration-and-diagnostics.md) |
 
-## Reader Checks
+The [contract map](../../../crates/bijux-gnss-core/docs/CONTRACT_MAP.md) is the
+complete ownership index. Source links identify where meaning is defined; public
+consumers import supported items through `bijux_gnss_core::api`.
 
-- Is the reader asking what a value means across crates? Start in core.
-- Is the reader asking how a signal is generated or sampled? Leave for signal.
-- Is the reader asking why a runtime stage accepted, degraded, or rejected data?
-  Leave for receiver.
-- Is the reader asking how a solver, correction, PPP, or RTK model behaves?
-  Leave for nav.
-- Is the reader asking where evidence is stored or indexed? Leave for infra.
+## Similar Words That Are Not Interchangeable
 
-## First Proof Check
+### PRN, Satellite, Signal, And Channel
 
-Inspect `crates/bijux-gnss-core/docs/CONTRACT_MAP.md`,
-`crates/bijux-gnss-core/docs/CONTRACTS.md`,
-`crates/bijux-gnss-core/docs/PUBLIC_API.md`, and the owning module named by the
-term family.
+A PRN number alone is not a globally unique satellite identity. `SatId`
+combines constellation and PRN. `SigId` adds band and code. GLONASS L1 FDMA also
+needs a frequency channel. Preserve the most specific identity available when
+records cross package or artifact boundaries.
+
+### Epoch, Receiver Time, And Transmit Time
+
+An epoch index orders processing but does not establish physical time.
+`ReceiverSampleTrace` ties receiver time to sample index and sample rate.
+Transmit time describes the signal path and must not be substituted for receive
+time. State the time system whenever a plain scalar could be ambiguous.
+
+### Carrier Frequency, Doppler, And Carrier Phase
+
+Hertz can describe an absolute carrier, an intermediate-frequency-relative
+carrier estimate, or Doppler. Cycles describe phase, not frequency. A field
+needs a name and convention that distinguishes these meanings; sharing a unit
+does not make them equivalent.
+
+### Status, Validity, Lifecycle, And Refusal
+
+Status describes the classified outcome, validity says whether consumers may
+use it under the contract, lifecycle locates it in processing history, and
+refusal explains why a usable result was not produced. Do not collapse these
+records into one boolean.
+
+### Artifact Validity And Scientific Accuracy
+
+Artifact validation proves schema and cross-field coherence. It does not prove
+that acquisition locked the correct peak, tracking remained physically
+accurate, or navigation converged to truth. Those claims remain with the
+receiver or navigation evidence.
+
+## Leave Core At The Behavior Boundary
+
+```mermaid
+flowchart LR
+    core["shared meaning"]
+    signal["signal generation and DSP"]
+    receiver["stage execution and channel state"]
+    nav["models, corrections, and estimation"]
+    infra["datasets, persistence, and inspection"]
+    command["operator workflow and presentation"]
+
+    core --> signal
+    core --> receiver
+    core --> nav
+    core --> infra
+    core --> command
+```
+
+- For code generation, sampling, spectra, replicas, or loop mathematics, follow
+  the [signal handbook](../../06-bijux-gnss-signal/).
+- For acquisition decisions, tracking lifecycle, observation construction, or
+  runtime artifacts, follow the
+  [receiver handbook](../../05-bijux-gnss-receiver/).
+- For orbit products, corrections, position estimation, PPP, RTK, or integrity,
+  follow the [navigation handbook](../../04-bijux-gnss-nav/).
+- For registry interpretation, run layout, persistence, or artifact inspection,
+  follow the [infrastructure handbook](../../03-bijux-gnss-infra/).
+- For command behavior and rendered output, follow the
+  [operator handbook](../../01-bijux-gnss/).
+
+## Adding Shared Language
+
+A proposed term belongs in core only when producers and consumers need the same
+meaning independently of their implementations. Before adding it:
+
+1. name at least two package roles that exchange it;
+2. define units, identity, frame, time system, validity, and failure semantics;
+3. distinguish the record from the behavior that creates it;
+4. decide whether serialization or versioning is part of the promise;
+5. add evidence for exact meaning and invalid states;
+6. avoid a synonym when an existing contract can be extended without ambiguity.
+
+The [ownership boundary](ownership-boundary.md) resolves placement disputes, and
+the [shared concepts guide](shared-concepts.md) connects records to their
+behavior owners.
