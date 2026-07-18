@@ -30,5 +30,5 @@ This crate sits at the top of the Rust package stack:
 ## Design constraints
 
 - command handlers should orchestrate stable lower-level APIs rather than reimplementing them
-- command modules should be grouped by operator workflow, not by temporary implementation history
+- command modules should be grouped by operator workflow, not by delivery history
 - CLI reporting and output shape are owned here; product computation is not

@@ -8,7 +8,7 @@ Rust library; its job is to keep repository governance and benchmark hygiene exp
 - `src/main.rs` defines the command-line parser, subcommand inventory, and all execution paths.
 
 The crate is intentionally compact today because every command operates on repository files and
-shared workspace conventions. If it grows, it should split by owned workflow, not by temporary task
+shared workspace conventions. If it grows, it should split by owned workflow, not by delivery label
 history.
 
 ## Command families

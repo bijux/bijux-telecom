@@ -1,22 +1,47 @@
 # Tests
 
-## Entry points
+`bijux-gnss-testkit` tests protect the crate as a shared truth source. The
+tests prove that fixtures, reference helpers, and independent models remain
+usable across product crates without reflecting the production implementation
+under test.
 
-- `tests/scientific_independence.rs` checks that key truth helpers do not call back into forbidden
-  `nav` helper paths.
-- `tests/integration_guardrails.rs` keeps the crate aligned with workspace guardrails.
+## Test Flow
 
-## What these tests are protecting
+```mermaid
+flowchart LR
+    fixture["fixture or reference helper"]
+    independence["independence guard"]
+    guardrail["workspace guardrail"]
+    consumer["product crate test"]
 
-- the testkit remains a truth source rather than a reflection of production helper internals
-- the crate keeps its shared-fixture role without turning into an unbounded misc bucket
-- fixture loading and truth-model boundaries remain explicit enough for other crates to trust them
-
-## Verification
-
-Useful commands from the repository root:
-
-```sh
-cargo test -p bijux-gnss-testkit --test scientific_independence
-cargo test -p bijux-gnss-testkit --test integration_guardrails
+    fixture --> independence
+    fixture --> guardrail
+    independence --> consumer
+    guardrail --> consumer
 ```
+
+## Entry Points
+
+| entrypoint | protects |
+| --- | --- |
+| `tests/scientific_independence.rs` | Key truth helpers do not call forbidden production navigation helper paths. |
+| `tests/integration_guardrails.rs` | The crate stays aligned with workspace guardrails. |
+| product crate tests using testkit | Shared fixtures and truth helpers remain useful outside this package. |
+
+## Contract Rules
+
+- Testkit tests should prove independence, determinism, provenance, and
+  cross-crate usefulness.
+- A shared fixture must have a stable unit, frame, epoch, or coordinate
+  convention.
+- Truth helpers should be simpler, independent, or source-anchored enough to
+  catch product mistakes.
+- Testkit must not become a broad bucket for unrelated one-off test setup.
+
+## Review Checks
+
+- New public helpers need direct testkit coverage or product crate coverage that
+  exercises the helper.
+- New fixtures need provenance and deterministic loading tests when practical.
+- If a helper begins depending on the product path it validates, update
+  independence docs and add a focused guard.
