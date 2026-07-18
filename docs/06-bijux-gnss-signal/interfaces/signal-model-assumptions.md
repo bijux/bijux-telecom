@@ -4,46 +4,57 @@ audience: mixed
 type: interfaces
 status: canonical
 owner: bijux-gnss-signal-docs
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-18
 ---
 
 # Signal Model Assumptions
 
-This page replaces the old root-level model manifest. It records the durable
-signal-layer assumptions that downstream crates may rely on today.
+Signal assumptions are reusable only when they are backed by code, reference
+catalogs, and tests in `bijux-gnss-signal`. A downstream crate may consume these
+assumptions for acquisition, tracking, synthetic generation, validation, or
+documentation, but it must not silently broaden them.
 
-## Supported Reference Families
+## Assumption Route
 
-- GPS L1 C/A is modeled end to end for code generation, sampled replicas,
-  synthetic captures, acquisition, and tracking-facing validation
-- Galileo E1 is modeled for code generation, synthetic captures, and
-  acquisition-oriented validation
+```mermaid
+flowchart LR
+    catalog["signal catalog"]
+    code["code family<br/>reference catalogs"]
+    dsp["sample and replica<br/>DSP helpers"]
+    proof["signal tests"]
+    consumers["receiver command infra<br/>nav and testkit consumers"]
 
-## Reusable Assumptions
+    catalog --> proof
+    code --> proof
+    dsp --> proof
+    proof --> consumers
+```
 
-- GPS L1 C/A repeats on an exact 1023-chip boundary for PRNs 1 through 32
-- sampled-code generation advances from exact code-rate to sample-rate
-  progression so chunk boundaries do not introduce rounded samples-per-chip
-  drift
-- synthetic carrier generation and acquisition both interpret Doppler relative
-  to the configured intermediate frequency
-- synthetic GPS navigation data uses a deterministic 50 bps sign modulation
-  when data modulation is enabled
+## Current Assumptions
 
-## Proof Expectation
+| assumption | signal-owned proof | downstream limit |
+| --- | --- | --- |
+| GPS L1 C/A has a 1023-chip primary period for PRNs 1 through 32 | C/A reference, period, correlation, and long-duration tests | receiver lock behavior and navigation data interpretation remain downstream |
+| sampled-code generation advances by code-rate to sample-rate progression | fractional sampling and long-duration continuity tests | callers cannot assume rounded samples-per-chip behavior |
+| carrier helpers interpret Doppler relative to configured intermediate frequency | carrier wipeoff, NCO, acquisition, and synthetic reference tests | receiver search windows decide how much Doppler to inspect |
+| deterministic GPS navigation sign modulation uses a 50 bps data rate when enabled | synthetic navigation-bit and replica tests | nav message semantics are not proven by this signal assumption |
+| Galileo E1 code and component references are modeled for acquisition-oriented use | E1B, E1C, registry, spectrum, and synthetic tests | tracking policy and ambiguity resolution remain receiver decisions |
+| registry component roles define reusable signal identity | component registry tests | public API users still need receiver docs for stage behavior |
 
-These assumptions are only trustworthy when they stay backed by signal tests
-and reference catalogs. When a change weakens the evidence, update the quality
-and operations handbooks before claiming broader support.
+## Change Rules
 
-## Protecting Proof
+- Add an assumption only when a named reference test or catalog anchors it.
+- Name the signal family, component, rate, or modulation detail explicitly.
+- Update receiver or command docs only after the signal assumption exists.
+- Do not use this page to promise full receiver support for a signal family.
+
+## First Proof Check
 
 Inspect `crates/bijux-gnss-signal/docs/CATALOG.md`,
 `crates/bijux-gnss-signal/docs/CODE_FAMILIES.md`,
-`crates/bijux-gnss-signal/docs/DSP.md`, and
-`crates/bijux-gnss-signal/src/catalog.rs`. Then inspect
+`crates/bijux-gnss-signal/docs/DSP.md`,
+`crates/bijux-gnss-signal/src/catalog.rs`,
 `crates/bijux-gnss-signal/tests/integration_ca_code_reference.rs`,
 `crates/bijux-gnss-signal/tests/integration_ca_code_long_duration_chunks.rs`,
 `crates/bijux-gnss-signal/tests/integration_galileo_e1b_reference.rs`, and
-`crates/bijux-gnss-signal/tests/integration_gps_l2c_replica_model.rs` to
-confirm these assumptions remain reference-backed rather than descriptive only.
+`crates/bijux-gnss-signal/tests/integration_gps_l2c_replica_model.rs`.
