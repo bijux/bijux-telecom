@@ -1,78 +1,99 @@
 ---
-title: Interfaces
+title: Core Interface Guide
 audience: mixed
 type: index
 status: canonical
 owner: bijux-gnss-core-docs
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-18
 ---
 
-# Interfaces
+# Core Interface Guide
 
-Open this section when the question is contractual: which public imports,
-artifact envelopes, records, and validation-facing shapes are safe for another
-crate or tool to rely on.
+Downstream packages consume `bijux-gnss-core` through one curated API. That
+surface publishes shared meaning, not implementation organization: identities,
+units, time, coordinates, observations, navigation outcomes, diagnostics,
+configuration records, support inventory, and versioned artifacts.
 
-## Contract Surface
+## Choose A Contract Family
 
-`bijux-gnss-core` exposes one deliberate public module, but that module carries
-multiple contract families: artifact envelopes, configuration and diagnostics,
-foundational physical types, observation records, navigation-solution records,
-and support-matrix meaning. The point of this section is to name those
-promises before a reader has to reverse-engineer `api.rs`.
+```mermaid
+flowchart TD
+    need{"What must packages exchange?"}
+    physical["identity, units,<br/>time, coordinates"]
+    receiver["acquisition, tracking,<br/>observations, quality"]
+    navigation["navigation outcomes"]
+    governance["configuration, diagnostics,<br/>errors, support"]
+    artifact["versioned persisted meaning"]
+
+    need --> physical
+    need --> receiver
+    need --> navigation
+    need --> governance
+    need --> artifact
+```
+
+| exchanged meaning | contract route | required clarity |
+| --- | --- | --- |
+| Satellite, signal, physical quantity, epoch, or coordinate | [Engineering conventions](engineering-conventions.md) | identity, unit, time scale, frame, sign, and valid range |
+| Acquisition request or result, tracking state, observation, differencing, or quality evidence | [Observation and tracking contracts](observation-and-tracking-contracts.md) | lifecycle, uncertainty, timing, refusal, and producer responsibility |
+| Measurement, engine-neutral boundary, or shared support record | [Measurement and engine contracts](measurement-and-engine-contracts.md) | stable data meaning without runtime scheduling |
+| Position result, residual, validity, lifecycle, or inter-system bias | [Navigation solution contracts](navigation-solution-contracts.md) | frame, clock units, quality, covariance, integrity, and refusal |
+| Configuration schema, diagnostic code, error category, or support status | [Configuration and diagnostics](configuration-and-diagnostics.md) | version, severity, ownership, and invalid states |
+| Header, payload kind, reader policy, or versioned record | [Artifact contracts](artifact-contracts.md) | payload version, semantic validation, and compatibility policy |
+
+## Import Through The Curated Surface
 
 ```mermaid
 flowchart LR
-    caller["downstream crate or tool"]
-    api["bijux_gnss_core::api"]
-    artifacts["artifact contracts"]
-    observations["observation and tracking records"]
-    nav["navigation-solution records"]
-    config["configuration and diagnostics"]
-    foundation["ids time units geo"]
+    family["private contract family"]
+    facade["curated core API"]
+    producer["producer package"]
+    consumer["consumer package"]
+    persisted["versioned artifact"]
 
-    caller --> api
-    api --> artifacts
-    api --> observations
-    api --> nav
-    api --> config
-    api --> foundation
+    family --> facade
+    facade --> producer
+    facade --> consumer
+    facade --> persisted
 ```
 
-## Read These First
+Private modules own implementation, but callers rely only on deliberate
+exports. Use [public imports](public-imports.md) for supported patterns and
+[API surface](api-surface.md) before proposing a new export.
 
-- open [API Surface](api-surface.md) first when the dispute is whether a type
-  should be publicly exported at all
-- open [Artifact Contracts](artifact-contracts.md) when the question is about
-  persisted envelopes or payload validation
-- open [Observation and Tracking Contracts](observation-and-tracking-contracts.md)
-  when the issue is record meaning across signal, receiver, and nav work
+If a caller cannot express its work through the curated API, first check
+ownership. A receiver loop workspace, navigation filter state, repository path,
+or command report type should not become core API merely to shorten an import.
 
-## First Proof Check
+## Read A Shared Record
 
-- `crates/bijux-gnss-core/src/api.rs`
-- `crates/bijux-gnss-core/docs/PUBLIC_API.md`
-- `crates/bijux-gnss-core/docs/CONTRACTS.md`
-- `crates/bijux-gnss-core/docs/SERIALIZATION.md`
+Before consuming a record, identify:
 
-## Pages In This Section
+- who produced it and which package owns that behavior;
+- units, time scale, coordinate frame, sign, and ordering;
+- valid, degraded, refused, unknown, and missing states;
+- uncertainty, provenance, and model-version fields that qualify the value;
+- payload version and reader policy if it survives serialization.
 
-- [API Surface](api-surface.md)
-- [Public Imports](public-imports.md)
-- [Artifact Contracts](artifact-contracts.md)
-- [Engineering Conventions](engineering-conventions.md)
-- [Measurement And Engine Contracts](measurement-and-engine-contracts.md)
-- [Observation and Tracking Contracts](observation-and-tracking-contracts.md)
-- [Navigation Solution Contracts](navigation-solution-contracts.md)
-- [Configuration and Diagnostics](configuration-and-diagnostics.md)
-- [Entrypoints and Examples](entrypoints-and-examples.md)
-- [Compatibility Commitments](compatibility-commitments.md)
+Parsing proves that bytes fit a shape. Contract validation determines whether
+the fields are coherent. The producing package’s evidence determines whether
+the scientific or runtime claim is supported.
 
-## Leave This Section When
+## Compatibility Boundary
 
-- leave for [Foundation](../foundation/) when the contract dispute is really a
-  package-boundary dispute
-- leave for [Architecture](../architecture/) when the interface issue reveals
-  structural drift underneath it
-- leave for [Operations](../operations/) or [Quality](../quality/) when the
-  contract is clear and the question becomes safe change or proof
+Public exports and serialized fields are compatibility commitments. Do not
+change old meaning in place. Add a version boundary or documented reader policy
+when old and new consumers cannot assign the same semantics to the same value.
+Use [compatibility commitments](compatibility-commitments.md) before changing a
+contract and [entrypoints and examples](entrypoints-and-examples.md) for
+consumer-shaped use.
+
+## Sources Of Truth
+
+The [curated API](../../../crates/bijux-gnss-core/src/api.rs) is the supported
+surface. The [contract map](../../../crates/bijux-gnss-core/docs/CONTRACT_MAP.md)
+locates semantic ownership, the
+[contract guide](../../../crates/bijux-gnss-core/docs/CONTRACTS.md) defines
+families, and the
+[serialization guide](../../../crates/bijux-gnss-core/docs/SERIALIZATION.md)
+governs persisted meaning.
