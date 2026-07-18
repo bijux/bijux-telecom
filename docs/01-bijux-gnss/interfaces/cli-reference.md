@@ -4,43 +4,79 @@ audience: mixed
 type: interfaces
 status: canonical
 owner: bijux-gnss-docs
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-18
 ---
 
 # CLI Reference
 
-The durable public command surface of `bijux-gnss` is the `bijux gnss ...`
-workflow family. This page exists so readers stop hunting for top-level help in
-older root docs.
+The durable command entrypoint is `bijux gnss`. This page is a route map, not a
+copy of `--help`: use live help for exact flag spelling, then use this page to
+understand which owner proves each workflow.
 
-## Top-Level Shape
+## Command Families
 
-The repository exposes GNSS receiver workflows through the `gnss` command tree.
-That tree owns operation, validation, diagnostics, replay, and report-facing
-behavior. The crate does not promise that every internal subcommand path will
-remain verbatim forever, but it does promise that operator workflows are owned
-here rather than in lower crates.
+| family | examples in the command tree | primary owner after argument parsing |
+| --- | --- | --- |
+| signal inspection | `ca-code` | `bijux-gnss-signal` for code facts and correlation behavior |
+| acquisition and tracking | `acquire`, `track` | `bijux-gnss-receiver` for stage execution, ranking, lock state, and diagnostics |
+| receiver runs | `run`, `experiment` | `bijux-gnss-receiver` for runtime behavior, `bijux-gnss-infra` for run layout and overrides |
+| raw-IQ and dataset work | `inspect`, sidecar validation, synthetic IQ export and validation | `bijux-gnss-infra` for metadata and persisted bundle meaning, `bijux-gnss-receiver` for synthetic runtime proof |
+| navigation | `nav decode`, `pvt`, `rtk`, synthetic navigation validation | `bijux-gnss-nav` for navigation science, `bijux-gnss-core` for shared records |
+| artifacts and diagnostics | `artifact validate`, `artifact explain`, diagnostics routes, run comparison | `bijux-gnss-core` for artifact meaning, `bijux-gnss-infra` for persisted run evidence |
+| configuration | config validation, schema, defaults, upgrade | `bijux-gnss-receiver` for runtime config meaning, `bijux-gnss-infra` when repository override or profile mechanics are involved |
 
-The maintained command surface is organized around durable operator families:
+## What The Command Layer Promises
 
-- artifact and evidence inspection routes
-- ingest and capture-facing workflows
-- validate and diagnose routes for checked inputs and emitted evidence
-- synthetic and replay-oriented proof workflows
-- navigation or reporting routes that still begin from the top-level command
-  owner even when lower crates do the scientific work
+- command families stay organized around operator intent, not internal module
+  layout
+- common flags such as config, dataset, output directory, report format, seed,
+  sidecar, and resume are interpreted consistently before lower-crate handoff
+- table and JSON reports describe the command result without hiding which
+  lower owner produced the evidence
+- workflow handlers avoid duplicating lower-crate science or repository
+  persistence rules
 
-## What Readers Should Check First
+## What It Does Not Promise
 
-- the live `--help` output for the current binary surface
-- `crates/bijux-gnss/docs/PUBLIC_API.md` for the documented command families
-- `crates/bijux-gnss/src/cli/command_catalog/` for the maintained catalog of
-  command ownership
-- `crates/bijux-gnss/src/cli/commands/` for the workflow handler that actually
-  owns the route being reviewed
+- every internal subcommand path is a permanent API commitment
+- command docs are the final source for receiver, signal, navigation, core, or
+  infrastructure semantics
+- a passing command alone proves the scientific claim behind the command
+- command output fields can change shared artifact meaning without a core or
+  infrastructure contract update
 
-## Durable Reader Rule
+## Reading A Command Failure
 
-If a question starts from an operator typing a command, the first handbook
-owner is `01-bijux-gnss`, even when the implementation ultimately hands off to
-receiver, infrastructure, signal, or navigation crates.
+```mermaid
+flowchart TD
+    failure["command failed or output changed"]
+    parse["argument or route error?"]
+    runtime["dataset, config, sidecar, output, resume?"]
+    stage["stage, signal, nav, or artifact claim?"]
+    command["inspect bijux-gnss cli"]
+    infra["inspect bijux-gnss-infra"]
+    receiver["inspect receiver, signal, nav, or core owner"]
+
+    failure --> parse
+    parse -->|yes| command
+    parse -->|no| runtime
+    runtime -->|yes| infra
+    runtime -->|no| stage
+    stage --> receiver
+```
+
+## First Proof Check
+
+Run or inspect live `bijux gnss --help` for the current command surface. Then
+inspect:
+
+- `crates/bijux-gnss/src/cli/command_line.rs`
+- `crates/bijux-gnss/src/cli/command_catalog/`
+- `crates/bijux-gnss/src/cli/commands/`
+- `crates/bijux-gnss/src/cli/command_runtime/`
+- `crates/bijux-gnss/docs/PUBLIC_API.md`
+- `crates/bijux-gnss/docs/COMMANDS.md`
+
+If this reference says a command belongs to one owner and the handler calls a
+different owner for the decisive behavior, fix the route rather than padding
+the command docs with generic language.
