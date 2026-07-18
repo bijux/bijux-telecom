@@ -61,6 +61,6 @@ path = "src/main.rs"
 required-features = ["cli"]
 
 [dev-dependencies]
-bijux-gnss-policies.workspace = true
+bijux-gnss-policies = { path = "../bijux-gnss-policies" }
 bijux-gnss-signal = { path = "../bijux-gnss-signal", version = "0.1.0" }
-bijux-gnss-testkit = { path = "../bijux-gnss-testkit", version = "0.1.0" }
+bijux-gnss-testkit = { path = "../bijux-gnss-testkit" }

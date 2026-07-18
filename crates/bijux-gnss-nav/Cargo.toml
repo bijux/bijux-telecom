@@ -27,6 +27,6 @@ precise-products = []
 
 [dev-dependencies]
 criterion.workspace = true
-bijux-gnss-policies.workspace = true
-bijux-gnss-testkit = { path = "../bijux-gnss-testkit", version = "0.1.0" }
+bijux-gnss-policies = { path = "../bijux-gnss-policies" }
+bijux-gnss-testkit = { path = "../bijux-gnss-testkit" }
 serde_json.workspace = true

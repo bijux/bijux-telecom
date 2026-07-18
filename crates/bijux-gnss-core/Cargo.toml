@@ -19,4 +19,4 @@ serde.workspace = true
 
 [dev-dependencies]
 proptest.workspace = true
-bijux-gnss-policies.workspace = true
+bijux-gnss-policies = { path = "../bijux-gnss-policies" }

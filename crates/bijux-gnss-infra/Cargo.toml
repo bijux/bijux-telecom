@@ -24,7 +24,7 @@ bijux-gnss-signal = { path = "../bijux-gnss-signal", version = "0.1.0" }
 bijux-gnss-receiver = { path = "../bijux-gnss-receiver", version = "0.1.0", default-features = false }
 
 [dev-dependencies]
-bijux-gnss-policies = { path = "../bijux-gnss-policies", version = "0.1.0" }
+bijux-gnss-policies = { path = "../bijux-gnss-policies" }
 tempfile = "3.24"
 
 [features]
