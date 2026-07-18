@@ -4,29 +4,74 @@ audience: mixed
 type: interfaces
 status: canonical
 owner: bijux-gnss-core-docs
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-18
 ---
 
 # Compatibility Commitments
 
-Compatibility in `bijux-gnss-core` is more about semantic stability than about
-never changing a type.
+Core compatibility protects shared meaning. Higher crates depend on
+`bijux-gnss-core` for records, units, identifiers, time systems, diagnostics,
+artifact envelopes, and serialized payload meaning. A compatibility change is
+acceptable only when readers can tell whether the shared contract stayed
+additive, moved behind an explicit version boundary, or intentionally changed.
+
+## Compatibility Decision Route
+
+```mermaid
+flowchart TD
+    change["proposed core change"]
+    public["public API or serialized meaning?"]
+    additive["additive and backward-readable?"]
+    version["explicit version or migration boundary?"]
+    local["local helper only?"]
+    accept["document and prove"]
+    move["move to owning higher crate"]
+
+    change --> public
+    public -- yes --> additive
+    public -- no --> local
+    additive -- yes --> accept
+    additive -- no --> version
+    version -- yes --> accept
+    version -- no --> move
+    local -- yes --> accept
+    local -- no --> move
+```
 
 ## Commitments
 
-- public exports should remain curated through `api.rs`
-- additive evolution is preferred over silent semantic rewrites
-- serialized artifact meaning should change through explicit version boundaries
-- invariant changes should be documented and proven in the same change set
+| surface | compatibility promise | proof anchor |
+| --- | --- | --- |
+| curated public API | stable cross-crate exports enter through `bijux_gnss_core::api` | `src/api.rs`, `tests/public_api_guardrail.rs` |
+| serialized artifacts | field meaning changes through explicit version boundaries | `docs/SERIALIZATION.md`, artifact validation tests |
+| shared units and time | typed wrappers and time records keep meaning explicit | `src/units.rs`, `src/time.rs`, timekeeping tests |
+| identifiers | constellation, satellite, signal, band, and code identity stay shared | `src/ids.rs`, support-matrix tests |
+| observations and navigation records | higher crates exchange records without importing private layout | `src/observation/`, `src/nav_solution.rs` |
+| diagnostics | severity, code, and event shape remain machine-readable | `src/diagnostic/`, `docs/DIAGNOSTICS.md` |
 
 ## Non-Commitments
 
-- private module layout is not a public promise
-- one owner’s local convenience helper is not owed cross-crate stability
-- repository file layout is not part of the core crate compatibility contract
+- Private module layout is not stable API.
+- One crate's local convenience helper does not become a core contract.
+- Repository file layout belongs to infra, not core.
+- Runtime scheduling belongs to receiver, not core.
+- Command workflow behavior belongs to `bijux-gnss`, not core.
 
-## Protecting Proof
+## Review Questions
 
-- `crates/bijux-gnss-core/docs/CHANGE_RULES.md`
-- `crates/bijux-gnss-core/docs/SERIALIZATION.md`
-- `crates/bijux-gnss-core/tests/public_api_guardrail.rs`
+- Does the change alter public exports, serialized meaning, or invariant
+  expectations?
+- Can older persisted records still be interpreted honestly?
+- Is the new type shared by multiple crates, or is one caller pulling local
+  behavior into core?
+- Do `CONTRACTS.md`, `CONTRACT_MAP.md`, `SERIALIZATION.md`, and tests describe
+  the same boundary?
+
+## First Proof Check
+
+Inspect `crates/bijux-gnss-core/docs/CHANGE_RULES.md`,
+`crates/bijux-gnss-core/docs/PUBLIC_API.md`,
+`crates/bijux-gnss-core/docs/CONTRACTS.md`,
+`crates/bijux-gnss-core/docs/SERIALIZATION.md`,
+`crates/bijux-gnss-core/docs/INVARIANTS.md`, and
+`crates/bijux-gnss-core/tests/public_api_guardrail.rs`.

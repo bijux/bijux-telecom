@@ -4,50 +4,58 @@ audience: mixed
 type: interfaces
 status: canonical
 owner: bijux-gnss-receiver-docs
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-18
 ---
 
 # Validation And Simulation Contracts
 
-These contracts cover the runtime-side proof surfaces published by the receiver
-crate.
+Receiver validation and simulation prove receiver-boundary behavior. They
+compare runtime outputs to reference truth, exercise synthetic receiver flows,
+and package validation reports that explain runtime decisions. They do not own
+repository artifact layout or the original truth sources.
 
-## Validation Contracts
+## Proof Flow
 
-- reference alignment and comparison helpers in `src/reference_validation.rs`
-- runtime-side solution consistency reporting in `src/validation_report.rs`
-- validation report builders, budgets, and science-policy records in
-  `src/validation_report/` and `src/validation_helpers.rs`
-- covariance realism summaries in `src/covariance_realism.rs` when navigation
-  features are enabled
+```mermaid
+flowchart LR
+    truth["reference truth<br/>testkit or fixture"]
+    runtime["receiver run<br/>acquisition tracking observations"]
+    compare["reference validation<br/>alignment and budgets"]
+    report["validation report<br/>runtime evidence"]
+    consumers["tests, command reports,<br/>infra inspectors"]
 
-## Simulation Contracts
+    truth --> compare
+    runtime --> compare --> report --> consumers
+```
 
-- synthetic receiver execution through the curated `src/sim/synthetic/`
-  surface
-- scenario-backed runtime validation and sensitivity helpers
-- stage-accuracy, truth-table, and artifact-validation surfaces that exercise
-  the receiver boundary directly
+## Contract Families
 
-## Boundary Rule
+| family | receiver-owned surface | reader promise |
+| --- | --- | --- |
+| reference alignment | `src/reference_validation.rs` | receiver outputs can be compared to reference epochs without repository policy |
+| validation reports | `src/validation_report.rs` and `src/validation_report/` | runtime decisions, budgets, and integrity classifications stay typed |
+| validation helpers | `src/validation_helpers.rs` and related report builders | receiver evidence can be summarized without hiding stage meaning |
+| synthetic execution | `src/sim/synthetic/` | synthetic scenarios exercise acquisition, tracking, observations, and artifacts through the receiver boundary |
+| covariance realism | `src/covariance_realism.rs` when navigation support is enabled | covariance claims remain tied to receiver-produced evidence |
 
-These contracts prove receiver behavior. They should not become a repository
-artifact framework or a replacement for lower-level truth ownership.
+## Boundary Decisions
 
-## Closest Proof
+- Truth fixtures may come from `bijux-gnss-testkit`, but receiver validation
+  owns how runtime outputs are aligned and judged.
+- Persisted artifact layout and repository inspection belong to infra after
+  receiver artifacts exist.
+- Signal and navigation crates own their scientific primitives; receiver
+  simulation owns the runtime scenario that combines them.
+- A validation report is a receiver contract when it explains runtime behavior,
+  not merely because a test happens to use it.
 
-- `crates/bijux-gnss-receiver/src/reference_validation.rs`
-- `crates/bijux-gnss-receiver/src/validation_report.rs`
-- `crates/bijux-gnss-receiver/src/validation_report/tests/`
-- `crates/bijux-gnss-receiver/src/sim/synthetic/`
-- `crates/bijux-gnss-receiver/tests/integration_navigation_validation_run.rs`
-- `crates/bijux-gnss-receiver/tests/integration_synthetic.rs`
-- `crates/bijux-gnss-receiver/docs/REFERENCE_VALIDATION.md`
-- `crates/bijux-gnss-receiver/docs/SIMULATION.md`
+## First Proof Check
 
-## Protecting Proof
-
-Inspect the validation and simulation source families above together with the
-named integration tests before changing runtime proof contracts. Those surfaces
-show whether receiver validation still proves receiver behavior rather than
-quietly drifting into repository artifact policy.
+Inspect `crates/bijux-gnss-receiver/docs/REFERENCE_VALIDATION.md`,
+`crates/bijux-gnss-receiver/docs/SIMULATION.md`,
+`crates/bijux-gnss-receiver/docs/TESTS.md`,
+`crates/bijux-gnss-receiver/src/reference_validation.rs`,
+`crates/bijux-gnss-receiver/src/validation_report.rs`,
+`crates/bijux-gnss-receiver/src/sim/synthetic/`,
+`crates/bijux-gnss-receiver/tests/integration_navigation_validation_run.rs`,
+and `crates/bijux-gnss-receiver/tests/integration_synthetic.rs`.
