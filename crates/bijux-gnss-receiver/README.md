@@ -1,38 +1,64 @@
 # bijux-gnss-receiver
 
-`bijux-gnss-receiver` owns GNSS receiver runtime orchestration for the workspace.
+`bijux-gnss-receiver` owns receiver runtime behavior: configuration,
+acquisition, tracking, observation generation, optional navigation-stage
+execution, diagnostics, and receiver-owned artifacts.
 
-## Scope
+Start here when the question is about how a receiver run behaves at runtime.
+Do not start here for signal-code definitions, standalone navigation science,
+repository persistence policy, or operator-facing command wording.
 
-This crate owns:
+## Reader Route
 
-- receiver configuration and runtime state
-- acquisition, tracking, observation, and optional navigation stage execution
-- clock, sample-source, and artifact-sink boundaries
-- in-memory run artifacts and receiver-boundary validation helpers
-- synthetic execution helpers exposed at the receiver boundary
+| question | go next |
+| --- | --- |
+| How does a run move through stages? | [docs/PIPELINE.md](docs/PIPELINE.md), `src/pipeline/` |
+| Which runtime knobs and defaults are supported? | [docs/RUNTIME.md](docs/RUNTIME.md), `src/engine/receiver_config.rs` |
+| Which ports isolate clock, source, and sink behavior? | [docs/PORTS.md](docs/PORTS.md), `src/ports/`, `src/io/` |
+| Which reports or artifacts come from receiver execution? | [docs/ARTIFACTS.md](docs/ARTIFACTS.md), `src/artifacts.rs`, `src/validation_report.rs` |
+| What changed in this package? | [CHANGELOG.md](CHANGELOG.md) |
 
-This crate does not own repository persistence, operator workflow policy, low-level signal-code
-generation, or standalone navigation science.
+## Owned Boundary
 
-## Public surface
+- receiver configuration, defaults, validation, and runtime state
+- acquisition, tracking, observation, and optional navigation orchestration
+- channel state, lock state, diagnostics, CN0, uncertainty, and refusal evidence
+- clock, sample-source, and artifact-sink ports
+- receiver-boundary simulation and reference-validation helpers
 
-`bijux_gnss_receiver::api` is the deliberate downstream surface. It exposes the receiver boundary,
-its stage engines, runtime configuration, and curated re-exports from lower layers without turning
-the crate into a catch-all domain library.
+This crate does not own repository persistence, operator workflow policy,
+low-level signal-code generation, or standalone navigation science.
 
-## Source map
+```mermaid
+flowchart LR
+    source["sample source"]
+    acq["acquisition"]
+    track["tracking"]
+    obs["observations"]
+    nav["optional navigation"]
+    artifacts["receiver artifacts"]
 
-- `src/engine/` owns runtime configuration, logging, metrics, and receiver composition.
-- `src/pipeline/` owns staged acquisition, tracking, observations, and optional navigation flows.
-- `src/io/` and `src/ports/` own source/sink and clock abstractions.
-- `src/artifacts.rs`, `src/validation_report.rs`, and related modules own runtime-side outputs.
+    source --> acq
+    acq --> track
+    track --> obs
+    obs --> nav
+    track --> artifacts
+    obs --> artifacts
+    nav --> artifacts
+```
+
+## Source Map
+
+- `src/engine/` owns runtime configuration, logging, metrics, signal selection,
+  support matrices, and receiver composition.
+- `src/pipeline/` owns staged acquisition, tracking, observations, and optional
+  navigation flows.
+- `src/io/` and `src/ports/` own source, sink, and clock abstractions.
+- `src/artifacts.rs`, `src/validation_report.rs`, and related modules own
+  runtime-side outputs.
 - `src/sim/` owns synthetic receiver execution helpers.
 
-## Documentation
-
-The crate root intentionally contains only this README. Durable crate documentation lives under
-`docs/`:
+## Documentation Map
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - [docs/ARTIFACTS.md](docs/ARTIFACTS.md)
@@ -46,9 +72,9 @@ The crate root intentionally contains only this README. Durable crate documentat
 - [docs/SIMULATION.md](docs/SIMULATION.md)
 - [docs/TESTS.md](docs/TESTS.md)
 
-## Verification
+## Verification Focus
 
-Run from the repository root when changing this crate:
+Use receiver tests that match the changed stage before full-suite proof:
 
 ```sh
 cargo test -p bijux-gnss-receiver --test integration_basic
@@ -56,4 +82,5 @@ cargo test -p bijux-gnss-receiver --test integration_receiver_support_matrix_inv
 cargo test -p bijux-gnss-receiver --test integration_navigation_pvt_accuracy_budget
 ```
 
-Repository-wide expectations are documented in [../../README.md](../../README.md).
+Repository-wide lanes and package routing are documented in
+[../../README.md](../../README.md).
