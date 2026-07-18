@@ -7,14 +7,38 @@ Workspace-wide release notes live in the [workspace changelog](../../CHANGELOG.m
 
 ### Added
 
-- Package changelog entrypoint for receiver configuration, acquisition,
-  tracking, observation generation, optional navigation execution, diagnostics,
-  and receiver artifacts.
+- The crate is prepared for crates.io publication with complete package
+  metadata, an Apache-2.0 license, API documentation, and release-channel links.
+- The [pipeline guide](docs/PIPELINE.md), [runtime guide](docs/RUNTIME.md), and
+  [artifact guide](docs/ARTIFACTS.md) now trace a receiver run from validated
+  configuration through acquisition, tracking, observations, optional
+  navigation, diagnostics, and typed evidence.
+- The [reference-validation guide](docs/REFERENCE_VALIDATION.md) distinguishes
+  receiver claims from signal references, navigation truth, and
+  infrastructure persistence.
 
 ### Changed
 
-- Runtime and port documentation now makes side effects, stage ownership, and
-  feature-gated navigation handoff explicit.
+- The [port guide](docs/PORTS.md) makes clock, sample-source, and artifact-sink
+  side effects explicit instead of hiding them inside stage logic.
+- Runtime documentation now states defaults, validation, degraded and refused
+  states, support evidence, and feature-gated navigation handoff.
+- Repository policy and scientific test support remain path-based development
+  dependencies and are excluded from the registry package.
+
+## Compatibility Notes
+
+- A configuration default or validation change alters receiver behavior even
+  when an existing configuration still parses.
+- Acquisition acceptance, tracking thresholds, channel transitions, CN0,
+  uncertainty, and refusal rules are observable runtime contracts.
+- A receiver artifact change must identify whether only in-memory evidence
+  changes or persisted core and infrastructure contracts also change.
+- Default features include navigation. A feature-default or navigation-handoff
+  change must describe behavior with and without navigation enabled.
+
+The [receiver release guide](../../docs/05-bijux-gnss-receiver/operations/release-and-versioning.md)
+defines the proof route for runtime, artifact, port, and validation changes.
 
 ## What Belongs Here
 
@@ -34,4 +58,6 @@ Workspace-wide release notes live in the [workspace changelog](../../CHANGELOG.m
 
 - Record runtime behavior changes in terms of observable receiver evidence.
 - Mention feature gates when navigation behavior is affected.
+- State the old and new default, threshold, transition, report, or refusal
+  behavior and name the affected signal or stage.
 - Do not hide changed defaults inside vague implementation wording.
