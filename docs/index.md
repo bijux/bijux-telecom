@@ -45,6 +45,7 @@ API, one algorithm, one persisted artifact, or one test family.
 | How does a receiver run stage acquisition, tracking, observations, and runtime validation? | [05-bijux-gnss-receiver](05-bijux-gnss-receiver/) | `crates/bijux-gnss-receiver/src/`, `crates/bijux-gnss-receiver/docs/` |
 | Which signal catalog, code family, raw-IQ contract, or DSP primitive is reusable? | [06-bijux-gnss-signal](06-bijux-gnss-signal/) | `crates/bijux-gnss-signal/src/`, `crates/bijux-gnss-signal/docs/` |
 | Which maintainer command governs audits, deny policy, benchmarks, or suite selection? | [07-bijux-gnss-dev](07-bijux-gnss-dev/) | `crates/bijux-gnss-dev/src/main.rs`, `crates/bijux-gnss-dev/docs/` |
+| What changed at workspace or package level? | [Workspace changelog](../CHANGELOG.md), package changelogs | `crates/<package>/CHANGELOG.md` |
 
 ```mermaid
 flowchart LR
@@ -133,10 +134,11 @@ status as the seven package handbooks.
 Before trusting a repository-level claim, inspect these surfaces together:
 
 - `README.md` for the public landing claim
+- `CHANGELOG.md` for unreleased workspace-level changes
 - `Cargo.toml` for workspace membership and feature shape
 - `Makefile` for maintained verification entrypoints
 - `docs/` for package routing
-- the owning crate README, crate `docs/`, source, and tests for any
+- the owning crate README, crate changelog, crate `docs/`, source, and tests for any
   crate-owned claim
 
 If this page and a crate-local proof surface disagree, trust the crate-local

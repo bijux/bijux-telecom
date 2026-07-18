@@ -51,7 +51,7 @@ Review rule:
 - if a badge is removed, explain which repository promise no longer deserves a
   public summary badge
 - if a new badge is added, it must represent a durable repository surface, not
-  a temporary rollout state
+  a short-lived rollout state
 
 ## First Proof Check
 

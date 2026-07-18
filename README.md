@@ -1,7 +1,9 @@
-# bijux-gnss
+# bijux-telecom
 
-`bijux-gnss` is a production-grade GNSS receiver stack in Rust: acquisition, tracking,
-observations, navigation, and RTK/PPP scaffolding with reproducible artifacts and diagnostics.
+`bijux-telecom` is a Rust GNSS workspace for signal modeling, receiver
+execution, observations, navigation, and reproducible evidence. The public
+package and binary are named `bijux-gnss`; the repository keeps the lower-level
+science and infrastructure split into crates with explicit ownership.
 
 <!-- bijux-telecom-badges:generated:start -->
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-0F766E)](https://github.com/bijux/bijux-telecom/blob/main/LICENSE)
@@ -18,18 +20,50 @@ observations, navigation, and RTK/PPP scaffolding with reproducible artifacts an
 [![Repository docs](https://img.shields.io/badge/docs-no%20status-9CA3AF?logo=materialformkdocs&logoColor=white)](https://github.com/bijux/bijux-telecom/tree/main/docs)
 <!-- bijux-telecom-badges:generated:end -->
 
-## 30-Second Pitch
-- Deterministic, testable pipeline from IQ → observations → PVT.
-- Strict artifact contracts and schema validation.
-- Research-ready diagnostics, experiments, and reproducibility hooks.
+## What This Repository Gives You
 
-## Install
+- A deterministic receiver path from raw IQ through acquisition, tracking,
+  observations, and optional PVT.
+- Signal catalogs and DSP primitives for GPS, Galileo, BeiDou, and GLONASS
+  surfaces currently covered by the crate tests.
+- Navigation-product parsing, correction models, SPP/RTK/PPP scaffolding, and
+  refusal evidence for unsafe solutions.
+- Dataset registry, run layout, artifact contracts, provenance, and validation
+  reports that make local evidence reviewable.
+- Maintainer guardrails for dependency direction, audit policy, benchmarks, and
+  fast-versus-slow test selection.
+
+```mermaid
+flowchart LR
+    cli["bijux binary<br/>operator workflow"]
+    infra["infra<br/>datasets and run layout"]
+    receiver["receiver<br/>acquisition to observations"]
+    signal["signal<br/>codes and DSP"]
+    nav["nav<br/>products and estimation"]
+    core["core<br/>shared records"]
+    evidence["artifacts<br/>reports and manifests"]
+
+    cli --> infra
+    cli --> receiver
+    receiver --> signal
+    receiver --> nav
+    receiver --> core
+    nav --> core
+    infra --> evidence
+    receiver --> evidence
+```
+
+## Build
 
 ```bash
 cargo build --workspace
 ```
 
-## First Command
+Minimum supported Rust version: `1.86.0`.
+
+## First Useful Commands
+
+Inspect the checked-in deterministic raw-IQ fixture:
 
 ```bash
 bijux gnss inspect --dataset demo_synthetic --output artifacts/basic_ingest
@@ -41,96 +75,123 @@ Artifacts: artifacts/basic_ingest/artifacts
 Manifest: artifacts/basic_ingest/manifest.json
 ```
 
-`demo_synthetic` is a deterministic raw IQ ingest fixture. It proves explicit format, sample-rate,
-IF, and capture-time handling; it is not a satellite-truth positioning dataset.
+`demo_synthetic` proves explicit format, sample-rate, IF, and capture-time
+handling. It is not a satellite-truth positioning dataset.
 
-Raw-IQ workflows now also emit `signal_quality_report.json`, which records sample rate, IF,
-usable duration, DC offset, I/Q imbalance, clipping, RMS, and an estimated noise floor for the
-analyzed input window.
-
-For a deterministic synthetic capture with machine-readable satellite truth, export the reference
-scenario bundle:
+Export a deterministic synthetic capture with machine-readable truth:
 
 ```bash
-bijux gnss export-synthetic-iq --scenario configs/scenarios/synthetic_iq_reference.toml --report json --out artifacts/synthetic_iq_reference
+bijux gnss export-synthetic-iq \
+  --scenario configs/scenarios/synthetic_iq_reference.toml \
+  --report json \
+  --out artifacts/synthetic_iq_reference
 ```
 
-That command writes a raw IQ capture, a sidecar, a copied scenario file, and a truth JSON artifact
-validated by `schemas/synthetic_iq_truth.schema.json`.
-
-For deterministic C/N0 calibration against injected synthetic truth, export and validate the
-single-satellite reference bundle:
+Validate a single-satellite C/N0 calibration scenario against injected truth:
 
 ```bash
-bijux gnss export-synthetic-iq --scenario configs/scenarios/synthetic_iq_cn0_reference.toml --report json --out artifacts/synthetic_iq_cn0_reference
-bijux gnss validate-synthetic-iq --unregistered-dataset --file artifacts/synthetic_iq_cn0_reference/artifacts/synthetic_iq_cn0_reference.iq16 --sidecar artifacts/synthetic_iq_cn0_reference/artifacts/synthetic_iq_cn0_reference.sidecar.toml --truth artifacts/synthetic_iq_cn0_reference/artifacts/synthetic_iq_cn0_reference.truth.json --config configs/receiver_low_rate.toml --report json --out artifacts/synthetic_iq_cn0_validation
+bijux gnss export-synthetic-iq \
+  --scenario configs/scenarios/synthetic_iq_cn0_reference.toml \
+  --report json \
+  --out artifacts/synthetic_iq_cn0_reference
+
+bijux gnss validate-synthetic-iq \
+  --unregistered-dataset \
+  --file artifacts/synthetic_iq_cn0_reference/artifacts/synthetic_iq_cn0_reference.iq16 \
+  --sidecar artifacts/synthetic_iq_cn0_reference/artifacts/synthetic_iq_cn0_reference.sidecar.toml \
+  --truth artifacts/synthetic_iq_cn0_reference/artifacts/synthetic_iq_cn0_reference.truth.json \
+  --config configs/receiver_low_rate.toml \
+  --report json \
+  --out artifacts/synthetic_iq_cn0_validation
 ```
 
-This workflow verifies that measured prompt-power C/N0 stays within a configured tolerance of the
-injected synthetic truth. The calibration scenario is intentionally single-satellite so the check
-stays isolated from later multi-satellite and fractional-sampling validation work.
-
-For a deterministic quantization-loss sweep against a float32 reference, measure the same
-synthetic scenario across 16-bit, 8-bit, 4-bit, 2-bit, and 1-bit storage profiles:
+Measure quantization loss against a float reference:
 
 ```bash
-bijux gnss measure-synthetic-quantization --scenario configs/scenarios/synthetic_iq_reference.toml --config configs/receiver_low_rate.toml --report json --out artifacts/synthetic_quantization_reference
+bijux gnss measure-synthetic-quantization \
+  --scenario configs/scenarios/synthetic_iq_reference.toml \
+  --config configs/receiver_low_rate.toml \
+  --report json \
+  --out artifacts/synthetic_quantization_reference
 ```
 
-This command emits `artifacts/synthetic_quantization_reference/artifacts/synthetic_quantization_loss_artifact.json`
-with per-quantization acquisition-correlation loss and truth-guided tracking C/N0 loss against
-the float32 baseline. When a profile does not yield a measurable acquisition peak, the artifact
-records that loss as unbounded instead of fabricating a finite number.
-
-For one final run-level GNSS accuracy artifact spanning acquisition through PVT, validate the
-bundled synthetic navigation case:
+Validate the bundled navigation accuracy case:
 
 ```bash
-bijux gnss validate-synthetic-navigation --scenario configs/scenarios/synthetic_navigation_accuracy.toml --config configs/receiver_low_rate.toml --report json --out artifacts/synthetic_navigation_accuracy
+bijux gnss validate-synthetic-navigation \
+  --scenario configs/scenarios/synthetic_navigation_accuracy.toml \
+  --config configs/receiver_low_rate.toml \
+  --report json \
+  --out artifacts/synthetic_navigation_accuracy
 ```
 
-This command emits `artifacts/synthetic_navigation_accuracy/artifacts/gnss_accuracy_artifact.json`
-with stage summaries, thresholds, pass/fail, data source, reference truth, and detailed
-per-stage reports in one file.
-
-For a public real-RF acquisition example, use the registered live-sky excerpt and its tuned
-profile:
+Run public real-RF acquisition against the registered live-sky excerpt:
 
 ```bash
-bijux gnss acquire --dataset gps_l1_2022_03_27_excerpt --config configs/receiver_live_sky_gps_l1.toml --prn 11,12,25,31,32 --report json --output artifacts/live_sky_acquire
+bijux gnss acquire \
+  --dataset gps_l1_2022_03_27_excerpt \
+  --config configs/receiver_live_sky_gps_l1.toml \
+  --prn 11,12,25,31,32 \
+  --report json \
+  --output artifacts/live_sky_acquire
 ```
 
-The dataset provenance and redistribution details live in
+The live-sky dataset provenance and redistribution details live in
 `datasets/recorded/gps_l1_2022_03_27_excerpt.provenance.md`.
 
-## Supported Features (Current)
-- GPS L1 C/A acquisition + tracking
-- Observation epoch generation
-- Public RINEX GPS observation import with preserved L1/L2 observation channels
-- PVT solver + RTK/PPP scaffolding
-- Artifact validation + diagnostics summaries
+## Package Map
 
-## Maturity
-Active development. Interfaces and outputs are stabilizing; use deterministic mode for
-regression runs.
+| package | owns | start here |
+| --- | --- | --- |
+| `bijux-gnss` | public facade and `bijux` command workflow | [crates/bijux-gnss/README.md](crates/bijux-gnss/README.md), [docs/01-bijux-gnss/](docs/01-bijux-gnss/) |
+| `bijux-gnss-core` | shared IDs, units, time, records, diagnostics, and artifact envelopes | [crates/bijux-gnss-core/README.md](crates/bijux-gnss-core/README.md), [docs/02-bijux-gnss-core/](docs/02-bijux-gnss-core/) |
+| `bijux-gnss-infra` | datasets, run layout, provenance, hashing, overrides, and experiment infrastructure | [crates/bijux-gnss-infra/README.md](crates/bijux-gnss-infra/README.md), [docs/03-bijux-gnss-infra/](docs/03-bijux-gnss-infra/) |
+| `bijux-gnss-nav` | navigation products, corrections, orbit propagation, estimators, RTK, PPP, and RAIM | [crates/bijux-gnss-nav/README.md](crates/bijux-gnss-nav/README.md), [docs/04-bijux-gnss-nav/](docs/04-bijux-gnss-nav/) |
+| `bijux-gnss-receiver` | receiver runtime, acquisition, tracking, observations, diagnostics, and receiver artifacts | [crates/bijux-gnss-receiver/README.md](crates/bijux-gnss-receiver/README.md), [docs/05-bijux-gnss-receiver/](docs/05-bijux-gnss-receiver/) |
+| `bijux-gnss-signal` | signal registry, code families, raw sample contracts, and reusable DSP | [crates/bijux-gnss-signal/README.md](crates/bijux-gnss-signal/README.md), [docs/06-bijux-gnss-signal/](docs/06-bijux-gnss-signal/) |
+| `bijux-gnss-dev` | maintainer commands, audit policy, benchmark evidence, and test-lane governance | [crates/bijux-gnss-dev/README.md](crates/bijux-gnss-dev/README.md), [docs/07-bijux-gnss-dev/](docs/07-bijux-gnss-dev/) |
+| `bijux-gnss-policies` | executable repository-shape guardrails and policy snapshots | [crates/bijux-gnss-policies/README.md](crates/bijux-gnss-policies/README.md) |
+| `bijux-gnss-testkit` | shared fixtures, independent truth models, and test evidence | [crates/bijux-gnss-testkit/README.md](crates/bijux-gnss-testkit/README.md) |
 
-## MSRV
-Minimum supported Rust version: `1.86.0`.
+## Evidence And Artifacts
+
+Generated run evidence belongs under `artifacts/`. Commands that write
+receiver or validation output also produce machine-readable reports such as
+manifests, sidecars, quality reports, truth JSON, stage summaries, and accuracy
+artifacts. Start with the command output path, then follow the manifest into the
+owning crate docs:
+
+- command behavior: `crates/bijux-gnss/docs/`
+- persisted run layout: `crates/bijux-gnss-infra/docs/`
+- receiver artifacts and validation reports:
+  `crates/bijux-gnss-receiver/docs/`
+- shared artifact envelopes: `crates/bijux-gnss-core/docs/`
+
+## Verification Lanes
+
+Use the maintained Make targets from the repository root:
+
+```bash
+make test
+make test-slow
+make test-all
+```
+
+`make test` is the fast lane. Slow proof tests belong in `make test-slow` and
+the full lanes. Repository test policy lives in
+[docs/07-bijux-gnss-dev/quality/repository-test-policy.md](docs/07-bijux-gnss-dev/quality/repository-test-policy.md).
 
 ## Documentation
-- [Repository handbook](docs/index.md)
-- [01-bijux-gnss](docs/01-bijux-gnss/index.md)
-- [02-bijux-gnss-core](docs/02-bijux-gnss-core/index.md)
-- [03-bijux-gnss-infra](docs/03-bijux-gnss-infra/index.md)
-- [04-bijux-gnss-nav](docs/04-bijux-gnss-nav/index.md)
-- [05-bijux-gnss-receiver](docs/05-bijux-gnss-receiver/index.md)
-- [06-bijux-gnss-signal](docs/06-bijux-gnss-signal/index.md)
-- [07-bijux-gnss-dev](docs/07-bijux-gnss-dev/index.md)
-- [Makes public surface](makes/README.md)
 
-## Workspace Layout
-- `bijux-gnss` owns the public facade library and the `bijux` binary entrypoint, so top-level command wiring lives with the package users actually install.
-- Domain crates such as `bijux-gnss-infra`, `bijux-gnss-nav`, and `bijux-gnss-receiver` own their production code and any crate-specific fuzzing surfaces.
-- Fuzz harnesses live under `crates/<owner>/fuzz/` so parser and config fuzzing stays attached to the crate that owns the surface being exercised.
-- `bijux-gnss-policies` remains a standalone crate because it is shared governance code consumed across the workspace.
-- `bijux-gnss-testkit` remains a standalone crate because it provides reusable scientific reference models, fixtures, and truth data used by multiple GNSS crates.
+- [Repository handbook](docs/index.md) routes readers to the owning package.
+- [Badge catalog](docs/badges.md) owns the generated badge block copied into
+  public entry pages.
+- [Workspace changelog](CHANGELOG.md) summarizes unreleased workspace-level
+  documentation and release-history changes.
+- Package changelogs live at `crates/<package>/CHANGELOG.md`.
+
+## Maturity
+
+The workspace is in active `0.1.0` development. Interfaces and artifacts are
+being stabilized through checked-in docs, tests, schemas, and reproducible
+artifacts rather than through a published compatibility guarantee.
