@@ -41,14 +41,22 @@ release-crate-build: ## Build a source bundle for the crate in the current direc
 	repo_root="$$(git rev-parse --show-toplevel)"; \
 	package="$$(basename "$(CURDIR)")"; \
 	output_root="$${repo_root}/$(ARTIFACTS_DIR)"; \
-	target_dir="$${output_root}/target"; \
 	dist_dir="$${output_root}/release"; \
-	allow_dirty_flag=""; \
+	version="$$(python3 -c 'import pathlib, tomllib; print(tomllib.loads(pathlib.Path("'"$${repo_root}"'/Cargo.toml").read_text())["workspace"]["package"]["version"])')"; \
+	archive="$${dist_dir}/$${package}-$${version}-source.tar.gz"; \
+	mkdir -p "$${dist_dir}"; \
 	if [ "$(RELEASE_PACKAGE_ALLOW_DIRTY)" = "1" ]; then \
-		allow_dirty_flag="--allow-dirty"; \
+		tar -C "$${repo_root}/crates" \
+			--exclude='*/target' \
+			--exclude='*/artifacts' \
+			-czf "$${archive}" "$${package}"; \
+	else \
+		git -C "$${repo_root}" diff --quiet; \
+		git -C "$${repo_root}" diff --cached --quiet; \
+		git -C "$${repo_root}" archive \
+			--format=tar.gz \
+			--prefix="$${package}-$${version}/" \
+			-o "$${archive}" \
+			HEAD:"crates/$${package}"; \
 	fi; \
-	mkdir -p "$${target_dir}" "$${dist_dir}"; \
-	cargo package --locked --no-verify $${allow_dirty_flag} --manifest-path Cargo.toml --target-dir "$${target_dir}"; \
-	crate_file="$$(find "$${target_dir}/package" -maxdepth 1 -type f -name "$${package}-*.crate" | sort | tail -n 1)"; \
-	test -n "$${crate_file}"; \
-	tar -C "$$(dirname "$${crate_file}")" -czf "$${dist_dir}/$${package}-source.tar.gz" "$$(basename "$${crate_file}")"
+	shasum -a 256 "$${archive}" > "$${archive}.sha256"
