@@ -4,62 +4,77 @@ audience: mixed
 type: interfaces
 status: canonical
 owner: bijux-gnss-receiver-docs
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-18
 ---
 
 # Diagnostic Contracts
 
-Receiver diagnostics are not log decoration. They are the reader-facing trail
-from a stage decision to a runtime artifact or operator-visible failure. A
-diagnostic change is a contract change when it changes severity, reason text,
-stage attribution, channel state, or whether the event is preserved in a run
-artifact.
+Receiver diagnostics are contract evidence. They connect a stage decision to
+operator-visible output, test assertions, and receiver-owned artifacts. A
+diagnostic change is material when it changes severity, reason text, stage
+attribution, channel state, ordering, or artifact retention.
 
 ## Diagnostic Flow
 
 ```mermaid
 flowchart LR
-    stage[pipeline stage] --> event[DiagnosticEvent\ncore shape]
-    stage --> state[tracking and observation\nstate reports]
-    event --> runtime[ReceiverRuntime\nlogging and dump policy]
-    state --> artifacts[RunArtifacts\nreceiver-owned output]
-    runtime --> artifacts
-    artifacts --> infra[infra persistence\noutside receiver ownership]
+    stage["pipeline stage"]
+    event["DiagnosticEvent<br/>shared record shape"]
+    state["tracking and observation<br/>state reports"]
+    runtime["ReceiverRuntime<br/>logging and dump policy"]
+    artifacts["RunArtifacts<br/>receiver-owned output"]
+    infra["bijux-gnss-infra<br/>persistence after run"]
+
+    stage --> event --> runtime --> artifacts --> infra
+    stage --> state --> artifacts
 ```
 
-The receiver owns the runtime meaning in this flow. `bijux-gnss-core` owns
-shared diagnostic record shape, and `bijux-gnss-infra` owns persisted
+`bijux-gnss-core` owns the shared diagnostic record shape. The receiver owns the
+runtime meaning, ordering, and stage attribution. Infrastructure owns persisted
 repository layout after receiver execution finishes.
 
-## Diagnostic Guarantees
+## Severity Meaning
 
-- pipeline stages emit stable diagnostic meaning rather than ad hoc log prose
-- severity remains explicit and maps to the real consequence of the event
-- stage and channel context survive long enough for artifacts and tests to
-  explain what happened
-- receiver workflows may summarize diagnostics by run because runtime
-  execution owns the operational context
-- diagnostics do not become a hidden configuration channel or a substitute for
-  typed runtime state
+| severity meaning | reader expectation | receiver obligation |
+| --- | --- | --- |
+| informational | useful run context with no degraded decision | keep the stage and channel context clear |
+| recoverable | the stage corrected or retried a bounded condition | preserve the recovery reason and final state |
+| degraded | the run continued with weaker evidence or lower confidence | expose the degraded reason in artifacts or state reports |
+| fatal | the stage refused to continue safely | emit enough context for the command layer to report the failure |
 
-## Review The Exact Contract
+## Contract Review
 
 | changed surface | contract question | proof anchor |
 | --- | --- | --- |
-| `DiagnosticEvent` emission | Does the severity and message identify a receiver-stage condition? | `crates/bijux-gnss-receiver/src/pipeline/` and `crates/bijux-gnss-receiver/src/engine/logging.rs` |
-| diagnostics dump behavior | Does the dump preserve enough run context without inventing persistence policy? | `crates/bijux-gnss-receiver/src/engine/diagnostics.rs` |
-| tracking channel state | Can a reader explain lock, degraded, reacquired, lost, or cycle-slip state from emitted data? | `crates/bijux-gnss-receiver/tests/integration_tracking_channel_state_reports.rs` |
-| observation diagnostic propagation | Does observation metadata preserve the tracking reason it depends on? | `crates/bijux-gnss-receiver/tests/integration_observations_lock_states.rs` |
-| run artifact summary | Does `RunArtifacts` expose receiver output without naming repository files? | `crates/bijux-gnss-receiver/docs/ARTIFACTS.md` |
+| diagnostic event emission | Does severity match the real receiver consequence? | `crates/bijux-gnss-receiver/src/pipeline/` |
+| runtime dump behavior | Does the dump preserve run context without claiming persistence ownership? | `crates/bijux-gnss-receiver/src/engine/diagnostics.rs` |
+| acquisition report fields | Can a reader explain selected, ambiguous, rejected, or refined candidates? | acquisition explainability and ambiguity tests |
+| tracking channel state | Can a reader explain lock, degraded, reacquired, lost, or slip state? | tracking channel-state and continuity tests |
+| observation propagation | Does observation metadata keep the tracking reason it depends on? | observation lock-state and artifact tests |
+| artifact summary | Does `RunArtifacts` expose receiver evidence before infra stores it? | `crates/bijux-gnss-receiver/docs/ARTIFACTS.md` |
 
-## Reader Contract
+## Reader-Facing Standard
 
-When a receiver run fails or degrades, a reader should be able to answer three
-questions without reading private helper code:
+When a receiver run fails, degrades, or recovers, the emitted evidence should
+answer these questions without private helper archaeology:
 
-- which stage observed the condition
-- whether the condition is fatal, degraded, informational, or recoverable
-- which artifact or state report carries the evidence
+- Which stage observed the condition?
+- Which satellite, signal, channel, or epoch was affected?
+- Was the condition informational, recoverable, degraded, or fatal?
+- Which state report, diagnostic dump, or receiver artifact carries the proof?
+- Which lower crate owns any non-receiver fact needed to interpret it?
 
-If the answer requires guessing from log prose, the diagnostic contract is not
-strong enough.
+## Anti-Patterns
+
+- Logging prose that is not mirrored by typed evidence.
+- A diagnostic reason that repeats the symptom but not the stage consequence.
+- A degraded state that disappears before artifacts or observation metadata can
+  explain it.
+- Persistence naming in receiver diagnostics; persisted layout belongs to infra.
+
+## First Proof Check
+
+Inspect `crates/bijux-gnss-receiver/src/engine/diagnostics.rs`,
+`crates/bijux-gnss-receiver/src/engine/engine.rs`,
+`crates/bijux-gnss-receiver/src/pipeline/`, and the closest integration test for
+the affected acquisition, tracking, observation, or artifact surface.
