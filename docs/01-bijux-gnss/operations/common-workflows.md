@@ -9,30 +9,53 @@ last_reviewed: 2026-07-17
 
 # Common Workflows
 
-This page describes the recurring edit patterns in `bijux-gnss`.
+Use this page to choose the reader path for common command edits. The command
+crate owns how an operator asks for work and how results are presented. It does
+not own the lower behavior that produces those results.
 
 ## Add Or Change A Command
 
-- confirm the change belongs in the command crate rather than a lower owner
-- update command-facing docs if the public shape or workflow meaning moves
-- run the narrowest integration tests that prove the new or changed command
-- inspect reporting and validation surfaces if operator output changes
+- Read `crates/bijux-gnss/docs/COMMANDS.md` first.
+- Confirm the command solves an operator route, not a lower-owner helper
+  problem.
+- Update command-facing docs when invocation, flags, defaults, output, or exit
+  behavior moves.
+- Run the focused command integration test before broad workspace checks.
 
 ## Change Workflow Wiring
 
-- identify which lower owners are being composed
-- keep the command layer focused on orchestration rather than deep behavior
-- run tests that prove the top-level workflow still calls the intended lower
-  surfaces
+```mermaid
+flowchart LR
+    command[command route] --> setup[runtime setup and argument interpretation]
+    setup --> lower[lower owner call]
+    lower --> report[operator report]
+    report --> evidence[artifact, stdout, or validation result]
+```
+
+- Identify which lower owners are being composed.
+- Keep command code focused on sequencing, configuration handoff, and report
+  presentation.
+- Run tests that prove the command calls the intended lower surface and exposes
+  the expected result.
 
 ## Change Reporting
 
-- confirm the change is operator-facing output, not lower-owner policy
-- review whether the command is rephrasing or redefining deeper meaning
-- run the narrowest tests that exercise the changed report path
+- Read `crates/bijux-gnss/docs/REPORTING.md`.
+- Confirm the change is operator-facing output, not lower-owner policy.
+- Preserve owner names and evidence routes in the report.
+- Run the narrowest test that exercises the changed report path.
 
 ## Change The Facade
 
-- confirm the export is a durable package convenience
-- avoid growing bespoke helpers in the CLI crate
-- check whether the better fix belongs in a lower crate instead
+- Read `FACADE.md` and `PUBLIC_API.md`.
+- Confirm the export is a durable package convenience.
+- Avoid adding bespoke helper logic to the command crate.
+- Route reusable behavior to the lower owner before exposing it from the top.
+
+## Change Validation
+
+- Read `VALIDATION.md` before editing a validation command.
+- Make accepted and rejected cases visible to the operator.
+- Name the lower owner when validation fails because a lower contract is wrong.
+- Keep command validation separate from runtime, signal, nav, core, or infra
+  correctness proof.
