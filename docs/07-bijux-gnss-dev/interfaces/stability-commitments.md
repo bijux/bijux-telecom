@@ -37,11 +37,11 @@ flowchart TD
 
 | surface | stability reason | proof route |
 | --- | --- | --- |
-| `audit-allowlist.toml` validation | security exceptions must remain reviewed and attributable | `docs/GOVERNANCE_FILES.md`, guardrail tests |
+| `audit-allowlist.toml` validation | security exceptions must remain reviewed and attributable | governance file guide and guardrail tests |
 | `configs/rust/deny.deviations.toml` validation | standards deviations must keep owner, reason, review link, and expiry | governance docs and policy tests |
 | audit ignore argument derivation | automation must derive ignores from one reviewed source | command docs and workflow tests |
 | benchmark comparison outputs | performance evidence is reviewed through governed benchmark files | benchmark docs and comparison tests |
-| documented maintainer command outputs | reviewed workflows need stable evidence locations | `docs/OUTPUTS.md` and integration tests |
+| documented maintainer command outputs | reviewed workflows need stable evidence locations | output guide and integration tests |
 
 ## Not Stable By Default
 
@@ -61,9 +61,8 @@ flowchart TD
 
 ## First Proof Check
 
-Inspect `crates/bijux-gnss-dev/docs/COMMANDS.md`,
-`crates/bijux-gnss-dev/docs/WORKFLOWS.md`,
-`crates/bijux-gnss-dev/docs/OUTPUTS.md`,
-`crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md`,
-`crates/bijux-gnss-dev/src/main.rs`, and
-`crates/bijux-gnss-dev/tests/integration_guardrails.rs`.
+Inspect the [maintainer command guide](../../../crates/bijux-gnss-dev/docs/COMMANDS.md),
+[workflow guide](../../../crates/bijux-gnss-dev/docs/WORKFLOWS.md),
+[output guide](../../../crates/bijux-gnss-dev/docs/OUTPUTS.md),
+[governance file guide](../../../crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md),
+command implementation, and maintainer guardrail tests.

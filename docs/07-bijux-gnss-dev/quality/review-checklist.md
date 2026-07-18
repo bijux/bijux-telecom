@@ -29,11 +29,11 @@ flowchart LR
 
 | changed surface | accept only when | inspect before accepting |
 | --- | --- | --- |
-| command meaning | The command owns a reviewed maintainer workflow, not product runtime behavior. | [Command Surface](../interfaces/command-surface.md), `crates/bijux-gnss-dev/docs/COMMANDS.md` |
-| governed input file | The file is named as reviewed repository input and has typed validation or guarded test proof. | [Governed Input Contracts](../interfaces/governed-input-contracts.md), `crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md` |
-| evidence output | The output path is stable, documented, and tied to a maintainer workflow. | [Output Contracts](../interfaces/output-contracts.md), `crates/bijux-gnss-dev/docs/OUTPUTS.md` |
-| benchmark comparison | The curated package set, raw output, normalized snapshot, and baseline comparison remain explicit. | `crates/bijux-gnss-dev/docs/BENCHMARKS.md`, `crates/bijux-gnss-dev/docs/WORKFLOWS.md` |
-| slow-test roster policy | The roster still resolves to real tests and stays outside `make test`. | [Repository Test Policy](repository-test-policy.md), `crates/bijux-gnss-dev/tests/integration_nextest_suite_selection.rs` |
+| command meaning | The command owns a reviewed maintainer workflow, not product runtime behavior. | [Command surface](../interfaces/command-surface.md) and [command guide](../../../crates/bijux-gnss-dev/docs/COMMANDS.md) |
+| governed input file | The file is named as reviewed repository input and has typed validation or guarded test proof. | [Governed input contracts](../interfaces/governed-input-contracts.md) and [governance file guide](../../../crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md) |
+| evidence output | The output path is stable, documented, and tied to a maintainer workflow. | [Output contracts](../interfaces/output-contracts.md) and [output guide](../../../crates/bijux-gnss-dev/docs/OUTPUTS.md) |
+| benchmark comparison | The curated package set, raw output, normalized snapshot, and baseline comparison remain explicit. | [benchmark guide](../../../crates/bijux-gnss-dev/docs/BENCHMARKS.md) and [workflow guide](../../../crates/bijux-gnss-dev/docs/WORKFLOWS.md) |
+| slow-test roster policy | The roster still resolves to real tests and stays outside `make test`. | [Repository test policy](repository-test-policy.md) and nextest suite-selection proof |
 
 ## Blocking Signs
 
@@ -48,10 +48,11 @@ flowchart LR
 
 ## Evidence To Require
 
-- Read `crates/bijux-gnss-dev/docs/WORKFLOWS.md`,
-  `crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md`,
-  `crates/bijux-gnss-dev/docs/OUTPUTS.md`, and
-  `crates/bijux-gnss-dev/docs/TESTS.md` before accepting broad changes.
+- Read the [workflow guide](../../../crates/bijux-gnss-dev/docs/WORKFLOWS.md),
+  [governance file guide](../../../crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md),
+  [output guide](../../../crates/bijux-gnss-dev/docs/OUTPUTS.md), and
+  [maintainer test guide](../../../crates/bijux-gnss-dev/docs/TESTS.md) before
+  accepting broad changes.
 - Run `cargo test -p bijux-gnss-dev --test integration_nextest_suite_selection`
   when the slow roster or test-lane policy changes.
 - State honestly when full benchmark execution is too expensive for the current

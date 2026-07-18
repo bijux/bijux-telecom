@@ -36,11 +36,11 @@ flowchart TD
 
 | family | owns | first proof |
 | --- | --- | --- |
-| registry | dataset ids, capture file routes, declared metadata, and dataset entries | `crates/bijux-gnss-infra/src/datasets/registry.rs` |
-| sidecar loading | file-backed raw-IQ metadata loading and validation handoff | `crates/bijux-gnss-infra/src/datasets/raw_iq_metadata.rs` |
-| metadata resolution | dataset-aware sidecar and explicit metadata resolution | `crates/bijux-gnss-infra/src/datasets/raw_iq_metadata.rs` |
-| capture provenance | recorded capture context attached to dataset entries | `crates/bijux-gnss-infra/src/datasets/registry/` |
-| coordinate parsing | repository-side ECEF parsing for dataset records | `crates/bijux-gnss-infra/src/parse/coordinates.rs` |
+| registry | dataset ids, capture file routes, declared metadata, and dataset entries | dataset registry source |
+| sidecar loading | file-backed raw-IQ metadata loading and validation handoff | raw-IQ metadata source |
+| metadata resolution | dataset-aware sidecar and explicit metadata resolution | raw-IQ metadata source |
+| capture provenance | recorded capture context attached to dataset entries | capture provenance source |
+| coordinate parsing | repository-side ECEF parsing for dataset records | coordinate parsing source |
 
 ## Boundary Rules
 
@@ -59,8 +59,6 @@ flowchart TD
 
 ## First Proof Check
 
-Inspect `crates/bijux-gnss-infra/docs/DATASETS.md`,
-`crates/bijux-gnss-infra/src/datasets/registry.rs`,
-`crates/bijux-gnss-infra/src/datasets/raw_iq_metadata.rs`,
-`crates/bijux-gnss-infra/src/parse/coordinates.rs`, and dataset or sidecar
-integration tests before changing dataset contract claims.
+Inspect the [dataset guide](../../../crates/bijux-gnss-infra/docs/DATASETS.md),
+dataset registry source, raw-IQ metadata source, coordinate parsing source, and
+dataset or sidecar integration tests before changing dataset contract claims.

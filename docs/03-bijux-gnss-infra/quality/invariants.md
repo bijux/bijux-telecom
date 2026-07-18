@@ -54,12 +54,9 @@ flowchart LR
 
 ## First Proof Check
 
-Inspect `crates/bijux-gnss-infra/docs/RUN_LAYOUT.md`,
-`crates/bijux-gnss-infra/docs/DATASETS.md`,
-`crates/bijux-gnss-infra/docs/OVERRIDES.md`,
-`crates/bijux-gnss-infra/docs/HASHING.md`,
-`crates/bijux-gnss-infra/src/datasets/registry.rs`,
-`crates/bijux-gnss-infra/src/datasets/raw_iq_metadata.rs`,
-`crates/bijux-gnss-infra/src/run_layout/`,
-`crates/bijux-gnss-infra/src/hash/provenance.rs`, and
-`crates/bijux-gnss-infra/tests/integration_guardrails.rs`.
+Inspect the [run layout guide](../../../crates/bijux-gnss-infra/docs/RUN_LAYOUT.md),
+[dataset guide](../../../crates/bijux-gnss-infra/docs/DATASETS.md),
+[override guide](../../../crates/bijux-gnss-infra/docs/OVERRIDES.md), and
+[hashing guide](../../../crates/bijux-gnss-infra/docs/HASHING.md). Then inspect
+dataset registry source, raw-IQ metadata source, run-layout source, provenance
+source, and infra guardrail tests.
