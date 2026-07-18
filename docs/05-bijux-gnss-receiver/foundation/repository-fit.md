@@ -4,35 +4,67 @@ audience: mixed
 type: foundation
 status: canonical
 owner: bijux-gnss-receiver-docs
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-18
 ---
 
 # Repository Fit
 
-`bijux-gnss-receiver` is the runtime center of the repository. It is not the
-command layer and not the persistence layer.
+`bijux-gnss-receiver` is the runtime center of `bijux-telecom`. It turns
+configured sample streams, signal facts, navigation services, ports, and stage
+logic into receiver evidence. It does not own command syntax, persisted
+repository layout, standalone signal math, or navigation science.
 
-## Why The Repository Needs This Layer
+## Runtime Role
 
-- runtime execution should be reusable across commands, synthetic validation,
-  and downstream artifact workflows
-- lower scientific owners should not be forced to absorb scheduling, sinks, and
-  runtime state just because they are used during execution
-- higher layers should consume a receiver boundary instead of rebuilding one
-  ad hoc
+```mermaid
+flowchart LR
+    command["command<br/>run request"]
+    ports["ports<br/>sample source clock sinks"]
+    receiver["receiver<br/>acquisition tracking observations"]
+    signal["signal<br/>code and DSP substrate"]
+    nav["nav<br/>science services"]
+    artifacts["receiver artifacts<br/>in memory"]
+    infra["infra<br/>persistence"]
 
-## How It Fits With Neighboring Handbooks
+    command --> receiver
+    ports --> receiver
+    signal --> receiver
+    nav --> receiver
+    receiver --> artifacts --> infra
+```
 
-- [04-bijux-gnss-nav](../../04-bijux-gnss-nav/) explains the navigation
-  science this runtime may call but should not redefine
-- [03-bijux-gnss-infra](../../03-bijux-gnss-infra/) explains persisted
-  repository ownership that may consume receiver artifacts but should not own
-  runtime composition
-- [01-bijux-gnss](../../01-bijux-gnss/) explains command ownership above this
-  runtime surface
+Receiver owns the moment separate stage computations become one run with
+ordered evidence. That ownership includes runtime configuration, stage
+composition, source/sink ports, diagnostics, and receiver-owned artifacts before
+infra persists them.
 
-## The Fit To Defend
+## Fit To Defend
 
-This crate should remain the place where a receiver run is explainable without
-opening command code, repository persistence code, or lower-level scientific
-owners to recover runtime intent.
+| neighbor | receiver consumes | receiver refuses |
+| --- | --- | --- |
+| command | run requests, selected config, report needs | CLI shape and operator report policy |
+| infra | dataset-resolved inputs and persisted-output handoff | run directory layout, manifests, artifact indexing |
+| signal | code, carrier, replica, and DSP substrate | reusable signal facts and spreading-code generation |
+| nav | solvers, correction services, and navigation products when enabled | standalone estimation law and product parsing ownership |
+| core | shared records, units, diagnostics, and artifact payload shapes | changing shared field meaning locally |
+
+## Reader Questions
+
+- Is the issue acquisition, tracking, observation construction, runtime ports,
+  diagnostics, synthetic runtime proof, or receiver artifacts? Stay here.
+- Is the issue command syntax or report routing? Leave for `bijux-gnss`.
+- Is the issue persisted run layout or dataset registry state? Leave for infra.
+- Is the issue reusable code generation, signal identity, or DSP substrate?
+  Leave for signal.
+- Is the issue correction, orbit, estimator, PPP, RTK, or navigation format
+  science? Leave for nav.
+
+## First Proof Check
+
+Inspect `crates/bijux-gnss-receiver/docs/BOUNDARY.md`,
+`crates/bijux-gnss-receiver/docs/RUNTIME.md`,
+`crates/bijux-gnss-receiver/docs/PIPELINE.md`,
+`crates/bijux-gnss-receiver/docs/ARTIFACTS.md`,
+`crates/bijux-gnss-receiver/src/engine/`,
+`crates/bijux-gnss-receiver/src/pipeline/`, and
+`crates/bijux-gnss-receiver/src/ports/`.
