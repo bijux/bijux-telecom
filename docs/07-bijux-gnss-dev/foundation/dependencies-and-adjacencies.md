@@ -4,62 +4,137 @@ audience: mixed
 type: foundation
 status: canonical
 owner: bijux-gnss-dev-docs
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-18
 ---
 
 # Dependencies And Adjacencies
 
-This page explains which dependencies are legitimate for a maintainer-only
-binary and which adjacent crates create the real review pressure.
+`bijux-gnss-dev` is a repository maintenance executable. Its Rust dependency
+graph is intentionally small, but successful execution also depends on named
+repository files, the working directory or an explicit workspace root, and
+external processes for selected commands.
 
-## Direct Dependencies
+## Four Dependency Classes
 
-- `clap` for the binary command contract
-- `anyhow` for maintainer-facing error propagation
-- `regex` for controlled parsing of benchmark output
-- `toml` for reading reviewed governance files
+```mermaid
+flowchart LR
+    command["maintainer command"]
+    rust["Rust libraries"]
+    files["governed repository inputs"]
+    process["external processes"]
+    tests["test-only policy and scripts"]
+    report["maintainer evidence or gate result"]
 
-## Adjacencies That Matter More Than The Cargo Graph
+    rust --> command
+    files --> command
+    process -. "selected commands" .-> command
+    tests -. "verification only" .-> command
+    command --> report
+```
 
-- `bijux-gnss-policies` is the closest support crate: it owns reusable
-  repository guardrails while `bijux-gnss-dev` owns command workflows and
-  maintenance evidence
-- `bijux-gnss` is the public operator boundary whose product commands must not
-  leak into maintainer-only automation
-- `bijux-gnss-receiver`, `bijux-gnss-nav`, and `bijux-gnss-signal` are product
-  crates whose benchmarks or evidence may be inspected here without
-  transferring ownership
-- `bijux-gnss-testkit` can supply deterministic shared truth for maintenance
-  evidence, but should not become the maintainer-workflow owner
+| class | current dependency | purpose | failure ownership |
+| --- | --- | --- | --- |
+| Rust runtime | `clap` | command syntax and typed arguments | maintainer command contract |
+| Rust runtime | `anyhow` | contextual failures for repository workflows | maintainer command contract |
+| Rust runtime | `regex` | controlled parsing of benchmark output | benchmark evidence workflow |
+| Rust runtime | `toml` | reviewed governance input parsing | governed-file contract |
+| process | `cargo` | execute package benchmarks for comparison | local toolchain plus benchmark owner |
+| process | `date` | resolve the current review date for expiring deviations | host environment |
+| repository input | audit exceptions, deny deviations, benchmark baseline | source-controlled policy and evidence | repository governance owner |
+| test-only | policy crate, nextest expression script, slow roster | prove guardrails and lane selection | repository test policy |
 
-## Dependency Rules
+The exact compile dependency list is the
+[package manifest](../../../crates/bijux-gnss-dev/Cargo.toml). Process spawning
+is visible in the
+[maintainer executable](../../../crates/bijux-gnss-dev/src/main.rs).
 
-- new dependencies are acceptable when they strengthen maintainer command
-  clarity, governed-file validation, or deterministic evidence handling
-- new dependencies are suspect when they pull product crates, broad frameworks,
-  or incidental repository scripting behavior into this binary
-- this crate should stay adjacent to repository workflows, not coupled to
-  product logic or uncontrolled side effects
+## Runtime Resolution
 
-## Review Question
+```mermaid
+flowchart TD
+    invoke["invoke maintainer command"]
+    root{"workspace root supplied?"}
+    explicit["use explicit root"]
+    current["use current directory"]
+    locate["join exact governed location"]
+    parse["parse and validate"]
+    child{"external command required?"}
+    execute["run child in workspace root"]
+    result["emit evidence or fail with context"]
 
-For every dependency or governed file addition, ask whether it strengthens a
-durable maintainer boundary or whether it is attempting to smuggle unrelated
-repository behavior into the dev crate.
+    invoke --> root
+    root -- yes --> explicit
+    root -- no --> current
+    explicit --> locate
+    current --> locate
+    locate --> parse
+    parse --> child
+    child -- yes --> execute
+    child -- no --> result
+    execute --> result
+```
 
-## First Proof Check
+The executable does not search ancestor directories for a repository root. It
+uses an explicitly supplied root where the command offers one; otherwise it
+uses the current directory and joins the governed location. Running from an
+arbitrary subdirectory can therefore produce a legitimate “file not found”
+rather than discovering the repository automatically.
 
-Inspect `crates/bijux-gnss-dev/Cargo.toml`,
-`crates/bijux-gnss-dev/docs/ARCHITECTURE.md`, and
-`crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md`. Then inspect
-`crates/bijux-gnss-dev/src/main.rs` and
-`crates/bijux-gnss-dev/tests/integration_guardrails.rs` to confirm the binary
-still depends only on general-purpose tooling while reading named governed
-repository inputs.
+Benchmark comparison starts `cargo bench` in the resolved workspace root and
+parses its output. This is a process boundary, not a Rust dependency on product
+crates. A benchmark failure belongs first to the invoked package or local
+toolchain; a successful process with unparseable output belongs to the
+maintainer evidence parser.
 
-## First Neighbor Proof Check
+## Product Crates Are Adjacent, Not Linked
 
-When a dependency question turns into reusable repository policy, inspect the
-support-crate route in the [Maintainer handbook](../index.md) and then the
-`bijux-gnss-policies` crate surfaces. When it turns into product-command
-ownership, inspect the [command dependency guide](../../01-bijux-gnss/foundation/dependencies-and-adjacencies.md).
+```mermaid
+flowchart LR
+    product["product crate and benchmark"]
+    cargo["cargo child process"]
+    dev["maintainer executable"]
+    policy["policy support in tests"]
+    command["operator command crate"]
+
+    product --> cargo
+    cargo --> dev
+    policy -.-> dev
+    command -. "separate ownership" .- dev
+```
+
+The executable does not compile against receiver, navigation, signal, command,
+or testkit crates. It may inspect their benchmark output or repository evidence
+without acquiring product behavior. The policy crate is currently a
+development-only dependency used by guardrail tests, not production command
+logic.
+
+This distinction prevents two common mistakes:
+
+- adding a product crate dependency to call internal behavior from a repository
+  gate;
+- moving operator commands into maintainer tooling because both happen to use a
+  command-line parser.
+
+Product runtime behavior belongs to the
+[command boundary](../../01-bijux-gnss/foundation/ownership-boundary.md).
+Reusable repository rules belong to the policy support crate; command
+orchestration and maintainer-facing evidence remain here.
+
+## Review A New Dependency
+
+Before adding a library, file, or process dependency, answer:
+
+1. Which maintainer workflow owns it, and what evidence becomes more reliable?
+2. Can the behavior be implemented through an existing governed input or
+   standard-library facility without obscuring intent?
+3. Is the dependency deterministic enough for local and CI use?
+4. Does its failure message identify the missing tool, file, policy record, or
+   product command?
+5. Does it preserve the boundary between repository maintenance and GNSS
+   product execution?
+6. Does the [governance file contract](../../../crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md)
+   need a matching update?
+
+The [dependency direction guide](../architecture/dependency-direction.md)
+defines compile and process direction. The [integration seams guide](../architecture/integration-seams.md)
+explains how new governed inputs and child-process behavior should be tested.
