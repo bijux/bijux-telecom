@@ -4,31 +4,57 @@ audience: mixed
 type: interfaces
 status: canonical
 owner: bijux-gnss-docs
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-18
 ---
 
 # Facade Contracts
 
-The Rust facade is intentionally smaller than the binary surface.
+The Rust facade is intentionally smaller than the binary surface. It exists so
+Rust consumers can discover the main GNSS stack through one crate without
+turning the command crate into another owner of core, signal, receiver, or nav
+semantics.
 
-## Owned Facade Surface
+## Facade Shape
 
-- re-exports of `core`, `receiver`, `signal`, and feature-gated `nav`
+```mermaid
+flowchart TD
+    caller["Rust caller"]
+    facade["bijux_gnss facade"]
+    core["core"]
+    signal["signal"]
+    receiver["receiver"]
+    nav["nav<br/>feature-gated"]
 
-## What The Facade Is For
+    caller --> facade
+    facade --> core
+    facade --> signal
+    facade --> receiver
+    facade --> nav
+```
 
-- package-level convenience when a consumer genuinely wants one crate import
-- making the main GNSS stack discoverable without treating the CLI crate as a
-  bespoke helper library
+## Facade Commitments
 
-## What The Facade Is Not For
+| facade item | commitment | owner of behavior |
+| --- | --- | --- |
+| `core` re-export | shared records, units, diagnostics, artifacts, and time contracts remain reachable | `bijux-gnss-core` |
+| `signal` re-export | signal definitions, code generation, sample contracts, and DSP helpers remain reachable | `bijux-gnss-signal` |
+| `receiver` re-export | receiver stages, runtime helpers, ports, artifacts, and simulation contracts remain reachable | `bijux-gnss-receiver` |
+| `nav` re-export | navigation APIs are available only when the feature is enabled | `bijux-gnss-nav` |
 
-- hosting command-only helpers
-- masking lower-owner boundaries
-- growing a parallel public API unrelated to the binary surface
+## Rejection Rules
 
-## Closest Proof
+- Do not add command-only helper functions to the facade.
+- Do not re-export private lower-crate modules to avoid fixing a real public API
+  gap in the owning crate.
+- Do not use the facade to hide feature-gated navigation behavior.
+- Do not add convenience aliases that make readers guess which lower crate owns
+  the meaning.
+- Do improve the owning crate first when an export has durable scientific or
+  infrastructure meaning.
 
-- `crates/bijux-gnss/src/lib.rs`
-- `crates/bijux-gnss/docs/FACADE.md`
-- `crates/bijux-gnss/docs/PUBLIC_API.md`
+## First Proof Check
+
+Inspect `crates/bijux-gnss/src/lib.rs`,
+`crates/bijux-gnss/docs/FACADE.md`,
+`crates/bijux-gnss/docs/PUBLIC_API.md`, and the `api.rs` files in the lower
+crates before changing facade exports.

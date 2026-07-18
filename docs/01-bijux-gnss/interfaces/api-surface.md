@@ -4,36 +4,53 @@ audience: mixed
 type: interfaces
 status: canonical
 owner: bijux-gnss-docs
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-18
 ---
 
 # API Surface
 
-`bijux-gnss` has two public surfaces: the `bijux` binary and the thin Rust
-facade from `src/lib.rs`.
+`bijux-gnss` has two public surfaces, and they serve different readers. The
+`bijux` binary is the operator contract. The Rust facade in `src/lib.rs` is a
+small package convenience layer over lower crates.
 
-## Why Two Surfaces Matter
+## Public Surface Map
 
-The binary is the primary operator contract. The Rust facade exists for
-package-level convenience, but it must stay visibly secondary so the command
-crate does not become a second mixed-responsibility API layer.
+```mermaid
+flowchart LR
+    operator["operator or automation"]
+    binary["bijux binary<br/>commands flags reports"]
+    facade["Rust facade<br/>src/lib.rs"]
+    owners["core signal receiver<br/>nav when enabled"]
 
-## What Belongs In The Public Surface
+    operator --> binary
+    binary --> owners
+    facade --> owners
+```
 
-- stable command families, flags, and report shape
-- top-level workflow composition that operators genuinely interact with
-- a small, durable facade over lower-level crates when that convenience is
-  justified
+## Surface Responsibilities
 
-## What Should Stay Out
+| surface | reader promise | should not own |
+| --- | --- | --- |
+| `bijux` binary | command families, flags, workflow selection, exit behavior, and operator reports | lower-crate science or data-model meaning |
+| `src/lib.rs` facade | one-crate Rust access to the main GNSS stack | bespoke helpers or a parallel API namespace |
+| CLI support modules | parsing, loading, routing, and report assembly needed by commands | stable contracts that belong in core, signal, receiver, nav, or infra |
+| lower crates | scientific, receiver, signal, navigation, and infrastructure meaning | command naming or operator presentation |
 
-- one-off command helpers with no durable operator meaning
-- lower-owner science exported through the facade only to save imports
-- repository or runtime internals that are not actually command-boundary
-  promises
+## Admission Rules
 
-## Closest Proof
+- Add binary surface only when an operator can invoke it intentionally and the
+  output can be documented as a durable workflow.
+- Add facade surface only when one-crate Rust discovery is useful and ownership
+  still stays in the lower crate.
+- Keep command-only parsing and presentation helpers out of the facade.
+- Keep lower-owner scientific exports in their owning crates unless the facade
+  simply re-exports an existing public surface.
+- Review command changes as user-facing compatibility changes, not as internal
+  refactors.
 
-- `crates/bijux-gnss/src/main.rs`
-- `crates/bijux-gnss/src/lib.rs`
-- `crates/bijux-gnss/API.md`
+## First Proof Check
+
+Inspect `crates/bijux-gnss/src/main.rs`, `crates/bijux-gnss/src/lib.rs`,
+`crates/bijux-gnss/src/cli/`, `crates/bijux-gnss/API.md`,
+`crates/bijux-gnss/docs/PUBLIC_API.md`, and
+`crates/bijux-gnss/docs/COMMANDS.md` before changing this public surface.
