@@ -67,12 +67,9 @@ flowchart LR
 
 ## First Proof Check
 
-Inspect `crates/bijux-gnss-nav/src/time.rs`,
-`crates/bijux-gnss-nav/src/time/rollover.rs`,
-`crates/bijux-gnss-nav/src/models/`,
-`crates/bijux-gnss-nav/docs/TIME.md`,
-`crates/bijux-gnss-nav/docs/MODELS.md`,
-`crates/bijux-gnss-nav/tests/integration_time_system_conversions.rs` and
-`crates/bijux-gnss-nav/tests/integration_troposphere_elevation.rs` to confirm
-navigation-specific time interpretation and physical models still match checked
-scientific proof.
+Inspect navigation-time source, rollover source, model source, the
+[time guide](../../../crates/bijux-gnss-nav/docs/TIME.md), and
+[model guide](../../../crates/bijux-gnss-nav/docs/MODELS.md). Then inspect
+focused tests for time-system conversions and troposphere elevation behavior to
+confirm navigation-specific time interpretation and physical models still match
+checked scientific proof.
