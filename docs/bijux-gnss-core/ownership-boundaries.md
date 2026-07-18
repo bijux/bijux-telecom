@@ -50,11 +50,11 @@ Good core candidates include:
 
 | shared contract in core | policy or behavior owned elsewhere |
 | --- | --- |
-| signal identity, component role, carrier constants, and registry record types | [signal processing](../bijux-gnss-signal/) owns registry contents, code generation, sample behavior, replicas, and DSP |
-| acquisition and tracking request, result, lifecycle, uncertainty, and diagnostic records | [receiver execution](../bijux-gnss-receiver/) owns stage scheduling, lock decisions, reacquisition, and channel policy |
-| navigation solution, residual, refusal, and provenance records | [navigation science](../bijux-gnss-nav/) owns parsing, orbit models, corrections, estimators, and solution acceptance |
-| artifact headers and versioned payload validation | [repository infrastructure](../bijux-gnss-infra/) owns file discovery, run layout, manifests, provenance hashing, and persistence |
-| configuration structures and validation reports | [command workflows](../bijux-gnss/) own operator syntax, workflow defaults, and report presentation |
+| signal identity, component role, carrier constants, and registry record types | [signal processing](../bijux-gnss-signal/index.md) owns registry contents, code generation, sample behavior, replicas, and DSP |
+| acquisition and tracking request, result, lifecycle, uncertainty, and diagnostic records | [receiver execution](../bijux-gnss-receiver/index.md) owns stage scheduling, lock decisions, reacquisition, and channel policy |
+| navigation solution, residual, refusal, and provenance records | [navigation science](../bijux-gnss-nav/index.md) owns parsing, orbit models, corrections, estimators, and solution acceptance |
+| artifact headers and versioned payload validation | [repository infrastructure](../bijux-gnss-infra/index.md) owns file discovery, run layout, manifests, provenance hashing, and persistence |
+| configuration structures and validation reports | [command workflows](../bijux-gnss/index.md) own operator syntax, workflow defaults, and report presentation |
 
 The fact that core defines a lifecycle enum does not mean it decides when a
 receiver changes state. The fact that core defines an artifact envelope does
@@ -88,7 +88,7 @@ dataset discovery, process environment, filesystem layout, or operator intent.
 
 Core exports signal identity types, component metadata structures, and shared
 carrier constants through the
-[public core facade](../../crates/bijux-gnss-core/src/api.rs). The signal
+[public core facade](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/src/api.rs). The signal
 package uses those contracts to build canonical registry entries and implement
 code and sample behavior.
 
@@ -120,7 +120,7 @@ value is genuinely part of the portable record.
 
 Core must remain below signal, navigation, receiver, infrastructure, and
 command packages. Its manifest and
-[dependency guardrail](../../crates/bijux-gnss-core/tests/integration_guardrails.rs)
+[dependency guardrail](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/tests/integration_guardrails.rs)
 are stronger evidence than an architecture diagram.
 
 If a proposed core helper needs a higher-level workspace dependency, move the
@@ -139,8 +139,8 @@ Before adding or widening a core contract, answer:
 5. Would a higher owner lose necessary policy if this moved into core?
 6. Can the contract evolve without exposing one implementation's internals?
 
-Use the [contract map](../../crates/bijux-gnss-core/docs/CONTRACT_MAP.md),
-[public API guide](../../crates/bijux-gnss-core/docs/PUBLIC_API.md), and
-[change rules](../../crates/bijux-gnss-core/docs/CHANGE_RULES.md) to assess
+Use the [contract map](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/CONTRACT_MAP.md),
+[public API guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/PUBLIC_API.md), and
+[change rules](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/CHANGE_RULES.md) to assess
 downstream impact. Shared use is evidence of a boundary; it is not proof that
 core is the correct one.

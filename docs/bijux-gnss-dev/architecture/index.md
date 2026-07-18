@@ -15,7 +15,7 @@ section when changing command ownership, governed inputs, process execution,
 evidence persistence, or failure behavior.
 
 The current implementation fits in one
-[command source](../../../crates/bijux-gnss-dev/src/main.rs). Treat its
+[command source](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/src/main.rs). Treat its
 conceptual workflow boundaries as real even though they are not separate
 modules. File count is not architecture; ownership and effects are.
 
@@ -115,7 +115,7 @@ baseline skips comparison entirely.
 This behavior makes baseline presence and provenance architectural concerns,
 not incidental files. The [output contract](../interfaces/output-contracts.md)
 defines the evidence categories, and the
-[benchmark interpretation guide](../../../crates/bijux-gnss-dev/docs/BENCHMARKS.md)
+[benchmark interpretation guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/BENCHMARKS.md)
 defines their review use.
 
 ### Suite-Selection Proof
@@ -133,7 +133,7 @@ flowchart LR
     inventory --> proof
 ```
 
-The [suite-selection proof](../../../crates/bijux-gnss-dev/tests/integration_nextest_suite_selection.rs)
+The [suite-selection proof](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/tests/integration_nextest_suite_selection.rs)
 reads the slow roster, scans Rust test functions, executes the expression
 generator, and verifies the lane relationship. This is repository architecture
 evidence owned by the package's tests, but it is not dispatched through the

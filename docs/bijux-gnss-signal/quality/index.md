@@ -19,7 +19,7 @@ contract.
 
 | Claim | Read first | Required evidence |
 | --- | --- | --- |
-| A signal identity, carrier, code rate, component role, or wavelength is canonical | [Catalog contract](../../../crates/bijux-gnss-signal/docs/CATALOG.md) | registry consistency and a named specification or reference |
+| A signal identity, carrier, code rate, component role, or wavelength is canonical | [Catalog contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/CATALOG.md) | registry consistency and a named specification or reference |
 | A primary or secondary code is correct | [Code contracts](../interfaces/code-contracts.md) | reference chips, period, component identity, and boundary behavior |
 | Sampling, NCO, replica, wipeoff, correlation, or spectrum math is correct | [DSP contracts](../interfaces/dsp-contracts.md) | formula or independent reference, edge properties, and long-duration continuity where state advances |
 | Raw samples preserve declared numeric meaning | [Raw-IQ and sample contracts](../interfaces/raw-iq-and-sample-contracts.md) | metadata round trip, quantization semantics, byte order, and numeric conversion |

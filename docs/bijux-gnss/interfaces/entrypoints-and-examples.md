@@ -75,7 +75,7 @@ visibility.
 
 For an unregistered capture, provide the file and metadata required by the
 selected workflow. Use the
-[dataset contract](../../../crates/bijux-gnss-infra/docs/DATASETS.md) to
+[dataset contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/DATASETS.md) to
 understand registry and sidecar precedence rather than supplying contradictory
 overrides until a command happens to accept them.
 
@@ -122,8 +122,8 @@ evidence, and conversion writes a requested target representation. Conversion
 is an explicit write operation; validation and explanation should not be
 described as equivalent to migration.
 
-Use the [artifact workflow guide](../../../crates/bijux-gnss/docs/WORKFLOWS.md)
-and [reporting contract](../../../crates/bijux-gnss/docs/REPORTING.md) before
+Use the [artifact workflow guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/docs/WORKFLOWS.md)
+and [reporting contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/docs/REPORTING.md) before
 building automation around report fields or exit behavior.
 
 ## Use the Rust Facade
@@ -156,13 +156,13 @@ the implementation owner.
 
 | Question | Reader destination |
 | --- | --- |
-| command names, flags, reports, and operator workflow | [command reference](../../../crates/bijux-gnss/docs/COMMANDS.md) |
-| facade imports and feature availability | [facade guide](../../../crates/bijux-gnss/docs/FACADE.md) |
-| identities, units, records, diagnostics, and artifact envelopes | [core API](../../../crates/bijux-gnss-core/API.md) |
-| signal catalogs, codes, samples, and DSP | [signal API](../../../crates/bijux-gnss-signal/API.md) |
-| acquisition, tracking, observations, and receiver artifacts | [receiver API](../../../crates/bijux-gnss-receiver/API.md) |
-| products, corrections, positioning, integrity, PPP, and RTK | [navigation API](../../../crates/bijux-gnss-nav/API.md) |
-| datasets, run layout, persistence, and artifact inspection | [infrastructure API](../../../crates/bijux-gnss-infra/API.md) |
+| command names, flags, reports, and operator workflow | [command reference](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/docs/COMMANDS.md) |
+| facade imports and feature availability | [facade guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/docs/FACADE.md) |
+| identities, units, records, diagnostics, and artifact envelopes | [core API](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/API.md) |
+| signal catalogs, codes, samples, and DSP | [signal API](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/API.md) |
+| acquisition, tracking, observations, and receiver artifacts | [receiver API](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/API.md) |
+| products, corrections, positioning, integrity, PPP, and RTK | [navigation API](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/API.md) |
+| datasets, run layout, persistence, and artifact inspection | [infrastructure API](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/API.md) |
 
 ## Avoid Misleading Starts
 

@@ -15,7 +15,7 @@ contracts without becoming production dependencies of core.
 
 ## Current Dependency Boundary
 
-The [package manifest](../../../crates/bijux-gnss-core/Cargo.toml) currently
+The [package manifest](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/Cargo.toml) currently
 uses three production libraries:
 
 | Dependency purpose | Why core needs it | Boundary |
@@ -114,7 +114,7 @@ Stop when:
 Use the [dependency architecture](../architecture/dependency-direction.md) for
 edge rules, the [ownership boundary](ownership-boundary.md) for contract
 admission, and the
-[crate boundary](../../../crates/bijux-gnss-core/docs/BOUNDARY.md) for the
+[crate boundary](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/BOUNDARY.md) for the
 published production scope.
 
 The dependency posture is healthy when core remains portable common language,

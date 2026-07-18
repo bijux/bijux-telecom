@@ -75,9 +75,9 @@ flowchart TD
     decision -- yes --> review["record scope and<br/>remaining limits"]
 ```
 
-The [simulation guide](../../../crates/bijux-gnss-receiver/docs/SIMULATION.md)
+The [simulation guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/docs/SIMULATION.md)
 defines what the receiver simulation surface owns. Use the
-[quality guide](../quality/) to decide whether the available evidence is
+[quality guide](../quality/index.md) to decide whether the available evidence is
 sufficient for the claim.
 
 ## Review the Real Blast Radius

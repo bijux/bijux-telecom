@@ -57,7 +57,7 @@ badge should change or disappear instead of training readers to distrust the
 entry surfaces.
 
 The badge count must agree with the six-package allowlist in the
-[crate release contract](../configs/release/crates.toml). Repository-only
+[crate release contract](https://github.com/bijux/bijux-gnss/blob/main/configs/release/crates.toml). Repository-only
 crates do not receive crates.io or GHCR badges.
 
 ## Generated Badge Block

@@ -116,8 +116,8 @@ navigation, infrastructure, and command handoffs, and
 [change principles](change-principles.md) before altering stage behavior.
 
 Implementation evidence begins with the
-[receiver architecture](../../../crates/bijux-gnss-receiver/docs/ARCHITECTURE.md),
-[pipeline guide](../../../crates/bijux-gnss-receiver/docs/PIPELINE.md),
-[runtime guide](../../../crates/bijux-gnss-receiver/docs/RUNTIME.md),
-[port guide](../../../crates/bijux-gnss-receiver/docs/PORTS.md), and
-[artifact guide](../../../crates/bijux-gnss-receiver/docs/ARTIFACTS.md).
+[receiver architecture](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/docs/ARCHITECTURE.md),
+[pipeline guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/docs/PIPELINE.md),
+[runtime guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/docs/RUNTIME.md),
+[port guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/docs/PORTS.md), and
+[artifact guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/docs/ARTIFACTS.md).

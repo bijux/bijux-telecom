@@ -16,7 +16,7 @@ performance as separate claims, then require evidence for both.
 This page explains what the repository measures today, how to investigate a
 regression, and what a performance result can support. For command ownership
 and report formats, use the
-[benchmark governance guide](../../../crates/bijux-gnss-dev/docs/BENCHMARKS.md).
+[benchmark governance guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/BENCHMARKS.md).
 
 ## Build An Evidence Chain
 
@@ -52,9 +52,9 @@ using a small synthetic input and the default receiver configuration.
 
 | benchmark | measured operation | interpretation limit |
 | --- | --- | --- |
-| [acquisition search](../../../crates/bijux-gnss-receiver/benches/bench_acquisition_fft.rs) | one FFT acquisition over a default GPS L1 C/A code-period frame | does not represent a multi-satellite search, a broad Doppler window, or a full receiver run |
-| [tracking correlation](../../../crates/bijux-gnss-receiver/benches/bench_correlator.rs) | one correlator epoch over a default code-period frame | does not include the complete channel lifecycle or sustained stream processing |
-| [tracking update](../../../crates/bijux-gnss-receiver/benches/bench_tracking_update.rs) | one tracking epoch update over a zero-valued frame | isolates update cost; it is not a tracking-accuracy or lock-retention result |
+| [acquisition search](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/benches/bench_acquisition_fft.rs) | one FFT acquisition over a default GPS L1 C/A code-period frame | does not represent a multi-satellite search, a broad Doppler window, or a full receiver run |
+| [tracking correlation](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/benches/bench_correlator.rs) | one correlator epoch over a default code-period frame | does not include the complete channel lifecycle or sustained stream processing |
+| [tracking update](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/benches/bench_tracking_update.rs) | one tracking epoch update over a zero-valued frame | isolates update cost; it is not a tracking-accuracy or lock-retention result |
 
 Run a focused benchmark while developing:
 
@@ -146,7 +146,7 @@ as a general receiver performance guarantee.
 
 ## Instrumentation Features
 
-The [receiver feature declarations](../../../crates/bijux-gnss-receiver/Cargo.toml)
+The [receiver feature declarations](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/Cargo.toml)
 expose diagnostic instrumentation for targeted investigations:
 
 | feature | use |
@@ -194,7 +194,7 @@ comparison.
 Receiver correctness guidance is in the
 [test strategy](../quality/test-strategy.md) and
 [validation budgets](../quality/validation-budgets.md). The
-[receiver test guide](../../../crates/bijux-gnss-receiver/docs/TESTS.md)
+[receiver test guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/docs/TESTS.md)
 separates unit, integration, truth, and reference evidence.
 
 ## Keep Slow Tests Separate

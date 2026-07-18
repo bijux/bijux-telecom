@@ -61,10 +61,10 @@ infra persists them.
 
 ## First Proof Check
 
-Start with the receiver [ownership boundary](../../../crates/bijux-gnss-receiver/docs/BOUNDARY.md),
-[runtime model](../../../crates/bijux-gnss-receiver/docs/RUNTIME.md),
-[pipeline guide](../../../crates/bijux-gnss-receiver/docs/PIPELINE.md), and
-[artifact contract](../../../crates/bijux-gnss-receiver/docs/ARTIFACTS.md). Then
-confirm the code path through the [engine source](../../../crates/bijux-gnss-receiver/src/engine/),
-[pipeline source](../../../crates/bijux-gnss-receiver/src/pipeline/), and
-[port source](../../../crates/bijux-gnss-receiver/src/ports/).
+Start with the receiver [ownership boundary](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/docs/BOUNDARY.md),
+[runtime model](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/docs/RUNTIME.md),
+[pipeline guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/docs/PIPELINE.md), and
+[artifact contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/docs/ARTIFACTS.md). Then
+confirm the code path through the [engine source](https://github.com/bijux/bijux-gnss/tree/main/crates/bijux-gnss-receiver/src/engine),
+[pipeline source](https://github.com/bijux/bijux-gnss/tree/main/crates/bijux-gnss-receiver/src/pipeline), and
+[port source](https://github.com/bijux/bijux-gnss/tree/main/crates/bijux-gnss-receiver/src/ports).

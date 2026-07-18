@@ -113,10 +113,10 @@ flowchart TD
     diagnostics --> owner
 ```
 
-The [navigation artifact evidence](../../../crates/bijux-gnss-core/tests/nav_artifact_validation.rs)
+The [navigation artifact evidence](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/tests/nav_artifact_validation.rs)
 checks model versions, satellite counts, clock-bias units, DOP values, residual
 counts, covariance values, position sigmas, and error-ellipse fields. The
-[tracking artifact evidence](../../../crates/bijux-gnss-core/tests/tracking_artifact_validation.rs)
+[tracking artifact evidence](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/tests/tracking_artifact_validation.rs)
 checks uncertainty and navigation-bit sign validity.
 
 Validators return diagnostics. The diagnostic severity and the consuming

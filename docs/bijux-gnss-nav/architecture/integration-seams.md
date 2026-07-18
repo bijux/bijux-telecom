@@ -48,10 +48,10 @@ flowchart LR
 
 ## First Proof Check
 
-Start with the navigation [public API facade](../../../crates/bijux-gnss-nav/src/api.rs),
-[ephemeris provider](../../../crates/bijux-gnss-nav/src/orbits/ephemeris.rs),
-[precise-product provider](../../../crates/bijux-gnss-nav/src/formats/precise_products/mod.rs),
-[bias provider source](../../../crates/bijux-gnss-nav/src/corrections/biases.rs),
-[EKF trait source](../../../crates/bijux-gnss-nav/src/estimation/ekf/traits.rs),
-and [positioning source](../../../crates/bijux-gnss-nav/src/estimation/position/).
-Then confirm ownership against the navigation [boundary guide](../../../crates/bijux-gnss-nav/docs/BOUNDARY.md).
+Start with the navigation [public API facade](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/src/api.rs),
+[ephemeris provider](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/src/orbits/ephemeris.rs),
+[precise-product provider](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/src/formats/precise_products/mod.rs),
+[bias provider source](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/src/corrections/biases.rs),
+[EKF trait source](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/src/estimation/ekf/traits.rs),
+and [positioning source](https://github.com/bijux/bijux-gnss/tree/main/crates/bijux-gnss-nav/src/estimation/position).
+Then confirm ownership against the navigation [boundary guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/BOUNDARY.md).

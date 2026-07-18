@@ -30,12 +30,12 @@ files without transferring their domain ownership to infra.
 
 | concern | owning handbook | why |
 | --- | --- | --- |
-| command names, flags, workflow selection, report wording | [Command handbook](../../bijux-gnss/) | operator behavior is a public product boundary |
-| shared identifiers, units, time, diagnostics, artifact envelopes | [Core handbook](../../bijux-gnss-core/) | cross-package meaning must remain independent of persistence |
-| orbit products, corrections, estimators, PPP, RTK, integrity | [Navigation handbook](../../bijux-gnss-nav/) | scientific models require navigation-owned proof |
-| stage execution, ports, channels, runtime metrics, in-memory artifacts | [Receiver handbook](../../bijux-gnss-receiver/) | runtime orchestration owns state transitions and execution policy |
-| signal catalog, code generation, DSP, sample conversions | [Signal handbook](../../bijux-gnss-signal/) | reusable signal behavior must stay below repository workflows |
-| audits, test-lane policy, benchmarks, maintainer evidence | [Maintainer handbook](../../bijux-gnss-dev/) | repository governance is not product infrastructure |
+| command names, flags, workflow selection, report wording | [Command handbook](../../bijux-gnss/index.md) | operator behavior is a public product boundary |
+| shared identifiers, units, time, diagnostics, artifact envelopes | [Core handbook](../../bijux-gnss-core/index.md) | cross-package meaning must remain independent of persistence |
+| orbit products, corrections, estimators, PPP, RTK, integrity | [Navigation handbook](../../bijux-gnss-nav/index.md) | scientific models require navigation-owned proof |
+| stage execution, ports, channels, runtime metrics, in-memory artifacts | [Receiver handbook](../../bijux-gnss-receiver/index.md) | runtime orchestration owns state transitions and execution policy |
+| signal catalog, code generation, DSP, sample conversions | [Signal handbook](../../bijux-gnss-signal/index.md) | reusable signal behavior must stay below repository workflows |
+| audits, test-lane policy, benchmarks, maintainer evidence | [Maintainer handbook](../../bijux-gnss-dev/index.md) | repository governance is not product infrastructure |
 
 ## Ownership Decision
 
@@ -70,8 +70,8 @@ Test the decision with concrete language:
 
 ## Verify A Boundary Claim
 
-Start with the [infra boundary guide](../../../crates/bijux-gnss-infra/docs/BOUNDARY.md)
-and [infra contract guide](../../../crates/bijux-gnss-infra/docs/CONTRACTS.md).
+Start with the [infra boundary guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/BOUNDARY.md)
+and [infra contract guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/CONTRACTS.md).
 Then compare the proposed behavior with the owning handbook above. If the
 behavior cannot be described without receiver policy, command UX, signal math,
 or navigation science, infra is the wrong owner even when persistence is

@@ -51,9 +51,9 @@ Command implementation may parse intent, assemble runtime inputs, call several
 owners, and render a result. It must not redefine signal facts, receiver state,
 navigation science, shared schema meaning, or persisted run layout.
 
-The [command reference](../../../crates/bijux-gnss/docs/COMMANDS.md) groups the
+The [command reference](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/docs/COMMANDS.md) groups the
 supported workflows, and the
-[execution contract](../../../crates/bijux-gnss/docs/EXECUTION.md) explains
+[execution contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/docs/EXECUTION.md) explains
 the lower-package handoff.
 
 ## Rust Facade
@@ -144,8 +144,8 @@ consumer when applicable. A facade change needs feature-aware compile proof and
 a direct downstream-style import. Both need the owning lower-package evidence
 when semantics move.
 
-Use the [reporting contract](../../../crates/bijux-gnss/docs/REPORTING.md) for
-operator output and the [facade guide](../../../crates/bijux-gnss/docs/FACADE.md)
+Use the [reporting contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/docs/REPORTING.md) for
+operator output and the [facade guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/docs/FACADE.md)
 for import ownership.
 
 The public surface is coherent when operators can predict command behavior,

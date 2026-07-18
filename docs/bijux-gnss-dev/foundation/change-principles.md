@@ -143,7 +143,7 @@ Before adding or extending a command, answer:
 8. Which neighboring owner must remain unchanged?
 
 The [scope guide](scope-and-non-goals.md) resolves ownership, while the
-[output contract](../../../crates/bijux-gnss-dev/docs/OUTPUTS.md) defines
+[output contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/OUTPUTS.md) defines
 maintained and disposable benchmark evidence.
 
 A change is ready when its authority, parsing rules, effects, refusal behavior,

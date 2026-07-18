@@ -32,10 +32,10 @@ have.
 
 ## First Proof Check
 
-- the [run-layout guide](../../../crates/bijux-gnss-infra/docs/RUN_LAYOUT.md)
-- the [dataset registry source](../../../crates/bijux-gnss-infra/src/datasets/registry.rs)
-- the [run-layout facade](../../../crates/bijux-gnss-infra/src/run_layout.rs)
-- the [run-record source](../../../crates/bijux-gnss-infra/src/run_layout/records.rs)
-- the [persistence source](../../../crates/bijux-gnss-infra/src/run_layout/persistence.rs)
-- the [front-end provenance source](../../../crates/bijux-gnss-infra/src/run_layout/provenance/front_end.rs)
-- the [provenance hash source](../../../crates/bijux-gnss-infra/src/hash/provenance.rs)
+- the [run-layout guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/RUN_LAYOUT.md)
+- the [dataset registry source](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/src/datasets/registry.rs)
+- the [run-layout facade](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/src/run_layout.rs)
+- the [run-record source](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/src/run_layout/records.rs)
+- the [persistence source](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/src/run_layout/persistence.rs)
+- the [front-end provenance source](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/src/run_layout/provenance/front_end.rs)
+- the [provenance hash source](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/src/hash/provenance.rs)

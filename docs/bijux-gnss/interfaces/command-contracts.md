@@ -55,9 +55,9 @@ flowchart LR
 
 ## First Proof Check
 
-Start with the command [catalog source](../../../crates/bijux-gnss/src/cli/command_catalog/),
-[command-line parser](../../../crates/bijux-gnss/src/cli/command_line.rs),
-[handler source](../../../crates/bijux-gnss/src/cli/commands/),
-[runtime source](../../../crates/bijux-gnss/src/cli/command_runtime/), and
-[support source](../../../crates/bijux-gnss/src/cli/command_support/). Then
-confirm operator-facing promises against the [command guide](../../../crates/bijux-gnss/docs/COMMANDS.md).
+Start with the command [catalog source](https://github.com/bijux/bijux-gnss/tree/main/crates/bijux-gnss/src/cli/command_catalog),
+[command-line parser](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/src/cli/command_line.rs),
+[handler source](https://github.com/bijux/bijux-gnss/tree/main/crates/bijux-gnss/src/cli/commands),
+[runtime source](https://github.com/bijux/bijux-gnss/tree/main/crates/bijux-gnss/src/cli/command_runtime), and
+[support source](https://github.com/bijux/bijux-gnss/tree/main/crates/bijux-gnss/src/cli/command_support). Then
+confirm operator-facing promises against the [command guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/docs/COMMANDS.md).

@@ -38,13 +38,13 @@ flowchart LR
 
 ## Read These First
 
-- open [Foundation](foundation/) when the question is why receiver runtime owns
+- open [Foundation](foundation/index.md) when the question is why receiver runtime owns
   this behavior at all
-- open [Interfaces](interfaces/) when the issue is already about ports,
+- open [Interfaces](interfaces/index.md) when the issue is already about ports,
   artifacts, engine types, or stage-facing public contracts
-- open [Architecture](architecture/) when the question is structural: where
+- open [Architecture](architecture/index.md) when the question is structural: where
   engine, pipeline, ports, artifacts, validation, and simulation live in code
-- open [Quality](quality/) when ownership is clear and the question becomes
+- open [Quality](quality/index.md) when ownership is clear and the question becomes
   whether the proof bar is strong enough
 
 ## Why This Package Exists
@@ -84,21 +84,21 @@ undifferentiated execution block.
 ## Strongest Proof Surfaces
 
 - crate README:
-  [Receiver crate README](../../crates/bijux-gnss-receiver/README.md)
+  [Receiver crate README](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/README.md)
 - crate-local docs:
-  [Receiver architecture](../../crates/bijux-gnss-receiver/docs/ARCHITECTURE.md),
-  [Pipeline guide](../../crates/bijux-gnss-receiver/docs/PIPELINE.md),
-  [Runtime guide](../../crates/bijux-gnss-receiver/docs/RUNTIME.md),
-  [Artifact guide](../../crates/bijux-gnss-receiver/docs/ARTIFACTS.md),
-  [Port guide](../../crates/bijux-gnss-receiver/docs/PORTS.md),
-  [Simulation guide](../../crates/bijux-gnss-receiver/docs/SIMULATION.md)
+  [Receiver architecture](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/docs/ARCHITECTURE.md),
+  [Pipeline guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/docs/PIPELINE.md),
+  [Runtime guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/docs/RUNTIME.md),
+  [Artifact guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/docs/ARTIFACTS.md),
+  [Port guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/docs/PORTS.md),
+  [Simulation guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/docs/SIMULATION.md)
 - source roots:
-  [engine source](../../crates/bijux-gnss-receiver/src/engine),
-  [pipeline source](../../crates/bijux-gnss-receiver/src/pipeline),
-  [port source](../../crates/bijux-gnss-receiver/src/ports),
-  [simulation source](../../crates/bijux-gnss-receiver/src/sim)
+  [engine source](https://github.com/bijux/bijux-gnss/tree/main/crates/bijux-gnss-receiver/src/engine),
+  [pipeline source](https://github.com/bijux/bijux-gnss/tree/main/crates/bijux-gnss-receiver/src/pipeline),
+  [port source](https://github.com/bijux/bijux-gnss/tree/main/crates/bijux-gnss-receiver/src/ports),
+  [simulation source](https://github.com/bijux/bijux-gnss/tree/main/crates/bijux-gnss-receiver/src/sim)
 - proof tests:
-  [receiver integration tests](../../crates/bijux-gnss-receiver/tests)
+  [receiver integration tests](https://github.com/bijux/bijux-gnss/tree/main/crates/bijux-gnss-receiver/tests)
 
 ## Support Crates That Matter Here
 
@@ -112,15 +112,15 @@ undifferentiated execution block.
 
 ## Sections In This Handbook
 
-- [Foundation](foundation/) for role, scope, ownership, repository fit, and
+- [Foundation](foundation/index.md) for role, scope, ownership, repository fit, and
   receiver vocabulary
-- [Architecture](architecture/) for engine, pipeline, ports, artifacts,
+- [Architecture](architecture/index.md) for engine, pipeline, ports, artifacts,
   simulation, and dependency direction
-- [Interfaces](interfaces/) for public API, runtime contracts, stage contracts,
+- [Interfaces](interfaces/index.md) for public API, runtime contracts, stage contracts,
   port contracts, and compatibility expectations
-- [Operations](operations/) for safe change sequence, verification, fixture
+- [Operations](operations/index.md) for safe change sequence, verification, fixture
   care, and review scope
-- [Quality](quality/) for invariants, proof strategy, limitations, risk, and
+- [Quality](quality/index.md) for invariants, proof strategy, limitations, risk, and
   change validation
 - [Receiver ownership boundaries](ownership-boundaries.md) for separating
   runtime lifecycle from reusable science and persistence
@@ -148,26 +148,26 @@ undifferentiated execution block.
 ## Leave This Handbook When
 
 - the question becomes about signal primitives or code families:
-  [Signal handbook](../bijux-gnss-signal/)
+  [Signal handbook](../bijux-gnss-signal/index.md)
 - the question becomes about navigation estimators or precise products:
-  [Navigation handbook](../bijux-gnss-nav/)
+  [Navigation handbook](../bijux-gnss-nav/index.md)
 - the question becomes about persisted run directories or dataset registries:
-  [Infra handbook](../bijux-gnss-infra/)
+  [Infra handbook](../bijux-gnss-infra/index.md)
 - the question becomes about public commands or report wording:
-  [Command handbook](../bijux-gnss/)
+  [Command handbook](../bijux-gnss/index.md)
 - the question becomes about shared observation or artifact contracts:
-  [Core handbook](../bijux-gnss-core/)
+  [Core handbook](../bijux-gnss-core/index.md)
 
 ## First Proof Check
 
-- [engine source](../../crates/bijux-gnss-receiver/src/engine/)
-- [pipeline source](../../crates/bijux-gnss-receiver/src/pipeline/)
-- [port source](../../crates/bijux-gnss-receiver/src/ports/)
-- [artifact source](../../crates/bijux-gnss-receiver/src/artifacts.rs)
-- [reference validation source](../../crates/bijux-gnss-receiver/src/reference_validation.rs)
-- [validation report source](../../crates/bijux-gnss-receiver/src/validation_report/)
-- [simulation source](../../crates/bijux-gnss-receiver/src/sim/)
-- [pipeline guide](../../crates/bijux-gnss-receiver/docs/PIPELINE.md)
+- [engine source](https://github.com/bijux/bijux-gnss/tree/main/crates/bijux-gnss-receiver/src/engine)
+- [pipeline source](https://github.com/bijux/bijux-gnss/tree/main/crates/bijux-gnss-receiver/src/pipeline)
+- [port source](https://github.com/bijux/bijux-gnss/tree/main/crates/bijux-gnss-receiver/src/ports)
+- [artifact source](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/src/artifacts.rs)
+- [reference validation source](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/src/reference_validation.rs)
+- [validation report source](https://github.com/bijux/bijux-gnss/tree/main/crates/bijux-gnss-receiver/src/validation_report)
+- [simulation source](https://github.com/bijux/bijux-gnss/tree/main/crates/bijux-gnss-receiver/src/sim)
+- [pipeline guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/docs/PIPELINE.md)
 
 ## Design Pressure
 

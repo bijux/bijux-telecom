@@ -85,7 +85,7 @@ flowchart TD
 ```
 
 The [navigation test strategy](test-strategy.md) explains evidence independence
-and the [crate test map](../../../crates/bijux-gnss-nav/docs/TESTS.md) lists the
+and the [crate test map](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/TESTS.md) lists the
 major executable families. The [state and persistence guide](../architecture/state-and-persistence.md)
 identifies which estimator state is live, checkpointed, or not represented by a
 durable format.

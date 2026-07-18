@@ -44,7 +44,7 @@ flowchart TD
 ```
 
 `Receiver` retains a derived pipeline configuration and a
-[`ReceiverRuntime`](../../../crates/bijux-gnss-receiver/src/engine/runtime.rs).
+[`ReceiverRuntime`](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/src/engine/runtime.rs).
 The runtime is cloned into stages and shares logger, trace, and metric sinks
 through reference-counted handles. Stage state is otherwise created for an
 execution: acquisition maintains run-local caches, tracking uses an explicit
@@ -61,7 +61,7 @@ operation.
 | navigation estimator state | navigation runtime | navigation operation | solution epochs when the feature and inputs permit them |
 | run summary | receiver engine | returned to caller | `RunArtifacts` |
 
-The [tracking session type](../../../crates/bijux-gnss-receiver/src/pipeline/tracking/session_artifacts.rs)
+The [tracking session type](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/src/pipeline/tracking/session_artifacts.rs)
 makes incremental tracking state explicit. Dropping it ends that session; the
 receiver does not provide a stable checkpoint format that can reconstruct its
 private loop state later.
@@ -82,11 +82,11 @@ sequenceDiagram
     Infra-->>Caller: persisted artifact identities
 ```
 
-[`RunArtifacts`](../../../crates/bijux-gnss-receiver/src/api.rs) is
+[`RunArtifacts`](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/src/api.rs) is
 `Debug + Default + Clone`. It is not a serialized, schema-versioned repository
 contract. Its vectors preserve receiver evidence in memory, including
 acquisition, tracking, observation, and optional navigation results. The
-[`observation artifact projection`](../../../crates/bijux-gnss-receiver/src/artifacts.rs)
+[`observation artifact projection`](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/src/artifacts.rs)
 reconstructs only observation epochs, residuals, and measurement-quality
 reports; it does not include every observation decision carried by the run.
 

@@ -36,12 +36,12 @@ flowchart TD
 
 | changed surface | completion condition | evidence route |
 | --- | --- | --- |
-| dataset registry or raw-IQ metadata | identity, normalization, precedence, and refusal behavior are explicit | focused dataset tests and the [dataset guide](../../../crates/bijux-gnss-infra/docs/DATASETS.md) |
-| run layout, report, manifest, or history | deterministic identity and persisted compatibility are explained for old and new readers | named source review plus the [run layout guide](../../../crates/bijux-gnss-infra/docs/RUN_LAYOUT.md); add focused persistence proof when behavior changes |
+| dataset registry or raw-IQ metadata | identity, normalization, precedence, and refusal behavior are explicit | focused dataset tests and the [dataset guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/DATASETS.md) |
+| run layout, report, manifest, or history | deterministic identity and persisted compatibility are explained for old and new readers | named source review plus the [run layout guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/RUN_LAYOUT.md); add focused persistence proof when behavior changes |
 | artifact inspection | kind dispatch, schema policy, diagnostics, and empty-input policy agree | artifact module tests and [Artifact Inspection Contracts](../interfaces/artifact-inspection-contracts.md) |
-| overrides or sweeps | accepted values mutate typed configuration and rejected values remain explicit | override integration and module tests plus the [override guide](../../../crates/bijux-gnss-infra/docs/OVERRIDES.md) |
-| provenance or hashing | the captured inputs and omissions are named | focused hash proof where available and the [hashing guide](../../../crates/bijux-gnss-infra/docs/HASHING.md) |
-| reference validation | alignment policy and empty-alignment refusal remain visible without claiming solution accuracy | named adapter review and the [validation guide](../../../crates/bijux-gnss-infra/docs/VALIDATION.md) |
+| overrides or sweeps | accepted values mutate typed configuration and rejected values remain explicit | override integration and module tests plus the [override guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/OVERRIDES.md) |
+| provenance or hashing | the captured inputs and omissions are named | focused hash proof where available and the [hashing guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/HASHING.md) |
+| reference validation | alignment policy and empty-alignment refusal remain visible without claiming solution accuracy | named adapter review and the [validation guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/VALIDATION.md) |
 | public exports | ownership, feature availability, and downstream compatibility are explicit | [API Surface](../interfaces/api-surface.md), curated export review, and boundary proof |
 
 ## Compatibility Questions

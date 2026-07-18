@@ -107,8 +107,8 @@ between commands and scientific packages, while
 for persisted contracts.
 
 Implementation evidence begins with the
-[infrastructure contracts](../../../crates/bijux-gnss-infra/docs/CONTRACTS.md),
-[dataset guide](../../../crates/bijux-gnss-infra/docs/DATASETS.md),
-[run-layout guide](../../../crates/bijux-gnss-infra/docs/RUN_LAYOUT.md),
-[hashing guide](../../../crates/bijux-gnss-infra/docs/HASHING.md), and
-[validation guide](../../../crates/bijux-gnss-infra/docs/VALIDATION.md).
+[infrastructure contracts](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/CONTRACTS.md),
+[dataset guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/DATASETS.md),
+[run-layout guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/RUN_LAYOUT.md),
+[hashing guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/HASHING.md), and
+[validation guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/VALIDATION.md).

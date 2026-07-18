@@ -96,9 +96,9 @@ Use the [package overview](package-overview.md) for the concise role,
 [change principles](change-principles.md) before altering physical behavior.
 
 Implementation evidence begins with the
-[signal architecture](../../../crates/bijux-gnss-signal/docs/ARCHITECTURE.md),
-[catalog guide](../../../crates/bijux-gnss-signal/docs/CATALOG.md),
-[code-family guide](../../../crates/bijux-gnss-signal/docs/CODE_FAMILIES.md),
-[DSP guide](../../../crates/bijux-gnss-signal/docs/DSP.md),
-[raw-IQ guide](../../../crates/bijux-gnss-signal/docs/RAW_IQ.md), and
-[sample guide](../../../crates/bijux-gnss-signal/docs/SAMPLES.md).
+[signal architecture](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/ARCHITECTURE.md),
+[catalog guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/CATALOG.md),
+[code-family guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/CODE_FAMILIES.md),
+[DSP guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/DSP.md),
+[raw-IQ guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/RAW_IQ.md), and
+[sample guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/SAMPLES.md).

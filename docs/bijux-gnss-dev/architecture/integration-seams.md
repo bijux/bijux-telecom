@@ -46,9 +46,9 @@ benchmark output, and tests the generated test-lane relationship.
 
 | Seam | Transport | Consumer expectation | Failure owner |
 | --- | --- | --- | --- |
-| security review to allowlist validator | [reviewed security ledger](../../../audit-allowlist.toml) | records remain attributable, linked, and unexpired under implemented rules | repository security review owns disposition; developer tooling owns validation mechanics |
+| security review to allowlist validator | [reviewed security ledger](https://github.com/bijux/bijux-gnss/blob/main/audit-allowlist.toml) | records remain attributable, linked, and unexpired under implemented rules | repository security review owns disposition; developer tooling owns validation mechanics |
 | allowlist adapter to audit workflow | one sorted stdout line of `--ignore` arguments | no commentary, valid shell tokenization, validation runs separately | developer tooling owns rendering; Make owns capture and invocation order |
-| shared standards review to deviation validator | [local deviation ledger](../../../configs/rust/deny.deviations.toml) | every local deviation points to an HTTP(S) review containing the shared-standard identity | shared standards owns durable policy; developer tooling owns local enforcement |
+| shared standards review to deviation validator | [local deviation ledger](https://github.com/bijux/bijux-gnss/blob/main/configs/rust/deny.deviations.toml) | every local deviation points to an HTTP(S) review containing the shared-standard identity | shared standards owns durable policy; developer tooling owns local enforcement |
 | product benchmarks to comparison | Cargo bencher-format stdout | selected rows normalize into name/value pairs and compare with a baseline when present | product packages own benchmark meaning; developer tooling owns invocation and comparison mechanics |
 | comparison to maintainer | terminal findings plus raw and normalized evidence | missing baseline, strictness, threshold, and unmatched names remain visible | developer tooling owns evidence semantics |
 | slow-test ledger to lane generator | escaped exact-name regular expression | slow expression includes ledger entries and legacy names; fast expression negates the slow expression | Make tooling owns generation and lane execution |
@@ -76,7 +76,7 @@ sequenceDiagram
     Audit-->>Make: status and report
 ```
 
-The [Rust maintenance Make rules](../../../makes/rust.mk) preserve separate
+The [Rust maintenance Make rules](https://github.com/bijux/bijux-gnss/blob/main/makes/rust.mk) preserve separate
 statuses for governance validation, dependency policy, and advisory scanning.
 The dev binary does not sequence those tools itself. Changing stdout, command
 names, or absence behavior must be tested through this caller, not only by
@@ -85,9 +85,9 @@ direct invocation.
 ## Nextest Policy Seam
 
 The slow-test ledger is not a runtime input to the dev binary. A
-[shell expression generator](../../../makes/bin/nextest_expr.sh) reads the
+[shell expression generator](https://github.com/bijux/bijux-gnss/blob/main/makes/bin/nextest_expr.sh) reads the
 ledger for Make’s fast and slow lanes. The
-[suite-selection integration](../../../crates/bijux-gnss-dev/tests/integration_nextest_suite_selection.rs)
+[suite-selection integration](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/tests/integration_nextest_suite_selection.rs)
 executes that generator and checks:
 
 - sorted, unique ledger entries
@@ -119,7 +119,7 @@ Review all of these together when the seam changes:
 - strict versus non-strict status
 - Make’s `BENCH_STRICT` mapping
 
-The [benchmark evidence guide](../../../crates/bijux-gnss-dev/docs/BENCHMARKS.md)
+The [benchmark evidence guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/BENCHMARKS.md)
 documents intended ownership. The [execution model](execution-model.md)
 documents write ordering and partial-evidence behavior.
 

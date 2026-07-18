@@ -48,8 +48,8 @@ flowchart LR
 
 ## Evidence To Inspect
 
-Inspect the [public API guide](../../../crates/bijux-gnss-nav/docs/PUBLIC_API.md),
-[navigation test guide](../../../crates/bijux-gnss-nav/docs/TESTS.md),
-[package boundary](../../../crates/bijux-gnss-nav/docs/BOUNDARY.md),
-[public facade](../../../crates/bijux-gnss-nav/src/api.rs), and
-[dependency guardrail](../../../crates/bijux-gnss-nav/tests/integration_guardrails.rs).
+Inspect the [public API guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/PUBLIC_API.md),
+[navigation test guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/TESTS.md),
+[package boundary](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/BOUNDARY.md),
+[public facade](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/src/api.rs), and
+[dependency guardrail](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/tests/integration_guardrails.rs).

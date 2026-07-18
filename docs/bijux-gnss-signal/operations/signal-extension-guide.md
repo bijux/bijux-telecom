@@ -75,8 +75,8 @@ flowchart LR
 
 ## First Proof Check
 
-Inspect the [code family guide](../../../crates/bijux-gnss-signal/docs/CODE_FAMILIES.md),
-[signal catalog guide](../../../crates/bijux-gnss-signal/docs/CATALOG.md),
-[DSP guide](../../../crates/bijux-gnss-signal/docs/DSP.md), and
-[public API](../../../crates/bijux-gnss-signal/docs/PUBLIC_API.md). Then inspect
+Inspect the [code family guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/CODE_FAMILIES.md),
+[signal catalog guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/CATALOG.md),
+[DSP guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/DSP.md), and
+[public API](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/PUBLIC_API.md). Then inspect
 the closest signal integration test for the family being extended.

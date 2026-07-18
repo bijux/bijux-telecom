@@ -54,6 +54,6 @@ flowchart LR
 
 ## First Proof Check
 
-Inspect orbit source, the [orbit guide](../../../crates/bijux-gnss-nav/docs/ORBITS.md),
+Inspect orbit source, the [orbit guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/ORBITS.md),
 and focused orbit tests for broadcast reference behavior, broadcast accuracy,
 GLONASS broadcast reference behavior, and SP3 reference accuracy.

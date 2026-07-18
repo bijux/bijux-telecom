@@ -35,14 +35,14 @@ flowchart LR
     artifacts --> consumers
 ```
 
-The [engine assembly](../../../crates/bijux-gnss-receiver/src/engine/engine.rs)
+The [engine assembly](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/src/engine/engine.rs)
 collects the aggregate after stage execution. `ReceiverEngine::run` returns it
 only on success; callers do not receive a partial `RunArtifacts` value through
 the error path.
 
 ## Field Families And Owners
 
-The [public definition](../../../crates/bijux-gnss-receiver/src/api.rs) combines
+The [public definition](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/src/api.rs) combines
 shared core contracts with receiver-owned runtime reports:
 
 | Field family | Contents | Semantic owner |
@@ -117,7 +117,7 @@ Some evidence appears in more than one view:
 - observation epochs, residuals, and measurement-quality reports reconstructed
   by `observation_artifacts()`
 
-The [observation reconstruction helper](../../../crates/bijux-gnss-receiver/src/artifacts.rs)
+The [observation reconstruction helper](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/src/artifacts.rs)
 clones epochs, residuals, and measurement quality into the observation-stage
 view; it does not include observation decisions. Consumers should not assume
 that any arbitrary `RunArtifacts` value has coherent lengths or identities
@@ -155,12 +155,12 @@ infrastructure.
 Assert the smallest artifact family that proves the runtime claim. Useful
 examples include:
 
-- [streaming input accounting](../../../crates/bijux-gnss-receiver/tests/integration_receiver_streaming.rs)
-- [acquisition explainability](../../../crates/bijux-gnss-receiver/tests/integration_acquisition_explainability.rs)
-- [tracking channel state reports](../../../crates/bijux-gnss-receiver/tests/integration_tracking_channel_state_reports.rs)
-- [observation measurement quality](../../../crates/bijux-gnss-receiver/tests/integration_observations_measurement_quality.rs)
-- [support inventory](../../../crates/bijux-gnss-receiver/tests/integration_receiver_support_matrix_inventory.rs)
-- [navigation prerequisites](../../../crates/bijux-gnss-receiver/tests/integration_multisat_pvt_readiness.rs)
+- [streaming input accounting](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/tests/integration_receiver_streaming.rs)
+- [acquisition explainability](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/tests/integration_acquisition_explainability.rs)
+- [tracking channel state reports](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/tests/integration_tracking_channel_state_reports.rs)
+- [observation measurement quality](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/tests/integration_observations_measurement_quality.rs)
+- [support inventory](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/tests/integration_receiver_support_matrix_inventory.rs)
+- [navigation prerequisites](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/tests/integration_multisat_pvt_readiness.rs)
 
 These tests prove their named runtime views, not durable schema compatibility.
 
@@ -191,7 +191,7 @@ repository context, place it in infrastructure.
 - The observation reconstruction helper omits decision artifacts.
 - A receiver error does not return partial aggregate evidence.
 
-The [receiver artifact guide](../../../crates/bijux-gnss-receiver/docs/ARTIFACTS.md)
+The [receiver artifact guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/docs/ARTIFACTS.md)
 summarizes the runtime families. The contract remains trustworthy when every
 consumer distinguishes in-memory execution evidence from versioned payloads,
 repository state, and operator presentation.

@@ -54,13 +54,13 @@ separates those authorities.
 
 | Change | Primary guide | Required evidence |
 | --- | --- | --- |
-| command grammar or process behavior | [Maintainer interface contracts](../interfaces/) | parser behavior, exit status, output, and caller compatibility |
-| security exception fields or expiry | [Audit policy](../../../crates/bijux-gnss-dev/docs/AUDIT_POLICY.md) | accepted and rejected controlled ledgers plus audit-workflow behavior |
-| local deny deviation fields | [Governed repository inputs](../../../crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md) | accepted and rejected controlled ledgers plus upstream-link enforcement |
-| audit ignore derivation | [Output contracts](../../../crates/bijux-gnss-dev/docs/OUTPUTS.md) | exact stdout, deterministic order, invalid input, and Make consumption |
-| benchmark selection or comparison | [Benchmark evidence contract](../../../crates/bijux-gnss-dev/docs/BENCHMARKS.md) | parser/comparison tests and an environment-qualified benchmark run where justified |
-| slow-test ledger | [Maintainer proof inventory](../../../crates/bijux-gnss-dev/docs/TESTS.md) | sorted uniqueness, source resolution, and fast/slow expression relationship |
-| reusable guardrail | [Policy package guide](../../../crates/bijux-gnss-policies/README.md) | focused policy tests in the policy owner |
+| command grammar or process behavior | [Maintainer interface contracts](../interfaces/index.md) | parser behavior, exit status, output, and caller compatibility |
+| security exception fields or expiry | [Audit policy](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/AUDIT_POLICY.md) | accepted and rejected controlled ledgers plus audit-workflow behavior |
+| local deny deviation fields | [Governed repository inputs](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md) | accepted and rejected controlled ledgers plus upstream-link enforcement |
+| audit ignore derivation | [Output contracts](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/OUTPUTS.md) | exact stdout, deterministic order, invalid input, and Make consumption |
+| benchmark selection or comparison | [Benchmark evidence contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/BENCHMARKS.md) | parser/comparison tests and an environment-qualified benchmark run where justified |
+| slow-test ledger | [Maintainer proof inventory](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/TESTS.md) | sorted uniqueness, source resolution, and fast/slow expression relationship |
+| reusable guardrail | [Policy package guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-policies/README.md) | focused policy tests in the policy owner |
 
 Use the [verification guide](verification-commands.md) for exact entry points
 and limitations. Benchmark execution is expensive and environment-sensitive;
@@ -147,7 +147,7 @@ hide them behind a broad package or workspace pass.
 - [Release and versioning](release-and-versioning.md) explains why this private
   package is excluded from public publication.
 
-Return to [maintainer interface contracts](../interfaces/) when the unresolved
+Return to [maintainer interface contracts](../interfaces/index.md) when the unresolved
 question is compatibility rather than procedure, or to
-[maintainer quality](../quality/) when the question is whether evidence can
+[maintainer quality](../quality/index.md) when the question is whether evidence can
 support the claim.

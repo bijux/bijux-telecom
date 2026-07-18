@@ -72,11 +72,11 @@ shared repository state:
 - Would moving private source files leave the caller unchanged?
 - Is a lower-owner re-export supporting one coherent repository workflow?
 - Is feature-gated navigation code guarded by the same `nav` feature?
-- Does the [public API contract](../../../crates/bijux-gnss-infra/docs/PUBLIC_API.md)
+- Does the [public API contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/PUBLIC_API.md)
   describe the imported family?
 
-The [curated API source](../../../crates/bijux-gnss-infra/src/api.rs) is the
+The [curated API source](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/src/api.rs) is the
 authoritative export list. The
-[infra boundary test](../../../crates/bijux-gnss-infra/tests/integration_guardrails.rs)
+[infra boundary test](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/tests/integration_guardrails.rs)
 protects repository shape, but it does not prove the behavior of every export;
 use the owning family’s tests for that claim.

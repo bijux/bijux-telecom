@@ -78,10 +78,10 @@ readable rows are not necessarily valid rows.
 
 ## Verification Routes
 
-The [validation guide](../../../crates/bijux-gnss-infra/docs/VALIDATION.md)
+The [validation guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/VALIDATION.md)
 defines the package boundary. The
-[artifact inspection tests](../../../crates/bijux-gnss-infra/src/artifact_inspection/tests.rs)
+[artifact inspection tests](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/src/artifact_inspection/tests.rs)
 prove accepted acquisition input, tracking-order diagnostics, and navigation
 explanation. Review the
-[artifact validator](../../../crates/bijux-gnss-infra/src/artifact_inspection/validation.rs)
+[artifact validator](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/src/artifact_inspection/validation.rs)
 when changing kind dispatch, strict-mode behavior, or schema policy.

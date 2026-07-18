@@ -33,7 +33,7 @@ flowchart TD
     owner --> integrity
 ```
 
-The [test guide](../../../crates/bijux-gnss-nav/docs/TESTS.md) maps the full
+The [test guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/TESTS.md) maps the full
 families. Use the focused routes below to start; do not treat them as a
 universal command list.
 
@@ -151,9 +151,9 @@ or downgraded behavior, first affected consumer, and any expensive evidence not
 run.
 
 Use [navigation science invariants](../quality/invariants.md) to name the
-contract, the [format guide](../../../crates/bijux-gnss-nav/docs/FORMATS.md)
+contract, the [format guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/FORMATS.md)
 for parser claims, and the
-[estimation guide](../../../crates/bijux-gnss-nav/docs/ESTIMATION.md) for SPP,
+[estimation guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/ESTIMATION.md) for SPP,
 PPP, RTK, and integrity ownership.
 
 Verification is complete when a reviewer can reproduce the focused comparison,

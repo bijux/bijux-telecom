@@ -135,10 +135,10 @@ snapshot, baseline, derived arguments, or diagnostic.
 - regression finding means comparison completed and exceeded a threshold; it
   is not synonymous with command failure outside strict mode
 
-Use the [command inventory](../../../crates/bijux-gnss-dev/docs/COMMANDS.md),
-[governance inputs](../../../crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md),
-[output contract](../../../crates/bijux-gnss-dev/docs/OUTPUTS.md), and
-[benchmark contract](../../../crates/bijux-gnss-dev/docs/BENCHMARKS.md) for the
+Use the [command inventory](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/COMMANDS.md),
+[governance inputs](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md),
+[output contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/OUTPUTS.md), and
+[benchmark contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/BENCHMARKS.md) for the
 concrete surfaces behind these terms.
 
 Language is accurate when a reader can distinguish authority from validation,

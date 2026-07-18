@@ -43,10 +43,10 @@ lower algorithm is correct for conditions outside that fixture.
 
 | layer | proves | does not prove | representative evidence |
 | --- | --- | --- | --- |
-| repository guardrail | crate-level source and policy constraints | CLI syntax or command behavior | [command crate guardrail](../../../crates/bijux-gnss/tests/integration_guardrails.rs) |
-| binary workflow | real executable accepts an invocation and produces expected process/output behavior | completeness of the lower scientific model | [configuration validation workflow](../../../crates/bijux-gnss/tests/integration_validate_config.rs) |
-| command adapter | input loading, capture interpretation, or artifact projection owned by command support | public process behavior unless a binary test also covers it | [capture loading support](../../../crates/bijux-gnss/src/cli/command_support/tests/capture_loading.rs) |
-| cross-owner workflow | command correctly composes lower crates for a bounded fixture | the lower owner’s full support envelope | [synthetic navigation validation](../../../crates/bijux-gnss/tests/integration_validate_synthetic_navigation.rs) |
+| repository guardrail | crate-level source and policy constraints | CLI syntax or command behavior | [command crate guardrail](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/tests/integration_guardrails.rs) |
+| binary workflow | real executable accepts an invocation and produces expected process/output behavior | completeness of the lower scientific model | [configuration validation workflow](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/tests/integration_validate_config.rs) |
+| command adapter | input loading, capture interpretation, or artifact projection owned by command support | public process behavior unless a binary test also covers it | [capture loading support](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/src/cli/command_support/tests/capture_loading.rs) |
+| cross-owner workflow | command correctly composes lower crates for a bounded fixture | the lower owner’s full support envelope | [synthetic navigation validation](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/tests/integration_validate_synthetic_navigation.rs) |
 | lower-owner proof | physical, runtime, estimation, or persistence meaning | command argument and report compatibility | [receiver change validation](../../bijux-gnss-receiver/quality/change-validation.md) and [navigation test strategy](../../bijux-gnss-nav/quality/test-strategy.md) |
 
 The guardrail test deliberately relaxes the usual public-re-export rule for the
@@ -89,7 +89,7 @@ Examples:
   meaning changes.
 - Navigation decode changes need command publication evidence and independent
   navigation decoder evidence. The
-  [decode workflow test](../../../crates/bijux-gnss/tests/integration_nav_decode.rs)
+  [decode workflow test](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/tests/integration_nav_decode.rs)
   builds and invokes the real executable, but its embedded fixture does not
   replace constellation reference tests.
 - Raw-IQ reporting changes need command field assertions and signal or

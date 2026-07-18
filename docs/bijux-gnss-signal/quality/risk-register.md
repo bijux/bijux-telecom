@@ -45,7 +45,7 @@ signal-layer proof at the first wrong boundary.
 | Public surface outruns proof | A helper or table is exported because one caller needs convenient access. | Shared semantic argument, public guardrail, and domain-specific proof. | Reachability does not establish stable meaning. |
 | Receiver evidence substitutes for signal proof | A receiver test passes, but no reference, property, or continuity test exercises the changed helper. | Focused signal proof followed by the first affected receiver boundary when needed. | Receiver success can corroborate but not define signal truth. |
 
-The [test evidence guide](../../../crates/bijux-gnss-signal/docs/TESTS.md)
+The [test evidence guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/TESTS.md)
 describes the active test families. The
 [known limitations](known-limitations.md) keeps receiver, navigation, storage,
 and command claims outside this package.

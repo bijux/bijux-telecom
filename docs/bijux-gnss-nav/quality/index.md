@@ -96,10 +96,10 @@ Use [known limitations](known-limitations.md), the
 
 ## Evidence Sources
 
-The [navigation test guide](../../../crates/bijux-gnss-nav/docs/TESTS.md) maps
+The [navigation test guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/TESTS.md) maps
 the major proof families. Representative evidence includes
-[broadcast orbit reference](../../../crates/bijux-gnss-nav/tests/integration_broadcast_orbit_reference.rs),
-[SP3 reference accuracy](../../../crates/bijux-gnss-nav/tests/integration_sp3_reference_accuracy.rs),
-[position refusal](../../../crates/bijux-gnss-nav/tests/integration_position_refusal.rs),
-[public PPP convergence](../../../crates/bijux-gnss-nav/tests/integration_public_ppp_convergence.rs),
-and [RTK ambiguity fixing](../../../crates/bijux-gnss-nav/tests/integration_rtk_ambiguity_fixing.rs).
+[broadcast orbit reference](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/tests/integration_broadcast_orbit_reference.rs),
+[SP3 reference accuracy](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/tests/integration_sp3_reference_accuracy.rs),
+[position refusal](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/tests/integration_position_refusal.rs),
+[public PPP convergence](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/tests/integration_public_ppp_convergence.rs),
+and [RTK ambiguity fixing](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/tests/integration_rtk_ambiguity_fixing.rs).

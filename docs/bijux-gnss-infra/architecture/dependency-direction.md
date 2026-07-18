@@ -16,7 +16,7 @@ own a capability merely because several packages use it.
 
 ## The Actual Production Edges
 
-The [package manifest](../../../crates/bijux-gnss-infra/Cargo.toml) has two
+The [package manifest](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/Cargo.toml) has two
 GNSS production dependencies:
 
 - signal supplies capture metadata and signal identities used when resolving
@@ -94,7 +94,7 @@ adds no infrastructure meaning and belongs elsewhere.
 
 ## Re-exports Are Coupling, Not Ownership
 
-The [public API](../../../crates/bijux-gnss-infra/src/api.rs) re-exports several
+The [public API](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/src/api.rs) re-exports several
 receiver, core, signal, and optional navigation contracts for command
 convenience. Those re-exports shorten imports but do not transfer semantic
 ownership. A breaking change still belongs to the package that defines the
@@ -118,7 +118,7 @@ Review dependency and feature changes in this order:
 
 1. classify the behavior using the
    [ownership boundary](../foundation/ownership-boundary.md)
-2. inspect the [manifest](../../../crates/bijux-gnss-infra/Cargo.toml) rather
+2. inspect the [manifest](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/Cargo.toml) rather
    than inferring edges from re-exports
 3. confirm the dependency points to a public, stable contract
 4. state the effect on default and disabled-feature builds
@@ -127,7 +127,7 @@ Review dependency and feature changes in this order:
 
 Reject the edge when it moves runtime state transitions, signal processing,
 navigation models, command semantics, or maintainer policy into infrastructure.
-The [architecture guide](../../../crates/bijux-gnss-infra/docs/ARCHITECTURE.md)
+The [architecture guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/ARCHITECTURE.md)
 and [integration seams](integration-seams.md) describe the adapters that remain
 inside the boundary.
 

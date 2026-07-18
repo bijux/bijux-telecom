@@ -33,9 +33,9 @@ This page records the main trust risks in `bijux-gnss-receiver`.
 
 ## Evidence To Inspect
 
-Inspect the [public API guide](../../../crates/bijux-gnss-receiver/docs/PUBLIC_API.md),
-[receiver test guide](../../../crates/bijux-gnss-receiver/docs/TESTS.md),
-[basic integration proof](../../../crates/bijux-gnss-receiver/tests/integration_basic.rs),
+Inspect the [public API guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/docs/PUBLIC_API.md),
+[receiver test guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/docs/TESTS.md),
+[basic integration proof](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/tests/integration_basic.rs),
 and the most relevant artifact, validation, or stage-focused integration tests
 to confirm the main runtime risk routes documented here still have active
 proof.

@@ -78,8 +78,8 @@ so can separate artifacts from their report, manifest, or history record.
 | artifact cannot be attributed | artifact header and the run report that supplied its identity |
 | an old reader rejects a footprint | layout or report schema compatibility before field-level content |
 
-The [run layout guide](../../../crates/bijux-gnss-infra/docs/RUN_LAYOUT.md)
+The [run layout guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/RUN_LAYOUT.md)
 defines the crate-local contract. Verify behavior against the
-[run context resolver](../../../crates/bijux-gnss-infra/src/run_layout/directories/context.rs),
-[manifest persistence](../../../crates/bijux-gnss-infra/src/run_layout/records/manifest.rs),
-and [report persistence](../../../crates/bijux-gnss-infra/src/run_layout/records/report.rs).
+[run context resolver](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/src/run_layout/directories/context.rs),
+[manifest persistence](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/src/run_layout/records/manifest.rs),
+and [report persistence](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/src/run_layout/records/report.rs).

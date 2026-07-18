@@ -71,7 +71,7 @@ State belongs in signal when:
 - behavior is independent of one channel scheduler or run artifact;
 - chunked and continuous execution can be compared directly.
 
-State belongs in [receiver execution](../bijux-gnss-receiver/) when:
+State belongs in [receiver execution](../bijux-gnss-receiver/index.md) when:
 
 - it records channel acquisition, lock, degradation, loss, or reacquisition;
 - history from multiple epochs changes operational policy;
@@ -83,7 +83,7 @@ channel locked and deciding what to do next are receiver-owned.
 
 ## Core And Catalog Boundary
 
-[Shared GNSS contracts](../bijux-gnss-core/) own signal identity types,
+[Shared GNSS contracts](../bijux-gnss-core/index.md) own signal identity types,
 component metadata structures, physical units, shared carrier constants, and
 portable observation records. Signal uses those contracts to provide canonical
 registry entries and physical behavior.
@@ -112,7 +112,7 @@ Signal owns what raw samples mean:
 - conversion between supported IQ representations and core samples;
 - deterministic quantization for storage representations.
 
-[Repository infrastructure](../bijux-gnss-infra/) owns where a capture is
+[Repository infrastructure](../bijux-gnss-infra/index.md) owns where a capture is
 registered, how a sidecar is discovered, and how capture provenance is
 persisted. Receiver owns operational sample consumption and source failures.
 
@@ -133,7 +133,7 @@ normalization rules into a dataset registry or receiver source.
 
 ## Tracking Primitive Boundary
 
-The [signal public facade](../../crates/bijux-gnss-signal/src/api.rs) exposes
+The [signal public facade](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/src/api.rs) exposes
 early/prompt/late correlation, discriminators, loop coefficients, carrier and
 code updates, lock-detector calibration, C/N0 estimation, uncertainty, and
 tracking adaptation.
@@ -157,7 +157,7 @@ Signal-level validation can answer whether a constellation supports a band
 pair, whether required observations are present, and whether two frequencies
 are aligned within an explicit tolerance.
 
-[Navigation science](../bijux-gnss-nav/) owns whether those observations
+[Navigation science](../bijux-gnss-nav/index.md) owns whether those observations
 support a correction, estimator update, ambiguity decision, integrity claim,
 or final solution. Signal compatibility is necessary evidence, not navigation
 acceptance.
@@ -188,10 +188,10 @@ Reject a signal change that:
 - hides phase origin, units, normalization, or chunk-boundary assumptions.
 
 Review catalog changes with the
-[catalog contract](../../crates/bijux-gnss-signal/docs/CATALOG.md), code changes
-with the [code-family contract](../../crates/bijux-gnss-signal/docs/CODE_FAMILIES.md),
-DSP changes with the [DSP contract](../../crates/bijux-gnss-signal/docs/DSP.md),
+[catalog contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/CATALOG.md), code changes
+with the [code-family contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/CODE_FAMILIES.md),
+DSP changes with the [DSP contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/DSP.md),
 sample changes with the
-[raw-IQ contract](../../crates/bijux-gnss-signal/docs/RAW_IQ.md), and all
+[raw-IQ contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/RAW_IQ.md), and all
 physical claims with the
-[signal test guide](../../crates/bijux-gnss-signal/docs/TESTS.md).
+[signal test guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/TESTS.md).

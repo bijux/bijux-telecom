@@ -16,7 +16,7 @@ to absorb the type’s scientific or runtime owner.
 
 ## Current Production Graph
 
-The [package manifest](../../../crates/bijux-gnss-infra/Cargo.toml) directly
+The [package manifest](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/Cargo.toml) directly
 depends on signal and receiver. It does not directly depend on core or
 navigation; those contracts are reachable through receiver dependencies and
 features.
@@ -118,9 +118,9 @@ Stop when:
 
 Use the [ownership boundary](ownership-boundary.md) to route the capability and
 the [integration seams](../architecture/integration-seams.md) to define the
-adapter. The [infrastructure architecture](../../../crates/bijux-gnss-infra/docs/ARCHITECTURE.md)
+adapter. The [infrastructure architecture](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/ARCHITECTURE.md)
 maps current repository owners, while the
-[package guardrail](../../../crates/bijux-gnss-infra/tests/integration_guardrails.rs)
+[package guardrail](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/tests/integration_guardrails.rs)
 provides policy evidence rather than complete dependency semantics.
 
 The dependency posture is healthy when every edge adds explicit repository

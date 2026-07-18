@@ -88,12 +88,12 @@ contract. It does not replace stage evidence or scientific validation.
 
 Use the [code navigation guide](code-navigation.md) after identifying the
 concern. The implementation authorities are the
-[command catalog](../../../crates/bijux-gnss/src/cli/command_catalog/mod.rs),
-[parser assembly](../../../crates/bijux-gnss/src/cli/command_line.rs),
-[runtime dispatcher](../../../crates/bijux-gnss/src/cli/command_runtime.rs),
-[workflow handlers](../../../crates/bijux-gnss/src/cli/commands/mod.rs),
-[command adapters](../../../crates/bijux-gnss/src/cli/command_support/mod.rs),
-and [report renderer](../../../crates/bijux-gnss/src/cli/report.rs).
+[command catalog](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/src/cli/command_catalog/mod.rs),
+[parser assembly](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/src/cli/command_line.rs),
+[runtime dispatcher](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/src/cli/command_runtime.rs),
+[workflow handlers](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/src/cli/commands/mod.rs),
+[command adapters](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/src/cli/command_support/mod.rs),
+and [report renderer](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/src/cli/report.rs).
 
-The [crate architecture](../../../crates/bijux-gnss/docs/ARCHITECTURE.md)
+The [crate architecture](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/docs/ARCHITECTURE.md)
 states the same ownership boundary from the package perspective.

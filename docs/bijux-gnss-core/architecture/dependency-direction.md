@@ -33,7 +33,7 @@ flowchart BT
     command --> core
 ```
 
-The [production manifest](../../../crates/bijux-gnss-core/Cargo.toml) currently
+The [production manifest](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/Cargo.toml) currently
 depends only on general-purpose libraries for errors, complex numbers, and
 serialization. Its development dependencies may include repository policy
 tooling used to test the package; development tooling is not part of the
@@ -103,9 +103,9 @@ over teaching core both owners’ policies.
 ## Evidence and Its Limit
 
 Review the production and development sections of the manifest separately.
-The [crate architecture](../../../crates/bijux-gnss-core/docs/ARCHITECTURE.md)
+The [crate architecture](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/ARCHITECTURE.md)
 documents the intended graph, and the
-[package guardrail](../../../crates/bijux-gnss-core/tests/integration_guardrails.rs)
+[package guardrail](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/tests/integration_guardrails.rs)
 checks shared repository policy. The guardrail is not a complete dependency
 architecture proof; manifest review and downstream impact review remain
 necessary.

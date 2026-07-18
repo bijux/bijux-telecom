@@ -103,9 +103,9 @@ repository layout, or command presentation leaked into core.
 
 ## Sources Of Truth
 
-The [change rules](../../../crates/bijux-gnss-core/docs/CHANGE_RULES.md) define
+The [change rules](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/CHANGE_RULES.md) define
 ownership and evolution discipline. The
-[serialization guide](../../../crates/bijux-gnss-core/docs/SERIALIZATION.md),
-[contract map](../../../crates/bijux-gnss-core/docs/CONTRACT_MAP.md), and
-[test guide](../../../crates/bijux-gnss-core/docs/TESTS.md) provide the
+[serialization guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/SERIALIZATION.md),
+[contract map](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/CONTRACT_MAP.md), and
+[test guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/TESTS.md) provide the
 compatibility and evidence routes.

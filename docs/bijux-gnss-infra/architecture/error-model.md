@@ -65,6 +65,6 @@ leaving product-science errors to the crates that truly own them.
 
 Inspect coordinate parsing, dataset registry code, run-layout code,
 artifact-inspection code, and validation adapters. Use the
-[infra contract guide](../../../crates/bijux-gnss-infra/docs/CONTRACTS.md) to
+[infra contract guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/CONTRACTS.md) to
 confirm the message names a repository-state failure rather than a lower-crate
 science failure.

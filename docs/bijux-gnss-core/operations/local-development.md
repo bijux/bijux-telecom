@@ -27,7 +27,7 @@ Write down:
 - the higher-level behavior that must remain outside core
 
 Use the [ownership test](../foundation/ownership-boundary.md) before choosing a
-module. The [contract map](../../../crates/bijux-gnss-core/docs/CONTRACT_MAP.md)
+module. The [contract map](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/CONTRACT_MAP.md)
 then identifies the existing family that should own the meaning.
 
 ```mermaid
@@ -50,12 +50,12 @@ cannot decide whether the abstraction belongs in core.
 
 | Change | Read and update | Evidence to design |
 | --- | --- | --- |
-| identity, status, or ordering | [contract catalog](../../../crates/bijux-gnss-core/docs/CONTRACTS.md) and [invariants](../../../crates/bijux-gnss-core/docs/INVARIANTS.md) | exact examples, invalid values, ordering boundaries, and downstream interpretation |
+| identity, status, or ordering | [contract catalog](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/CONTRACTS.md) and [invariants](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/INVARIANTS.md) | exact examples, invalid values, ordering boundaries, and downstream interpretation |
 | time, units, coordinates, or conventions | [numerical budgets](../quality/numerical-budgets.md) | reference examples, generated properties, domain boundaries, sign and frame checks |
 | observation or navigation exchange record | owning contract family and first producer/consumer | coherent record, one-invariant-invalid records, uncertainty and refusal semantics |
-| artifact payload or envelope | [serialization contract](../../../crates/bijux-gnss-core/docs/SERIALIZATION.md) | parse, semantic validation, unsupported version, old-data behavior, and round trip |
+| artifact payload or envelope | [serialization contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/SERIALIZATION.md) | parse, semantic validation, unsupported version, old-data behavior, and round trip |
 | diagnostic or error taxonomy | diagnostic catalog and consumers | stable code, severity, context, aggregation, and presentation-independent behavior |
-| public export | [public API policy](../../../crates/bijux-gnss-core/docs/PUBLIC_API.md) | direct downstream-shaped use plus the surface guardrail |
+| public export | [public API policy](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/PUBLIC_API.md) | direct downstream-shaped use plus the surface guardrail |
 
 Changing a field can affect several rows. For example, adding uncertainty to a
 tracking record changes exchange semantics, serialized shape, payload
@@ -110,12 +110,12 @@ Therefore:
 - activate a checked-in fixture with a reader test before calling it regression
   evidence
 
-The [serialization guide](../../../crates/bijux-gnss-core/docs/SERIALIZATION.md)
+The [serialization guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/SERIALIZATION.md)
 records current evidence gaps, including the dormant observation fixture.
 
 ## Select The Narrow Proof
 
-The [test evidence guide](../../../crates/bijux-gnss-core/docs/TESTS.md) maps
+The [test evidence guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/TESTS.md) maps
 current coverage and its limits. Representative commands are:
 
 ```console

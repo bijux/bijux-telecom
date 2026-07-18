@@ -48,9 +48,9 @@ A report is strong enough when an operator can answer:
 
 ## First Proof Check
 
-Start with the command [report renderer](../../../crates/bijux-gnss/src/cli/report.rs),
-[diagnostic report dispatch](../../../crates/bijux-gnss/src/cli/commands/diagnostics/report_dispatch.rs),
-[diagnostic report publishing](../../../crates/bijux-gnss/src/cli/commands/diagnostics/report_publishing.rs),
-and [diagnostic report rendering](../../../crates/bijux-gnss/src/cli/commands/diagnostics/report_rendering.rs).
-Then confirm operator-facing behavior against the [reporting guide](../../../crates/bijux-gnss/docs/REPORTING.md)
-and the command crate [integration tests](../../../crates/bijux-gnss/tests/).
+Start with the command [report renderer](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/src/cli/report.rs),
+[diagnostic report dispatch](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/src/cli/commands/diagnostics/report_dispatch.rs),
+[diagnostic report publishing](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/src/cli/commands/diagnostics/report_publishing.rs),
+and [diagnostic report rendering](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/src/cli/commands/diagnostics/report_rendering.rs).
+Then confirm operator-facing behavior against the [reporting guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/docs/REPORTING.md)
+and the command crate [integration tests](https://github.com/bijux/bijux-gnss/tree/main/crates/bijux-gnss/tests).

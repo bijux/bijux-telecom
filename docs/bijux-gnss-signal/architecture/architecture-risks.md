@@ -56,12 +56,12 @@ flowchart TD
 
 ## Proof Check
 
-Start with the signal [boundary guide](../../../crates/bijux-gnss-signal/docs/BOUNDARY.md),
-[architecture guide](../../../crates/bijux-gnss-signal/docs/ARCHITECTURE.md),
-and [public API guide](../../../crates/bijux-gnss-signal/docs/PUBLIC_API.md).
-Then inspect the [public API facade](../../../crates/bijux-gnss-signal/src/api.rs),
-[DSP source](../../../crates/bijux-gnss-signal/src/dsp/mod.rs), and
-[guardrail test](../../../crates/bijux-gnss-signal/tests/integration_guardrails.rs)
+Start with the signal [boundary guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/BOUNDARY.md),
+[architecture guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/ARCHITECTURE.md),
+and [public API guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/PUBLIC_API.md).
+Then inspect the [public API facade](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/src/api.rs),
+[DSP source](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/src/dsp/mod.rs), and
+[guardrail test](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/tests/integration_guardrails.rs)
 to confirm the architectural risk register still matches the enforced crate
 shape.
 

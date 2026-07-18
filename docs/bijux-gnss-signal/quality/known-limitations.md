@@ -51,9 +51,9 @@ observations. Cite only the stages actually proved.
 | The crate has no product persistence or scheduling policy. | Successful computation says nothing about sample-source reliability, run completeness, or artifact durability. | Verify those claims in receiver and infrastructure layers. |
 
 The typed utility failures are defined in the
-[signal error model](../../../crates/bijux-gnss-signal/src/error.rs). Optional
+[signal error model](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/src/error.rs). Optional
 replica and component behavior is visible in the
-[acquisition model](../../../crates/bijux-gnss-signal/src/dsp/replica/acquisition_model.rs).
+[acquisition model](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/src/dsp/replica/acquisition_model.rs).
 
 ## Evidence By Claim
 
@@ -81,9 +81,9 @@ flowchart TD
 
 Use the [signal test strategy](test-strategy.md) to choose a proof family. Useful
 entrypoints include the
-[signal component registry evidence](../../../crates/bijux-gnss-signal/tests/integration_signal_component_registry.rs),
-[CBOC spectrum evidence](../../../crates/bijux-gnss-signal/tests/integration_signal_spectrum_cboc.rs),
-and [IQ conversion evidence](../../../crates/bijux-gnss-signal/tests/integration_iq_sample_conversion.rs).
+[signal component registry evidence](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/tests/integration_signal_component_registry.rs),
+[CBOC spectrum evidence](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/tests/integration_signal_spectrum_cboc.rs),
+and [IQ conversion evidence](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/tests/integration_iq_sample_conversion.rs).
 Constellation-specific code claims need their corresponding independent
 reference, not just another implementation of the same generator.
 

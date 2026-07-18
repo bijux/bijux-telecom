@@ -64,7 +64,7 @@ These are routes, not a universal mandatory list.
 | Simulation or budgets | matching truth-table or accuracy-budget suite | independent model review and serialized report evidence |
 | Public API or package boundary | public or package guardrail | direct consumer-shaped use and semantic proof |
 
-The [receiver test guide](../../../crates/bijux-gnss-receiver/docs/TESTS.md)
+The [receiver test guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/docs/TESTS.md)
 maps the full test families. Test names alone are not evidence; inspect the
 scenario, assertions, thresholds, and feature requirements.
 
@@ -108,7 +108,7 @@ Some receiver truth, long-duration, tracking, and navigation tests are governed
 as slow tests. A direct Cargo command can run an expensive test binary even
 when the default repository lane excludes it.
 
-Use the [maintainer test-lane guide](../../../crates/bijux-gnss-dev/docs/TESTS.md)
+Use the [maintainer test-lane guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/TESTS.md)
 to determine whether the selected test belongs to the slow roster and run it
 through the appropriate lane when broad verification is required. Do not
 shorten a scientific scenario or weaken assertions merely to move it into the

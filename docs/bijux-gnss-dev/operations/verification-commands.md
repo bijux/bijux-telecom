@@ -158,9 +158,9 @@ Report:
 6. benchmark environment and baseline when applicable
 7. current command-level test gaps
 
-Use the [command inventory](../../../crates/bijux-gnss-dev/docs/COMMANDS.md),
-[governance file guide](../../../crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md),
-and [benchmark contract](../../../crates/bijux-gnss-dev/docs/BENCHMARKS.md) to
+Use the [command inventory](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/COMMANDS.md),
+[governance file guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md),
+and [benchmark contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/BENCHMARKS.md) to
 bound the claim.
 
 Verification is complete when the governed input, failure modes, observable

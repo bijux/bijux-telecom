@@ -41,14 +41,14 @@ claim must reach independent truth or a clearly bounded statistical model.
 
 | family | strongest justified claim | common overclaim | representative evidence |
 | --- | --- | --- | --- |
-| guardrails | source layout, module limits, and pipeline purity rules hold | receiver runtime is correct | [receiver source guardrail](../../../crates/bijux-gnss-receiver/tests/integration_guardrails.rs) |
-| public boundary | imports and dependency direction remain within the intended surface | every re-export has stable semantics | [navigation boundary guardrail](../../../crates/bijux-gnss-receiver/tests/nav_api_guardrail.rs) |
-| property and numerical sanity | bounded mathematical invariants hold over generated inputs or tolerances | acquisition or tracking works end to end | [receiver properties](../../../crates/bijux-gnss-receiver/tests/prop_receiver.rs) |
-| stage integration | one stage reports expected behavior under a controlled input | neighboring stage handoff remains correct | [acquisition uncertainty evidence](../../../crates/bijux-gnss-receiver/tests/integration_acquisition_uncertainty.rs) |
-| handoff and determinism | public records preserve ordering, identity, or repeatability across a boundary | physical accuracy or broad runtime determinism | [observation determinism evidence](../../../crates/bijux-gnss-receiver/tests/integration_pipeline_determinism.rs) |
-| scenario and truth | a declared signal condition produces bounded runtime behavior | unmodeled field conditions are covered | [tracking truth evidence](../../../crates/bijux-gnss-receiver/tests/integration_tracking_truth_table.rs) |
-| operating envelope or statistics | behavior meets a sampled probability, noise, or dynamics budget | all conditions between or outside sampled points are safe | [acquisition operating envelope](../../../crates/bijux-gnss-receiver/tests/integration_acquisition_operating_envelope.rs) |
-| golden or fixture | reviewed output remains byte- or value-stable for one fixture | the frozen output is scientifically correct | [acquisition golden evidence](../../../crates/bijux-gnss-receiver/tests/golden_acquisition.rs) |
+| guardrails | source layout, module limits, and pipeline purity rules hold | receiver runtime is correct | [receiver source guardrail](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/tests/integration_guardrails.rs) |
+| public boundary | imports and dependency direction remain within the intended surface | every re-export has stable semantics | [navigation boundary guardrail](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/tests/nav_api_guardrail.rs) |
+| property and numerical sanity | bounded mathematical invariants hold over generated inputs or tolerances | acquisition or tracking works end to end | [receiver properties](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/tests/prop_receiver.rs) |
+| stage integration | one stage reports expected behavior under a controlled input | neighboring stage handoff remains correct | [acquisition uncertainty evidence](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/tests/integration_acquisition_uncertainty.rs) |
+| handoff and determinism | public records preserve ordering, identity, or repeatability across a boundary | physical accuracy or broad runtime determinism | [observation determinism evidence](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/tests/integration_pipeline_determinism.rs) |
+| scenario and truth | a declared signal condition produces bounded runtime behavior | unmodeled field conditions are covered | [tracking truth evidence](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/tests/integration_tracking_truth_table.rs) |
+| operating envelope or statistics | behavior meets a sampled probability, noise, or dynamics budget | all conditions between or outside sampled points are safe | [acquisition operating envelope](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/tests/integration_acquisition_operating_envelope.rs) |
+| golden or fixture | reviewed output remains byte- or value-stable for one fixture | the frozen output is scientifically correct | [acquisition golden evidence](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/tests/golden_acquisition.rs) |
 
 Test names are not contracts. Inspect assertions before citing a test. For
 example, the current pipeline determinism test proves repeatable observation
@@ -106,7 +106,7 @@ requirements.
 Long-duration tracking, probability characterization, broad operating
 envelopes, and expensive truth captures belong in the governed slow lane when
 they exceed the fast budget. The
-[slow-test roster](../../../configs/rust/nextest-slow-roster.txt) is a scheduling
+[slow-test roster](https://github.com/bijux/bijux-gnss/blob/main/configs/rust/nextest-slow-roster.txt) is a scheduling
 contract, not a waiver. A change whose claim depends on long duration, weak
 signal, statistical confidence, or multi-stage capture behavior still requires
 that evidence before release.

@@ -48,19 +48,19 @@ flowchart TD
     benchmark --> children --> files --> output
 ```
 
-The [binary implementation](../../../crates/bijux-gnss-dev/src/main.rs) is the
+The [binary implementation](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/src/main.rs) is the
 authority for ordering and effects. The
 [command contract](../interfaces/command-surface.md) explains caller-visible
-syntax, while the [workflow guide](../../../crates/bijux-gnss-dev/docs/WORKFLOWS.md)
+syntax, while the [workflow guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/WORKFLOWS.md)
 states intended maintenance ownership.
 
 ## Execution Paths
 
 | Command | Reads | External process | Writes | Success condition |
 | --- | --- | --- | --- | --- |
-| `audit-allowlist` | [security exception ledger](../../../audit-allowlist.toml) | system date | none | all reviewed rows satisfy implemented identifier, ownership, link, and lexical-expiry rules |
-| `deny-policy-deviations` | [local deviation ledger](../../../configs/rust/deny.deviations.toml) | system date | none | all rows satisfy implemented ownership, rationale, review-link, and lexical-expiry rules |
-| `audit-ignore-args` | [security exception ledger](../../../audit-allowlist.toml), when present | none | none | input parses and recognized identifiers are emitted; absence is successful empty output |
+| `audit-allowlist` | [security exception ledger](https://github.com/bijux/bijux-gnss/blob/main/audit-allowlist.toml) | system date | none | all reviewed rows satisfy implemented identifier, ownership, link, and lexical-expiry rules |
+| `deny-policy-deviations` | [local deviation ledger](https://github.com/bijux/bijux-gnss/blob/main/configs/rust/deny.deviations.toml) | system date | none | all rows satisfy implemented ownership, rationale, review-link, and lexical-expiry rules |
+| `audit-ignore-args` | [security exception ledger](https://github.com/bijux/bijux-gnss/blob/main/audit-allowlist.toml), when present | none | none | input parses and recognized identifiers are emitted; absence is successful empty output |
 | `bench-compare` | optional benchmark baseline after execution | four Cargo benchmark targets | raw combined output and normalized current snapshot | child processes and writes succeed; regression findings fail only in strict mode |
 
 The validators aggregate record findings into one error. They still fail

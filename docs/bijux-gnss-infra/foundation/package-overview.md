@@ -70,5 +70,5 @@ command UX, it has crossed the boundary.
 
 Inspect curated public API source, dataset registry source, raw-IQ metadata
 source, run-layout source, receiver-profile override source, sweep source, and
-artifact-inspection source. Use the [infra contract guide](../../../crates/bijux-gnss-infra/docs/CONTRACTS.md)
+artifact-inspection source. Use the [infra contract guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/CONTRACTS.md)
 as the reader-facing map before trusting an ownership claim.

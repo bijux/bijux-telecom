@@ -34,11 +34,11 @@ flowchart LR
 
 | family | owns | first proof |
 | --- | --- | --- |
-| formats | GPS LNAV/CNAV, Galileo FNAV/INAV, BeiDou, GLONASS, RINEX navigation and observation, SP3, CLK, ANTEX, bias SINEX | format source and [format guide](../../../crates/bijux-gnss-nav/docs/FORMATS.md) |
-| orbits | broadcast and precise satellite state for supported constellations | orbit source and [orbit guide](../../../crates/bijux-gnss-nav/docs/ORBITS.md) |
-| corrections | atmosphere, ionosphere, group delay, code and phase bias, combinations, phase windup, measured ionosphere | correction source and [correction guide](../../../crates/bijux-gnss-nav/docs/CORRECTIONS.md) |
-| estimation | position, integrity, smoothing, EKF, PPP, RTK, ambiguity and baseline evidence | estimation source and [estimation guide](../../../crates/bijux-gnss-nav/docs/ESTIMATION.md) |
-| models | antenna, atmosphere, celestial, NeQuick, ocean tide loading, solid earth tide support | model source and [model guide](../../../crates/bijux-gnss-nav/docs/MODELS.md) |
+| formats | GPS LNAV/CNAV, Galileo FNAV/INAV, BeiDou, GLONASS, RINEX navigation and observation, SP3, CLK, ANTEX, bias SINEX | format source and [format guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/FORMATS.md) |
+| orbits | broadcast and precise satellite state for supported constellations | orbit source and [orbit guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/ORBITS.md) |
+| corrections | atmosphere, ionosphere, group delay, code and phase bias, combinations, phase windup, measured ionosphere | correction source and [correction guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/CORRECTIONS.md) |
+| estimation | position, integrity, smoothing, EKF, PPP, RTK, ambiguity and baseline evidence | estimation source and [estimation guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/ESTIMATION.md) |
+| models | antenna, atmosphere, celestial, NeQuick, ocean tide loading, solid earth tide support | model source and [model guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/MODELS.md) |
 | navigation time | GNSS-specific time utilities and rollover interpretation above core time types | navigation-time source |
 
 ## Reader Rules
@@ -65,8 +65,8 @@ owning their scientific validity.
 
 ## First Proof Check
 
-Inspect the [navigation crate README](../../../crates/bijux-gnss-nav/README.md),
-[format guide](../../../crates/bijux-gnss-nav/docs/FORMATS.md),
-[correction guide](../../../crates/bijux-gnss-nav/docs/CORRECTIONS.md),
-[estimation guide](../../../crates/bijux-gnss-nav/docs/ESTIMATION.md), curated
+Inspect the [navigation crate README](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/README.md),
+[format guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/FORMATS.md),
+[correction guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/CORRECTIONS.md),
+[estimation guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/ESTIMATION.md), curated
 public API source, and the integration tests named in the crate README.

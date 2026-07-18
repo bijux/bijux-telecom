@@ -19,7 +19,7 @@ This page prepares a release. It does not authorize or perform one.
 
 ## Publication Position
 
-The [release contract](../../../configs/release/crates.toml) includes the
+The [release contract](https://github.com/bijux/bijux-gnss/blob/main/configs/release/crates.toml) includes the
 command package in the six-package public allowlist. All public packages share
 one workspace version and publish in dependency order; the command facade is
 last.
@@ -74,11 +74,11 @@ flowchart TD
     workflows -- no --> blocked
 ```
 
-Use the [command contracts](../../../crates/bijux-gnss/docs/COMMANDS.md),
-[reporting contract](../../../crates/bijux-gnss/docs/REPORTING.md), and
-[validation contract](../../../crates/bijux-gnss/docs/VALIDATION.md) to locate
+Use the [command contracts](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/docs/COMMANDS.md),
+[reporting contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/docs/REPORTING.md), and
+[validation contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/docs/VALIDATION.md) to locate
 the user-visible meaning. Review the
-[public facade](../../../crates/bijux-gnss/src/lib.rs) when Rust exports move.
+[public facade](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/src/lib.rs) when Rust exports move.
 
 ## Prove Readiness Without Publishing
 
@@ -95,13 +95,13 @@ dry-run publication. Do not set the external-publication flag during ordinary
 readiness work.
 
 For source-bundle evidence, use the governed
-[release make targets](../../../makes/release.mk) with the command package as
+[release make targets](https://github.com/bijux/bijux-gnss/blob/main/makes/release.mk) with the command package as
 the working directory. The resulting archive is the source artifact intended
 for GHCR and GitHub release attachment. It is not a runnable container image.
 
 ## Current Automation Status
 
-The [managed workflow manifest](../../../.github/standards/repo-config.manifest.json)
+The [managed workflow manifest](https://github.com/bijux/bijux-gnss/blob/main/.github/standards/repo-config.manifest.json)
 declares release workflows for crates.io, GHCR, GitHub Releases, and source
 artifacts. At this review, the corresponding release workflow files are not
 present in the tracked workflow directory. Local metadata validation and
@@ -115,7 +115,7 @@ commit.
 
 ## Write the Release Record
 
-The [command changelog](../../../crates/bijux-gnss/CHANGELOG.md) should state:
+The [command changelog](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/CHANGELOG.md) should state:
 
 - the command, facade export, feature, output, or exit behavior that changed
 - old and new operator-visible behavior
@@ -123,7 +123,7 @@ The [command changelog](../../../crates/bijux-gnss/CHANGELOG.md) should state:
 - lower-level package changes surfaced by the command
 - the focused evidence supporting each claim
 
-The [workspace changelog](../../../CHANGELOG.md) should explain the coordinated
+The [workspace changelog](https://github.com/bijux/bijux-gnss/blob/main/CHANGELOG.md) should explain the coordinated
 six-package release and channel status. A failed or unavailable publication
 channel remains visible release evidence; do not retag, omit the package, or
 describe partial publication as complete.

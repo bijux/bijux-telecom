@@ -38,10 +38,10 @@ is already outside this crate's proper scope.
 
 ## First Proof Check
 
-Read the [signal boundary guide](../../../crates/bijux-gnss-signal/docs/BOUNDARY.md),
-[contract guide](../../../crates/bijux-gnss-signal/docs/CONTRACTS.md),
-[raw IQ guide](../../../crates/bijux-gnss-signal/docs/RAW_IQ.md), and
-[validation guide](../../../crates/bijux-gnss-signal/docs/VALIDATION.md). Then
+Read the [signal boundary guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/BOUNDARY.md),
+[contract guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/CONTRACTS.md),
+[raw IQ guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/RAW_IQ.md), and
+[validation guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/VALIDATION.md). Then
 inspect raw-IQ source, sample source, observation-validation source, and the
 observation-epoch property test to confirm the crate still stops at signal
 contracts instead of climbing into repository or navigation ownership.

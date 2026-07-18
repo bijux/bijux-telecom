@@ -51,10 +51,10 @@ flowchart LR
 
 ## First Proof Check
 
-Start with the core [invariants guide](../../../crates/bijux-gnss-core/docs/INVARIANTS.md)
-and [contract map](../../../crates/bijux-gnss-core/docs/CONTRACT_MAP.md).
-Then confirm enforcement through the [public API guardrail](../../../crates/bijux-gnss-core/tests/public_api_guardrail.rs),
-[navigation artifact validation](../../../crates/bijux-gnss-core/tests/nav_artifact_validation.rs),
-[tracking artifact validation](../../../crates/bijux-gnss-core/tests/tracking_artifact_validation.rs),
-[timekeeping property tests](../../../crates/bijux-gnss-core/tests/prop_timekeeping.rs),
-and [integration guardrails](../../../crates/bijux-gnss-core/tests/integration_guardrails.rs).
+Start with the core [invariants guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/INVARIANTS.md)
+and [contract map](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/CONTRACT_MAP.md).
+Then confirm enforcement through the [public API guardrail](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/tests/public_api_guardrail.rs),
+[navigation artifact validation](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/tests/nav_artifact_validation.rs),
+[tracking artifact validation](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/tests/tracking_artifact_validation.rs),
+[timekeeping property tests](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/tests/prop_timekeeping.rs),
+and [integration guardrails](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/tests/integration_guardrails.rs).

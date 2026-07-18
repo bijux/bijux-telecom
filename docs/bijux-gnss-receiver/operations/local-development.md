@@ -31,14 +31,14 @@ flowchart LR
 1. State the accepted, degraded, or refused behavior that should change.
 2. Locate the owner with the [Module Map](../architecture/module-map.md) or
    [Code Navigation](../architecture/code-navigation.md).
-3. Read the [pipeline contract](../../../crates/bijux-gnss-receiver/docs/PIPELINE.md)
+3. Read the [pipeline contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/docs/PIPELINE.md)
    and the stage-specific guide before editing.
 4. Change the narrowest runtime family and preserve typed evidence at its
    handoff.
 5. Run a module or single integration target that directly observes the
    behavior.
 6. Run one adjacent-stage target when the handoff changed.
-7. Review the [public API](../../../crates/bijux-gnss-receiver/src/api.rs),
+7. Review the [public API](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/src/api.rs),
    emitted artifacts, and `nav` availability before committing.
 
 ## Select Focused Proof
@@ -54,7 +54,7 @@ flowchart LR
 
 These commands are entrypoints, not universal proof. Select the exact target
 whose name describes the changed contract, then use the
-[receiver test guide](../../../crates/bijux-gnss-receiver/docs/TESTS.md) to
+[receiver test guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/docs/TESTS.md) to
 decide whether a broader family is justified.
 
 ## Preserve Evidence

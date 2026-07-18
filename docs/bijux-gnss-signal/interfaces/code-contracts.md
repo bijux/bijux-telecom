@@ -47,10 +47,10 @@ flowchart LR
 
 ## First Proof Check
 
-Start with the signal [code-family guide](../../../crates/bijux-gnss-signal/docs/CODE_FAMILIES.md),
-[code-family source](../../../crates/bijux-gnss-signal/src/codes/), and
-[public API facade](../../../crates/bijux-gnss-signal/src/api.rs). Then confirm
-behavior through the [GPS C/A reference test](../../../crates/bijux-gnss-signal/tests/integration_ca_code_reference.rs),
-[GPS L2C multiplex test](../../../crates/bijux-gnss-signal/tests/integration_gps_l2c_multiplex.rs),
-[GPS L5 reference test](../../../crates/bijux-gnss-signal/tests/integration_gps_l5_reference.rs),
-and [Galileo E5 reference test](../../../crates/bijux-gnss-signal/tests/integration_galileo_e5_reference.rs).
+Start with the signal [code-family guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/CODE_FAMILIES.md),
+[code-family source](https://github.com/bijux/bijux-gnss/tree/main/crates/bijux-gnss-signal/src/codes), and
+[public API facade](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/src/api.rs). Then confirm
+behavior through the [GPS C/A reference test](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/tests/integration_ca_code_reference.rs),
+[GPS L2C multiplex test](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/tests/integration_gps_l2c_multiplex.rs),
+[GPS L5 reference test](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/tests/integration_gps_l5_reference.rs),
+and [Galileo E5 reference test](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/tests/integration_galileo_e5_reference.rs).

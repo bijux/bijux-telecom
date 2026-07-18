@@ -45,10 +45,10 @@ flowchart LR
 | lower-owner facades | `core`, `signal`, and navigation APIs | convenience does not move semantic ownership into receiver |
 
 The authoritative export list is the
-[public API module](../../../crates/bijux-gnss-receiver/src/api.rs). The
-[crate API contract](../../../crates/bijux-gnss-receiver/API.md) provides the
+[public API module](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/src/api.rs). The
+[crate API contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/API.md) provides the
 compact public entrypoint, while the
-[public API guide](../../../crates/bijux-gnss-receiver/docs/PUBLIC_API.md)
+[public API guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/docs/PUBLIC_API.md)
 groups exports by caller purpose.
 
 ## Feature Shape Is API Shape

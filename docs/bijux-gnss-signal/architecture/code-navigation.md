@@ -14,7 +14,7 @@ observable behavior you need to understand, identify its owner, and then read
 the evidence that constrains it. This avoids mistaking an internal helper for a
 supported API or moving receiver policy into reusable signal math.
 
-The [curated signal API](../../../crates/bijux-gnss-signal/src/api.rs) is the
+The [curated signal API](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/src/api.rs) is the
 supported downstream surface. The package keeps its implementation modules
 private and re-exports selected types, constants, functions, and traits through
 that facade. Source layout is therefore a maintenance map, not a stability
@@ -49,13 +49,13 @@ flowchart TD
 
 | reader question | owned surface | read next |
 | --- | --- | --- |
-| Which signals and components are supported? | catalog and physical relationships | [signal catalog](../../../crates/bijux-gnss-signal/docs/CATALOG.md) |
-| How is a primary, secondary, pilot, or data code generated? | constellation code families | [code-family contracts](../../../crates/bijux-gnss-signal/docs/CODE_FAMILIES.md) |
-| How does phase advance across sample blocks? | sample timing, NCOs, local codes, and replicas | [DSP contracts](../../../crates/bijux-gnss-signal/docs/DSP.md) |
-| What does a capture sample mean in memory or storage? | raw-IQ metadata and sample conversion | [raw-IQ contract](../../../crates/bijux-gnss-signal/docs/RAW_IQ.md) and [sample conversion contract](../../../crates/bijux-gnss-signal/docs/SAMPLES.md) |
-| Are two observations signal-compatible? | dual-frequency and inter-frequency validation | [signal validation](../../../crates/bijux-gnss-signal/docs/VALIDATION.md) |
-| What may a downstream crate import? | curated facade | [public API guide](../../../crates/bijux-gnss-signal/docs/PUBLIC_API.md) |
-| Who opens streams or schedules work? | consumer-owned effects and lifecycle | [signal boundary](../../../crates/bijux-gnss-signal/docs/BOUNDARY.md) |
+| Which signals and components are supported? | catalog and physical relationships | [signal catalog](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/CATALOG.md) |
+| How is a primary, secondary, pilot, or data code generated? | constellation code families | [code-family contracts](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/CODE_FAMILIES.md) |
+| How does phase advance across sample blocks? | sample timing, NCOs, local codes, and replicas | [DSP contracts](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/DSP.md) |
+| What does a capture sample mean in memory or storage? | raw-IQ metadata and sample conversion | [raw-IQ contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/RAW_IQ.md) and [sample conversion contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/SAMPLES.md) |
+| Are two observations signal-compatible? | dual-frequency and inter-frequency validation | [signal validation](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/VALIDATION.md) |
+| What may a downstream crate import? | curated facade | [public API guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/PUBLIC_API.md) |
+| Who opens streams or schedules work? | consumer-owned effects and lifecycle | [signal boundary](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/BOUNDARY.md) |
 
 ## Catalog And Physical Meaning
 
@@ -70,7 +70,7 @@ Use the catalog when a question can be answered without a receiver session:
 - cycle, meter, Doppler, and shared-path scaling relationships;
 - default acquisition identities shared by consumers.
 
-The [catalog implementation](../../../crates/bijux-gnss-signal/src/catalog.rs)
+The [catalog implementation](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/src/catalog.rs)
 is the canonical source for those relationships. A receiver may choose among
 catalog entries, but it should not duplicate or reinterpret their physical
 meaning.
@@ -110,7 +110,7 @@ flowchart LR
     modulation --> samples
 ```
 
-Start from the [code-family guide](../../../crates/bijux-gnss-signal/docs/CODE_FAMILIES.md),
+Start from the [code-family guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/CODE_FAMILIES.md),
 then follow its links to the relevant family implementation. Read the matching
 reference catalog and independent test helper before trusting a compact
 generator: recurrence code can be internally consistent while using a wrong
@@ -135,9 +135,9 @@ run:
 | front-end analysis | filter response, IQ quality metrics, spectral normalization |
 | tracking math | discriminators, loop coefficients, uncertainty, lock thresholds |
 
-Read the [DSP implementation map](../../../crates/bijux-gnss-signal/src/dsp/mod.rs)
+Read the [DSP implementation map](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/src/dsp/mod.rs)
 only after identifying the responsibility. For replica work, the
-[replica boundary](../../../crates/bijux-gnss-signal/src/dsp/replica.rs)
+[replica boundary](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/src/dsp/replica.rs)
 separates signal identity, code model, carrier trajectory, and modulation.
 
 State does not make a primitive receiver-owned. An NCO or filter can preserve
@@ -192,7 +192,7 @@ combination and whether inter-frequency timing is aligned. It can report
 missing, unsupported, or lagged pair evidence. It does not decide whether a
 navigation solution should be accepted, rejected, weighted, or published.
 
-Use the [validation implementation](../../../crates/bijux-gnss-signal/src/obs_validation.rs)
+Use the [validation implementation](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/src/obs_validation.rs)
 for pair construction and alignment behavior. Route estimator policy to the
 navigation package and receiver lifecycle policy to the receiver package.
 
@@ -232,7 +232,7 @@ the compiler quiet.
 | observation compatibility | pair-status, missing-data, unsupported-band, and alignment property tests |
 | public facade or trait | API guardrail plus downstream compilation and behavior tests |
 
-The [signal test guide](../../../crates/bijux-gnss-signal/docs/TESTS.md) maps
+The [signal test guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/TESTS.md) maps
 these proof families. Use reference evidence for physical facts, property
 evidence for broad structural invariants, and receiver integration evidence
 only when a reusable primitive changes receiver behavior.
@@ -249,7 +249,7 @@ upward when it needs:
 - filesystem, device, network, or dataset ownership;
 - independently produced expected values used only by tests.
 
-The [architecture guide](../../../crates/bijux-gnss-signal/docs/ARCHITECTURE.md)
+The [architecture guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/ARCHITECTURE.md)
 shows the package relationships. If ownership is still ambiguous, describe the
 required state and side effects. Reusable computation belongs here; operational
 decisions and effects do not.

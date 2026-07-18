@@ -195,13 +195,13 @@ Capture the failed claim:
 
 ## Verification Map
 
-- [Signal proof inventory](../../../crates/bijux-gnss-signal/docs/TESTS.md)
+- [Signal proof inventory](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/TESTS.md)
   summarizes the crate's test families and fixture roles.
-- [Code family ownership](../../../crates/bijux-gnss-signal/docs/CODE_FAMILIES.md)
+- [Code family ownership](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/CODE_FAMILIES.md)
   identifies the generators and assignments protected by reference tests.
-- [DSP ownership](../../../crates/bijux-gnss-signal/docs/DSP.md) separates
+- [DSP ownership](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/DSP.md) separates
   reusable math from receiver lifecycle.
-- [Observation validation](../../../crates/bijux-gnss-signal/docs/VALIDATION.md)
+- [Observation validation](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/VALIDATION.md)
   defines the accepted and rejected observation contract.
 - [Raw IQ and sample contracts](../interfaces/raw-iq-and-sample-contracts.md)
   explains the scaling and storage behavior behind the sample tests.

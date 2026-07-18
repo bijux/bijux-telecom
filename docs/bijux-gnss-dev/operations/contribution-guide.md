@@ -122,7 +122,7 @@ command semantics should add that missing focused proof rather than citing the
 package guardrail.
 
 For slow-lane changes, the existing
-[suite-selection integration](../../../crates/bijux-gnss-dev/tests/integration_nextest_suite_selection.rs)
+[suite-selection integration](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/tests/integration_nextest_suite_selection.rs)
 checks sorted uniqueness, source-name resolution, the legacy slow-name
 namespace, and the exact relationship between generated fast and slow
 expressions. It does not measure duration or prove the scientific value of a
@@ -147,7 +147,7 @@ exists and ignores current names absent from the baseline. Tests and review
 must distinguish “benchmarks ran” from “a governed regression comparison
 passed.”
 
-Use the [benchmark contract](../../../crates/bijux-gnss-dev/docs/BENCHMARKS.md)
+Use the [benchmark contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/BENCHMARKS.md)
 and [verification guide](verification-commands.md) before changing this
 workflow.
 
@@ -159,7 +159,7 @@ the underlying review decision, owner, expiry, and removal condition; schema
 validity does not approve the exception.
 
 Reusable repository rules belong in the
-[policy package](../../../crates/bijux-gnss-policies/README.md). If a local deny
+[policy package](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-policies/README.md). If a local deny
 deviation changes shared standards, resolve the shared policy upstream rather
 than weakening the local validator.
 
@@ -173,9 +173,9 @@ A complete contribution gives reviewers:
 4. focused automated evidence and its limitations
 5. first-consumer evidence
 6. generated files separated from handwritten changes
-7. updated [command inventory](../../../crates/bijux-gnss-dev/docs/COMMANDS.md),
-   [workflow guide](../../../crates/bijux-gnss-dev/docs/WORKFLOWS.md), and
-   [proof inventory](../../../crates/bijux-gnss-dev/docs/TESTS.md) where
+7. updated [command inventory](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/COMMANDS.md),
+   [workflow guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/WORKFLOWS.md), and
+   [proof inventory](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/TESTS.md) where
    behavior changed
 8. a package changelog entry for reader-visible maintainer behavior
 

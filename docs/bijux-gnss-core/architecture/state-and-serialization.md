@@ -38,11 +38,11 @@ validator has checked scientific coherence. Parsing a valid shape is not enough.
 
 | state family | durable meaning | owner |
 | --- | --- | --- |
-| identities, units, coordinates, and time | constellation, signal, frame, scale, epoch, and physical quantity interpretation | [foundational contracts](../../../crates/bijux-gnss-core/docs/CONTRACTS.md) |
-| acquisition, tracking, and observations | receiver decisions, assumptions, uncertainty, quality, and measurement context | [observation contracts](../../../crates/bijux-gnss-core/src/observation.rs) |
-| navigation outcomes | solutions, residuals, validity, lifecycle, refusal, and inter-system bias | [navigation result contracts](../../../crates/bijux-gnss-core/src/nav_solution.rs) |
-| diagnostics and configuration | stable failure categories, severity, context, schema versions, and validation reports | [diagnostic contracts](../../../crates/bijux-gnss-core/src/diagnostic/mod.rs) and [configuration contracts](../../../crates/bijux-gnss-core/src/config.rs) |
-| artifacts | payload kind, envelope metadata, read policy, version, and semantic validation | [artifact contracts](../../../crates/bijux-gnss-core/src/artifact.rs) |
+| identities, units, coordinates, and time | constellation, signal, frame, scale, epoch, and physical quantity interpretation | [foundational contracts](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/CONTRACTS.md) |
+| acquisition, tracking, and observations | receiver decisions, assumptions, uncertainty, quality, and measurement context | [observation contracts](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/src/observation.rs) |
+| navigation outcomes | solutions, residuals, validity, lifecycle, refusal, and inter-system bias | [navigation result contracts](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/src/nav_solution.rs) |
+| diagnostics and configuration | stable failure categories, severity, context, schema versions, and validation reports | [diagnostic contracts](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/src/diagnostic/mod.rs) and [configuration contracts](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/src/config.rs) |
+| artifacts | payload kind, envelope metadata, read policy, version, and semantic validation | [artifact contracts](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/src/artifact.rs) |
 
 Runtime schedulers, loop state, estimator workspaces, file handles, and command
 presentation remain outside core even when they produce one of these records.
@@ -60,7 +60,7 @@ presentation remain outside core even when they produce one of these records.
 - Treat fixture changes as contract changes; explain why expected meaning moved
   instead of regenerating bytes from the implementation under test.
 
-The [serialization guide](../../../crates/bijux-gnss-core/docs/SERIALIZATION.md)
+The [serialization guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/SERIALIZATION.md)
 defines the crate-wide rules for artifact envelopes, payload versions, and
 fixtures.
 
@@ -73,13 +73,13 @@ a core field to make an artifact appear valid.
 
 ## Evidence
 
-- [Navigation artifact validation](../../../crates/bijux-gnss-core/tests/nav_artifact_validation.rs)
+- [Navigation artifact validation](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/tests/nav_artifact_validation.rs)
   checks model versions, satellite counts, finite values, covariance, and clock
   units.
-- [Tracking artifact validation](../../../crates/bijux-gnss-core/tests/tracking_artifact_validation.rs)
+- [Tracking artifact validation](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/tests/tracking_artifact_validation.rs)
   checks tracking payload coherence.
-- [Timekeeping properties](../../../crates/bijux-gnss-core/tests/prop_timekeeping.rs)
+- [Timekeeping properties](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/tests/prop_timekeeping.rs)
   protect time conversion behavior across generated cases and retained
   regressions.
-- [Public API guardrails](../../../crates/bijux-gnss-core/tests/public_api_guardrail.rs)
+- [Public API guardrails](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/tests/public_api_guardrail.rs)
   keep supported imports independent of private layout.

@@ -20,7 +20,7 @@ through managed GitHub workflows.
 
 ## Publication Position
 
-The [release contract](../../../configs/release/crates.toml) places receiver
+The [release contract](https://github.com/bijux/bijux-gnss/blob/main/configs/release/crates.toml) places receiver
 after core, signal, and navigation, and before infrastructure and the command
 facade. It shares the workspace version with the other five public packages.
 
@@ -75,13 +75,13 @@ flowchart TD
     claim --> stage --> handoff --> artifacts --> downstream --> package --> workflow
 ```
 
-Start with the [runtime contract](../../../crates/bijux-gnss-receiver/docs/RUNTIME.md)
-and [pipeline contract](../../../crates/bijux-gnss-receiver/docs/PIPELINE.md).
-Use the [artifact guide](../../../crates/bijux-gnss-receiver/docs/ARTIFACTS.md)
+Start with the [runtime contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/docs/RUNTIME.md)
+and [pipeline contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/docs/PIPELINE.md).
+Use the [artifact guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/docs/ARTIFACTS.md)
 for emitted evidence, the
-[simulation guide](../../../crates/bijux-gnss-receiver/docs/SIMULATION.md) for
+[simulation guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/docs/SIMULATION.md) for
 truth-backed claims, and the
-[public API guide](../../../crates/bijux-gnss-receiver/docs/PUBLIC_API.md) for
+[public API guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/docs/PUBLIC_API.md) for
 exports and features.
 
 A final position or broad receiver run cannot substitute for proof at the
@@ -101,13 +101,13 @@ receiver can resolve registry dependencies in publication order without
 uploading it. Keep actual publication disabled during review.
 
 Build the governed receiver source bundle through the
-[release make targets](../../../makes/release.mk). GHCR receives that source
+[release make targets](https://github.com/bijux/bijux-gnss/blob/main/makes/release.mk). GHCR receives that source
 bundle, not a runnable receiver container. GitHub Releases attach release
 artifacts from the same tagged source.
 
 ## Current Automation Status
 
-The [managed workflow manifest](../../../.github/standards/repo-config.manifest.json)
+The [managed workflow manifest](https://github.com/bijux/bijux-gnss/blob/main/.github/standards/repo-config.manifest.json)
 declares crates.io, GHCR, GitHub Release, and source-artifact workflows, but
 their runtime workflow files are not currently present in the tracked workflow
 directory. Receiver release is therefore not externally triggerable from the
@@ -121,7 +121,7 @@ commit, and preserves dependency publication order.
 
 ## Write the Release Record
 
-The [receiver changelog](../../../crates/bijux-gnss-receiver/CHANGELOG.md)
+The [receiver changelog](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/CHANGELOG.md)
 should identify:
 
 - the affected stage, public contract, feature, artifact, or validation budget

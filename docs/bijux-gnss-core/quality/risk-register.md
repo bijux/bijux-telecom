@@ -57,9 +57,9 @@ say which route was exercised.
 | Downstream assumption is undocumented | A consumer relies on a default, ordering, invalid state, or conversion absent from core invariants. | Name the invariant and add consumer-shaped evidence, or narrow the public promise. | Compilation cannot reveal semantic reinterpretation. |
 | Workflow evidence is attributed to core | A valid record is used to claim receiver, navigation, persistence, or command correctness. | Pair core coherence proof with evidence from the package that executes the behavior. | Core does not own those workflows. |
 
-The [core test evidence guide](../../../crates/bijux-gnss-core/docs/TESTS.md)
+The [core test evidence guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/TESTS.md)
 documents the current coverage in detail. The
-[invariant guide](../../../crates/bijux-gnss-core/docs/INVARIANTS.md) records
+[invariant guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/INVARIANTS.md) records
 intended downstream assumptions; neither should be cited beyond its stated
 domain.
 

@@ -112,16 +112,16 @@ reconstructing the original command process.
 
 ## Evidence Routes
 
-The [crate architecture](../../../crates/bijux-gnss-core/docs/ARCHITECTURE.md)
+The [crate architecture](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/ARCHITECTURE.md)
 states the production boundary. The
-[curated API](../../../crates/bijux-gnss-core/src/api.rs) is the supported
-import surface. [Public API guardrails](../../../crates/bijux-gnss-core/tests/public_api_guardrail.rs)
+[curated API](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/src/api.rs) is the supported
+import surface. [Public API guardrails](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/tests/public_api_guardrail.rs)
 protect that surface, while
-[package-boundary guardrails](../../../crates/bijux-gnss-core/tests/integration_guardrails.rs)
+[package-boundary guardrails](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/tests/integration_guardrails.rs)
 protect dependency shape.
 
 For persisted meaning, use
-[navigation artifact validation](../../../crates/bijux-gnss-core/tests/nav_artifact_validation.rs),
-[tracking artifact validation](../../../crates/bijux-gnss-core/tests/tracking_artifact_validation.rs),
-and [timekeeping properties](../../../crates/bijux-gnss-core/tests/prop_timekeeping.rs)
+[navigation artifact validation](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/tests/nav_artifact_validation.rs),
+[tracking artifact validation](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/tests/tracking_artifact_validation.rs),
+and [timekeeping properties](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/tests/prop_timekeeping.rs)
 as concrete proof routes rather than inferring behavior from type names.

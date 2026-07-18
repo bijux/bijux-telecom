@@ -51,9 +51,9 @@ flowchart LR
 
 ## First Proof Check
 
-Inspect the [receiver reference-validation guide](../../../crates/bijux-gnss-receiver/docs/REFERENCE_VALIDATION.md),
-[simulation guide](../../../crates/bijux-gnss-receiver/docs/SIMULATION.md), and
-[receiver test guide](../../../crates/bijux-gnss-receiver/docs/TESTS.md). Then
+Inspect the [receiver reference-validation guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/docs/REFERENCE_VALIDATION.md),
+[simulation guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/docs/SIMULATION.md), and
+[receiver test guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/docs/TESTS.md). Then
 inspect reference-validation source, validation-report source, synthetic
 simulation source, and focused integration tests for navigation validation runs
 and synthetic receiver execution.

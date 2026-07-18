@@ -234,16 +234,16 @@ Before changing infrastructure state:
 
 ## Compatibility References
 
-- [Public API contract](../../../crates/bijux-gnss-infra/docs/PUBLIC_API.md)
+- [Public API contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/PUBLIC_API.md)
   identifies direct exports and lower-owned re-exports.
-- [Dataset contract](../../../crates/bijux-gnss-infra/docs/DATASETS.md) explains
+- [Dataset contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/DATASETS.md) explains
   registry and metadata resolution.
-- [Run layout contract](../../../crates/bijux-gnss-infra/docs/RUN_LAYOUT.md)
+- [Run layout contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/RUN_LAYOUT.md)
   describes persisted execution state.
-- [Artifact validation boundary](../../../crates/bijux-gnss-infra/docs/VALIDATION.md)
+- [Artifact validation boundary](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/VALIDATION.md)
   explains post-run inspection ownership.
-- [Override contract](../../../crates/bijux-gnss-infra/docs/OVERRIDES.md) and
-  [experiment contract](../../../crates/bijux-gnss-infra/docs/EXPERIMENTS.md)
+- [Override contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/OVERRIDES.md) and
+  [experiment contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/EXPERIMENTS.md)
   cover variation inputs.
-- [Infrastructure guardrails](../../../crates/bijux-gnss-infra/tests/integration_guardrails.rs)
+- [Infrastructure guardrails](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/tests/integration_guardrails.rs)
   protect package structure; they do not prove persisted compatibility.

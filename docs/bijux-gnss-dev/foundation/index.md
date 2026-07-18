@@ -103,9 +103,9 @@ Use the [package overview](package-overview.md) for the concise role,
 surface.
 
 Implementation evidence begins with the
-[command reference](../../../crates/bijux-gnss-dev/docs/COMMANDS.md),
-[governance input guide](../../../crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md),
-[benchmark guide](../../../crates/bijux-gnss-dev/docs/BENCHMARKS.md),
-[test guide](../../../crates/bijux-gnss-dev/docs/TESTS.md),
-[command implementation](../../../crates/bijux-gnss-dev/src/main.rs), and
-[suite-selection proof](../../../crates/bijux-gnss-dev/tests/integration_nextest_suite_selection.rs).
+[command reference](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/COMMANDS.md),
+[governance input guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md),
+[benchmark guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/BENCHMARKS.md),
+[test guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/TESTS.md),
+[command implementation](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/src/main.rs), and
+[suite-selection proof](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/tests/integration_nextest_suite_selection.rs).

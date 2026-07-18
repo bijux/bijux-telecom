@@ -195,13 +195,13 @@ continues to own its scientific or runtime semantics.
 
 ## Related Contracts
 
-- [Infrastructure boundary](../../../crates/bijux-gnss-infra/docs/BOUNDARY.md)
+- [Infrastructure boundary](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/BOUNDARY.md)
   defines the package's repository-facing responsibility.
-- [Dataset contract](../../../crates/bijux-gnss-infra/docs/DATASETS.md) explains
+- [Dataset contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/DATASETS.md) explains
   registration, metadata resolution, and provenance.
-- [Run layout contract](../../../crates/bijux-gnss-infra/docs/RUN_LAYOUT.md)
+- [Run layout contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/RUN_LAYOUT.md)
   describes the durable execution footprint.
-- [Experiment contract](../../../crates/bijux-gnss-infra/docs/EXPERIMENTS.md)
+- [Experiment contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/EXPERIMENTS.md)
   covers specifications and sweep expansion.
-- [Validation boundary](../../../crates/bijux-gnss-infra/docs/VALIDATION.md)
+- [Validation boundary](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/VALIDATION.md)
   separates artifact inspection from lower-owned decisions.

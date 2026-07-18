@@ -77,7 +77,7 @@ flowchart TD
     durable -- yes --> infra
 ```
 
-Use the [receiver test map](../../../crates/bijux-gnss-receiver/docs/TESTS.md)
+Use the [receiver test map](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/docs/TESTS.md)
 to locate executable families and the
 [change validation guide](change-validation.md) to select scope. Slow scenarios
 belong in the governed slow lane; moving them out of a fast lane does not remove

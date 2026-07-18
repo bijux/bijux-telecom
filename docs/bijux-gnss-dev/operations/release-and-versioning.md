@@ -29,7 +29,7 @@ Do not publish `bijux-gnss-dev`, `bijux-gnss-policies`, or
 packages keep references to them path-only and development-only so Cargo omits
 them from registry manifests.
 
-The [crate release contract](../../../configs/release/crates.toml) is the
+The [crate release contract](https://github.com/bijux/bijux-gnss/blob/main/configs/release/crates.toml) is the
 machine-readable source for the allowlist, denylist, package roles, required
 metadata, and publication order.
 

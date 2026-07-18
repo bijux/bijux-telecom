@@ -76,9 +76,9 @@ or persistence semantics behind that route.
 
 ## First Proof Check
 
-Inspect the [command crate README](../../../crates/bijux-gnss/README.md),
-[command guide](../../../crates/bijux-gnss/docs/COMMANDS.md),
-[public API](../../../crates/bijux-gnss/docs/PUBLIC_API.md), command source,
+Inspect the [command crate README](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/README.md),
+[command guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/docs/COMMANDS.md),
+[public API](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/docs/PUBLIC_API.md), command source,
 and the integration tests named in the crate README. A package overview is
 stale if it cannot point from an operator route to the exact lower owner that
 proves the route.

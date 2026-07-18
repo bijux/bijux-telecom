@@ -193,8 +193,8 @@ runtime and infrastructure owners. This package may benchmark product code but
 does not become the owner of product evidence.
 
 Use the [output contract](../interfaces/output-contracts.md),
-[benchmark guide](../../../crates/bijux-gnss-dev/docs/BENCHMARKS.md), and
-[workflow guide](../../../crates/bijux-gnss-dev/docs/WORKFLOWS.md) when changing
+[benchmark guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/BENCHMARKS.md), and
+[workflow guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/WORKFLOWS.md) when changing
 an output location or authority claim.
 
 ## Adding Persistence

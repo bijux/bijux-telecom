@@ -53,8 +53,8 @@ rather than relying on an incidental path through a higher crate.
 | traits | generic sample sources, minimal sources, correlators, and sample sinks | receiver logging, scheduling, or repository persistence |
 
 The authoritative inventory is the
-[signal public API](../../../crates/bijux-gnss-signal/src/api.rs). The
-[trait contract](../../../crates/bijux-gnss-signal/docs/TRAITS.md) explains the
+[signal public API](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/src/api.rs). The
+[trait contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/TRAITS.md) explains the
 four implementable seams.
 
 ## Direct Dependency Or Convenience Facade

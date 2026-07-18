@@ -46,15 +46,15 @@ flowchart TD
 
 | extension | owning boundary | minimum evidence |
 | --- | --- | --- |
-| product decoder or writer | [format boundary](../../../crates/bijux-gnss-nav/src/formats.rs) | realistic valid fixture, malformed input, time context, and round-trip or reference interpretation |
-| orbit or satellite state | [orbit boundary](../../../crates/bijux-gnss-nav/src/orbits/mod.rs) | broadcast or precise reference, frame and time assumptions, error budget, and unavailable-product behavior |
-| correction or combination | [correction boundary](../../../crates/bijux-gnss-nav/src/corrections/mod.rs) | independent formula or dataset, units, nominal effect, invalid combination, and missing-context refusal |
-| environmental or antenna model | [model boundary](../../../crates/bijux-gnss-nav/src/models/mod.rs) | model-domain bounds, reference values, required environmental context, and out-of-domain behavior |
-| reusable filter primitive | [EKF boundary](../../../crates/bijux-gnss-nav/src/estimation/ekf/mod.rs) | numerical properties independent of one solver family and explicit covariance assumptions |
-| position or RAIM behavior | [position boundary](../../../crates/bijux-gnss-nav/src/estimation/position/mod.rs) | accuracy, residuals, uncertainty, integrity, outlier behavior, and impossible-geometry refusal |
-| PPP behavior | [PPP boundary](../../../crates/bijux-gnss-nav/src/estimation/ppp/mod.rs) | product prerequisites, state lifecycle, convergence, quality downgrade, and refusal |
-| RTK behavior | [RTK boundary](../../../crates/bijux-gnss-nav/src/estimation/rtk/mod.rs) | differencing, ambiguity state, baseline truth, fix policy, quality, and refusal |
-| time interpretation | [navigation time boundary](../../../crates/bijux-gnss-nav/src/time.rs) | conversion boundaries, rollover context, leap-second behavior, and ambiguous-input rejection |
+| product decoder or writer | [format boundary](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/src/formats.rs) | realistic valid fixture, malformed input, time context, and round-trip or reference interpretation |
+| orbit or satellite state | [orbit boundary](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/src/orbits/mod.rs) | broadcast or precise reference, frame and time assumptions, error budget, and unavailable-product behavior |
+| correction or combination | [correction boundary](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/src/corrections/mod.rs) | independent formula or dataset, units, nominal effect, invalid combination, and missing-context refusal |
+| environmental or antenna model | [model boundary](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/src/models/mod.rs) | model-domain bounds, reference values, required environmental context, and out-of-domain behavior |
+| reusable filter primitive | [EKF boundary](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/src/estimation/ekf/mod.rs) | numerical properties independent of one solver family and explicit covariance assumptions |
+| position or RAIM behavior | [position boundary](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/src/estimation/position/mod.rs) | accuracy, residuals, uncertainty, integrity, outlier behavior, and impossible-geometry refusal |
+| PPP behavior | [PPP boundary](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/src/estimation/ppp/mod.rs) | product prerequisites, state lifecycle, convergence, quality downgrade, and refusal |
+| RTK behavior | [RTK boundary](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/src/estimation/rtk/mod.rs) | differencing, ambiguity state, baseline truth, fix policy, quality, and refusal |
+| time interpretation | [navigation time boundary](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/src/time.rs) | conversion boundaries, rollover context, leap-second behavior, and ambiguous-input rejection |
 
 ## Keep Ownership Narrow
 
@@ -70,17 +70,17 @@ flowchart TD
 
 Use the nearest package guide before changing behavior:
 
-- [format contracts](../../../crates/bijux-gnss-nav/docs/FORMATS.md) for product
+- [format contracts](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/FORMATS.md) for product
   syntax, context, and typed rejection
-- [orbit contracts](../../../crates/bijux-gnss-nav/docs/ORBITS.md) for state,
+- [orbit contracts](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/ORBITS.md) for state,
   clock, uncertainty, and product gaps
-- [correction contracts](../../../crates/bijux-gnss-nav/docs/CORRECTIONS.md) for
+- [correction contracts](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/CORRECTIONS.md) for
   provenance, units, combinations, and missing context
-- [estimation contracts](../../../crates/bijux-gnss-nav/docs/ESTIMATION.md) for
+- [estimation contracts](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/ESTIMATION.md) for
   accepted, degraded, and refused claims
-- [time contracts](../../../crates/bijux-gnss-nav/docs/TIME.md) for reference
+- [time contracts](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/TIME.md) for reference
   weeks, rollover, and time-system conversion
-- [test evidence](../../../crates/bijux-gnss-nav/docs/TESTS.md) for reference,
+- [test evidence](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/TESTS.md) for reference,
   public-data, integrity, and stability proof families
 
 Do not generate expected values from the implementation under test. A changed
@@ -90,7 +90,7 @@ new bound.
 ## Admit the Public Surface
 
 Add an export only when another crate needs a durable navigation contract.
-Document it in the [public API guide](../../../crates/bijux-gnss-nav/docs/PUBLIC_API.md),
+Document it in the [public API guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/PUBLIC_API.md),
 record scientific and compatibility impact in the
-[package release history](../../../crates/bijux-gnss-nav/CHANGELOG.md), and
+[package release history](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/CHANGELOG.md), and
 review downstream receiver, infrastructure, and facade presentation.

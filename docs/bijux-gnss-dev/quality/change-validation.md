@@ -40,13 +40,13 @@ the exit status differently.
 | Audit ignore arguments | the same reviewed allowlist | deterministic Cargo audit arguments derived only from accepted advisory identifiers | assert exact output ordering and empty-input behavior |
 | Deny-policy deviations | local standards exceptions | required ownership, review linkage, rationale, expiry, and visible refusal of malformed entries | run the deviation command over valid, expired, and malformed examples |
 | Benchmark comparison | curated benchmark commands, optional baseline, threshold, and strictness | normalized measurements, comparison result, artifact location, and explicit behavior when no baseline exists | exercise parsing and threshold logic; run the real benchmark when claiming execution or performance safety |
-| Slow-lane selection | governed slow-test roster and expression generator | sorted unique entries, resolvable test names, exact fast-lane exclusion, and slow-lane inclusion | run the [suite-selection integration](../../../crates/bijux-gnss-dev/tests/integration_nextest_suite_selection.rs) |
-| Package guardrails | developer package source and repository policy | boundary and source-policy compliance | run the [package guardrail](../../../crates/bijux-gnss-dev/tests/integration_guardrails.rs) |
+| Slow-lane selection | governed slow-test roster and expression generator | sorted unique entries, resolvable test names, exact fast-lane exclusion, and slow-lane inclusion | run the [suite-selection integration](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/tests/integration_nextest_suite_selection.rs) |
+| Package guardrails | developer package source and repository policy | boundary and source-policy compliance | run the [package guardrail](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/tests/integration_guardrails.rs) |
 
-The [command reference](../../../crates/bijux-gnss-dev/docs/COMMANDS.md)
+The [command reference](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/COMMANDS.md)
 defines the available maintainer commands. The
-[workflow guide](../../../crates/bijux-gnss-dev/docs/WORKFLOWS.md) and
-[output contract](../../../crates/bijux-gnss-dev/docs/OUTPUTS.md) define how
+[workflow guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/WORKFLOWS.md) and
+[output contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/OUTPUTS.md) define how
 their evidence is consumed.
 
 ## Choose Evidence by What Moved
@@ -136,8 +136,8 @@ message punctuation unless those are public output contracts.
 - a successful command is treated as approval of the underlying exception
 - a new governed file or artifact location has no reader-facing contract
 
-Use the [test guide](../../../crates/bijux-gnss-dev/docs/TESTS.md) for current
-coverage and the [governance file catalog](../../../crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md)
+Use the [test guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/TESTS.md) for current
+coverage and the [governance file catalog](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md)
 for owned inputs.
 
 A maintainer-tooling change is validated when the real governed input, policy

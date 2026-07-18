@@ -138,15 +138,15 @@ Rust entrypoint.
 
 ## Review Evidence
 
-- [Package manifest](../../../crates/bijux-gnss-signal/Cargo.toml) is the
+- [Package manifest](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/Cargo.toml) is the
   authority for current dependency classes and features.
-- [Signal architecture](../../../crates/bijux-gnss-signal/docs/ARCHITECTURE.md)
+- [Signal architecture](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/ARCHITECTURE.md)
   defines the computational boundary.
-- [Signal boundary](../../../crates/bijux-gnss-signal/docs/BOUNDARY.md) defines
+- [Signal boundary](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/BOUNDARY.md) defines
   allowed and excluded ownership.
-- [Curated public API](../../../crates/bijux-gnss-signal/src/api.rs) shows which
+- [Curated public API](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/src/api.rs) shows which
   dependency-backed types reach consumers.
-- [Signal guardrail](../../../crates/bijux-gnss-signal/tests/integration_guardrails.rs)
+- [Signal guardrail](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/tests/integration_guardrails.rs)
   checks package structure; it does not prove scientific correctness or
   dependency necessity.
 

@@ -18,8 +18,8 @@ maintenance decisions.
 
 | Record | Current status | Honest claim |
 | --- | --- | --- |
-| [Timekeeping regression corpus](../../../crates/bijux-gnss-core/tests/prop_timekeeping.proptest-regressions) | active; loaded automatically by the timekeeping property test | a previously minimized GPS-seconds counterexample is replayed before newly generated cases |
-| [Observation JSONL record](../../../crates/bijux-gnss-core/tests/data/obs_fixture.jsonl) | dormant; no current source or test references it | a historical version-one observation example is retained, but no automated compatibility behavior is proved |
+| [Timekeeping regression corpus](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/tests/prop_timekeeping.proptest-regressions) | active; loaded automatically by the timekeeping property test | a previously minimized GPS-seconds counterexample is replayed before newly generated cases |
+| [Observation JSONL record](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/tests/data/obs_fixture.jsonl) | dormant; no current source or test references it | a historical version-one observation example is retained, but no automated compatibility behavior is proved |
 
 Do not describe dormant data as a fixture-backed test. Its presence can help a
 future reader reconstruct an intended shape, but it does not prove parsing,
@@ -106,9 +106,9 @@ requires evidence that the generated domain or property no longer applies, not
 only that the case now passes. If the property changes, explain whether its
 domain became narrower, broader, or semantically different.
 
-Use the [core test evidence guide](../../../crates/bijux-gnss-core/docs/TESTS.md)
+Use the [core test evidence guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/TESTS.md)
 for current coverage and the
-[serialization contract](../../../crates/bijux-gnss-core/docs/SERIALIZATION.md)
+[serialization contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/SERIALIZATION.md)
 when a record crosses a schema boundary.
 
 A fixture change is ready when the record has an active reader, the assertion

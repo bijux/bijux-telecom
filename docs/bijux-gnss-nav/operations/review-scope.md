@@ -127,7 +127,7 @@ A scientific edit becomes a compatibility review when it changes:
 - ordering or identity used by persisted reports
 - assumptions consumed by receiver, infrastructure, or command packages
 
-The [public navigation API](../../../crates/bijux-gnss-nav/src/api.rs) is the
+The [public navigation API](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/src/api.rs) is the
 export boundary, not a list of everything that happens to be public inside a
 module. New exports need a durable cross-package use case. Removing or changing
 an export needs a migration decision, not only a compile fix in the workspace.
@@ -181,13 +181,13 @@ Block the change when:
 
 ## Review References
 
-- [Navigation package boundary](../../../crates/bijux-gnss-nav/docs/BOUNDARY.md)
+- [Navigation package boundary](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/BOUNDARY.md)
   defines which scientific decisions belong in this crate.
-- [Format ownership](../../../crates/bijux-gnss-nav/docs/FORMATS.md) covers
+- [Format ownership](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/FORMATS.md) covers
   navigation messages and reference-product parsing.
-- [Estimation ownership](../../../crates/bijux-gnss-nav/docs/ESTIMATION.md)
+- [Estimation ownership](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/ESTIMATION.md)
   covers SPP, PPP, RTK, integrity, and refusal.
-- [Navigation proof inventory](../../../crates/bijux-gnss-nav/docs/TESTS.md)
+- [Navigation proof inventory](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/TESTS.md)
   maps fixtures and major test families.
 - [Navigation verification guide](verification-commands.md) routes changed
   claims to focused and broad proof.

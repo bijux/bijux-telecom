@@ -99,11 +99,11 @@ reshaping the public surface.
 
 ## Sources Of Truth
 
-The [curated navigation API](../../../crates/bijux-gnss-nav/src/api.rs) is the
+The [curated navigation API](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/src/api.rs) is the
 supported import boundary. The
-[public API guide](../../../crates/bijux-gnss-nav/docs/PUBLIC_API.md),
-[format guide](../../../crates/bijux-gnss-nav/docs/FORMATS.md),
-[correction guide](../../../crates/bijux-gnss-nav/docs/CORRECTIONS.md),
-[orbit guide](../../../crates/bijux-gnss-nav/docs/ORBITS.md), and
-[estimation guide](../../../crates/bijux-gnss-nav/docs/ESTIMATION.md) define
+[public API guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/PUBLIC_API.md),
+[format guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/FORMATS.md),
+[correction guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/CORRECTIONS.md),
+[orbit guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/ORBITS.md), and
+[estimation guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/ESTIMATION.md) define
 the contract families behind it.

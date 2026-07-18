@@ -62,7 +62,7 @@ flowchart TD
     authority --> lane --> dev
 ```
 
-The [governance file guide](../../../crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md)
+The [governance file guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md)
 lists the current inputs. Developer tooling owns how they are parsed for its
 maintenance decisions, but review authority stays with the domain that gives
 each record meaning.
@@ -85,7 +85,7 @@ It does not own:
 - operator-facing command reports
 - shared artifact envelopes
 
-The [output contract](../../../crates/bijux-gnss-dev/docs/OUTPUTS.md) describes
+The [output contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/OUTPUTS.md) describes
 the maintained and generated benchmark evidence.
 
 ## Neighbor Boundaries
@@ -127,7 +127,7 @@ Reject or reroute a proposal when it:
 - duplicates a reviewed exception or roster in command code
 
 Use the [maintainer tooling scope](scope-and-non-goals.md) for command admission
-and the [workflow contract](../../../crates/bijux-gnss-dev/docs/WORKFLOWS.md)
+and the [workflow contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/WORKFLOWS.md)
 for current input-to-output behavior.
 
 Ownership is clear when the authority, validator, orchestrator, product owner,

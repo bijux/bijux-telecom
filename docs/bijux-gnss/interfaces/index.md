@@ -84,11 +84,11 @@ representative use.
 
 ## Sources Of Truth
 
-The [public API guide](../../../crates/bijux-gnss/docs/PUBLIC_API.md)
+The [public API guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/docs/PUBLIC_API.md)
 distinguishes binary and Rust callers. The
-[command reference](../../../crates/bijux-gnss/docs/COMMANDS.md),
-[workflow reference](../../../crates/bijux-gnss/docs/WORKFLOWS.md), and
-[reporting guide](../../../crates/bijux-gnss/docs/REPORTING.md) define the
+[command reference](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/docs/COMMANDS.md),
+[workflow reference](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/docs/WORKFLOWS.md), and
+[reporting guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/docs/REPORTING.md) define the
 operator-facing contract. Confirm exact parser behavior in the
-[command catalog](../../../crates/bijux-gnss/src/cli/command_catalog/mod.rs)
-and [parser assembly](../../../crates/bijux-gnss/src/cli/command_line.rs).
+[command catalog](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/src/cli/command_catalog/mod.rs)
+and [parser assembly](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/src/cli/command_line.rs).

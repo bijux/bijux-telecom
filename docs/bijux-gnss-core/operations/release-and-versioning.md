@@ -45,35 +45,35 @@ flowchart LR
     validation --> consumer
 ```
 
-Start with the [public API guide](../../../crates/bijux-gnss-core/docs/PUBLIC_API.md)
-and the [curated export module](../../../crates/bijux-gnss-core/src/api.rs).
-Use the [contract catalog](../../../crates/bijux-gnss-core/docs/CONTRACTS.md) to
+Start with the [public API guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/PUBLIC_API.md)
+and the [curated export module](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/src/api.rs).
+Use the [contract catalog](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/CONTRACTS.md) to
 identify the owning contract family, then inspect:
 
-- the [invariant guide](../../../crates/bijux-gnss-core/docs/INVARIANTS.md) for
+- the [invariant guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/INVARIANTS.md) for
   promises downstream crates already rely on
-- the [serialization guide](../../../crates/bijux-gnss-core/docs/SERIALIZATION.md)
+- the [serialization guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/SERIALIZATION.md)
   when persisted shape or meaning can change
-- the [diagnostic guide](../../../crates/bijux-gnss-core/docs/DIAGNOSTICS.md)
+- the [diagnostic guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/DIAGNOSTICS.md)
   when codes, severities, aggregation, or context change
-- the [support matrix guide](../../../crates/bijux-gnss-core/docs/SUPPORT_MATRIX.md)
+- the [support matrix guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/SUPPORT_MATRIX.md)
   when capability claims change
 
 ## Require Matching Evidence
 
 | claim | minimum evidence |
 | --- | --- |
-| curated exports remain intentional | [public API guardrail](../../../crates/bijux-gnss-core/tests/public_api_guardrail.rs) |
-| artifact payloads remain coherent | [navigation artifact validation](../../../crates/bijux-gnss-core/tests/nav_artifact_validation.rs) and [tracking artifact validation](../../../crates/bijux-gnss-core/tests/tracking_artifact_validation.rs) |
-| time conversion meaning is preserved | [timekeeping properties](../../../crates/bijux-gnss-core/tests/prop_timekeeping.rs) and the [retained regression corpus](../../../crates/bijux-gnss-core/tests/prop_timekeeping.proptest-regressions) |
-| dependency direction remains valid | [core boundary guardrails](../../../crates/bijux-gnss-core/tests/integration_guardrails.rs) |
+| curated exports remain intentional | [public API guardrail](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/tests/public_api_guardrail.rs) |
+| artifact payloads remain coherent | [navigation artifact validation](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/tests/nav_artifact_validation.rs) and [tracking artifact validation](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/tests/tracking_artifact_validation.rs) |
+| time conversion meaning is preserved | [timekeeping properties](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/tests/prop_timekeeping.rs) and the [retained regression corpus](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/tests/prop_timekeeping.proptest-regressions) |
+| dependency direction remains valid | [core boundary guardrails](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/tests/integration_guardrails.rs) |
 
 Update a fixture only when the new bytes represent an intentional new contract.
 Never replace expected data merely to make a changed serializer pass.
 
 ## Write the Release Entry
 
-The [package changelog](../../../crates/bijux-gnss-core/CHANGELOG.md) must name:
+The [package changelog](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/CHANGELOG.md) must name:
 
 - the affected public type, artifact version, diagnostic, or invariant
 - whether Rust callers, stored artifacts, or downstream scientific meaning

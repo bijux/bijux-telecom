@@ -81,7 +81,7 @@ Before adding parser syntax, define:
 - deterministic automated evidence
 - limitations that remain human-reviewed
 
-Use [maintainer interface contracts](../interfaces/) for observable behavior
+Use [maintainer interface contracts](../interfaces/index.md) for observable behavior
 and [contributing maintainer workflows](../operations/contribution-guide.md)
 for review evidence.
 
@@ -133,7 +133,7 @@ needs a stable reusable maintainer API and the dependency direction remains
 sound.
 
 Product packages must not import this package. Reusable structural policy
-belongs in the [policy package](../../../crates/bijux-gnss-policies/README.md);
+belongs in the [policy package](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-policies/README.md);
 product behavior belongs with its scientific or runtime owner.
 
 ## Compatibility Cost

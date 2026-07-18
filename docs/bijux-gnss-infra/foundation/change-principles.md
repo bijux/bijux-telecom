@@ -62,9 +62,9 @@ location-dependent path with content identity without documenting the
 consequence. Add equality and inequality examples that show both stable matches
 and required separation.
 
-The [run-layout contract](../../../crates/bijux-gnss-infra/docs/RUN_LAYOUT.md)
+The [run-layout contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/RUN_LAYOUT.md)
 defines current persisted identity, while the
-[dataset contract](../../../crates/bijux-gnss-infra/docs/DATASETS.md) defines
+[dataset contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/DATASETS.md) defines
 metadata resolution.
 
 ## Design Writes Together With Recovery
@@ -165,7 +165,7 @@ Tests should assert the resulting persisted state, diagnostic, and acceptance
 decision. An error without an inspectable reason is insufficient; a successful
 return containing ignored error diagnostics is also insufficient.
 
-The [validation guide](../../../crates/bijux-gnss-infra/docs/VALIDATION.md)
+The [validation guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/VALIDATION.md)
 defines adapter ownership, and the
 [change-validation guide](../quality/change-validation.md) maps contract
 families to focused evidence.

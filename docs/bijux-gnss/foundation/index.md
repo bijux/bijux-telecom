@@ -43,8 +43,8 @@ reports, and documentation.
 | What sequence does a multi-stage command perform? | [Workflow contracts](../interfaces/workflow-contracts.md) |
 | Is this behavior owned by the command crate at all? | [Ownership boundary](ownership-boundary.md) |
 | What must the command crate refuse? | [Scope and non-goals](scope-and-non-goals.md) |
-| Where does an implementation concern live? | [Architecture map](../architecture/) |
-| What evidence supports an operator-facing claim? | [Quality model](../quality/) |
+| Where does an implementation concern live? | [Architecture map](../architecture/index.md) |
+| What evidence supports an operator-facing claim? | [Quality model](../quality/index.md) |
 
 ## What The Boundary Promises
 
@@ -91,8 +91,8 @@ used across command documentation, and [change principles](change-principles.md)
 sets the review standard for extending the boundary.
 
 For implementation-level confirmation, inspect the
-[command parser](../../../crates/bijux-gnss/src/cli/command_line.rs),
-[command catalog](../../../crates/bijux-gnss/src/cli/command_catalog/mod.rs),
-[runtime dispatcher](../../../crates/bijux-gnss/src/cli/command_runtime.rs),
-[command-family reference](../../../crates/bijux-gnss/docs/COMMANDS.md), and
-[workflow reference](../../../crates/bijux-gnss/docs/WORKFLOWS.md).
+[command parser](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/src/cli/command_line.rs),
+[command catalog](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/src/cli/command_catalog/mod.rs),
+[runtime dispatcher](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/src/cli/command_runtime.rs),
+[command-family reference](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/docs/COMMANDS.md), and
+[workflow reference](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/docs/WORKFLOWS.md).

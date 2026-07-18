@@ -54,18 +54,18 @@ the rule that produces a scientific or runtime result.
 
 | proposed change | command responsibility | lower owner |
 | --- | --- | --- |
-| add an acquisition search-window flag | parse and validate the operator value; construct the request | [receiver execution](../bijux-gnss-receiver/) defines acquisition behavior and admissible runtime state |
-| expose a navigation correction choice | select the requested model and render its provenance | [navigation science](../bijux-gnss-nav/) defines the model and scientific validity |
-| accept a capture reference | collect operator intent and report resolution failures | [repository infrastructure](../bijux-gnss-infra/) resolves datasets, sidecars, and persisted provenance |
-| select a signal identity | parse a supported identity and pass it through | [signal processing](../bijux-gnss-signal/) defines catalog relationships, code behavior, and reusable DSP |
-| render a shared observation record | choose the human or machine representation | [shared GNSS contracts](../bijux-gnss-core/) define fields, units, validity, and serialization |
+| add an acquisition search-window flag | parse and validate the operator value; construct the request | [receiver execution](../bijux-gnss-receiver/index.md) defines acquisition behavior and admissible runtime state |
+| expose a navigation correction choice | select the requested model and render its provenance | [navigation science](../bijux-gnss-nav/index.md) defines the model and scientific validity |
+| accept a capture reference | collect operator intent and report resolution failures | [repository infrastructure](../bijux-gnss-infra/index.md) resolves datasets, sidecars, and persisted provenance |
+| select a signal identity | parse a supported identity and pass it through | [signal processing](../bijux-gnss-signal/index.md) defines catalog relationships, code behavior, and reusable DSP |
+| render a shared observation record | choose the human or machine representation | [shared GNSS contracts](../bijux-gnss-core/index.md) define fields, units, validity, and serialization |
 
 If a command test becomes the only proof of an algorithm, the implementation
 is probably in the wrong package or lacks lower-level evidence.
 
 ## Facade Boundary
 
-The [public package facade](../../crates/bijux-gnss/src/lib.rs) currently
+The [public package facade](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/src/lib.rs) currently
 re-exports:
 
 - shared core contracts;
@@ -130,9 +130,9 @@ keep the command adapter thin.
 ## Review Evidence
 
 For command changes, inspect the
-[command contract](../../crates/bijux-gnss/docs/COMMANDS.md),
-[workflow guide](../../crates/bijux-gnss/docs/WORKFLOWS.md), and affected
-[command implementation](../../crates/bijux-gnss/src/cli/). Pair command
+[command contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/docs/COMMANDS.md),
+[workflow guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/docs/WORKFLOWS.md), and affected
+[command implementation](https://github.com/bijux/bijux-gnss/tree/main/crates/bijux-gnss/src/cli). Pair command
 integration evidence with tests from the package that owns the underlying
 behavior.
 

@@ -52,9 +52,9 @@ reproducibility even when product calculations are unchanged.
 
 Evidence:
 
-- [run-context resolution](../../../crates/bijux-gnss-infra/src/run_layout/directories/context.rs)
-- [run fingerprint construction](../../../crates/bijux-gnss-infra/src/run_layout/identity/fingerprint.rs)
-- [registry path normalization](../../../crates/bijux-gnss-infra/src/datasets/registry/loading.rs)
+- [run-context resolution](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/src/run_layout/directories/context.rs)
+- [run fingerprint construction](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/src/run_layout/identity/fingerprint.rs)
+- [registry path normalization](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/src/datasets/registry/loading.rs)
 
 ## Dataset and Provenance Interpretation
 
@@ -66,9 +66,9 @@ Evidence:
 
 Evidence:
 
-- [dataset registry contract](../../../crates/bijux-gnss-infra/src/datasets/registry.rs)
-- [front-end provenance resolution](../../../crates/bijux-gnss-infra/src/run_layout/provenance/front_end.rs)
-- [Git provenance collection](../../../crates/bijux-gnss-infra/src/hash/provenance.rs)
+- [dataset registry contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/src/datasets/registry.rs)
+- [front-end provenance resolution](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/src/run_layout/provenance/front_end.rs)
+- [Git provenance collection](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/src/hash/provenance.rs)
 
 ## Persistence and Compatibility
 
@@ -97,10 +97,10 @@ footprint.
 
 Evidence:
 
-- [manifest persistence](../../../crates/bijux-gnss-infra/src/run_layout/records/manifest.rs)
-- [report persistence](../../../crates/bijux-gnss-infra/src/run_layout/records/report.rs)
-- [history append](../../../crates/bijux-gnss-infra/src/run_layout/records/history.rs)
-- [run layout contract](../../../crates/bijux-gnss-infra/docs/RUN_LAYOUT.md)
+- [manifest persistence](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/src/run_layout/records/manifest.rs)
+- [report persistence](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/src/run_layout/records/report.rs)
+- [history append](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/src/run_layout/records/history.rs)
+- [run layout contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/RUN_LAYOUT.md)
 
 ## Artifact Inspection
 
@@ -113,10 +113,10 @@ Evidence:
 
 Evidence:
 
-- [artifact kind detection](../../../crates/bijux-gnss-infra/src/artifact_inspection/artifact_type.rs)
-- [artifact validation](../../../crates/bijux-gnss-infra/src/artifact_inspection/validation.rs)
-- [artifact explanation](../../../crates/bijux-gnss-infra/src/artifact_inspection/summary.rs)
-- [schema read policy](../../../crates/bijux-gnss-infra/src/artifact_inspection/validation/schema_policy.rs)
+- [artifact kind detection](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/src/artifact_inspection/artifact_type.rs)
+- [artifact validation](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/src/artifact_inspection/validation.rs)
+- [artifact explanation](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/src/artifact_inspection/summary.rs)
+- [schema read policy](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/src/artifact_inspection/validation/schema_policy.rs)
 
 ## Ownership and Glue Growth
 
@@ -152,9 +152,9 @@ For a changed risk, require evidence that can trigger the failure:
 | artifact typing | misleading names, explicit-kind disagreement, header disagreement, and extension changes |
 | strict validation | empty input and every diagnostic severity with asserted acceptance outcome |
 
-The [infrastructure validation guide](../../../crates/bijux-gnss-infra/docs/VALIDATION.md)
+The [infrastructure validation guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/VALIDATION.md)
 maps persisted evidence back to product owners. The
-[infrastructure proof inventory](../../../crates/bijux-gnss-infra/docs/TESTS.md)
+[infrastructure proof inventory](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/TESTS.md)
 shows existing tests; absence from that inventory is not evidence that a risk
 is controlled.
 

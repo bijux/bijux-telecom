@@ -51,10 +51,10 @@ success, degraded, or refused meaning for the next boundary.
 | Equivalent controlled inputs produce stable discrete decisions and bounded numeric results. | Ordering, identity, state, or artifact membership changes across replay. | pipeline determinism and scenario replay tests |
 | Synthetic truth names all injected conditions and missing coverage remains visible. | Generated expectation shares the implementation or absent truth rows pass silently. | simulation, truth-table, and accuracy-budget tests |
 
-The [runtime contract](../../../crates/bijux-gnss-receiver/docs/RUNTIME.md) and
-[pipeline contract](../../../crates/bijux-gnss-receiver/docs/PIPELINE.md)
+The [runtime contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/docs/RUNTIME.md) and
+[pipeline contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/docs/PIPELINE.md)
 define stage and effect ownership. The
-[artifact contract](../../../crates/bijux-gnss-receiver/docs/ARTIFACTS.md)
+[artifact contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/docs/ARTIFACTS.md)
 defines the in-memory evidence boundary.
 
 ## Exact and Toleranced Meaning

@@ -36,13 +36,13 @@ wording, the change probably belongs in another package.
 
 | changed family | review risk | inspect first | minimum evidence |
 | --- | --- | --- | --- |
-| dataset registry and raw-IQ sidecars | a capture can be interpreted with the wrong location, format, rate, frequency, timestamp, or provenance | [dataset contract](../../../crates/bijux-gnss-infra/docs/DATASETS.md) | accepted and rejected metadata, precedence behavior, and path normalization relative to the registry |
-| run identity and directory layout | the same declared run can resolve to a different footprint or collide with another run | [run-layout contract](../../../crates/bijux-gnss-infra/docs/RUN_LAYOUT.md) | deterministic identity, isolated directory creation, and compatibility decision |
+| dataset registry and raw-IQ sidecars | a capture can be interpreted with the wrong location, format, rate, frequency, timestamp, or provenance | [dataset contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/DATASETS.md) | accepted and rejected metadata, precedence behavior, and path normalization relative to the registry |
+| run identity and directory layout | the same declared run can resolve to a different footprint or collide with another run | [run-layout contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/RUN_LAYOUT.md) | deterministic identity, isolated directory creation, and compatibility decision |
 | manifests, reports, and history | persisted evidence can become unreadable, incomplete, or detached from its provenance | [run-footprint contracts](../interfaces/run-footprint-contracts.md) | serialized field review, reader impact, history append behavior, and schema/version decision |
-| artifact explanation and validation | a malformed or unsupported artifact can be presented as valid, or a valid artifact can be rejected | [validation boundary](../../../crates/bijux-gnss-infra/docs/VALIDATION.md) | successful artifact, malformed artifact, schema behavior, and diagnostic preservation |
-| overrides and sweeps | a textual parameter can mutate the wrong receiver field or vary nondeterministically | [override contract](../../../crates/bijux-gnss-infra/docs/OVERRIDES.md) | accepted value, unsupported key, invalid value, and deterministic expansion |
-| hashes and provenance | runs that differ can appear equal, or matching runs can appear unrelated | [hashing contract](../../../crates/bijux-gnss-infra/docs/HASHING.md) | declared hash inputs, stable ordering, dirty-state meaning, and changed-field rationale |
-| reference adapters and re-exports | infrastructure can redefine product semantics or expose an unavailable feature surface | [public API contract](../../../crates/bijux-gnss-infra/docs/PUBLIC_API.md) | owning-package proof, default-feature build, and feature-disabled build |
+| artifact explanation and validation | a malformed or unsupported artifact can be presented as valid, or a valid artifact can be rejected | [validation boundary](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/VALIDATION.md) | successful artifact, malformed artifact, schema behavior, and diagnostic preservation |
+| overrides and sweeps | a textual parameter can mutate the wrong receiver field or vary nondeterministically | [override contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/OVERRIDES.md) | accepted value, unsupported key, invalid value, and deterministic expansion |
+| hashes and provenance | runs that differ can appear equal, or matching runs can appear unrelated | [hashing contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/HASHING.md) | declared hash inputs, stable ordering, dirty-state meaning, and changed-field rationale |
+| reference adapters and re-exports | infrastructure can redefine product semantics or expose an unavailable feature surface | [public API contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/PUBLIC_API.md) | owning-package proof, default-feature build, and feature-disabled build |
 
 Diff size is not a useful proxy for risk. Renaming one serialized field or
 changing one path join can be more consequential than adding an isolated helper.
@@ -117,7 +117,7 @@ That asymmetry should shape review:
   scientific result.
 - State a remaining integration gap explicitly when the change cannot close it.
 
-The [infrastructure test guide](../../../crates/bijux-gnss-infra/docs/TESTS.md)
+The [infrastructure test guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/TESTS.md)
 and [test strategy](../quality/test-strategy.md) describe the available proof
 families.
 

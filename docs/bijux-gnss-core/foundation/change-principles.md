@@ -74,7 +74,7 @@ passing the package guardrail.
 
 ## Treat Artifacts As A Reader-Writer Contract
 
-The current [artifact policy](../../../crates/bijux-gnss-core/src/artifact.rs)
+The current [artifact policy](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/src/artifact.rs)
 accepts schema version one only. A declared conversion helper for a later
 version has no migration behavior because no later schema is defined.
 
@@ -103,14 +103,14 @@ Before changing serialized meaning:
 
 Do not assign new semantics to version one merely because the Rust type can
 deserialize both shapes. The
-[serialization contract](../../../crates/bijux-gnss-core/docs/SERIALIZATION.md)
+[serialization contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/SERIALIZATION.md)
 records current evidence gaps.
 
 ## Keep The Public Surface Deliberate
 
 Supported imports pass through the
-[curated API](../../../crates/bijux-gnss-core/src/api.rs). The
-[surface guardrail](../../../crates/bijux-gnss-core/tests/public_api_guardrail.rs)
+[curated API](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/src/api.rs). The
+[surface guardrail](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/tests/public_api_guardrail.rs)
 uses source-text scanning to find public structs and free functions. It does
 not detect all enums, traits, constants, aliases, methods, or semantic changes.
 
@@ -122,7 +122,7 @@ For a public change:
 - inspect exhaustive consumers for enum changes
 - inspect transitive re-exports
 - record compatibility impact in the
-  [package history](../../../crates/bijux-gnss-core/CHANGELOG.md)
+  [package history](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/CHANGELOG.md)
 
 Do not expose an implementation helper because one consumer currently imports
 equivalent logic.
@@ -138,7 +138,7 @@ equivalent logic.
 | diagnostic taxonomy | stable code, severity, context, summary aggregation, and first reporting consumer |
 | public API | direct use plus the surface guardrail |
 
-The [test evidence guide](../../../crates/bijux-gnss-core/docs/TESTS.md)
+The [test evidence guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/TESTS.md)
 documents what current tests prove and where they are incomplete. A core suite
 pass does not prove receiver accuracy, navigation convergence, persistence, or
 command rendering.

@@ -49,9 +49,9 @@ proved that its time, frame, corrections, or uncertainty are correct.
 | PPP and RTK state transitions expose convergence, ambiguity, fix, downgrade, and prerequisite evidence. | Advanced positioning silently claims support or convergence. | PPP convergence and RTK ambiguity/baseline tests |
 | Unsupported constellations, products, combinations, or claim modes return typed rejection or refusal. | A missing capability is treated as success, absence, or a generic numeric failure. | support, compatibility, and refusal tests |
 
-The [navigation contracts](../../../crates/bijux-gnss-nav/docs/CONTRACTS.md)
+The [navigation contracts](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/CONTRACTS.md)
 define the scientific families, while the
-[boundary guide](../../../crates/bijux-gnss-nav/docs/BOUNDARY.md) separates
+[boundary guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/BOUNDARY.md) separates
 them from receiver runtime and repository workflow.
 
 ## Exact and Toleranced Assertions

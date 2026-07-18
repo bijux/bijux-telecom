@@ -44,14 +44,14 @@ flowchart TD
 
 | Question | Reader destination |
 | --- | --- |
-| Does this package own the behavior? | [signal boundary](../../../crates/bijux-gnss-signal/docs/BOUNDARY.md) |
-| Which contract family changes? | [signal architecture](../../../crates/bijux-gnss-signal/docs/ARCHITECTURE.md) |
-| Which codes and references apply? | [code-family guide](../../../crates/bijux-gnss-signal/docs/CODE_FAMILIES.md) |
-| How are raw captures described? | [raw-IQ contract](../../../crates/bijux-gnss-signal/docs/RAW_IQ.md) |
-| How are numeric samples converted? | [sample contract](../../../crates/bijux-gnss-signal/docs/SAMPLES.md) |
-| Which reusable computations apply? | [DSP guide](../../../crates/bijux-gnss-signal/docs/DSP.md) |
-| Is downstream use supported? | [public API guide](../../../crates/bijux-gnss-signal/docs/PUBLIC_API.md) |
-| Which proof family exists? | [signal test guide](../../../crates/bijux-gnss-signal/docs/TESTS.md) |
+| Does this package own the behavior? | [signal boundary](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/BOUNDARY.md) |
+| Which contract family changes? | [signal architecture](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/ARCHITECTURE.md) |
+| Which codes and references apply? | [code-family guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/CODE_FAMILIES.md) |
+| How are raw captures described? | [raw-IQ contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/RAW_IQ.md) |
+| How are numeric samples converted? | [sample contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/SAMPLES.md) |
+| Which reusable computations apply? | [DSP guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/DSP.md) |
+| Is downstream use supported? | [public API guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/PUBLIC_API.md) |
+| Which proof family exists? | [signal test guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/TESTS.md) |
 
 ## Write the Claim Before Editing
 

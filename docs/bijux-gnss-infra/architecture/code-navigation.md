@@ -33,6 +33,6 @@ implementation-detail change second.
 
 Inspect curated public API source, dataset registry source, raw-IQ metadata
 source, run-layout source, infra guardrail tests, and override integration
-tests. Use the [infra public API guide](../../../crates/bijux-gnss-infra/docs/PUBLIC_API.md)
-and [run layout guide](../../../crates/bijux-gnss-infra/docs/RUN_LAYOUT.md) to
+tests. Use the [infra public API guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/PUBLIC_API.md)
+and [run layout guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/RUN_LAYOUT.md) to
 keep code navigation tied to reader-facing contracts.

@@ -61,7 +61,7 @@ flowchart LR
 
 ## First Proof Check
 
-Inspect the [estimation guide](../../../crates/bijux-gnss-nav/docs/ESTIMATION.md),
-[public API](../../../crates/bijux-gnss-nav/docs/PUBLIC_API.md), estimation
+Inspect the [estimation guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/ESTIMATION.md),
+[public API](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/PUBLIC_API.md), estimation
 source, and focused integration tests for position, public PPP convergence, and
 RTK ambiguity fixing.

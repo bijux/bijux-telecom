@@ -57,7 +57,7 @@ cargo test -p bijux-gnss-core
 | Package guardrail | shared repository source and API policy | contract meaning, serialization compatibility, or complete dependency review |
 | Core package suite | the union of current package tests | correctness of receiver, navigation, infrastructure, or command use |
 
-The [core test guide](../../../crates/bijux-gnss-core/docs/TESTS.md) is the
+The [core test guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/TESTS.md) is the
 authority for current coverage. Read it before broadening a claim from a green
 exit status.
 

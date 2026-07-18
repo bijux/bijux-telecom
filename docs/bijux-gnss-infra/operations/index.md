@@ -105,8 +105,8 @@ focused evidence, and compatibility decision agree. Keep generated output
 separate from handwritten contract changes unless correctness requires them to
 move together.
 
-The [infrastructure test guide](../../../crates/bijux-gnss-infra/docs/TESTS.md),
-[run-layout guide](../../../crates/bijux-gnss-infra/docs/RUN_LAYOUT.md),
-[dataset guide](../../../crates/bijux-gnss-infra/docs/DATASETS.md), and
-[validation guide](../../../crates/bijux-gnss-infra/docs/VALIDATION.md) are the
+The [infrastructure test guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/TESTS.md),
+[run-layout guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/RUN_LAYOUT.md),
+[dataset guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/DATASETS.md), and
+[validation guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/VALIDATION.md) are the
 package-level authorities.

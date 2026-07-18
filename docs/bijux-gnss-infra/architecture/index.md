@@ -95,12 +95,12 @@ scientific interpretation.
 
 Use [code navigation](code-navigation.md) after identifying the subsystem. The
 implementation authorities are the
-[dataset boundary](../../../crates/bijux-gnss-infra/src/datasets/mod.rs),
-[run-layout boundary](../../../crates/bijux-gnss-infra/src/run_layout.rs),
-[artifact inspector](../../../crates/bijux-gnss-infra/src/artifact_inspection/mod.rs),
-[override boundary](../../../crates/bijux-gnss-infra/src/overrides/mod.rs),
-[provenance hasher](../../../crates/bijux-gnss-infra/src/hash/mod.rs), and
-[reference adapter](../../../crates/bijux-gnss-infra/src/validate_reference.rs).
+[dataset boundary](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/src/datasets/mod.rs),
+[run-layout boundary](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/src/run_layout.rs),
+[artifact inspector](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/src/artifact_inspection/mod.rs),
+[override boundary](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/src/overrides/mod.rs),
+[provenance hasher](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/src/hash/mod.rs), and
+[reference adapter](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/src/validate_reference.rs).
 
-The [crate architecture](../../../crates/bijux-gnss-infra/docs/ARCHITECTURE.md)
+The [crate architecture](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/ARCHITECTURE.md)
 states the package-level dependency and durability rules.

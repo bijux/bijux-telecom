@@ -98,10 +98,10 @@ benchmark-parser defect.
 
 ## Boundary Evidence
 
-The [source guardrail](../../../crates/bijux-gnss-dev/tests/integration_guardrails.rs)
+The [source guardrail](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/tests/integration_guardrails.rs)
 checks repository policy for this binary and deliberately disables the
 library-style public re-export rule. The
-[slow-lane integration evidence](../../../crates/bijux-gnss-dev/tests/integration_nextest_suite_selection.rs)
+[slow-lane integration evidence](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/tests/integration_nextest_suite_selection.rs)
 checks roster and nextest expression behavior. Neither test invokes all four
 commands as external processes.
 

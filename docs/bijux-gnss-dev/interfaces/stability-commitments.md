@@ -61,8 +61,8 @@ flowchart TD
 
 ## First Proof Check
 
-Inspect the [maintainer command guide](../../../crates/bijux-gnss-dev/docs/COMMANDS.md),
-[workflow guide](../../../crates/bijux-gnss-dev/docs/WORKFLOWS.md),
-[output guide](../../../crates/bijux-gnss-dev/docs/OUTPUTS.md),
-[governance file guide](../../../crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md),
+Inspect the [maintainer command guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/COMMANDS.md),
+[workflow guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/WORKFLOWS.md),
+[output guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/OUTPUTS.md),
+[governance file guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md),
 command implementation, and maintainer guardrail tests.

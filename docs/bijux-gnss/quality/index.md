@@ -96,12 +96,12 @@ The [known limitations](known-limitations.md) and
 
 ## Evidence Sources
 
-The [package test guide](../../../crates/bijux-gnss/docs/TESTS.md) maps command
+The [package test guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/docs/TESTS.md) maps command
 families to integration evidence. Representative proof includes
-[configuration validation](../../../crates/bijux-gnss/tests/integration_validate_config.rs),
-[navigation decode](../../../crates/bijux-gnss/tests/integration_nav_decode.rs),
-[synthetic navigation validation](../../../crates/bijux-gnss/tests/integration_validate_synthetic_navigation.rs),
-and [package guardrails](../../../crates/bijux-gnss/tests/integration_guardrails.rs).
+[configuration validation](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/tests/integration_validate_config.rs),
+[navigation decode](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/tests/integration_nav_decode.rs),
+[synthetic navigation validation](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/tests/integration_validate_synthetic_navigation.rs),
+and [package guardrails](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/tests/integration_guardrails.rs).
 
 Read each test before citing it; its name is not evidence for assertions it
 does not make.

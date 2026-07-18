@@ -32,10 +32,10 @@ flowchart LR
 
 | changed surface | accept only when | inspect before accepting |
 | --- | --- | --- |
-| dataset or sidecar interpretation | The same on-disk dataset state resolves identically across callers. | [Dataset contracts](../interfaces/dataset-contracts.md) and [infra contract guide](../../../crates/bijux-gnss-infra/docs/CONTRACTS.md) |
+| dataset or sidecar interpretation | The same on-disk dataset state resolves identically across callers. | [Dataset contracts](../interfaces/dataset-contracts.md) and [infra contract guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/CONTRACTS.md) |
 | run footprint or persisted artifact | The artifact remains understandable after the producing process is gone. | [Run Footprint Contracts](../interfaces/run-footprint-contracts.md), [Persisted Artifact Contracts](../interfaces/persisted-artifact-contracts.md) |
 | override or sweep behavior | Expansion is typed, reviewable, and reproducible; it is not hidden command policy. | [Override and sweep contracts](../interfaces/override-and-sweep-contracts.md) and override integration proof |
-| provenance or hashing | The hash explains repository reproducibility instead of becoming a general cryptographic helper. | [Provenance and hashing](../interfaces/provenance-and-hashing.md) and [infra boundary guide](../../../crates/bijux-gnss-infra/docs/BOUNDARY.md) |
+| provenance or hashing | The hash explains repository reproducibility instead of becoming a general cryptographic helper. | [Provenance and hashing](../interfaces/provenance-and-hashing.md) and [infra boundary guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/BOUNDARY.md) |
 | public import or adapter | The export is an infrastructure contract, not a shortcut to another crate's owner. | [API surface](../interfaces/api-surface.md), curated API source, and guardrail proof |
 
 ## Blocking Signs
@@ -51,8 +51,8 @@ flowchart LR
 
 ## Evidence To Require
 
-- Read the [infra contract guide](../../../crates/bijux-gnss-infra/docs/CONTRACTS.md)
-  and [infra test guide](../../../crates/bijux-gnss-infra/docs/TESTS.md) before
+- Read the [infra contract guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/CONTRACTS.md)
+  and [infra test guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/TESTS.md) before
   accepting changed behavior.
 - Require infra guardrail coverage or a narrower contract test for
   boundary-sensitive changes.

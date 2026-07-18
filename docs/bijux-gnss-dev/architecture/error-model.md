@@ -56,8 +56,8 @@ error API for downstream crates.
 
 ## Proof Path
 
-Inspect the [maintainer command guide](../../../crates/bijux-gnss-dev/docs/COMMANDS.md),
-[governance file guide](../../../crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md),
+Inspect the [maintainer command guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/COMMANDS.md),
+[governance file guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md),
 and command implementation. Then inspect the integration tests to confirm
 diagnostics are still tied to governed repository contracts instead of an
 accidental internal error taxonomy.

@@ -56,16 +56,16 @@ flowchart LR
 
 | reader question | better owner |
 | --- | --- |
-| How is the C/A sequence generated or sampled? | the [C/A code source](../../../crates/bijux-gnss-signal/src/codes/ca_code.rs) |
-| How is the signal exposed to other crates? | the [signal catalog](../../../crates/bijux-gnss-signal/src/catalog.rs) and [public API surface](../../../crates/bijux-gnss-signal/src/api.rs) |
+| How is the C/A sequence generated or sampled? | the [C/A code source](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/src/codes/ca_code.rs) |
+| How is the signal exposed to other crates? | the [signal catalog](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/src/catalog.rs) and [public API surface](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/src/api.rs) |
 | How does an acquisition search use this signal? | the receiver [acquisition-to-tracking contract](../../bijux-gnss-receiver/interfaces/stage-contracts.md#acquisition-to-tracking) |
 | How does tracking interpret phase, lock, or CN0? | the receiver [tracking-to-observation contract](../../bijux-gnss-receiver/interfaces/stage-contracts.md#tracking-to-observations) and [diagnostic contracts](../../bijux-gnss-receiver/interfaces/diagnostic-contracts.md) |
 | How does navigation use decoded GPS data? | the navigation [time and model contracts](../../bijux-gnss-nav/interfaces/time-and-model-contracts.md) |
 
 ## First Proof Check
 
-Start with the [C/A code source](../../../crates/bijux-gnss-signal/src/codes/ca_code.rs)
-and the [signal catalog](../../../crates/bijux-gnss-signal/src/catalog.rs). Then
-confirm behavior through the [reference chip test](../../../crates/bijux-gnss-signal/tests/integration_ca_code_reference.rs),
-the [period-length test](../../../crates/bijux-gnss-signal/tests/integration_ca_code_period_length.rs),
-and the [long-duration phase test](../../../crates/bijux-gnss-signal/tests/integration_ca_code_long_duration_phase.rs).
+Start with the [C/A code source](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/src/codes/ca_code.rs)
+and the [signal catalog](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/src/catalog.rs). Then
+confirm behavior through the [reference chip test](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/tests/integration_ca_code_reference.rs),
+the [period-length test](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/tests/integration_ca_code_period_length.rs),
+and the [long-duration phase test](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/tests/integration_ca_code_long_duration_phase.rs).

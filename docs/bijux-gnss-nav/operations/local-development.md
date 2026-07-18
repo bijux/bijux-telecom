@@ -45,14 +45,14 @@ flowchart TD
 
 | change | start with | prove with |
 | --- | --- | --- |
-| format parsing | [Format guide](../../../crates/bijux-gnss-nav/docs/FORMATS.md) | format and reference-product tests |
-| orbit behavior | [Orbit guide](../../../crates/bijux-gnss-nav/docs/ORBITS.md) | broadcast and precise-orbit tests |
-| correction model | [Correction guide](../../../crates/bijux-gnss-nav/docs/CORRECTIONS.md) | correction-focused numeric tests |
-| position, PPP, RTK, or RAIM | [Estimation guide](../../../crates/bijux-gnss-nav/docs/ESTIMATION.md) | solver and integrity tests |
-| public export | [Public API](../../../crates/bijux-gnss-nav/docs/PUBLIC_API.md) | public API and guardrail tests |
+| format parsing | [Format guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/FORMATS.md) | format and reference-product tests |
+| orbit behavior | [Orbit guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/ORBITS.md) | broadcast and precise-orbit tests |
+| correction model | [Correction guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/CORRECTIONS.md) | correction-focused numeric tests |
+| position, PPP, RTK, or RAIM | [Estimation guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/ESTIMATION.md) | solver and integrity tests |
+| public export | [Public API](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/PUBLIC_API.md) | public API and guardrail tests |
 
 ## Useful Local Anchors
 
-- [Navigation crate README](../../../crates/bijux-gnss-nav/README.md)
-- [Navigation crate docs](../../../crates/bijux-gnss-nav/docs/)
+- [Navigation crate README](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/README.md)
+- [Navigation crate docs](https://github.com/bijux/bijux-gnss/tree/main/crates/bijux-gnss-nav/docs)
 - navigation crate tests

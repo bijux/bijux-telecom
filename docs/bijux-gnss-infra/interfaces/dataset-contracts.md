@@ -59,6 +59,6 @@ flowchart TD
 
 ## First Proof Check
 
-Inspect the [dataset guide](../../../crates/bijux-gnss-infra/docs/DATASETS.md),
+Inspect the [dataset guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/DATASETS.md),
 dataset registry source, raw-IQ metadata source, coordinate parsing source, and
 dataset or sidecar integration tests before changing dataset contract claims.

@@ -42,7 +42,7 @@ flowchart TD
     publish -- yes --> success
 ```
 
-Argument parsing belongs to [`clap` command construction](../../../crates/bijux-gnss/src/cli/command_line.rs).
+Argument parsing belongs to [`clap` command construction](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/src/cli/command_line.rs).
 It rejects unknown commands, malformed values, and missing arguments declared as
 required by the parser before a handler runs. Some requirements remain semantic
 because they depend on the selected workflow; handlers return contextual errors
@@ -58,7 +58,7 @@ for those cases.
 | assessed outcome | a valid run produces warnings, refused navigation, rejected observations, or failed validation evidence | typed report data, sometimes promoted by a strict or fail policy | inspect the report and the policy that decided whether the process should fail |
 | publication | rendering, schema checking, or writing requested output fails | command error after some work may already have completed | treat the output directory as incomplete until its manifest and expected artifacts validate |
 
-The executable returns [`anyhow::Result`](../../../crates/bijux-gnss/src/main.rs),
+The executable returns [`anyhow::Result`](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/src/main.rs),
 so handler errors retain chained context and produce a non-successful process
 exit. The architecture does not define stable numeric exit codes or a
 machine-readable error envelope. Automation should therefore consume documented
@@ -74,7 +74,7 @@ every unfavorable value into a generic error.
 
 Commands that expose strictness or failure-threshold options may deliberately
 promote report evidence to a command failure. The
-[artifact validation policy](../../../crates/bijux-gnss/src/cli/commands/artifact.rs)
+[artifact validation policy](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/src/cli/commands/artifact.rs)
 is an example: diagnostics are produced first, then the selected severity policy
 decides whether the handler returns an error. A caller must record both the
 report and the policy; the exit result alone loses the reason.

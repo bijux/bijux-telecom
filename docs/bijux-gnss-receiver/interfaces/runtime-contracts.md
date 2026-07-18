@@ -61,6 +61,6 @@ flowchart LR
 
 ## First Proof Check
 
-Inspect the [receiver runtime guide](../../../crates/bijux-gnss-receiver/docs/RUNTIME.md),
+Inspect the [receiver runtime guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/docs/RUNTIME.md),
 runtime source, receiver composition source, receiver configuration source, and
 the support-matrix inventory integration test.

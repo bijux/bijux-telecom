@@ -70,19 +70,19 @@ prove those routes stay coherent.
 ## Strongest Proof Surfaces
 
 - crate README:
-  [Command crate README](../../crates/bijux-gnss/README.md)
+  [Command crate README](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/README.md)
 - crate architecture docs:
-  [Command architecture](../../crates/bijux-gnss/docs/ARCHITECTURE.md)
+  [Command architecture](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/docs/ARCHITECTURE.md)
 - command boundary docs:
-  [Command contract guide](../../crates/bijux-gnss/docs/COMMANDS.md)
+  [Command contract guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/docs/COMMANDS.md)
 - execution and workflow docs:
-  [Execution guide](../../crates/bijux-gnss/docs/EXECUTION.md),
-  [Workflow guide](../../crates/bijux-gnss/docs/WORKFLOWS.md)
+  [Execution guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/docs/EXECUTION.md),
+  [Workflow guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/docs/WORKFLOWS.md)
 - source entrypoints:
-  [binary entrypoint](../../crates/bijux-gnss/src/main.rs),
-  [CLI source tree](../../crates/bijux-gnss/src/cli)
+  [binary entrypoint](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/src/main.rs),
+  [CLI source tree](https://github.com/bijux/bijux-gnss/tree/main/crates/bijux-gnss/src/cli)
 - command-facing regression surfaces:
-  [command integration tests](../../crates/bijux-gnss/tests)
+  [command integration tests](https://github.com/bijux/bijux-gnss/tree/main/crates/bijux-gnss/tests)
 
 ## Support Crates That Matter Here
 
@@ -95,15 +95,15 @@ prove those routes stay coherent.
 
 ## Sections In This Handbook
 
-- [Foundation](foundation/) for role, scope, ownership, repository fit, and
+- [Foundation](foundation/index.md) for role, scope, ownership, repository fit, and
   command-boundary vocabulary
-- [Architecture](architecture/) for CLI composition, runtime setup, support
+- [Architecture](architecture/index.md) for CLI composition, runtime setup, support
   helpers, reporting, and dependency direction
-- [Interfaces](interfaces/) for binary, command, reporting, facade, and
+- [Interfaces](interfaces/index.md) for binary, command, reporting, facade, and
   compatibility contracts
-- [Operations](operations/) for safe change sequence, verification, fixture
+- [Operations](operations/index.md) for safe change sequence, verification, fixture
   care, and review scope
-- [Quality](quality/) for invariants, proof strategy, limitations, risk, and
+- [Quality](quality/index.md) for invariants, proof strategy, limitations, risk, and
   change validation
 - [Command ownership boundaries](ownership-boundaries.md) for deciding whether
   behavior belongs in the CLI or a lower package
@@ -119,16 +119,16 @@ prove those routes stay coherent.
 ## Leave This Handbook When
 
 - the question becomes about dataset resolution or run persistence:
-  [Infra handbook](../bijux-gnss-infra/)
+  [Infra handbook](../bijux-gnss-infra/index.md)
 - the question becomes about receiver stage execution or validation artifacts:
-  [Receiver handbook](../bijux-gnss-receiver/)
+  [Receiver handbook](../bijux-gnss-receiver/index.md)
 - the question becomes about navigation models or orbit products:
-  [Navigation handbook](../bijux-gnss-nav/)
+  [Navigation handbook](../bijux-gnss-nav/index.md)
 - the question becomes about signal codes or DSP primitives:
-  [Signal handbook](../bijux-gnss-signal/)
+  [Signal handbook](../bijux-gnss-signal/index.md)
 - the question becomes about shared identifiers, time systems, or artifact
   schema contracts:
-  [Core handbook](../bijux-gnss-core/)
+  [Core handbook](../bijux-gnss-core/index.md)
 
 ## Reader Questions This Package Can Answer
 
@@ -139,13 +139,13 @@ prove those routes stay coherent.
 
 ## First Proof Check
 
-- [binary entrypoint](../../crates/bijux-gnss/src/main.rs)
-- [command catalog source](../../crates/bijux-gnss/src/cli/command_catalog/mod.rs)
-- [command-line parser](../../crates/bijux-gnss/src/cli/command_line.rs)
-- [command runtime source](../../crates/bijux-gnss/src/cli/command_runtime.rs)
-- [operator report renderer](../../crates/bijux-gnss/src/cli/report.rs)
-- [command contract guide](../../crates/bijux-gnss/docs/COMMANDS.md)
-- [workflow guide](../../crates/bijux-gnss/docs/WORKFLOWS.md)
+- [binary entrypoint](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/src/main.rs)
+- [command catalog source](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/src/cli/command_catalog/mod.rs)
+- [command-line parser](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/src/cli/command_line.rs)
+- [command runtime source](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/src/cli/command_runtime.rs)
+- [operator report renderer](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/src/cli/report.rs)
+- [command contract guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/docs/COMMANDS.md)
+- [workflow guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/docs/WORKFLOWS.md)
 
 ## Design Pressure
 

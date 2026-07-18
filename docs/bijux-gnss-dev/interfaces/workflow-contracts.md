@@ -47,7 +47,7 @@ Current advisory records use `why`, owner, link, and expiry. Legacy ignore-only
 entries are consumed by derivation but do not receive the same governance
 validation. Migrate them before treating the workflow as fully reviewed.
 
-The [audit policy](../../../crates/bijux-gnss-dev/docs/AUDIT_POLICY.md) defines
+The [audit policy](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/AUDIT_POLICY.md) defines
 the human review expectation.
 
 ## Local Standards Deviation Workflow
@@ -103,15 +103,15 @@ mode, reviewers need the baseline identity, threshold, toolchain, benchmark
 inventory, and raw evidence. A successful run without a baseline is execution
 evidence, not regression evidence.
 
-The [benchmark contract](../../../crates/bijux-gnss-dev/docs/BENCHMARKS.md) and
-[output contract](../../../crates/bijux-gnss-dev/docs/OUTPUTS.md) define the
+The [benchmark contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/BENCHMARKS.md) and
+[output contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/OUTPUTS.md) define the
 reviewed files.
 
 ## Slow-Test Lane Governance
 
-The [slow-test roster](../../../configs/rust/nextest-slow-roster.txt) is
+The [slow-test roster](https://github.com/bijux/bijux-gnss/blob/main/configs/rust/nextest-slow-roster.txt) is
 validated by the
-[lane selection integration test](../../../crates/bijux-gnss-dev/tests/integration_nextest_suite_selection.rs).
+[lane selection integration test](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/tests/integration_nextest_suite_selection.rs).
 That evidence checks sorted uniqueness, resolution to known test functions, and
 agreement between fast and slow nextest expressions.
 
@@ -133,5 +133,5 @@ A new workflow belongs in this executable only when it has:
 
 Update the [binary boundary](binary-boundary.md),
 [command surface](command-surface.md), and crate-local
-[workflow guide](../../../crates/bijux-gnss-dev/docs/WORKFLOWS.md) together when
+[workflow guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/WORKFLOWS.md) together when
 the command inventory changes.

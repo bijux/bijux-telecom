@@ -46,12 +46,12 @@ contract is used correctly in a real workflow.
 
 | evidence family | what it proves | primary evidence |
 | --- | --- | --- |
-| curated public surface | stable public items are reachable through `bijux_gnss_core::api` rather than private implementation modules | [public API guardrail](../../../crates/bijux-gnss-core/tests/public_api_guardrail.rs) |
-| navigation payload validity | inconsistent versions, counts, clock units, DOPs, residual summaries, covariance, sigmas, and error ellipses produce diagnostics | [navigation artifact validation](../../../crates/bijux-gnss-core/tests/nav_artifact_validation.rs) |
-| tracking payload validity | invalid uncertainty and navigation-bit signs produce diagnostics | [tracking artifact validation](../../../crates/bijux-gnss-core/tests/tracking_artifact_validation.rs) |
-| time properties | GPS-second round trips and sample-clock monotonicity hold over generated finite ranges | [timekeeping properties](../../../crates/bijux-gnss-core/tests/prop_timekeeping.rs) |
-| known property counterexamples | previously minimized time failures remain reproducible | [timekeeping regression corpus](../../../crates/bijux-gnss-core/tests/prop_timekeeping.proptest-regressions) |
-| repository boundary | core follows source and API policy without depending upward into product workflows | [integration guardrail](../../../crates/bijux-gnss-core/tests/integration_guardrails.rs) |
+| curated public surface | stable public items are reachable through `bijux_gnss_core::api` rather than private implementation modules | [public API guardrail](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/tests/public_api_guardrail.rs) |
+| navigation payload validity | inconsistent versions, counts, clock units, DOPs, residual summaries, covariance, sigmas, and error ellipses produce diagnostics | [navigation artifact validation](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/tests/nav_artifact_validation.rs) |
+| tracking payload validity | invalid uncertainty and navigation-bit signs produce diagnostics | [tracking artifact validation](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/tests/tracking_artifact_validation.rs) |
+| time properties | GPS-second round trips and sample-clock monotonicity hold over generated finite ranges | [timekeeping properties](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/tests/prop_timekeeping.rs) |
+| known property counterexamples | previously minimized time failures remain reproducible | [timekeeping regression corpus](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/tests/prop_timekeeping.proptest-regressions) |
+| repository boundary | core follows source and API policy without depending upward into product workflows | [integration guardrail](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/tests/integration_guardrails.rs) |
 | focused primitive behavior | selected leap-second, GPS week, geodetic round-trip, convention, and status behavior | unit tests beside the owning implementations |
 
 ## Choosing The Proof

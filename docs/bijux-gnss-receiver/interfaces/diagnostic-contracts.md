@@ -46,12 +46,12 @@ repository layout after receiver execution finishes.
 
 | changed surface | contract question | proof anchor |
 | --- | --- | --- |
-| diagnostic event emission | Does severity match the real receiver consequence? | the [pipeline source](../../../crates/bijux-gnss-receiver/src/pipeline/) |
-| runtime dump behavior | Does the dump preserve run context without claiming persistence ownership? | the [diagnostic runtime source](../../../crates/bijux-gnss-receiver/src/engine/diagnostics.rs) |
+| diagnostic event emission | Does severity match the real receiver consequence? | the [pipeline source](https://github.com/bijux/bijux-gnss/tree/main/crates/bijux-gnss-receiver/src/pipeline) |
+| runtime dump behavior | Does the dump preserve run context without claiming persistence ownership? | the [diagnostic runtime source](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/src/engine/diagnostics.rs) |
 | acquisition report fields | Can a reader explain selected, ambiguous, rejected, or refined candidates? | acquisition explainability and ambiguity tests |
 | tracking channel state | Can a reader explain lock, degraded, reacquired, lost, or slip state? | tracking channel-state and continuity tests |
 | observation propagation | Does observation metadata keep the tracking reason it depends on? | observation lock-state and artifact tests |
-| artifact summary | Does `RunArtifacts` expose receiver evidence before infra stores it? | the receiver [artifact guide](../../../crates/bijux-gnss-receiver/docs/ARTIFACTS.md) |
+| artifact summary | Does `RunArtifacts` expose receiver evidence before infra stores it? | the receiver [artifact guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/docs/ARTIFACTS.md) |
 
 ## Reader-Facing Standard
 
@@ -74,8 +74,8 @@ answer these questions without private helper archaeology:
 
 ## First Proof Check
 
-Start with the receiver [diagnostic runtime source](../../../crates/bijux-gnss-receiver/src/engine/diagnostics.rs),
-[engine source](../../../crates/bijux-gnss-receiver/src/engine/engine.rs), and
-[pipeline source](../../../crates/bijux-gnss-receiver/src/pipeline/). Then inspect
+Start with the receiver [diagnostic runtime source](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/src/engine/diagnostics.rs),
+[engine source](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/src/engine/engine.rs), and
+[pipeline source](https://github.com/bijux/bijux-gnss/tree/main/crates/bijux-gnss-receiver/src/pipeline). Then inspect
 the closest integration test for the affected acquisition, tracking,
 observation, or artifact surface.

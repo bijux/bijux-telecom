@@ -53,14 +53,14 @@ ownership argument.
 
 | workflow | owned decision | effects | decision not made here |
 | --- | --- | --- | --- |
-| audit exception validation | whether local exception records satisfy identifier, rationale, owner, link, and expiry rules | reads the [audit exception register](../../audit-allowlist.toml); prints status or diagnostics | whether accepting the vulnerability is justified |
-| dependency-policy deviation validation | whether local deviations are identified, owned, explained, unexpired, and linked to shared-standards review | reads the [dependency-policy deviation register](../../configs/rust/deny.deviations.toml); prints status or diagnostics | what shared dependency policy should be |
+| audit exception validation | whether local exception records satisfy identifier, rationale, owner, link, and expiry rules | reads the [audit exception register](https://github.com/bijux/bijux-gnss/blob/main/audit-allowlist.toml); prints status or diagnostics | whether accepting the vulnerability is justified |
+| dependency-policy deviation validation | whether local deviations are identified, owned, explained, unexpired, and linked to shared-standards review | reads the [dependency-policy deviation register](https://github.com/bijux/bijux-gnss/blob/main/configs/rust/deny.deviations.toml); prints status or diagnostics | what shared dependency policy should be |
 | audit argument derivation | which syntactically valid advisory identifiers become sorted, deduplicated Cargo audit arguments | reads the audit exception register; writes stdout | whether every source record has valid rationale, ownership, link, and expiry |
 | benchmark comparison | which curated benchmarks run, how stdout is normalized, and which comparable names exceed a ratio | starts Cargo child processes; writes local evidence and a current snapshot | whether a product change is scientifically or operationally acceptable |
 
-The [command implementation](../../crates/bijux-gnss-dev/src/main.rs) is the
+The [command implementation](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/src/main.rs) is the
 authority for actual behavior. The
-[command reference](../../crates/bijux-gnss-dev/docs/COMMANDS.md) should match
+[command reference](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/COMMANDS.md) should match
 it exactly.
 
 ## Validation Is Not Approval
@@ -125,14 +125,14 @@ No maintained benchmark baseline exists at this review. Therefore:
 - strict mode has no comparison to enforce;
 - a new baseline requires provenance and review, not merely a generated file.
 
-The [benchmark contract](../../crates/bijux-gnss-dev/docs/BENCHMARKS.md) and
+The [benchmark contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/BENCHMARKS.md) and
 [receiver performance evidence](../bijux-gnss-receiver/operations/performance-and-profiling.md)
 define how to interpret the result.
 
 ## Slow-Lane Boundary
 
 The package contains an
-[integration proof for suite selection](../../crates/bijux-gnss-dev/tests/integration_nextest_suite_selection.rs).
+[integration proof for suite selection](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/tests/integration_nextest_suite_selection.rs).
 That proof verifies the governed slow roster against Rust test functions and
 the generated fast and slow nextest expressions.
 
@@ -165,10 +165,10 @@ subcommand obscures rather than clarifies ownership.
 
 | concern | owner |
 | --- | --- |
-| operator-facing GNSS commands and reports | [command workflows](../bijux-gnss/) |
+| operator-facing GNSS commands and reports | [command workflows](../bijux-gnss/index.md) |
 | signal, receiver, and navigation algorithms or runtime state | the relevant product package |
-| product datasets, run manifests, captures, and persisted execution evidence | [repository infrastructure](../bijux-gnss-infra/) |
-| reusable repository-shape checks | [policy support](../../crates/bijux-gnss-policies/README.md) |
+| product datasets, run manifests, captures, and persisted execution evidence | [repository infrastructure](../bijux-gnss-infra/index.md) |
+| reusable repository-shape checks | [policy support](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-policies/README.md) |
 | shared dependency and governance standards | the shared-standards repository |
 | local benchmark orchestration and maintainer evidence | this package |
 

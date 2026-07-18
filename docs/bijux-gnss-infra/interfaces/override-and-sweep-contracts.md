@@ -58,7 +58,7 @@ flowchart TD
 
 ## First Proof Check
 
-Inspect the [override guide](../../../crates/bijux-gnss-infra/docs/OVERRIDES.md),
-[experiment guide](../../../crates/bijux-gnss-infra/docs/EXPERIMENTS.md),
+Inspect the [override guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/OVERRIDES.md),
+[experiment guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/EXPERIMENTS.md),
 override source, sweep source, experiment source, and the override integration
 test.

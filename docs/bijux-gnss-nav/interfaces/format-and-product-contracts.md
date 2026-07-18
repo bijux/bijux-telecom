@@ -48,9 +48,9 @@ healthy, continuous, current, or suitable for a particular estimator.
 | SP3 and CLK | precise orbit and clock records exposed through interpolation providers | interpolation window, edge policy, accuracy, discontinuity, and unavailable-state evidence |
 | ANTEX and bias SINEX | receiver/satellite antenna calibration and signal-specific code or phase bias | antenna identity, signal mapping, unit, validity window, provenance, and missing-bias behavior |
 
-The [format guide](../../../crates/bijux-gnss-nav/docs/FORMATS.md) gives the
+The [format guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/FORMATS.md) gives the
 package-level inventory. Supported downstream imports are exposed through the
-[navigation API](../../../crates/bijux-gnss-nav/src/api.rs), not private parser
+[navigation API](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/src/api.rs), not private parser
 modules.
 
 ## Broadcast Decode Contract
@@ -160,11 +160,11 @@ documentation.
 
 | claim | representative evidence |
 | --- | --- |
-| BeiDou and GLONASS messages retain constellation-specific rejection and time behavior | [BeiDou decode evidence](../../../crates/bijux-gnss-nav/tests/integration_beidou_navigation_decode.rs) and [GLONASS decode evidence](../../../crates/bijux-gnss-nav/tests/integration_glonass_navigation_decode.rs) |
-| RINEX observation channels and mixed records preserve signal identity | [RINEX channel evidence](../../../crates/bijux-gnss-nav/tests/integration_rinex_observation_channels.rs), [Galileo observation evidence](../../../crates/bijux-gnss-nav/tests/integration_rinex_galileo_observations.rs), and [BeiDou observation evidence](../../../crates/bijux-gnss-nav/tests/integration_rinex_beidou_observations.rs) |
-| SP3 and CLK providers meet reference and interpolation expectations | [SP3 reference evidence](../../../crates/bijux-gnss-nav/tests/integration_sp3_reference_accuracy.rs) and [CLK reference evidence](../../../crates/bijux-gnss-nav/tests/integration_clk_reference_accuracy.rs) |
-| bias SINEX affects corrections through typed signal biases | [Bias correction evidence](../../../crates/bijux-gnss-nav/tests/integration_bias_sinex_corrections.rs) |
-| parsed public observations can feed a position workflow | [Public RINEX position evidence](../../../crates/bijux-gnss-nav/tests/integration_public_rinex_position.rs) |
+| BeiDou and GLONASS messages retain constellation-specific rejection and time behavior | [BeiDou decode evidence](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/tests/integration_beidou_navigation_decode.rs) and [GLONASS decode evidence](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/tests/integration_glonass_navigation_decode.rs) |
+| RINEX observation channels and mixed records preserve signal identity | [RINEX channel evidence](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/tests/integration_rinex_observation_channels.rs), [Galileo observation evidence](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/tests/integration_rinex_galileo_observations.rs), and [BeiDou observation evidence](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/tests/integration_rinex_beidou_observations.rs) |
+| SP3 and CLK providers meet reference and interpolation expectations | [SP3 reference evidence](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/tests/integration_sp3_reference_accuracy.rs) and [CLK reference evidence](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/tests/integration_clk_reference_accuracy.rs) |
+| bias SINEX affects corrections through typed signal biases | [Bias correction evidence](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/tests/integration_bias_sinex_corrections.rs) |
+| parsed public observations can feed a position workflow | [Public RINEX position evidence](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/tests/integration_public_rinex_position.rs) |
 
 These tests are representative, not exhaustive. A parser change still needs
 focused malformed-input, boundary-time, missing-record, and round-trip evidence

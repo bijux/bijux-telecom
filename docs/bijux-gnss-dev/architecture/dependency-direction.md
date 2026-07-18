@@ -16,7 +16,7 @@ launches their benchmarks as child processes.
 
 ## Separate Compile-Time And Process Dependencies
 
-The [package manifest](../../../crates/bijux-gnss-dev/Cargo.toml) defines four
+The [package manifest](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/Cargo.toml) defines four
 production dependencies:
 
 | Dependency | Owned use |
@@ -57,7 +57,7 @@ keep repository-specific interpretation in the maintainer command.
 ## Child Processes Are Explicit Effects
 
 No product package is linked into the binary, but the
-[benchmark command](../../../crates/bijux-gnss-dev/src/main.rs) invokes Cargo
+[benchmark command](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/src/main.rs) invokes Cargo
 benchmarks owned by receiver and navigation. Audit validation also invokes the
 system `date` command to compare expiry fields.
 
@@ -110,17 +110,17 @@ the allowlist is absent. Benchmark comparison creates its output directories
 and skips regression comparison when no baseline exists. Callers must not infer
 one command’s absence policy from another.
 
-The [governance-file guide](../../../crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md)
+The [governance-file guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md)
 describes reviewed inputs. The
-[workflow guide](../../../crates/bijux-gnss-dev/docs/WORKFLOWS.md) describes
+[workflow guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/WORKFLOWS.md) describes
 command effects and output ownership.
 
 ## Test-Only Repository Dependencies
 
 Slow-test roster governance is not a subcommand. The
-[lane-selection integration test](../../../crates/bijux-gnss-dev/tests/integration_nextest_suite_selection.rs)
+[lane-selection integration test](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/tests/integration_nextest_suite_selection.rs)
 reads the roster, scans Rust test functions, and executes the
-[nextest expression generator](../../../makes/bin/nextest_expr.sh). This is a
+[nextest expression generator](https://github.com/bijux/bijux-gnss/blob/main/makes/bin/nextest_expr.sh). This is a
 test-time repository edge, separate from the binary’s command inventory.
 
 The source scan is heuristic: it recognizes test attributes followed by named
@@ -138,9 +138,9 @@ Before adding a library, file, or process edge:
 5. keep product semantics with the product owner
 6. add a narrow command or integration test for the new effect
 
-Use the [package boundary](../../../crates/bijux-gnss-dev/docs/BOUNDARY.md) to
+Use the [package boundary](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/BOUNDARY.md) to
 reject generic scripting and product behavior. The
-[Make integration](../../../makes/rust.mk) shows current audit and benchmark
+[Make integration](https://github.com/bijux/bijux-gnss/blob/main/makes/rust.mk) shows current audit and benchmark
 callers; it should remain a caller rather than a second implementation.
 
 ## Warning Signs

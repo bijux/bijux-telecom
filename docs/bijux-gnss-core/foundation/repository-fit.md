@@ -52,7 +52,7 @@ an explicit package edge.
 
 ## Supported Access Is Deliberate
 
-Only the [curated public API](../../../crates/bijux-gnss-core/src/api.rs) is a
+Only the [curated public API](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/src/api.rs) is a
 supported import surface. Private source modules express internal ownership;
 their visibility is not a request for consumers to mirror the layout.
 
@@ -117,7 +117,7 @@ Trace the change outward:
 The [dependency guide](dependencies-and-adjacencies.md) explains the production
 dependency floor. The [ownership boundary](ownership-boundary.md) decides
 whether meaning belongs in core, and the
-[test evidence guide](../../../crates/bijux-gnss-core/docs/TESTS.md) prevents a
+[test evidence guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/TESTS.md) prevents a
 guardrail pass from being overstated as downstream compatibility.
 
 ## Placement Smells

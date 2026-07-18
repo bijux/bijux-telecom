@@ -45,20 +45,20 @@ when the command change also moves a domain contract.
 
 | User-visible behavior | Focused evidence |
 | --- | --- |
-| C/A code range, wrapping, reference metadata, and correlation summaries | [C/A code workflow tests](../../../crates/bijux-gnss/tests/integration_ca_code.rs) |
-| acquisition search settings and command overrides | [acquisition configuration tests](../../../crates/bijux-gnss/tests/integration_acquisition_doppler_config.rs) |
-| configuration acceptance and rejected integration settings | [configuration validation tests](../../../crates/bijux-gnss/tests/integration_validate_config.rs) |
-| sidecar requirements and registry fallback | [raw-IQ metadata tests](../../../crates/bijux-gnss/tests/integration_raw_iq_metadata.rs) |
-| front-end metrics, clipping, zero signal, search-range refusal, and sample-rate mismatch | [raw-IQ quality tests](../../../crates/bijux-gnss/tests/integration_raw_iq_front_end_metrics.rs) |
-| navigation-bit recovery, parity, ephemeris fields, and refusal reporting | [navigation decode tests](../../../crates/bijux-gnss/tests/integration_nav_decode.rs) |
-| RINEX observation and navigation output headers | [RINEX command tests](../../../crates/bijux-gnss/tests/integration_rinex.rs) |
-| synthetic capture export, truth bundle, and acquisition reporting | [synthetic export tests](../../../crates/bijux-gnss/tests/integration_export_synthetic_iq.rs) |
-| synthetic IQ tolerances and rejection behavior | [synthetic IQ validation tests](../../../crates/bijux-gnss/tests/integration_validate_synthetic_iq.rs) |
-| truth-guided navigation validation and accuracy artifact | [synthetic navigation validation](../../../crates/bijux-gnss/tests/integration_validate_synthetic_navigation.rs) |
-| quantization comparison artifact and float reference | [quantization measurement test](../../../crates/bijux-gnss/tests/integration_measure_synthetic_quantization.rs) |
-| public capture acquisition and validation attempts | [live-sky acquisition](../../../crates/bijux-gnss/tests/integration_live_sky_acquisition.rs) and [capture validation](../../../crates/bijux-gnss/tests/integration_validate_capture.rs) |
-| bias-corrected dual-frequency artifact output | [bias validation test](../../../crates/bijux-gnss/tests/integration_validate_bias_sinex.rs) |
-| package structure policy | [command package guardrail](../../../crates/bijux-gnss/tests/integration_guardrails.rs) |
+| C/A code range, wrapping, reference metadata, and correlation summaries | [C/A code workflow tests](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/tests/integration_ca_code.rs) |
+| acquisition search settings and command overrides | [acquisition configuration tests](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/tests/integration_acquisition_doppler_config.rs) |
+| configuration acceptance and rejected integration settings | [configuration validation tests](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/tests/integration_validate_config.rs) |
+| sidecar requirements and registry fallback | [raw-IQ metadata tests](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/tests/integration_raw_iq_metadata.rs) |
+| front-end metrics, clipping, zero signal, search-range refusal, and sample-rate mismatch | [raw-IQ quality tests](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/tests/integration_raw_iq_front_end_metrics.rs) |
+| navigation-bit recovery, parity, ephemeris fields, and refusal reporting | [navigation decode tests](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/tests/integration_nav_decode.rs) |
+| RINEX observation and navigation output headers | [RINEX command tests](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/tests/integration_rinex.rs) |
+| synthetic capture export, truth bundle, and acquisition reporting | [synthetic export tests](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/tests/integration_export_synthetic_iq.rs) |
+| synthetic IQ tolerances and rejection behavior | [synthetic IQ validation tests](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/tests/integration_validate_synthetic_iq.rs) |
+| truth-guided navigation validation and accuracy artifact | [synthetic navigation validation](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/tests/integration_validate_synthetic_navigation.rs) |
+| quantization comparison artifact and float reference | [quantization measurement test](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/tests/integration_measure_synthetic_quantization.rs) |
+| public capture acquisition and validation attempts | [live-sky acquisition](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/tests/integration_live_sky_acquisition.rs) and [capture validation](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/tests/integration_validate_capture.rs) |
+| bias-corrected dual-frequency artifact output | [bias validation test](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/tests/integration_validate_bias_sinex.rs) |
+| package structure policy | [command package guardrail](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/tests/integration_guardrails.rs) |
 
 These targets exercise the binary as an operator would invoke it. Source-local
 tests under command support and pipeline dispatch cover helper behavior, but
@@ -129,10 +129,10 @@ repository state.
   live-sky generalization.
 - Guardrails prove repository policy, not command semantics.
 
-The [command test guide](../../../crates/bijux-gnss/docs/TESTS.md) defines this
-boundary. The [workflow catalog](../../../crates/bijux-gnss/docs/WORKFLOWS.md)
+The [command test guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/docs/TESTS.md) defines this
+boundary. The [workflow catalog](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/docs/WORKFLOWS.md)
 locates operator sequences, and the
-[validation guide](../../../crates/bijux-gnss/docs/VALIDATION.md) identifies
+[validation guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/docs/VALIDATION.md) identifies
 the package that owns each domain check.
 
 ## Record Verification Precisely

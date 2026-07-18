@@ -44,9 +44,9 @@ flowchart LR
 | test-only | policy crate, nextest expression script, slow roster | prove guardrails and lane selection | repository test policy |
 
 The exact compile dependency list is the
-[package manifest](../../../crates/bijux-gnss-dev/Cargo.toml). Process spawning
+[package manifest](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/Cargo.toml). Process spawning
 is visible in the
-[maintainer executable](../../../crates/bijux-gnss-dev/src/main.rs).
+[maintainer executable](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/src/main.rs).
 
 ## Runtime Resolution
 
@@ -132,7 +132,7 @@ Before adding a library, file, or process dependency, answer:
    product command?
 5. Does it preserve the boundary between repository maintenance and GNSS
    product execution?
-6. Does the [governance file contract](../../../crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md)
+6. Does the [governance file contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md)
    need a matching update?
 
 The [dependency direction guide](../architecture/dependency-direction.md)

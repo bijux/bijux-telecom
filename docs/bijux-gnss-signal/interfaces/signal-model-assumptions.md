@@ -50,8 +50,8 @@ flowchart LR
 
 ## First Proof Check
 
-Inspect the [signal catalog guide](../../../crates/bijux-gnss-signal/docs/CATALOG.md),
-[code family guide](../../../crates/bijux-gnss-signal/docs/CODE_FAMILIES.md),
-and [DSP guide](../../../crates/bijux-gnss-signal/docs/DSP.md). Then inspect
+Inspect the [signal catalog guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/CATALOG.md),
+[code family guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/CODE_FAMILIES.md),
+and [DSP guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/DSP.md). Then inspect
 catalog source and focused signal tests for C/A reference behavior, long-duration
 C/A chunks, Galileo E1B reference behavior, and GPS L2C replica modeling.

@@ -38,13 +38,13 @@ interoperate without transferring runtime ownership into this package.
 
 ## First Proof Check
 
-Start with the signal [trait guide](../../../crates/bijux-gnss-signal/docs/TRAITS.md),
-[public API guide](../../../crates/bijux-gnss-signal/docs/PUBLIC_API.md), and
-[architecture guide](../../../crates/bijux-gnss-signal/docs/ARCHITECTURE.md).
-Then confirm the code seams through the [public API facade](../../../crates/bijux-gnss-signal/src/api.rs),
-[raw-IQ model](../../../crates/bijux-gnss-signal/src/raw_iq.rs),
-[sample model](../../../crates/bijux-gnss-signal/src/samples.rs), and
-[observation validation source](../../../crates/bijux-gnss-signal/src/obs_validation.rs).
+Start with the signal [trait guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/TRAITS.md),
+[public API guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/PUBLIC_API.md), and
+[architecture guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/ARCHITECTURE.md).
+Then confirm the code seams through the [public API facade](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/src/api.rs),
+[raw-IQ model](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/src/raw_iq.rs),
+[sample model](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/src/samples.rs), and
+[observation validation source](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/src/obs_validation.rs).
 Those surfaces should remain typed signal boundaries, not hidden runtime
 adapters.
 

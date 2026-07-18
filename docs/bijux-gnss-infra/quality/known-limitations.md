@@ -64,9 +64,9 @@ flowchart LR
     producer --> science
 ```
 
-Use the [infra test guide](../../../crates/bijux-gnss-infra/docs/TESTS.md) to
+Use the [infra test guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/TESTS.md) to
 locate available proof, the
-[run layout guide](../../../crates/bijux-gnss-infra/docs/RUN_LAYOUT.md) for
+[run layout guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/RUN_LAYOUT.md) for
 persisted-footprint commitments, and
 [Artifact Inspection Contracts](../interfaces/artifact-inspection-contracts.md)
 for validator semantics. Product or scientific claims require evidence from the

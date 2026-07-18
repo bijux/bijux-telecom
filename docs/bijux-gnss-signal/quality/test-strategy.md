@@ -43,10 +43,10 @@ the others without creating blind spots.
 
 ## Protecting Proof
 
-- the [signal test guide](../../../crates/bijux-gnss-signal/docs/TESTS.md)
-- the [guardrail test](../../../crates/bijux-gnss-signal/tests/integration_guardrails.rs)
-- the [component registry test](../../../crates/bijux-gnss-signal/tests/integration_signal_component_registry.rs)
-- the [GPS C/A reference test](../../../crates/bijux-gnss-signal/tests/integration_ca_code_reference.rs)
-- the [NCO long-duration phase test](../../../crates/bijux-gnss-signal/tests/integration_nco_long_duration_phase.rs)
-- the [raw-IQ metadata test](../../../crates/bijux-gnss-signal/tests/integration_raw_iq_metadata.rs)
-- the [observation validation property test](../../../crates/bijux-gnss-signal/tests/prop_obs_epoch_validation.rs)
+- the [signal test guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/TESTS.md)
+- the [guardrail test](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/tests/integration_guardrails.rs)
+- the [component registry test](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/tests/integration_signal_component_registry.rs)
+- the [GPS C/A reference test](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/tests/integration_ca_code_reference.rs)
+- the [NCO long-duration phase test](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/tests/integration_nco_long_duration_phase.rs)
+- the [raw-IQ metadata test](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/tests/integration_raw_iq_metadata.rs)
+- the [observation validation property test](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/tests/prop_obs_epoch_validation.rs)

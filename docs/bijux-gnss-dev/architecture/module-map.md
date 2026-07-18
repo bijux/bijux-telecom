@@ -12,7 +12,7 @@ last_reviewed: 2026-07-18
 `bijux-gnss-dev` is one binary because its four commands share a narrow
 repository-maintenance boundary. The architecture is organized by workflow and
 effect, even though the implementation currently fits in one
-[command source](../../../crates/bijux-gnss-dev/src/main.rs).
+[command source](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/src/main.rs).
 
 ## Dispatch And Effects
 
@@ -83,9 +83,9 @@ flowchart LR
     roster --> review
 ```
 
-The [maintainer guardrail test](../../../crates/bijux-gnss-dev/tests/integration_guardrails.rs)
+The [maintainer guardrail test](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/tests/integration_guardrails.rs)
 proves that the crate follows shared structural policy. The
-[suite-selection test](../../../crates/bijux-gnss-dev/tests/integration_nextest_suite_selection.rs)
+[suite-selection test](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/tests/integration_nextest_suite_selection.rs)
 proves that slow-test entries resolve to real tests and feed the intended
 nextest expressions. Test-lane policy is maintained here because it governs
 repository execution, even though it is not a subcommand.

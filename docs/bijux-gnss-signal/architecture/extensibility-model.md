@@ -60,10 +60,10 @@ half-owned extension.
 
 ## Proof Check
 
-Start with the signal [code-family guide](../../../crates/bijux-gnss-signal/docs/CODE_FAMILIES.md),
-[DSP guide](../../../crates/bijux-gnss-signal/docs/DSP.md), and
-[public API guide](../../../crates/bijux-gnss-signal/docs/PUBLIC_API.md). Then
-inspect the [code-family source](../../../crates/bijux-gnss-signal/src/codes/),
-[DSP source](../../../crates/bijux-gnss-signal/src/dsp/), and the corresponding
-[signal tests](../../../crates/bijux-gnss-signal/tests/) before approving any
+Start with the signal [code-family guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/CODE_FAMILIES.md),
+[DSP guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/DSP.md), and
+[public API guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/PUBLIC_API.md). Then
+inspect the [code-family source](https://github.com/bijux/bijux-gnss/tree/main/crates/bijux-gnss-signal/src/codes),
+[DSP source](https://github.com/bijux/bijux-gnss/tree/main/crates/bijux-gnss-signal/src/dsp), and the corresponding
+[signal tests](https://github.com/bijux/bijux-gnss/tree/main/crates/bijux-gnss-signal/tests) before approving any
 extension as durable.

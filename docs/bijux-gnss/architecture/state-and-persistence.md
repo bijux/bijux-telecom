@@ -49,10 +49,10 @@ flowchart LR
 | assembled command reports | until rendered or written | command crate | stable only where a documented schema or artifact contract says so |
 | run layout, manifest, registry, and history | beyond the process | infrastructure crate | governed by infrastructure contracts, not by command-local helper names |
 
-The command's [`common arguments`](../../../crates/bijux-gnss/src/cli/command_line.rs)
+The command's [`common arguments`](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/src/cli/command_line.rs)
 carry output and resume locations, but accepting a path does not transfer
 persistence ownership to the parser. Runtime assembly is visible in the
-[command runtime](../../../crates/bijux-gnss/src/cli/command_runtime.rs), while
+[command runtime](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/src/cli/command_runtime.rs), while
 receiver-owned state is documented in the
 [receiver state guide](../../bijux-gnss-receiver/architecture/state-and-persistence.md).
 
@@ -86,7 +86,7 @@ not stage every output and atomically commit the directory. Consequently:
   command boundary does not promise isolation from prior contents.
 
 The concrete write path is implemented by
-[command artifact support](../../../crates/bijux-gnss/src/cli/command_support/receiver_artifacts.rs)
+[command artifact support](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/src/cli/command_support/receiver_artifacts.rs)
 and infrastructure APIs. Consult the
 [persisted artifact contract](../../bijux-gnss-infra/interfaces/persisted-artifact-contracts.md)
 before making durability or history claims.

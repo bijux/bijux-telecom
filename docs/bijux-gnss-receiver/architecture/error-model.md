@@ -265,18 +265,18 @@ flowchart TD
 
 ## Evidence and Current Gaps
 
-- [Receiver error wrapper](../../../crates/bijux-gnss-receiver/src/engine/receiver_config.rs)
+- [Receiver error wrapper](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/src/engine/receiver_config.rs)
   defines the public top-level categories.
-- [Sample source boundary](../../../crates/bijux-gnss-receiver/src/io/data.rs)
+- [Sample source boundary](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/src/io/data.rs)
   defines I/O and IQ-framing errors.
-- [Receiver engine](../../../crates/bijux-gnss-receiver/src/engine/engine.rs)
+- [Receiver engine](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/src/engine/engine.rs)
   defines empty-input, stage orchestration, feature, and error translation
   behavior.
-- [Acquisition failure evidence](../../../crates/bijux-gnss-receiver/src/pipeline/acquisition/candidate_failures.rs)
+- [Acquisition failure evidence](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/src/pipeline/acquisition/candidate_failures.rs)
   builds rejected and deferred candidates instead of aborting mixed requests.
-- [Observation status policy](../../../crates/bijux-gnss-receiver/src/pipeline/observations/status.rs)
+- [Observation status policy](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/src/pipeline/observations/status.rs)
   defines weak, missing, inconsistent, and accepted measurements.
-- [Reference validation contract](../../../crates/bijux-gnss-receiver/docs/REFERENCE_VALIDATION.md)
+- [Reference validation contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/docs/REFERENCE_VALIDATION.md)
   separates runtime completion from truth comparison.
 
 The current model has real limitations: top-level core error categories contain

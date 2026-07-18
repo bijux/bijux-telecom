@@ -37,7 +37,7 @@ flowchart LR
 
 | family | owns | first proof |
 | --- | --- | --- |
-| run context | run id, output root, dataset id, deterministic seed, and caller-provided context | [run layout guide](../../../crates/bijux-gnss-infra/docs/RUN_LAYOUT.md) and run-layout source |
+| run context | run id, output root, dataset id, deterministic seed, and caller-provided context | [run layout guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/RUN_LAYOUT.md) and run-layout source |
 | directory layout | deterministic run and artifact path resolution | run-layout source |
 | manifests | persisted run identity and artifact inventory | run-layout record source |
 | reports | repository-readable run summaries | run-layout record source |
@@ -66,7 +66,7 @@ Before changing this surface, answer:
 
 ## First Proof Check
 
-Inspect the [run layout guide](../../../crates/bijux-gnss-infra/docs/RUN_LAYOUT.md),
-[infra contract guide](../../../crates/bijux-gnss-infra/docs/CONTRACTS.md),
+Inspect the [run layout guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/RUN_LAYOUT.md),
+[infra contract guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/CONTRACTS.md),
 run-layout source, run-layout record source, and run-layout or
 artifact-inspection integration tests before changing persisted evidence claims.

@@ -44,7 +44,7 @@ flowchart TD
 Signal owns definitions and runtime-neutral computation. Receiver scheduling,
 channel state, persisted datasets, navigation estimation, and operator policy
 belong to neighboring packages even when they consume signal values. The
-[signal boundary guide](../../../crates/bijux-gnss-signal/docs/BOUNDARY.md)
+[signal boundary guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/BOUNDARY.md)
 defines this ownership line.
 
 Ownership and impact are separate questions. A signal-owned change may require
@@ -64,10 +64,10 @@ crate.
 | Observation compatibility validation | signal pairing rule, lock-state meaning, band identity, rejection reason, and report completeness | property tests plus accepted and rejected representative observations | navigation input eligibility and receiver diagnostics |
 | Public export or trait | reusable semantics, stability commitment, errors, ownership, and consumer need | public guardrail plus direct consumer-shaped use | package compatibility and semver obligations |
 
-Use the [catalog guide](../../../crates/bijux-gnss-signal/docs/CATALOG.md),
-[code-family guide](../../../crates/bijux-gnss-signal/docs/CODE_FAMILIES.md),
-[DSP guide](../../../crates/bijux-gnss-signal/docs/DSP.md), and
-[raw-IQ guide](../../../crates/bijux-gnss-signal/docs/RAW_IQ.md) for the
+Use the [catalog guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/CATALOG.md),
+[code-family guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/CODE_FAMILIES.md),
+[DSP guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/DSP.md), and
+[raw-IQ guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/RAW_IQ.md) for the
 contract under review.
 
 ## Demand Independent Signal Evidence
@@ -123,7 +123,7 @@ the cause or pass without exercising the changed signal family.
 
 ## Review Public Commitments Deliberately
 
-Any change to the [public API facade](../../../crates/bijux-gnss-signal/src/api.rs)
+Any change to the [public API facade](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/src/api.rs)
 is public-boundary work. So is a change to the semantics of an already exported
 type, function, constant, error, trait, or default even when the facade itself
 does not change.
@@ -136,7 +136,7 @@ Confirm:
 - names include enough physical meaning to avoid caller convention
 - errors distinguish invalid input from unsupported capability
 - serialization or schema meaning remains compatible when applicable
-- the [public API guide](../../../crates/bijux-gnss-signal/docs/PUBLIC_API.md)
+- the [public API guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/PUBLIC_API.md)
   describes the resulting commitment
 
 A new export is not justified merely because a downstream package can avoid a
@@ -169,7 +169,7 @@ metadata, unverified code generation, or a public API without its meaning.
 - downstream impact is dismissed because the local diff is small
 - only happy-path conversion or compatibility behavior is exercised
 
-Use the [signal test guide](../../../crates/bijux-gnss-signal/docs/TESTS.md)
+Use the [signal test guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/TESTS.md)
 to locate focused proof and the [review checklist](../quality/review-checklist.md)
 for the final ownership and evidence gates.
 

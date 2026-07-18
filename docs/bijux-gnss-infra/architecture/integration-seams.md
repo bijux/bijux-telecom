@@ -49,16 +49,16 @@ flowchart LR
 
 ## Implementation Owners
 
-- [Dataset resolution](../../../crates/bijux-gnss-infra/src/datasets/mod.rs)
+- [Dataset resolution](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/src/datasets/mod.rs)
   owns registry and sidecar trust.
-- [Typed overrides](../../../crates/bijux-gnss-infra/src/overrides/mod.rs) and
-  [sweep expansion](../../../crates/bijux-gnss-infra/src/sweep.rs) own
+- [Typed overrides](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/src/overrides/mod.rs) and
+  [sweep expansion](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/src/sweep.rs) own
   reproducible variants.
-- [Run layout](../../../crates/bijux-gnss-infra/src/run_layout.rs) owns identity,
+- [Run layout](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/src/run_layout.rs) owns identity,
   paths, persistence, records, and provenance.
-- [Artifact inspection](../../../crates/bijux-gnss-infra/src/artifact_inspection/mod.rs)
+- [Artifact inspection](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/src/artifact_inspection/mod.rs)
   owns schema policy and later review.
-- [Reference adaptation](../../../crates/bijux-gnss-infra/src/validate_reference.rs)
+- [Reference adaptation](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/src/validate_reference.rs)
   bridges evidence into comparison without owning scientific truth.
 
 ## Boundary Failures
@@ -70,7 +70,7 @@ flowchart LR
 - Convenience re-exports are not permission to move receiver or signal behavior
   into infrastructure.
 
-The [architecture guide](../../../crates/bijux-gnss-infra/docs/ARCHITECTURE.md)
+The [architecture guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/ARCHITECTURE.md)
 maps these seams to package ownership, and the
 [release guide](../operations/release-and-versioning.md) defines compatibility
 for persisted behavior.

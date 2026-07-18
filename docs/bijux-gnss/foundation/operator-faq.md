@@ -132,7 +132,7 @@ delta. The [operator journeys](../operations/operator-journeys.md) show how
 those records fit into complete workflows.
 
 The implementation sources for these answers are the
-[common command options](../../../crates/bijux-gnss/src/cli/command_line.rs),
-[validation arguments](../../../crates/bijux-gnss/src/cli/command_catalog/validation_arguments.rs),
-[validation handlers](../../../crates/bijux-gnss/src/cli/commands/validate/mod.rs),
-and [run-context bridge](../../../crates/bijux-gnss/src/cli/execution_support.rs).
+[common command options](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/src/cli/command_line.rs),
+[validation arguments](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/src/cli/command_catalog/validation_arguments.rs),
+[validation handlers](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/src/cli/commands/validate/mod.rs),
+and [run-context bridge](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/src/cli/execution_support.rs).

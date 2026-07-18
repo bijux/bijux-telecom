@@ -43,14 +43,14 @@ a receiver test pass.
 
 | Changed claim | Narrow proof | Add when applicable |
 | --- | --- | --- |
-| Signal identity, component metadata, or wavelength | [Component registry](../../../crates/bijux-gnss-signal/tests/integration_signal_component_registry.rs) and [wavelength contracts](../../../crates/bijux-gnss-signal/tests/integration_signal_wavelengths.rs) | constellation-specific registry and first consuming receiver behavior |
-| Primary or secondary sequence | matching constellation [reference suite](../../../crates/bijux-gnss-signal/tests/) | period, repetition, cross-correlation, secondary continuity, and consumer integration |
-| Local-code sampling or code phase | [local-code continuity](../../../crates/bijux-gnss-signal/tests/integration_local_code_continuity.rs) | arbitrary-rate, chunk, and long-duration cases |
-| NCO, carrier, replica, or wipeoff | [NCO properties](../../../crates/bijux-gnss-signal/tests/prop_nco.rs) and relevant continuity suite | segmented-versus-continuous execution and long-duration phase |
-| Modulation spectrum or front-end response | relevant [spectrum suite](../../../crates/bijux-gnss-signal/tests/integration_signal_spectrum_cboc.rs) | low-rate, wideband, low-pass, or band-pass case matching the assumption |
-| Raw-IQ metadata or sample conversion | [metadata contract](../../../crates/bijux-gnss-signal/tests/integration_raw_iq_metadata.rs) and [numeric conversion](../../../crates/bijux-gnss-signal/tests/integration_iq_sample_conversion.rs) | extrema, signedness, endian, quantization, and serialization cases |
-| Observation compatibility validation | [validation properties](../../../crates/bijux-gnss-signal/tests/prop_obs_epoch_validation.rs) | receiver observation integration for changed consumer behavior |
-| Public export or trait | [package guardrail](../../../crates/bijux-gnss-signal/tests/integration_guardrails.rs) | direct consumer-shaped use plus the domain proof above |
+| Signal identity, component metadata, or wavelength | [Component registry](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/tests/integration_signal_component_registry.rs) and [wavelength contracts](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/tests/integration_signal_wavelengths.rs) | constellation-specific registry and first consuming receiver behavior |
+| Primary or secondary sequence | matching constellation [reference suite](https://github.com/bijux/bijux-gnss/tree/main/crates/bijux-gnss-signal/tests) | period, repetition, cross-correlation, secondary continuity, and consumer integration |
+| Local-code sampling or code phase | [local-code continuity](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/tests/integration_local_code_continuity.rs) | arbitrary-rate, chunk, and long-duration cases |
+| NCO, carrier, replica, or wipeoff | [NCO properties](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/tests/prop_nco.rs) and relevant continuity suite | segmented-versus-continuous execution and long-duration phase |
+| Modulation spectrum or front-end response | relevant [spectrum suite](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/tests/integration_signal_spectrum_cboc.rs) | low-rate, wideband, low-pass, or band-pass case matching the assumption |
+| Raw-IQ metadata or sample conversion | [metadata contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/tests/integration_raw_iq_metadata.rs) and [numeric conversion](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/tests/integration_iq_sample_conversion.rs) | extrema, signedness, endian, quantization, and serialization cases |
+| Observation compatibility validation | [validation properties](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/tests/prop_obs_epoch_validation.rs) | receiver observation integration for changed consumer behavior |
+| Public export or trait | [package guardrail](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/tests/integration_guardrails.rs) | direct consumer-shaped use plus the domain proof above |
 
 A directory link in the table points to a family of constellation-specific
 reference tests. Select the test for the actual signal; do not substitute a GPS
@@ -113,7 +113,7 @@ helper and call the result verification.
 - raw-IQ conversion skips boundary values or container semantics
 - the guardrail is cited without domain-specific evidence
 
-Use the [signal test guide](../../../crates/bijux-gnss-signal/docs/TESTS.md)
+Use the [signal test guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/TESTS.md)
 for package-wide context and [signal evidence risks](risk-register.md) to
 record any uncovered family, rate, duration, or consumer.
 

@@ -67,8 +67,8 @@ record the same way. Move the explanation out of core when the issue becomes:
 ## First Proof Check
 
 Inspect convention, unit, time, coordinate, and observation source together
-with the [core contract guide](../../../crates/bijux-gnss-core/docs/CONTRACTS.md),
-[invariant guide](../../../crates/bijux-gnss-core/docs/INVARIANTS.md), and
-[serialization guide](../../../crates/bijux-gnss-core/docs/SERIALIZATION.md).
+with the [core contract guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/CONTRACTS.md),
+[invariant guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/INVARIANTS.md), and
+[serialization guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/SERIALIZATION.md).
 The review should prove that downstream crates are sharing the same meaning,
 not just compiling against the same type names.

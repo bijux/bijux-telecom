@@ -38,13 +38,13 @@ flowchart LR
 
 ## Read These First
 
-- open [Foundation](foundation/) when the question is why this crate owns the
+- open [Foundation](foundation/index.md) when the question is why this crate owns the
   surface at all
-- open [Interfaces](interfaces/) when the issue is already about public signal
+- open [Interfaces](interfaces/index.md) when the issue is already about public signal
   API, trait seams, raw-IQ contracts, or validation reports
-- open [Architecture](architecture/) when the question is structural: where
+- open [Architecture](architecture/index.md) when the question is structural: where
   catalog, code families, DSP, samples, and validation live in code
-- open [Quality](quality/) when ownership is clear and the question becomes
+- open [Quality](quality/index.md) when ownership is clear and the question becomes
   whether the proof bar is technically honest
 
 ## Why This Package Exists
@@ -82,24 +82,24 @@ flowchart LR
 ## Strongest Proof Surfaces
 
 - crate README:
-  [Signal crate README](../../crates/bijux-gnss-signal/README.md)
+  [Signal crate README](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/README.md)
 - crate-local docs:
-  [Signal catalog guide](../../crates/bijux-gnss-signal/docs/CATALOG.md),
-  [Code-family guide](../../crates/bijux-gnss-signal/docs/CODE_FAMILIES.md),
-  [DSP guide](../../crates/bijux-gnss-signal/docs/DSP.md),
-  [Raw-IQ guide](../../crates/bijux-gnss-signal/docs/RAW_IQ.md),
-  [Signal validation guide](../../crates/bijux-gnss-signal/docs/VALIDATION.md)
+  [Signal catalog guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/CATALOG.md),
+  [Code-family guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/CODE_FAMILIES.md),
+  [DSP guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/DSP.md),
+  [Raw-IQ guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/RAW_IQ.md),
+  [Signal validation guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/VALIDATION.md)
 - source roots:
-  [catalog source](../../crates/bijux-gnss-signal/src/catalog.rs),
-  [code-family source](../../crates/bijux-gnss-signal/src/codes),
-  [DSP source](../../crates/bijux-gnss-signal/src/dsp),
-  [raw-IQ source](../../crates/bijux-gnss-signal/src/raw_iq.rs),
-  [observation validation source](../../crates/bijux-gnss-signal/src/obs_validation.rs)
+  [catalog source](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/src/catalog.rs),
+  [code-family source](https://github.com/bijux/bijux-gnss/tree/main/crates/bijux-gnss-signal/src/codes),
+  [DSP source](https://github.com/bijux/bijux-gnss/tree/main/crates/bijux-gnss-signal/src/dsp),
+  [raw-IQ source](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/src/raw_iq.rs),
+  [observation validation source](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/src/obs_validation.rs)
 - proof tests:
-  [signal registry proof](../../crates/bijux-gnss-signal/tests/integration_signal_component_registry.rs),
-  [long-duration NCO proof](../../crates/bijux-gnss-signal/tests/integration_nco_long_duration_phase.rs),
-  [raw-IQ metadata proof](../../crates/bijux-gnss-signal/tests/integration_raw_iq_metadata.rs),
-  [observation epoch property proof](../../crates/bijux-gnss-signal/tests/prop_obs_epoch_validation.rs)
+  [signal registry proof](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/tests/integration_signal_component_registry.rs),
+  [long-duration NCO proof](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/tests/integration_nco_long_duration_phase.rs),
+  [raw-IQ metadata proof](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/tests/integration_raw_iq_metadata.rs),
+  [observation epoch property proof](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/tests/prop_obs_epoch_validation.rs)
 
 ## Support Crates That Matter Here
 
@@ -112,15 +112,15 @@ flowchart LR
 
 ## Sections In This Handbook
 
-- [Foundation](foundation/) for scope, ownership, repository fit, dependency
+- [Foundation](foundation/index.md) for scope, ownership, repository fit, dependency
   direction, and signal vocabulary
-- [Architecture](architecture/) for module map, execution neutrality,
+- [Architecture](architecture/index.md) for module map, execution neutrality,
   code-family layering, and integration seams
-- [Interfaces](interfaces/) for the curated public API, trait seams, metadata
+- [Interfaces](interfaces/index.md) for the curated public API, trait seams, metadata
   contracts, and compatibility expectations
-- [Operations](operations/) for safe change sequence, reference-data care,
+- [Operations](operations/index.md) for safe change sequence, reference-data care,
   verification commands, and review scope
-- [Quality](quality/) for invariants, proof strategy, limitations, risk, and
+- [Quality](quality/index.md) for invariants, proof strategy, limitations, risk, and
   change validation
 - [Signal ownership boundaries](ownership-boundaries.md) for separating
   reusable physical behavior from runtime and navigation policy
@@ -147,30 +147,30 @@ flowchart LR
 
 - the question becomes about runtime scheduling, channel behavior, or emitted
   receiver artifacts:
-  [Receiver handbook](../bijux-gnss-receiver/)
+  [Receiver handbook](../bijux-gnss-receiver/index.md)
 - the question becomes about navigation estimators, orbit products, or
   solution science:
-  [Navigation handbook](../bijux-gnss-nav/)
+  [Navigation handbook](../bijux-gnss-nav/index.md)
 - the question becomes about dataset layout, sidecars, or persisted run
   metadata:
-  [Infra handbook](../bijux-gnss-infra/)
+  [Infra handbook](../bijux-gnss-infra/index.md)
 - the question becomes about operator commands or report wording:
-  [Command handbook](../bijux-gnss/)
+  [Command handbook](../bijux-gnss/index.md)
 - the question becomes about shared satellite identity, time, or observation
   record meaning:
-  [Core handbook](../bijux-gnss-core/)
+  [Core handbook](../bijux-gnss-core/index.md)
 
 ## Evidence Routes
 
-- [catalog source](../../crates/bijux-gnss-signal/src/catalog.rs)
-- [GPS L1 C-A code source](../../crates/bijux-gnss-signal/src/codes/ca_code.rs)
-- [Galileo E5 code source](../../crates/bijux-gnss-signal/src/codes/galileo_e5.rs)
-- [NCO source](../../crates/bijux-gnss-signal/src/dsp/nco.rs)
-- [replica source](../../crates/bijux-gnss-signal/src/dsp/replica.rs)
-- [raw-IQ source](../../crates/bijux-gnss-signal/src/raw_iq.rs)
-- [sample conversion source](../../crates/bijux-gnss-signal/src/samples.rs)
-- [observation compatibility source](../../crates/bijux-gnss-signal/src/obs_validation.rs)
-- [DSP guide](../../crates/bijux-gnss-signal/docs/DSP.md)
+- [catalog source](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/src/catalog.rs)
+- [GPS L1 C-A code source](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/src/codes/ca_code.rs)
+- [Galileo E5 code source](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/src/codes/galileo_e5.rs)
+- [NCO source](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/src/dsp/nco.rs)
+- [replica source](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/src/dsp/replica.rs)
+- [raw-IQ source](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/src/raw_iq.rs)
+- [sample conversion source](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/src/samples.rs)
+- [observation compatibility source](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/src/obs_validation.rs)
+- [DSP guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/DSP.md)
 
 ## Design Pressure
 

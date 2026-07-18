@@ -41,13 +41,13 @@ flowchart TD
 | Contract family | Claims that need evidence | Existing narrow evidence |
 | --- | --- | --- |
 | dataset registry and raw IQ metadata | relative paths, precedence, required fields, quantization, recorded provenance | source-local registry, metadata, and front-end provenance tests |
-| overrides and sweeps | supported keys map to the intended typed fields; unsupported keys fail explicitly | source-local override tests and the [override integration test](../../../crates/bijux-gnss-infra/tests/integration_overrides.rs) |
+| overrides and sweeps | supported keys map to the intended typed fields; unsupported keys fail explicitly | source-local override tests and the [override integration test](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/tests/integration_overrides.rs) |
 | run identity and records | stable identity, deterministic layout, coherent manifest/report/history writes | source-local helpers; dedicated end-to-end integration coverage is still limited |
 | hashing and provenance | comparison inputs are represented without overstating reproducibility | source-local configuration hash evidence |
 | artifact inspection | artifact kind, supported schema, payload diagnostics, and explanation agree | source-local acquisition, tracking, and navigation artifact tests |
-| ownership and dependencies | behavior remains within the repository boundary | the [package guardrail](../../../crates/bijux-gnss-infra/tests/integration_guardrails.rs) and direct manifest review |
+| ownership and dependencies | behavior remains within the repository boundary | the [package guardrail](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/tests/integration_guardrails.rs) and direct manifest review |
 
-The [test guide](../../../crates/bijux-gnss-infra/docs/TESTS.md) explicitly
+The [test guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/TESTS.md) explicitly
 records the missing integration depth. Do not present a package-wide pass as
 proof for run persistence, concurrent history writes, schema migration, or
 cross-checkout dataset identity when no focused test exercises that claim.
@@ -92,14 +92,14 @@ an error occurred.
 ### Dataset Resolution
 
 Verify registry-relative normalization, sidecar precedence, required metadata,
-and quantization compatibility. Review the [dataset contract](../../../crates/bijux-gnss-infra/docs/DATASETS.md)
+and quantization compatibility. Review the [dataset contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/DATASETS.md)
 when precedence or identity changes.
 
 ### Run Layout And Persistence
 
 Verify the identity inputs first, then directory derivation, manifest and
 report contents, history behavior, retry behavior, and reloadability. The
-[run-layout contract](../../../crates/bijux-gnss-infra/docs/RUN_LAYOUT.md)
+[run-layout contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/RUN_LAYOUT.md)
 defines the reader-visible footprint.
 
 Where focused integration evidence is absent, add it with the change or record
@@ -111,7 +111,7 @@ concurrency safety from successful serialization tests.
 Use artifacts from each affected family. Cover valid payloads, malformed
 payloads, unsupported schemas, and diagnostics that should change the reported
 outcome. Reference adapters also need epoch alignment and mismatch evidence;
-the [validation contract](../../../crates/bijux-gnss-infra/docs/VALIDATION.md)
+the [validation contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/VALIDATION.md)
 defines their limits.
 
 ### Overrides, Sweeps, And Dependencies

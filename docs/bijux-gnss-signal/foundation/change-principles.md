@@ -169,8 +169,8 @@ Do not accept:
 - “the fixture changed with the implementation” without independent review
 - “the diff is small” for a changed constant, default, or sign convention
 
-Use the [signal boundary](../../../crates/bijux-gnss-signal/docs/BOUNDARY.md),
-[contract guide](../../../crates/bijux-gnss-signal/docs/CONTRACTS.md), and
+Use the [signal boundary](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/BOUNDARY.md),
+[contract guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/CONTRACTS.md), and
 [validation guide](../quality/change-validation.md) to locate ownership and
 proof.
 

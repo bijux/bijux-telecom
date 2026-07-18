@@ -50,11 +50,11 @@ Infrastructure is the right owner for:
 
 | persisted concern | infrastructure owns | domain owner retains |
 | --- | --- | --- |
-| raw-IQ capture registration | location, sidecar resolution, capture provenance | [signal processing](../bijux-gnss-signal/) defines sample format, quantization, rate, and signal meaning |
-| receiver artifacts | run placement, manifest membership, inspection, history | [receiver execution](../bijux-gnss-receiver/) defines stage state, diagnostics, and runtime validity |
-| navigation products and solutions | repository discovery, provenance, and reference alignment adapter | [navigation science](../bijux-gnss-nav/) defines format semantics, interpolation, correction, estimation, and acceptance |
-| shared artifact envelopes | durable storage and lookup | [shared GNSS contracts](../bijux-gnss-core/) define header, payload, version, units, and portable validation |
-| operator-selected inputs and outputs | resolve and execute the typed repository operation | [command workflows](../bijux-gnss/) define flags, defaults, workflow order, and presentation |
+| raw-IQ capture registration | location, sidecar resolution, capture provenance | [signal processing](../bijux-gnss-signal/index.md) defines sample format, quantization, rate, and signal meaning |
+| receiver artifacts | run placement, manifest membership, inspection, history | [receiver execution](../bijux-gnss-receiver/index.md) defines stage state, diagnostics, and runtime validity |
+| navigation products and solutions | repository discovery, provenance, and reference alignment adapter | [navigation science](../bijux-gnss-nav/index.md) defines format semantics, interpolation, correction, estimation, and acceptance |
+| shared artifact envelopes | durable storage and lookup | [shared GNSS contracts](../bijux-gnss-core/index.md) define header, payload, version, units, and portable validation |
+| operator-selected inputs and outputs | resolve and execute the typed repository operation | [command workflows](../bijux-gnss/index.md) define flags, defaults, workflow order, and presentation |
 
 Persisting a record does not authorize infrastructure to reinterpret it. If
 the producer reports degraded tracking, infrastructure preserves that state
@@ -91,7 +91,7 @@ sidecars.
 
 ## Run And Artifact Boundary
 
-The [infrastructure public facade](../../crates/bijux-gnss-infra/src/api.rs)
+The [infrastructure public facade](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/src/api.rs)
 exposes run preparation, typed run layout, manifests, reports, history,
 artifact inspection, datasets, overrides, sweeps, hashes, and reference
 validation. Its product API re-exports exist for caller convenience; they do
@@ -155,9 +155,9 @@ Reject an infrastructure change that:
 - treats a hash as complete reproducibility evidence;
 - places operator report policy in a run manifest writer.
 
-Use the [dataset contract](../../crates/bijux-gnss-infra/docs/DATASETS.md),
-[run-layout contract](../../crates/bijux-gnss-infra/docs/RUN_LAYOUT.md),
-[artifact inspection contract](../../crates/bijux-gnss-infra/docs/CONTRACTS.md), and
-[validation boundary](../../crates/bijux-gnss-infra/docs/VALIDATION.md) to
+Use the [dataset contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/DATASETS.md),
+[run-layout contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/RUN_LAYOUT.md),
+[artifact inspection contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/CONTRACTS.md), and
+[validation boundary](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/VALIDATION.md) to
 review the affected seam. Repository state belongs here; product truth does
 not.

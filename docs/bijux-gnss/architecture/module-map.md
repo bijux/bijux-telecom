@@ -31,18 +31,18 @@ flowchart LR
 
 | question | owning subsystem | what belongs there |
 | --- | --- | --- |
-| Which command, subcommand, flag, or argument group is public? | [Command catalog](../../../crates/bijux-gnss/src/cli/command_catalog/) | stable vocabulary and typed argument shape |
-| How are catalog types assembled into the binary parser? | [Command-line parser](../../../crates/bijux-gnss/src/cli/command_line.rs) | parser composition and top-level dispatch selection |
-| How is the process environment prepared before execution? | [Command runtime](../../../crates/bijux-gnss/src/cli/command_runtime/) | runtime environment, dataset inspection, and acquisition or synthetic reporting support |
-| Which top-level operator workflow runs? | [Command workflows](../../../crates/bijux-gnss/src/cli/commands/) | artifact, ingest, analyze, synthetic, pipeline, validation, and diagnostics dispatch |
-| How does a workflow adapt lower-owner artifacts and inputs? | [Command support](../../../crates/bijux-gnss/src/cli/command_support/) | capture windows, artifact loading, receiver outputs, navigation outputs, and raw-IQ quality adapters |
-| Which setup is shared by several execution paths? | [Execution support](../../../crates/bijux-gnss/src/cli/execution_support.rs) | common orchestration scaffolding that remains command-owned |
-| How is a result rendered for an operator? | [Report renderer](../../../crates/bijux-gnss/src/cli/report.rs) | human and machine-facing command output |
+| Which command, subcommand, flag, or argument group is public? | [Command catalog](https://github.com/bijux/bijux-gnss/tree/main/crates/bijux-gnss/src/cli/command_catalog) | stable vocabulary and typed argument shape |
+| How are catalog types assembled into the binary parser? | [Command-line parser](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/src/cli/command_line.rs) | parser composition and top-level dispatch selection |
+| How is the process environment prepared before execution? | [Command runtime](https://github.com/bijux/bijux-gnss/tree/main/crates/bijux-gnss/src/cli/command_runtime) | runtime environment, dataset inspection, and acquisition or synthetic reporting support |
+| Which top-level operator workflow runs? | [Command workflows](https://github.com/bijux/bijux-gnss/tree/main/crates/bijux-gnss/src/cli/commands) | artifact, ingest, analyze, synthetic, pipeline, validation, and diagnostics dispatch |
+| How does a workflow adapt lower-owner artifacts and inputs? | [Command support](https://github.com/bijux/bijux-gnss/tree/main/crates/bijux-gnss/src/cli/command_support) | capture windows, artifact loading, receiver outputs, navigation outputs, and raw-IQ quality adapters |
+| Which setup is shared by several execution paths? | [Execution support](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/src/cli/execution_support.rs) | common orchestration scaffolding that remains command-owned |
+| How is a result rendered for an operator? | [Report renderer](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/src/cli/report.rs) | human and machine-facing command output |
 
 ## Binary And Library Boundaries
 
-The [binary entrypoint](../../../crates/bijux-gnss/src/main.rs) assembles the
-CLI. The [library facade](../../../crates/bijux-gnss/src/lib.rs) exposes a thin
+The [binary entrypoint](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/src/main.rs) assembles the
+CLI. The [library facade](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/src/lib.rs) exposes a thin
 package surface over lower-level GNSS APIs. Neither is a second home for
 receiver, navigation, signal, or persistence behavior.
 
@@ -50,17 +50,17 @@ receiver, navigation, signal, or persistence behavior.
 
 The workflow directory separates durable operator concerns:
 
-- [Artifact workflows](../../../crates/bijux-gnss/src/cli/commands/artifact.rs)
+- [Artifact workflows](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/src/cli/commands/artifact.rs)
   explain and validate existing artifacts.
-- [Ingest workflows](../../../crates/bijux-gnss/src/cli/commands/ingest.rs)
+- [Ingest workflows](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/src/cli/commands/ingest.rs)
   convert declared inputs into repository-supported forms.
-- [Pipeline execution](../../../crates/bijux-gnss/src/cli/commands/run_pipeline.rs)
+- [Pipeline execution](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/src/cli/commands/run_pipeline.rs)
   composes infra and receiver behavior.
-- [Synthetic workflows](../../../crates/bijux-gnss/src/cli/commands/synthetic.rs)
+- [Synthetic workflows](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/src/cli/commands/synthetic.rs)
   expose deterministic receiver scenarios.
-- [Diagnostics workflows](../../../crates/bijux-gnss/src/cli/commands/diagnostics/)
+- [Diagnostics workflows](https://github.com/bijux/bijux-gnss/tree/main/crates/bijux-gnss/src/cli/commands/diagnostics)
   assemble operator evidence and gates.
-- [Validation workflows](../../../crates/bijux-gnss/src/cli/commands/validate/)
+- [Validation workflows](https://github.com/bijux/bijux-gnss/tree/main/crates/bijux-gnss/src/cli/commands/validate)
   route schema and artifact checks.
 
 ## Boundary Tests

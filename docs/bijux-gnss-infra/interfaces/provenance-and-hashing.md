@@ -37,10 +37,10 @@ flowchart LR
 
 | family | owns | first proof |
 | --- | --- | --- |
-| configuration hash | stable hash of run-preparation configuration | the [provenance hash source](../../../crates/bijux-gnss-infra/src/hash/provenance.rs) |
-| repository state | git commit hash and dirty-state capture | the [provenance hash source](../../../crates/bijux-gnss-infra/src/hash/provenance.rs) |
-| machine context | CPU feature capture for run explainability | the [provenance hash source](../../../crates/bijux-gnss-infra/src/hash/provenance.rs) |
-| front-end provenance | persisted front-end capture context beside run footprints | the [front-end provenance source](../../../crates/bijux-gnss-infra/src/run_layout/provenance/front_end.rs) |
+| configuration hash | stable hash of run-preparation configuration | the [provenance hash source](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/src/hash/provenance.rs) |
+| repository state | git commit hash and dirty-state capture | the [provenance hash source](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/src/hash/provenance.rs) |
+| machine context | CPU feature capture for run explainability | the [provenance hash source](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/src/hash/provenance.rs) |
+| front-end provenance | persisted front-end capture context beside run footprints | the [front-end provenance source](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/src/run_layout/provenance/front_end.rs) |
 
 ## Boundary Rules
 
@@ -61,8 +61,8 @@ flowchart LR
 
 ## First Proof Check
 
-Start with the infra [hashing guide](../../../crates/bijux-gnss-infra/docs/HASHING.md),
-the [provenance hash source](../../../crates/bijux-gnss-infra/src/hash/provenance.rs),
-and the [front-end provenance source](../../../crates/bijux-gnss-infra/src/run_layout/provenance/front_end.rs).
+Start with the infra [hashing guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/HASHING.md),
+the [provenance hash source](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/src/hash/provenance.rs),
+and the [front-end provenance source](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/src/run_layout/provenance/front_end.rs).
 Then inspect the provenance-related run-layout tests before changing this
 contract.

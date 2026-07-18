@@ -97,12 +97,12 @@ change ownership or semantics of acquisition, tracking, or observations.
 
 Use [code navigation](code-navigation.md) after identifying the concern. The
 implementation authorities are the
-[receiver engine](../../../crates/bijux-gnss-receiver/src/engine/mod.rs),
-[pipeline boundary](../../../crates/bijux-gnss-receiver/src/pipeline/mod.rs),
-[runtime ports](../../../crates/bijux-gnss-receiver/src/ports/mod.rs),
-[sample adapters](../../../crates/bijux-gnss-receiver/src/io/mod.rs),
-[artifact model](../../../crates/bijux-gnss-receiver/src/artifacts.rs), and
-[simulation boundary](../../../crates/bijux-gnss-receiver/src/sim/mod.rs).
+[receiver engine](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/src/engine/mod.rs),
+[pipeline boundary](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/src/pipeline/mod.rs),
+[runtime ports](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/src/ports/mod.rs),
+[sample adapters](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/src/io/mod.rs),
+[artifact model](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/src/artifacts.rs), and
+[simulation boundary](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/src/sim/mod.rs).
 
-The [crate architecture](../../../crates/bijux-gnss-receiver/docs/ARCHITECTURE.md)
+The [crate architecture](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/docs/ARCHITECTURE.md)
 defines the complete runtime dataflow and dependency boundary.

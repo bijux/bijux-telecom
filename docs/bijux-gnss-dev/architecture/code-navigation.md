@@ -11,7 +11,7 @@ last_reviewed: 2026-07-18
 
 The maintainer binary currently keeps parsing, dispatch, validation,
 derivation, benchmark execution, normalization, and comparison in one
-[command source](../../../crates/bijux-gnss-dev/src/main.rs). Read it by
+[command source](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/src/main.rs). Read it by
 workflow and effect rather than from top to bottom.
 
 This guide connects a maintainer-visible symptom to the decision code,
@@ -33,12 +33,12 @@ flowchart LR
 
 | symptom or change | trace first | verify against |
 | --- | --- | --- |
-| a command is missing or parses an option incorrectly | command enum and dispatch | [command reference](../../../crates/bijux-gnss-dev/docs/COMMANDS.md) |
-| an audit exception is accepted or rejected unexpectedly | audit exception validator, advisory identifier predicate, date lookup, and date predicate | [audit policy](../../../crates/bijux-gnss-dev/docs/AUDIT_POLICY.md) and the reviewed exception register |
-| a dependency-policy deviation fails governance | deviation validator and its review-link rule | [governance input guide](../../../crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md) |
+| a command is missing or parses an option incorrectly | command enum and dispatch | [command reference](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/COMMANDS.md) |
+| an audit exception is accepted or rejected unexpectedly | audit exception validator, advisory identifier predicate, date lookup, and date predicate | [audit policy](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/AUDIT_POLICY.md) and the reviewed exception register |
+| a dependency-policy deviation fails governance | deviation validator and its review-link rule | [governance input guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md) |
 | Cargo audit receives the wrong ignore arguments | argument derivation, both supported input shapes, identifier filtering, sorting, and deduplication | the validated exception register and captured stdout |
 | a benchmark did not run | benchmark inventory, child-process construction, and process status handling | product benchmark declarations and console stderr |
-| a benchmark result is absent from the current snapshot | bencher-line parser and snapshot writer | captured benchmark stdout and [benchmark contract](../../../crates/bijux-gnss-dev/docs/BENCHMARKS.md) |
+| a benchmark result is absent from the current snapshot | bencher-line parser and snapshot writer | captured benchmark stdout and [benchmark contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/BENCHMARKS.md) |
 | strict mode did not fail | baseline-presence branch, ratio calculation, and strictness branch | baseline availability, comparable names, and selected threshold |
 | fast or slow nextest selection is wrong | suite-selection integration proof, slow roster, and expression generator | [repository test policy](../quality/repository-test-policy.md) |
 
@@ -172,7 +172,7 @@ that assumes an enforced regression gate is ahead of implementation.
 
 ## Suite Selection Lives Outside Dispatch
 
-The [suite-selection proof](../../../crates/bijux-gnss-dev/tests/integration_nextest_suite_selection.rs)
+The [suite-selection proof](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/tests/integration_nextest_suite_selection.rs)
 does not call the maintainer binary. It reads the governed slow roster, scans
 Rust test functions, invokes the expression generator, and checks fast/slow
 coherence.
@@ -193,7 +193,7 @@ semantic changes, direct invocation is necessary unless the change adds focused
 behavioral tests. Do not cite the structural guardrail as proof that validation,
 derivation, or comparison logic is correct.
 
-Use the [test guide](../../../crates/bijux-gnss-dev/docs/TESTS.md) to identify
+Use the [test guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/TESTS.md) to identify
 what is protected and the [state and persistence guide](state-and-persistence.md)
 to interpret outputs and stale-evidence risk.
 

@@ -51,17 +51,17 @@ flowchart LR
 
 Identify the owning surface before assessing the release:
 
-- [format guide](../../../crates/bijux-gnss-nav/docs/FORMATS.md) for broadcast
+- [format guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/FORMATS.md) for broadcast
   navigation, RINEX, SP3, CLK, ANTEX, and bias-product interpretation
-- [time guide](../../../crates/bijux-gnss-nav/docs/TIME.md) for time systems,
+- [time guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/TIME.md) for time systems,
   reference weeks, rollover, and leap-second behavior
-- [orbit guide](../../../crates/bijux-gnss-nav/docs/ORBITS.md) for satellite
+- [orbit guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/ORBITS.md) for satellite
   state, clock, uncertainty, and missing-product behavior
-- [correction guide](../../../crates/bijux-gnss-nav/docs/CORRECTIONS.md) for
+- [correction guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/CORRECTIONS.md) for
   atmosphere, antenna, bias, combination, and continuity assumptions
-- [estimation guide](../../../crates/bijux-gnss-nav/docs/ESTIMATION.md) for SPP,
+- [estimation guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/ESTIMATION.md) for SPP,
   RTK, PPP, integrity, covariance, lifecycle, and refusal behavior
-- [public API guide](../../../crates/bijux-gnss-nav/docs/PUBLIC_API.md) for the
+- [public API guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/PUBLIC_API.md) for the
   curated Rust surface
 
 ## Require a Complete Claim
@@ -81,11 +81,11 @@ Before release, record:
 
 | claim | representative evidence |
 | --- | --- |
-| precise products retain time and state meaning | [SP3 product integration](../../../crates/bijux-gnss-nav/tests/integration_sp3_products.rs), [CLK product integration](../../../crates/bijux-gnss-nav/tests/integration_clk_products.rs), and their reference-accuracy tests |
-| broadcast orbit remains physically bounded | [broadcast orbit reference](../../../crates/bijux-gnss-nav/tests/integration_broadcast_orbit_reference.rs) and [orbit accuracy budget](../../../crates/bijux-gnss-nav/tests/integration_broadcast_orbit_accuracy_budget.rs) |
-| time interpretation remains explicit | [time-system conversions](../../../crates/bijux-gnss-nav/tests/integration_time_system_conversions.rs) and [UTC leap-second behavior](../../../crates/bijux-gnss-nav/tests/integration_utc_leap_seconds.rs) |
-| position claims include valid refusal behavior | [position reference behavior](../../../crates/bijux-gnss-nav/tests/integration_position.rs), [impossible-geometry refusal](../../../crates/bijux-gnss-nav/tests/integration_impossible_geometry.rs), and [position refusal integration](../../../crates/bijux-gnss-nav/tests/integration_position_refusal.rs) |
-| advanced solutions preserve their prerequisites | the affected RTK, PPP, or RAIM proof family listed in the [test guide](../../../crates/bijux-gnss-nav/docs/TESTS.md) |
+| precise products retain time and state meaning | [SP3 product integration](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/tests/integration_sp3_products.rs), [CLK product integration](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/tests/integration_clk_products.rs), and their reference-accuracy tests |
+| broadcast orbit remains physically bounded | [broadcast orbit reference](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/tests/integration_broadcast_orbit_reference.rs) and [orbit accuracy budget](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/tests/integration_broadcast_orbit_accuracy_budget.rs) |
+| time interpretation remains explicit | [time-system conversions](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/tests/integration_time_system_conversions.rs) and [UTC leap-second behavior](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/tests/integration_utc_leap_seconds.rs) |
+| position claims include valid refusal behavior | [position reference behavior](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/tests/integration_position.rs), [impossible-geometry refusal](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/tests/integration_impossible_geometry.rs), and [position refusal integration](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/tests/integration_position_refusal.rs) |
+| advanced solutions preserve their prerequisites | the affected RTK, PPP, or RAIM proof family listed in the [test guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/TESTS.md) |
 
 Do not loosen a tolerance before explaining what uncertainty or reference error
 the previous bound omitted. Do not regenerate truth data from the implementation
@@ -93,7 +93,7 @@ under test.
 
 ## Write the Release Entry
 
-The [package changelog](../../../crates/bijux-gnss-nav/CHANGELOG.md) must state
+The [package changelog](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/CHANGELOG.md) must state
 the affected scientific family, input and context, old and new outcome,
 compatibility impact, refusal behavior, and evidence. Update a downstream
 package changelog when that package presents a changed navigation claim to

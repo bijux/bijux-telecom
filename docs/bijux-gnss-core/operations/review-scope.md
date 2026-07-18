@@ -54,8 +54,8 @@ flowchart TD
 
 ## Proof Path
 
-Use the [core public API guide](../../../crates/bijux-gnss-core/docs/PUBLIC_API.md),
-[core contract guide](../../../crates/bijux-gnss-core/docs/CONTRACTS.md), and
-[core test guide](../../../crates/bijux-gnss-core/docs/TESTS.md) as the review
+Use the [core public API guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/PUBLIC_API.md),
+[core contract guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/CONTRACTS.md), and
+[core test guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/TESTS.md) as the review
 map. Then inspect the changed source family and matching tests so review depth
 follows contract risk rather than line count.

@@ -44,9 +44,9 @@ flowchart LR
 | failure | parser errors, unreadable or invalid required input, expired governance records, subprocess failure, and strict benchmark regression | [Compatibility commitments](compatibility-commitments.md) |
 | workflow composition | repository Make targets call the executable rather than duplicate policy parsing | [Workflow contracts](workflow-contracts.md) |
 
-The [binary implementation](../../../crates/bijux-gnss-dev/src/main.rs) is the
-executable authority. The [maintainer command inventory](../../../crates/bijux-gnss-dev/docs/COMMANDS.md)
-and [repository contract guide](../../../crates/bijux-gnss-dev/docs/CONTRACTS.md)
+The [binary implementation](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/src/main.rs) is the
+executable authority. The [maintainer command inventory](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/COMMANDS.md)
+and [repository contract guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/CONTRACTS.md)
 describe the intended policy. When prose and executable behavior disagree,
 treat that as a defect; do not infer behavior from prose alone.
 
@@ -80,10 +80,10 @@ flowchart TD
 
 | Command | Reads | Observable result | Important limit |
 | --- | --- | --- | --- |
-| `audit-allowlist` | [security exception ledger](../../../audit-allowlist.toml) | pass text or one aggregated validation error | validates the array of reviewed advisory records; an absent file is an error |
-| `deny-policy-deviations` | [local deviation ledger](../../../configs/rust/deny.deviations.toml) | pass text or one aggregated validation error | review links must use HTTP(S) and mention `bijux-std`; an absent file is an error |
-| `audit-ignore-args` | [security exception ledger](../../../audit-allowlist.toml) | one sorted, deduplicated shell argument line | an absent file succeeds with an empty line; invalid identifiers are omitted rather than reported |
-| `bench-compare` | [benchmark baseline contract](../../../crates/bijux-gnss-dev/docs/BENCHMARKS.md) | benchmark subprocess output, current evidence, and optional regression findings | without a baseline it records results and succeeds without a regression comparison |
+| `audit-allowlist` | [security exception ledger](https://github.com/bijux/bijux-gnss/blob/main/audit-allowlist.toml) | pass text or one aggregated validation error | validates the array of reviewed advisory records; an absent file is an error |
+| `deny-policy-deviations` | [local deviation ledger](https://github.com/bijux/bijux-gnss/blob/main/configs/rust/deny.deviations.toml) | pass text or one aggregated validation error | review links must use HTTP(S) and mention `bijux-std`; an absent file is an error |
+| `audit-ignore-args` | [security exception ledger](https://github.com/bijux/bijux-gnss/blob/main/audit-allowlist.toml) | one sorted, deduplicated shell argument line | an absent file succeeds with an empty line; invalid identifiers are omitted rather than reported |
+| `bench-compare` | [benchmark baseline contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/BENCHMARKS.md) | benchmark subprocess output, current evidence, and optional regression findings | without a baseline it records results and succeeds without a regression comparison |
 
 The ignore-argument adapter accepts identifiers from both the reviewed advisory
 records and the older ignore-array shape. Only the reviewed records are checked
@@ -112,7 +112,7 @@ Consequently, a normal benchmark comparison invocation currently exercises the
 benchmarks and writes evidence but cannot enforce regression history. This is a
 real evidence gap, not an implied passing comparison.
 
-See the [output contract guide](../../../crates/bijux-gnss-dev/docs/OUTPUTS.md)
+See the [output contract guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/OUTPUTS.md)
 for intended locations. Its claim that benchmark snapshots are checked or
 reviewed is aspirational until a baseline is actually governed in version
 control.
@@ -148,8 +148,8 @@ Trace the whole caller-observable path:
 5. Record every created or modified file and whether it is ephemeral evidence
    or reviewed state.
 6. Add focused command tests for semantics that automation relies on.
-7. Update the [workflow guide](../../../crates/bijux-gnss-dev/docs/WORKFLOWS.md)
-   and [maintainer proof inventory](../../../crates/bijux-gnss-dev/docs/TESTS.md)
+7. Update the [workflow guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/WORKFLOWS.md)
+   and [maintainer proof inventory](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/TESTS.md)
    with the implementation.
 
 For executable examples, use [entrypoints and examples](entrypoints-and-examples.md).

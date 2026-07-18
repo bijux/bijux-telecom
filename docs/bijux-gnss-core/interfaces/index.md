@@ -90,10 +90,10 @@ consumer-shaped use.
 
 ## Sources Of Truth
 
-The [curated API](../../../crates/bijux-gnss-core/src/api.rs) is the supported
-surface. The [contract map](../../../crates/bijux-gnss-core/docs/CONTRACT_MAP.md)
+The [curated API](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/src/api.rs) is the supported
+surface. The [contract map](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/CONTRACT_MAP.md)
 locates semantic ownership, the
-[contract guide](../../../crates/bijux-gnss-core/docs/CONTRACTS.md) defines
+[contract guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/CONTRACTS.md) defines
 families, and the
-[serialization guide](../../../crates/bijux-gnss-core/docs/SERIALIZATION.md)
+[serialization guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/SERIALIZATION.md)
 governs persisted meaning.

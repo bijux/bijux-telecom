@@ -62,7 +62,7 @@ flowchart TD
 
 ## First Proof Check
 
-Inspect the [DSP guide](../../../crates/bijux-gnss-signal/docs/DSP.md), DSP
+Inspect the [DSP guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/DSP.md), DSP
 source, and the focused signal integration tests for long-duration NCO phase,
 replica continuity, CBOC spectrum behavior, and local-code continuity.
 

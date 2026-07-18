@@ -36,13 +36,13 @@ flowchart LR
 
 ## Read These First
 
-- open [Foundation](foundation/) when the question is why this crate should own
+- open [Foundation](foundation/index.md) when the question is why this crate should own
   a maintainer capability at all
-- open [Interfaces](interfaces/) when the issue is already about commands,
+- open [Interfaces](interfaces/index.md) when the issue is already about commands,
   governed input files, or output locations
-- open [Architecture](architecture/) when the question is how the binary
+- open [Architecture](architecture/index.md) when the question is how the binary
   organizes commands and repository effects in code
-- open [Quality](quality/) when ownership is clear and the next question is
+- open [Quality](quality/index.md) when ownership is clear and the next question is
   whether the proof and review bar is strong enough
 
 ## Why This Package Exists
@@ -57,9 +57,9 @@ flowchart LR
 
 ## What It Owns
 
-- validation for the [audit exception register](../../audit-allowlist.toml)
+- validation for the [audit exception register](https://github.com/bijux/bijux-gnss/blob/main/audit-allowlist.toml)
 - validation for the
-  [dependency-policy deviation register](../../configs/rust/deny.deviations.toml)
+  [dependency-policy deviation register](https://github.com/bijux/bijux-gnss/blob/main/configs/rust/deny.deviations.toml)
 - derived `cargo audit --ignore ...` arguments from the reviewed allowlist
 - benchmark execution, snapshot normalization, and baseline comparison for the
   curated maintainer benchmark set
@@ -77,18 +77,18 @@ flowchart LR
 ## Strongest Proof Surfaces
 
 - crate README:
-  [Maintainer crate README](../../crates/bijux-gnss-dev/README.md)
+  [Maintainer crate README](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/README.md)
 - crate-local docs:
-  [Maintainer command guide](../../crates/bijux-gnss-dev/docs/COMMANDS.md),
-  [Audit policy guide](../../crates/bijux-gnss-dev/docs/AUDIT_POLICY.md),
-  [Benchmark governance guide](../../crates/bijux-gnss-dev/docs/BENCHMARKS.md),
-  [Governed file guide](../../crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md),
-  [Maintainer workflow guide](../../crates/bijux-gnss-dev/docs/WORKFLOWS.md)
+  [Maintainer command guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/COMMANDS.md),
+  [Audit policy guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/AUDIT_POLICY.md),
+  [Benchmark governance guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/BENCHMARKS.md),
+  [Governed file guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md),
+  [Maintainer workflow guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/WORKFLOWS.md)
 - source root:
-  [maintainer command source](../../crates/bijux-gnss-dev/src/main.rs)
+  [maintainer command source](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/src/main.rs)
 - proof tests:
-  [maintainer guardrail tests](../../crates/bijux-gnss-dev/tests/integration_guardrails.rs),
-  [suite-selection tests](../../crates/bijux-gnss-dev/tests/integration_nextest_suite_selection.rs)
+  [maintainer guardrail tests](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/tests/integration_guardrails.rs),
+  [suite-selection tests](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/tests/integration_nextest_suite_selection.rs)
 
 ## Support Crates That Matter Here
 
@@ -102,15 +102,15 @@ flowchart LR
 
 ## Sections In This Handbook
 
-- [Foundation](foundation/) for role, scope, ownership, repository fit, and
+- [Foundation](foundation/index.md) for role, scope, ownership, repository fit, and
   maintainer vocabulary
-- [Architecture](architecture/) for command layout, effect model, dependency
+- [Architecture](architecture/index.md) for command layout, effect model, dependency
   direction, and integration seams
-- [Interfaces](interfaces/) for the binary command surface, governed files,
+- [Interfaces](interfaces/index.md) for the binary command surface, governed files,
   output contracts, and compatibility expectations
-- [Operations](operations/) for safe change sequence, local verification,
+- [Operations](operations/index.md) for safe change sequence, local verification,
   evidence care, and review scope
-- [Quality](quality/) for invariants, proof strategy, limitations, risk, and
+- [Quality](quality/index.md) for invariants, proof strategy, limitations, risk, and
   change validation
 - [Maintainer workflow ownership boundaries](ownership-boundaries.md) for
   deciding whether repository automation belongs in the typed binary
@@ -134,22 +134,22 @@ flowchart LR
 ## Leave This Handbook When
 
 - the question becomes about operator-facing GNSS commands:
-  [Command handbook](../bijux-gnss/)
+  [Command handbook](../bijux-gnss/index.md)
 - the question becomes about runtime execution or receiver artifacts:
-  [Receiver handbook](../bijux-gnss-receiver/)
+  [Receiver handbook](../bijux-gnss-receiver/index.md)
 - the question becomes about persisted datasets, run layouts, or experiment
   evidence:
-  [Infra handbook](../bijux-gnss-infra/)
+  [Infra handbook](../bijux-gnss-infra/index.md)
 
 ## First Proof Check
 
-- [maintainer command source](../../crates/bijux-gnss-dev/src/main.rs)
-- [maintainer command guide](../../crates/bijux-gnss-dev/docs/COMMANDS.md)
-- [audit policy guide](../../crates/bijux-gnss-dev/docs/AUDIT_POLICY.md)
-- [benchmark governance guide](../../crates/bijux-gnss-dev/docs/BENCHMARKS.md)
-- [output contract guide](../../crates/bijux-gnss-dev/docs/OUTPUTS.md)
-- [maintainer guardrail tests](../../crates/bijux-gnss-dev/tests/integration_guardrails.rs)
-- [suite-selection tests](../../crates/bijux-gnss-dev/tests/integration_nextest_suite_selection.rs)
+- [maintainer command source](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/src/main.rs)
+- [maintainer command guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/COMMANDS.md)
+- [audit policy guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/AUDIT_POLICY.md)
+- [benchmark governance guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/BENCHMARKS.md)
+- [output contract guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/OUTPUTS.md)
+- [maintainer guardrail tests](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/tests/integration_guardrails.rs)
+- [suite-selection tests](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/tests/integration_nextest_suite_selection.rs)
 
 ## Design Pressure
 

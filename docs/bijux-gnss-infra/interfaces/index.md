@@ -102,10 +102,10 @@ consumer-shaped calls.
 
 ## Sources Of Truth
 
-The [curated infrastructure API](../../../crates/bijux-gnss-infra/src/api.rs)
+The [curated infrastructure API](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/src/api.rs)
 is the supported import surface. The
-[contract guide](../../../crates/bijux-gnss-infra/docs/CONTRACTS.md),
-[dataset guide](../../../crates/bijux-gnss-infra/docs/DATASETS.md),
-[run-layout guide](../../../crates/bijux-gnss-infra/docs/RUN_LAYOUT.md), and
-[validation guide](../../../crates/bijux-gnss-infra/docs/VALIDATION.md) define
+[contract guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/CONTRACTS.md),
+[dataset guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/DATASETS.md),
+[run-layout guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/RUN_LAYOUT.md), and
+[validation guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/VALIDATION.md) define
 the behavior behind it.

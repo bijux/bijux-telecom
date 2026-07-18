@@ -51,28 +51,28 @@ flowchart LR
 
 Use the document that owns the changed meaning:
 
-- [signal catalog](../../../crates/bijux-gnss-signal/docs/CATALOG.md) for
+- [signal catalog](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/CATALOG.md) for
   carrier, code-rate, wavelength, component, and default-selection facts
-- [code-family guide](../../../crates/bijux-gnss-signal/docs/CODE_FAMILIES.md)
+- [code-family guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/CODE_FAMILIES.md)
   for assignments, chip polarity, primary codes, and secondary-code timing
-- [sample guide](../../../crates/bijux-gnss-signal/docs/SAMPLES.md) for encoded
+- [sample guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/SAMPLES.md) for encoded
   sample conversion and numeric representation
-- [DSP guide](../../../crates/bijux-gnss-signal/docs/DSP.md) for phase,
+- [DSP guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/DSP.md) for phase,
   frequency, wrapping, loop, quality, and spectrum behavior
-- [raw-IQ guide](../../../crates/bijux-gnss-signal/docs/RAW_IQ.md) for capture
+- [raw-IQ guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/RAW_IQ.md) for capture
   format, sample rate, intermediate frequency, offset, and quantization meaning
-- [public API guide](../../../crates/bijux-gnss-signal/docs/PUBLIC_API.md) for
+- [public API guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/PUBLIC_API.md) for
   the curated Rust surface
 
 ## Require Matching Evidence
 
 | release claim | minimum evidence |
 | --- | --- |
-| registry and component metadata remain coherent | [component registry integration](../../../crates/bijux-gnss-signal/tests/integration_signal_component_registry.rs) and the affected constellation reference test |
-| code and carrier progression remain chunk-stable | [local-code continuity](../../../crates/bijux-gnss-signal/tests/integration_local_code_continuity.rs), [replica continuity](../../../crates/bijux-gnss-signal/tests/integration_replica_continuity.rs), and [long-duration carrier wipeoff](../../../crates/bijux-gnss-signal/tests/integration_carrier_wipeoff_long_duration.rs) |
-| raw captures keep the same meaning | [raw-IQ metadata integration](../../../crates/bijux-gnss-signal/tests/integration_raw_iq_metadata.rs) and [IQ sample conversion](../../../crates/bijux-gnss-signal/tests/integration_iq_sample_conversion.rs) |
-| oscillator boundaries remain stable | [NCO properties](../../../crates/bijux-gnss-signal/tests/prop_nco.rs) and [long-duration NCO phase](../../../crates/bijux-gnss-signal/tests/integration_nco_long_duration_phase.rs) |
-| modulation or filtering remains physically coherent | the affected spectrum integration test described in the [test guide](../../../crates/bijux-gnss-signal/docs/TESTS.md) |
+| registry and component metadata remain coherent | [component registry integration](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/tests/integration_signal_component_registry.rs) and the affected constellation reference test |
+| code and carrier progression remain chunk-stable | [local-code continuity](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/tests/integration_local_code_continuity.rs), [replica continuity](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/tests/integration_replica_continuity.rs), and [long-duration carrier wipeoff](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/tests/integration_carrier_wipeoff_long_duration.rs) |
+| raw captures keep the same meaning | [raw-IQ metadata integration](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/tests/integration_raw_iq_metadata.rs) and [IQ sample conversion](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/tests/integration_iq_sample_conversion.rs) |
+| oscillator boundaries remain stable | [NCO properties](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/tests/prop_nco.rs) and [long-duration NCO phase](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/tests/integration_nco_long_duration_phase.rs) |
+| modulation or filtering remains physically coherent | the affected spectrum integration test described in the [test guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/TESTS.md) |
 
 Reference fixtures are evidence, not snapshots to regenerate automatically.
 Record the specification, formula, or independently generated source behind an
@@ -80,7 +80,7 @@ intentional fixture change.
 
 ## Write the Release Entry
 
-The [package changelog](../../../crates/bijux-gnss-signal/CHANGELOG.md) must
+The [package changelog](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/CHANGELOG.md) must
 identify the signal and component, units, old behavior, new behavior, receiver
 impact, and supporting reference or test. If a change affects persisted raw-IQ
 interpretation or a core artifact, also update the owning package changelog.

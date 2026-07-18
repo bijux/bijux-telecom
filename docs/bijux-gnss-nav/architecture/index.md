@@ -99,12 +99,12 @@ appears.
 ## Implementation Evidence
 
 The implementation authorities are the
-[format boundary](../../../crates/bijux-gnss-nav/src/formats.rs),
-[orbit boundary](../../../crates/bijux-gnss-nav/src/orbits/mod.rs),
-[correction boundary](../../../crates/bijux-gnss-nav/src/corrections/mod.rs),
-[model boundary](../../../crates/bijux-gnss-nav/src/models/mod.rs),
-[estimation boundary](../../../crates/bijux-gnss-nav/src/estimation.rs), and
-[navigation time boundary](../../../crates/bijux-gnss-nav/src/time.rs).
+[format boundary](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/src/formats.rs),
+[orbit boundary](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/src/orbits/mod.rs),
+[correction boundary](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/src/corrections/mod.rs),
+[model boundary](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/src/models/mod.rs),
+[estimation boundary](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/src/estimation.rs), and
+[navigation time boundary](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/src/time.rs).
 
-The [crate architecture](../../../crates/bijux-gnss-nav/docs/ARCHITECTURE.md)
+The [crate architecture](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/ARCHITECTURE.md)
 documents the full package dataflow and dependency rules.

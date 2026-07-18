@@ -49,7 +49,7 @@ flowchart TD
 
 ## Proof Path
 
-Use the [command guide](../../../crates/bijux-gnss/docs/COMMANDS.md),
-[facade guide](../../../crates/bijux-gnss/docs/FACADE.md), and command
+Use the [command guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/docs/COMMANDS.md),
+[facade guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/docs/FACADE.md), and command
 guardrail tests as the first proof. If the risk involves a lower crate, stop
 here and inspect the lower owner before changing command wording.

@@ -40,15 +40,15 @@ flowchart LR
 
 | seam | contract |
 | --- | --- |
-| [sample-source adapter interface](../../../crates/bijux-gnss-receiver/src/ports/mod.rs) | supplies ordered sample frames and explicit end-of-stream or input failure |
-| [file and memory adapters](../../../crates/bijux-gnss-receiver/src/io/data.rs) | convert concrete storage into the sample-source contract without changing signal meaning |
-| [clock interface](../../../crates/bijux-gnss-receiver/src/ports/clock.rs) | provides runtime time without hardwiring the system clock into stage logic |
-| [artifact-sink interface](../../../crates/bijux-gnss-receiver/src/ports/mod.rs) | accepts versioned observation and navigation records without deciding repository layout |
-| [receiver entrypoint](../../../crates/bijux-gnss-receiver/src/api.rs) | accepts validated configuration, runtime controls, and a signal source, then returns typed run artifacts or receiver failure |
-| [signal boundary](../../../crates/bijux-gnss-signal/src/api.rs) | supplies physical signal facts, codes, replicas, timing, DSP, and source traits |
-| [navigation adapter](../../../crates/bijux-gnss-receiver/src/pipeline/navigation.rs) | converts receiver observations into optional navigation execution without taking ownership of solver science |
-| [run artifact contract](../../../crates/bijux-gnss-receiver/src/api.rs) | preserves acquisition, tracking, observation, support, and optional navigation evidence in memory |
-| [validation boundary](../../../crates/bijux-gnss-receiver/src/validation_report.rs) | converts receiver and navigation evidence into typed validation claims when navigation is enabled |
+| [sample-source adapter interface](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/src/ports/mod.rs) | supplies ordered sample frames and explicit end-of-stream or input failure |
+| [file and memory adapters](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/src/io/data.rs) | convert concrete storage into the sample-source contract without changing signal meaning |
+| [clock interface](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/src/ports/clock.rs) | provides runtime time without hardwiring the system clock into stage logic |
+| [artifact-sink interface](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/src/ports/mod.rs) | accepts versioned observation and navigation records without deciding repository layout |
+| [receiver entrypoint](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/src/api.rs) | accepts validated configuration, runtime controls, and a signal source, then returns typed run artifacts or receiver failure |
+| [signal boundary](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/src/api.rs) | supplies physical signal facts, codes, replicas, timing, DSP, and source traits |
+| [navigation adapter](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/src/pipeline/navigation.rs) | converts receiver observations into optional navigation execution without taking ownership of solver science |
+| [run artifact contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/src/api.rs) | preserves acquisition, tracking, observation, support, and optional navigation evidence in memory |
+| [validation boundary](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/src/validation_report.rs) | converts receiver and navigation evidence into typed validation claims when navigation is enabled |
 
 ## Channel and Stage Handoff
 
@@ -71,9 +71,9 @@ previous stage could have preserved directly.
 - Repository paths, manifests, histories, and command report wording remain
   outside receiver.
 
-Downstream crates import the [curated receiver API](../../../crates/bijux-gnss-receiver/src/api.rs)
+Downstream crates import the [curated receiver API](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/src/api.rs)
 rather than private stage modules. The
-[port guide](../../../crates/bijux-gnss-receiver/docs/PORTS.md) defines concrete
+[port guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/docs/PORTS.md) defines concrete
 interface behavior, and the
-[artifact guide](../../../crates/bijux-gnss-receiver/docs/ARTIFACTS.md) defines
+[artifact guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/docs/ARTIFACTS.md) defines
 the handoff to persistence.

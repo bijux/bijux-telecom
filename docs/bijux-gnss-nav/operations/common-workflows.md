@@ -43,10 +43,10 @@ plausible even when time, frame, or correction provenance is wrong.
 
 Useful routes:
 
-- [time interpretation](../../../crates/bijux-gnss-nav/docs/TIME.md);
-- [orbit and clock behavior](../../../crates/bijux-gnss-nav/docs/ORBITS.md);
-- [correction assumptions](../../../crates/bijux-gnss-nav/docs/CORRECTIONS.md);
-- [estimator and integrity behavior](../../../crates/bijux-gnss-nav/docs/ESTIMATION.md).
+- [time interpretation](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/TIME.md);
+- [orbit and clock behavior](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/ORBITS.md);
+- [correction assumptions](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/CORRECTIONS.md);
+- [estimator and integrity behavior](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/ESTIMATION.md).
 
 ## Add Or Change A Product Decoder
 
@@ -74,7 +74,7 @@ flowchart LR
 4. Compare representative values against a public reference or independent
    parser where possible.
 5. Exercise the smallest consumer that relies on the changed field.
-6. Update the [format contract](../../../crates/bijux-gnss-nav/docs/FORMATS.md)
+6. Update the [format contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/FORMATS.md)
    when caller-visible interpretation changes.
 
 Repository discovery and active-product selection remain outside the parser.
@@ -92,8 +92,8 @@ are absent. Prove:
 
 Keep reusable physical law in navigation. Keep signal carrier and component
 facts in signal, shared record meaning in core, and product location in
-infrastructure. The [model guide](../../../crates/bijux-gnss-nav/docs/MODELS.md)
-and [correction guide](../../../crates/bijux-gnss-nav/docs/CORRECTIONS.md)
+infrastructure. The [model guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/MODELS.md)
+and [correction guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/CORRECTIONS.md)
 separate those responsibilities.
 
 ## Change Estimator Or Integrity Behavior
@@ -137,7 +137,7 @@ expectations can change behavior without changing a function name.
 3. Preserve typed status, uncertainty, provenance, and refusal.
 4. Add public-route evidence rather than testing a private module.
 5. Update the
-   [public API contract](../../../crates/bijux-gnss-nav/docs/PUBLIC_API.md) and
+   [public API contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/PUBLIC_API.md) and
    [compatibility commitments](../interfaces/compatibility-commitments.md).
 
 ## Close The Workflow

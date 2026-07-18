@@ -52,7 +52,7 @@ decision only as far as its observable meaning moves.
 
 Use the [receiver stage handoffs](../interfaces/stage-contracts.md) to identify
 what the top-level run preserves and drops. Use the
-[receiver proof inventory](../../../crates/bijux-gnss-receiver/docs/TESTS.md)
+[receiver proof inventory](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/docs/TESTS.md)
 to find existing families, but inspect assertions before assuming a filename
 proves the required claim.
 
@@ -135,17 +135,17 @@ cargo test -p bijux-gnss-receiver --test integration_receiver_support_matrix_inv
 
 Choose by assertion:
 
-- [acquisition explainability](../../../crates/bijux-gnss-receiver/tests/integration_acquisition_explainability.rs)
+- [acquisition explainability](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/tests/integration_acquisition_explainability.rs)
   protects ranked rationale, not every acquisition operating condition
-- [channel-state reporting](../../../crates/bijux-gnss-receiver/tests/integration_tracking_channel_state_reports.rs)
+- [channel-state reporting](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/tests/integration_tracking_channel_state_reports.rs)
   protects exported lifecycle evidence, not loop accuracy
-- [observation measurement quality](../../../crates/bijux-gnss-receiver/tests/integration_observations_measurement_quality.rs)
+- [observation measurement quality](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/tests/integration_observations_measurement_quality.rs)
   protects quality propagation, not every pseudorange truth budget
-- [multisatellite navigation readiness](../../../crates/bijux-gnss-receiver/tests/integration_multisat_pvt_readiness.rs)
+- [multisatellite navigation readiness](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/tests/integration_multisat_pvt_readiness.rs)
   protects a receiver-to-navigation handoff, not general navigation science
-- [streaming receiver behavior](../../../crates/bijux-gnss-receiver/tests/integration_receiver_streaming.rs)
+- [streaming receiver behavior](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/tests/integration_receiver_streaming.rs)
   protects multi-frame consumption and continuity, not all source formats
-- [support-matrix inventory](../../../crates/bijux-gnss-receiver/tests/integration_receiver_support_matrix_inventory.rs)
+- [support-matrix inventory](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/tests/integration_receiver_support_matrix_inventory.rs)
   protects registered signal coverage and stage status, not implementation
   maturity
 
@@ -182,8 +182,8 @@ Determinism has several scopes:
 - feature and thread configuration
 - environment-sensitive timing and metrics
 
-The [synthetic determinism proof](../../../crates/bijux-gnss-receiver/tests/integration_determinism.rs)
-and [observation-stage determinism proof](../../../crates/bijux-gnss-receiver/tests/integration_pipeline_determinism.rs)
+The [synthetic determinism proof](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/tests/integration_determinism.rs)
+and [observation-stage determinism proof](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/tests/integration_pipeline_determinism.rs)
 cover different scopes. Neither proves byte-identical command or persisted
 output.
 

@@ -65,9 +65,9 @@ affected, not the narrowest description of the implementation edit.
 | validation and simulation | Is expected truth independent, bounded, and specific to receiver behavior? | truth provenance, refused/degraded scenario, limits, no circular fixture generation |
 | support inventory | Does advertised support match executable acquisition, tracking, observation, and optional navigation capability? | supported and unsupported cases, feature matrix, report consumer |
 
-The [pipeline contract](../../../crates/bijux-gnss-receiver/docs/PIPELINE.md)
+The [pipeline contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/docs/PIPELINE.md)
 defines stage ownership, and the
-[public API guide](../../../crates/bijux-gnss-receiver/docs/PUBLIC_API.md)
+[public API guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/docs/PUBLIC_API.md)
 defines the supported downstream surface.
 
 ## Escalate on Semantic Triggers
@@ -166,7 +166,7 @@ itself changed.
 
 Use the [receiver invariants](../quality/invariants.md) to name the contract,
 [stage contracts](../interfaces/stage-contracts.md) to follow handoffs, and the
-[receiver test guide](../../../crates/bijux-gnss-receiver/docs/TESTS.md) to
+[receiver test guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/docs/TESTS.md) to
 select evidence.
 
 The review is complete when the first changed runtime meaning, affected

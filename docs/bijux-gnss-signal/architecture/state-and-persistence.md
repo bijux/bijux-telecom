@@ -33,10 +33,10 @@ meaning; it does not decide where or how another crate stores them.
 
 ## First Proof Check
 
-Inspect the [raw IQ guide](../../../crates/bijux-gnss-signal/docs/RAW_IQ.md),
-[sample guide](../../../crates/bijux-gnss-signal/docs/SAMPLES.md),
-[validation guide](../../../crates/bijux-gnss-signal/docs/VALIDATION.md), and
-[signal boundary guide](../../../crates/bijux-gnss-signal/docs/BOUNDARY.md).
+Inspect the [raw IQ guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/RAW_IQ.md),
+[sample guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/SAMPLES.md),
+[validation guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/VALIDATION.md), and
+[signal boundary guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/BOUNDARY.md).
 Then inspect raw-IQ source, sample source, NCO source, and raw-IQ metadata tests
 to confirm the crate still owns typed in-memory state without crossing into
 repository storage policy.

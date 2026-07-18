@@ -82,11 +82,11 @@ flowchart TD
 ```
 
 Representative starting points are the
-[component registry evidence](../../../crates/bijux-gnss-signal/tests/integration_signal_component_registry.rs),
-[wavelength evidence](../../../crates/bijux-gnss-signal/tests/integration_signal_wavelengths.rs),
-[long-duration NCO evidence](../../../crates/bijux-gnss-signal/tests/integration_nco_long_duration_phase.rs),
-[IQ conversion evidence](../../../crates/bijux-gnss-signal/tests/integration_iq_sample_conversion.rs),
-and [public guardrail](../../../crates/bijux-gnss-signal/tests/integration_guardrails.rs).
+[component registry evidence](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/tests/integration_signal_component_registry.rs),
+[wavelength evidence](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/tests/integration_signal_wavelengths.rs),
+[long-duration NCO evidence](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/tests/integration_nco_long_duration_phase.rs),
+[IQ conversion evidence](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/tests/integration_iq_sample_conversion.rs),
+and [public guardrail](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/tests/integration_guardrails.rs).
 Choose constellation-specific references when code or component meaning changes.
 
 ## Review Direct Consumers

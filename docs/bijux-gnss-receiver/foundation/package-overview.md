@@ -76,9 +76,9 @@ evidence. Do not flatten every receiver failure into “pipeline”:
 
 ## First Proof Check
 
-Inspect the [receiver crate README](../../../crates/bijux-gnss-receiver/README.md),
-[pipeline guide](../../../crates/bijux-gnss-receiver/docs/PIPELINE.md),
-[runtime guide](../../../crates/bijux-gnss-receiver/docs/RUNTIME.md), and
-[artifact guide](../../../crates/bijux-gnss-receiver/docs/ARTIFACTS.md). Then
+Inspect the [receiver crate README](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/README.md),
+[pipeline guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/docs/PIPELINE.md),
+[runtime guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/docs/RUNTIME.md), and
+[artifact guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/docs/ARTIFACTS.md). Then
 inspect the relevant pipeline stage and the integration tests named in the
 crate README.

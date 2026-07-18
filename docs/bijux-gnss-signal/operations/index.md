@@ -112,13 +112,13 @@ higher-level policy are separate contracts.
 
 ## Core References
 
-- [Signal boundary](../../../crates/bijux-gnss-signal/docs/BOUNDARY.md) defines
+- [Signal boundary](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/BOUNDARY.md) defines
   package ownership.
-- [Signal architecture](../../../crates/bijux-gnss-signal/docs/ARCHITECTURE.md)
+- [Signal architecture](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/ARCHITECTURE.md)
   maps catalogs, codes, samples, DSP, validation, and traits.
-- [Signal proof inventory](../../../crates/bijux-gnss-signal/docs/TESTS.md)
+- [Signal proof inventory](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/TESTS.md)
   identifies active proof families.
-- [Curated public API](../../../crates/bijux-gnss-signal/docs/PUBLIC_API.md)
+- [Curated public API](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/PUBLIC_API.md)
   defines downstream commitments.
-- [Signal quality](../quality/) covers invariants, review gates, limitations,
+- [Signal quality](../quality/index.md) covers invariants, review gates, limitations,
   and risk.

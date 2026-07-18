@@ -51,7 +51,7 @@ not by serializing any public record ad hoc.
 
 ## Public Families
 
-The [authoritative export surface](../../../crates/bijux-gnss-core/src/api.rs)
+The [authoritative export surface](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/src/api.rs)
 groups shared vocabulary into these responsibilities:
 
 - artifact envelopes and payload validation;
@@ -65,9 +65,9 @@ groups shared vocabulary into these responsibilities:
 - solver-neutral navigation status, residual, lifecycle, refusal, and support
   records.
 
-The [contract map](../../../crates/bijux-gnss-core/docs/CONTRACT_MAP.md) identifies
+The [contract map](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/CONTRACT_MAP.md) identifies
 the implementation owner behind each family. The
-[contract guide](../../../crates/bijux-gnss-core/docs/CONTRACTS.md) explains
+[contract guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/CONTRACTS.md) explains
 which meanings higher crates exchange.
 
 ## Admit A New Export
@@ -113,7 +113,7 @@ type is shared only because one higher-level implementation is convenient.
 
 ## What The Guardrail Enforces
 
-The [public API guardrail](../../../crates/bijux-gnss-core/tests/public_api_guardrail.rs)
+The [public API guardrail](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/tests/public_api_guardrail.rs)
 checks that free public structs and free public functions found in implementation
 modules are named in the API surface. It does not comprehensively enforce:
 
@@ -124,8 +124,8 @@ modules are named in the API surface. It does not comprehensively enforce:
 - downstream source compatibility.
 
 Treat the guardrail as an omission detector, not an API review. The
-[invariant guide](../../../crates/bijux-gnss-core/docs/INVARIANTS.md) and
-[serialization guide](../../../crates/bijux-gnss-core/docs/SERIALIZATION.md)
+[invariant guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/INVARIANTS.md) and
+[serialization guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/SERIALIZATION.md)
 carry the broader review obligations.
 
 ## Change Review

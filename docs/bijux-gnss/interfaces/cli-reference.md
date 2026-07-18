@@ -70,12 +70,12 @@ flowchart TD
 Run or inspect live `bijux gnss --help` for the current command surface. Then
 inspect:
 
-- the [command-line parser](../../../crates/bijux-gnss/src/cli/command_line.rs)
-- the [command catalog](../../../crates/bijux-gnss/src/cli/command_catalog/)
-- the [command handlers](../../../crates/bijux-gnss/src/cli/commands/)
-- the [command runtime](../../../crates/bijux-gnss/src/cli/command_runtime/)
-- the [public API guide](../../../crates/bijux-gnss/docs/PUBLIC_API.md)
-- the [command guide](../../../crates/bijux-gnss/docs/COMMANDS.md)
+- the [command-line parser](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/src/cli/command_line.rs)
+- the [command catalog](https://github.com/bijux/bijux-gnss/tree/main/crates/bijux-gnss/src/cli/command_catalog)
+- the [command handlers](https://github.com/bijux/bijux-gnss/tree/main/crates/bijux-gnss/src/cli/commands)
+- the [command runtime](https://github.com/bijux/bijux-gnss/tree/main/crates/bijux-gnss/src/cli/command_runtime)
+- the [public API guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/docs/PUBLIC_API.md)
+- the [command guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss/docs/COMMANDS.md)
 
 If this reference says a command belongs to one owner and the handler calls a
 different owner for the decisive behavior, fix the route rather than padding

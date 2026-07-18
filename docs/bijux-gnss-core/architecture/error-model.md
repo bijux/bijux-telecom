@@ -40,7 +40,7 @@ flowchart TD
     evidence -- no --> valid
 ```
 
-The [error taxonomy](../../../crates/bijux-gnss-core/src/error.rs) currently
+The [error taxonomy](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/src/error.rs) currently
 defines separate Rust types for input, configuration, I/O, parsing, signal,
 acquisition, tracking, navigation, and invariant failures. Each type contains
 only a human-readable message. The category is conveyed by the Rust type, not
@@ -48,10 +48,10 @@ by a machine-readable field inside the value.
 
 ## Diagnostics Carry Durable Evidence
 
-A [diagnostic event](../../../crates/bijux-gnss-core/src/diagnostic/mod.rs)
+A [diagnostic event](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/src/diagnostic/mod.rs)
 contains severity, code, message, and key-value context. Aggregation groups
 events by code and preserves counts, epoch bounds, and contributing stages.
-The [diagnostic catalog](../../../crates/bijux-gnss-core/src/diagnostic/codes.rs)
+The [diagnostic catalog](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/src/diagnostic/codes.rs)
 provides known code meanings and mitigations.
 
 ```mermaid
@@ -65,7 +65,7 @@ flowchart LR
     producer --> event --> summary --> artifact --> reader
 ```
 
-Use the [diagnostic contract guide](../../../crates/bijux-gnss-core/docs/DIAGNOSTICS.md)
+Use the [diagnostic contract guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/DIAGNOSTICS.md)
 before adding or changing a code. A message may explain the instance, but
 consumers should not parse prose to recover identity or severity. Information
 needed for filtering, aggregation, or remediation belongs in the code catalog
@@ -95,7 +95,7 @@ list of string pairs rather than a typed schema, so each producer must document
 the keys a reader may rely on.
 
 The public API includes the error categories and diagnostic records, but the
-[surface guardrail](../../../crates/bijux-gnss-core/tests/public_api_guardrail.rs)
+[surface guardrail](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/tests/public_api_guardrail.rs)
 does not prove their semantic stability. Artifact validation tests demonstrate
 selected diagnostic behavior, not exhaustive coverage of every code or
 payload.

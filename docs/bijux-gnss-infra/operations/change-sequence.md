@@ -47,13 +47,13 @@ or navigation science, route it through the
 
 | changed family | contract to read | evidence to select |
 | --- | --- | --- |
-| registry, sidecar, capture provenance | [Dataset guide](../../../crates/bijux-gnss-infra/docs/DATASETS.md) | dataset and raw-IQ module tests |
-| run identity, layout, manifest, report, history | [Run layout guide](../../../crates/bijux-gnss-infra/docs/RUN_LAYOUT.md) | named persistence review and focused tests added for changed behavior |
-| artifact explanation or validation | [Validation guide](../../../crates/bijux-gnss-infra/docs/VALIDATION.md) | artifact inspection module tests |
-| override or sweep behavior | [Override guide](../../../crates/bijux-gnss-infra/docs/OVERRIDES.md) and [experiment guide](../../../crates/bijux-gnss-infra/docs/EXPERIMENTS.md) | override integration and module tests |
-| configuration or repository provenance | [Hashing guide](../../../crates/bijux-gnss-infra/docs/HASHING.md) | focused hash or front-end provenance tests |
-| reference alignment or lower-owner validation bridge | [Validation guide](../../../crates/bijux-gnss-infra/docs/VALIDATION.md) | named adapter review plus producer-package proof |
-| public imports or feature gates | [Public API contract](../../../crates/bijux-gnss-infra/docs/PUBLIC_API.md) | curated export review and boundary guardrail |
+| registry, sidecar, capture provenance | [Dataset guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/DATASETS.md) | dataset and raw-IQ module tests |
+| run identity, layout, manifest, report, history | [Run layout guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/RUN_LAYOUT.md) | named persistence review and focused tests added for changed behavior |
+| artifact explanation or validation | [Validation guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/VALIDATION.md) | artifact inspection module tests |
+| override or sweep behavior | [Override guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/OVERRIDES.md) and [experiment guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/EXPERIMENTS.md) | override integration and module tests |
+| configuration or repository provenance | [Hashing guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/HASHING.md) | focused hash or front-end provenance tests |
+| reference alignment or lower-owner validation bridge | [Validation guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/VALIDATION.md) | named adapter review plus producer-package proof |
+| public imports or feature gates | [Public API contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/PUBLIC_API.md) | curated export review and boundary guardrail |
 
 Use [Test Strategy](../quality/test-strategy.md) to calibrate the proof claim and
 [Definition of Done](../quality/definition-of-done.md) for the compatibility and

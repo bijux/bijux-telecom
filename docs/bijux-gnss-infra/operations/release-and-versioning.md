@@ -57,8 +57,8 @@ the repository contract is being described dishonestly.
 
 ## Proof Path
 
-Inspect the [run layout guide](../../../crates/bijux-gnss-infra/docs/RUN_LAYOUT.md),
-[dataset guide](../../../crates/bijux-gnss-infra/docs/DATASETS.md), and
-[validation guide](../../../crates/bijux-gnss-infra/docs/VALIDATION.md). Then
+Inspect the [run layout guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/RUN_LAYOUT.md),
+[dataset guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/DATASETS.md), and
+[validation guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/VALIDATION.md). Then
 inspect the matching tests or source family to confirm any claimed release
 safety still matches persisted repository behavior.

@@ -63,7 +63,7 @@ handbook page should move with it.
 
 ## Proof Path
 
-Use the [signal test guide](../../../crates/bijux-gnss-signal/docs/TESTS.md),
-[public API](../../../crates/bijux-gnss-signal/docs/PUBLIC_API.md), and focused
+Use the [signal test guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/TESTS.md),
+[public API](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/PUBLIC_API.md), and focused
 signal tests for the family that moved. A receiver tracking test can support
 the change, but it must not replace signal-owned proof.

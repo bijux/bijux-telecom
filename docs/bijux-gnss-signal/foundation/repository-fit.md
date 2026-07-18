@@ -37,7 +37,7 @@ serialization, schema, FFT, and error libraries. Receiver, navigation,
 infrastructure, and command directly depend on signal. Signal must not reverse
 those edges to reach consumer-specific behavior.
 
-The [signal architecture](../../../crates/bijux-gnss-signal/docs/ARCHITECTURE.md)
+The [signal architecture](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/ARCHITECTURE.md)
 describes the internal flow from core records through catalogs, codes, samples,
 DSP, validation, and the curated API.
 
@@ -118,7 +118,7 @@ organization is not a compatibility promise. A public addition should:
 - include direct reference or property proof
 - demonstrate the first affected consumer when semantics move
 
-The [public API guide](../../../crates/bijux-gnss-signal/docs/PUBLIC_API.md)
+The [public API guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/PUBLIC_API.md)
 defines the supported families.
 
 ## Dependency Admission
@@ -148,8 +148,8 @@ Stop when signal code begins to:
 - format operator reports or choose command exit status
 - depend on receiver, navigation, infrastructure, command, or test support
 
-Use the [package boundary](../../../crates/bijux-gnss-signal/docs/BOUNDARY.md)
-and [contract guide](../../../crates/bijux-gnss-signal/docs/CONTRACTS.md) when
+Use the [package boundary](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/BOUNDARY.md)
+and [contract guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/CONTRACTS.md) when
 ownership is ambiguous.
 
 The package fits the repository when its contracts remain canonical,

@@ -32,7 +32,7 @@ flowchart LR
 1. Identify whether the change belongs to datasets, run layout, artifacts,
    overrides, provenance, or a validation adapter.
 2. Read the matching contract from the
-   [infrastructure architecture](../../../crates/bijux-gnss-infra/docs/ARCHITECTURE.md)
+   [infrastructure architecture](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/ARCHITECTURE.md)
    and state the invariant that must remain true.
 3. Create the smallest representative input in an isolated temporary directory.
 4. Exercise both accepted and contradictory input before broadening the change.

@@ -36,13 +36,13 @@ flowchart LR
 
 ## Read These First
 
-- open [Foundation](foundation/) when the question is why infrastructure owns
+- open [Foundation](foundation/index.md) when the question is why infrastructure owns
   this repository-facing behavior at all
-- open [Interfaces](interfaces/) when the dispute is already about datasets,
+- open [Interfaces](interfaces/index.md) when the dispute is already about datasets,
   manifests, reports, overrides, or validation-facing contracts
-- open [Architecture](architecture/) when the question is structural: where
+- open [Architecture](architecture/index.md) when the question is structural: where
   datasets, run layout, artifact inspection, and hashing live in code
-- open [Quality](quality/) when ownership is clear and the question becomes
+- open [Quality](quality/index.md) when ownership is clear and the question becomes
   whether the proofs and limits are honest enough
 
 ## Why This Package Exists
@@ -73,20 +73,20 @@ flowchart LR
 ## Strongest Proof Surfaces
 
 - crate README:
-  [Infra crate README](../../crates/bijux-gnss-infra/README.md)
+  [Infra crate README](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/README.md)
 - dataset, run-layout, and validation docs:
-  [Dataset contracts](../../crates/bijux-gnss-infra/docs/DATASETS.md),
-  [Run layout contracts](../../crates/bijux-gnss-infra/docs/RUN_LAYOUT.md),
-  [Validation adapters](../../crates/bijux-gnss-infra/docs/VALIDATION.md)
+  [Dataset contracts](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/DATASETS.md),
+  [Run layout contracts](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/RUN_LAYOUT.md),
+  [Validation adapters](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/VALIDATION.md)
 - override and experiment docs:
-  [Override guide](../../crates/bijux-gnss-infra/docs/OVERRIDES.md),
-  [Experiment guide](../../crates/bijux-gnss-infra/docs/EXPERIMENTS.md)
+  [Override guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/OVERRIDES.md),
+  [Experiment guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/EXPERIMENTS.md)
 - source roots:
-  [dataset source](../../crates/bijux-gnss-infra/src/datasets),
-  [run-layout source](../../crates/bijux-gnss-infra/src/run_layout),
-  [override source](../../crates/bijux-gnss-infra/src/overrides)
+  [dataset source](https://github.com/bijux/bijux-gnss/tree/main/crates/bijux-gnss-infra/src/datasets),
+  [run-layout source](https://github.com/bijux/bijux-gnss/tree/main/crates/bijux-gnss-infra/src/run_layout),
+  [override source](https://github.com/bijux/bijux-gnss/tree/main/crates/bijux-gnss-infra/src/overrides)
 - proof tests:
-  [infra integration tests](../../crates/bijux-gnss-infra/tests)
+  [infra integration tests](https://github.com/bijux/bijux-gnss/tree/main/crates/bijux-gnss-infra/tests)
 
 ## Support Crates That Matter Here
 
@@ -99,15 +99,15 @@ flowchart LR
 
 ## Sections In This Handbook
 
-- [Foundation](foundation/) for role, scope, ownership, repository fit, and
+- [Foundation](foundation/index.md) for role, scope, ownership, repository fit, and
   infrastructure vocabulary
-- [Architecture](architecture/) for datasets, run layout, artifact inspection,
+- [Architecture](architecture/index.md) for datasets, run layout, artifact inspection,
   overrides, hashing, and dependency direction
-- [Interfaces](interfaces/) for public API, dataset contracts, run footprint
+- [Interfaces](interfaces/index.md) for public API, dataset contracts, run footprint
   contracts, override and sweep contracts, and validation adapters
-- [Operations](operations/) for safe change sequence, verification, fixture
+- [Operations](operations/index.md) for safe change sequence, verification, fixture
   care, and review scope
-- [Quality](quality/) for trust boundaries, invariants, limitations, risk, and
+- [Quality](quality/index.md) for trust boundaries, invariants, limitations, risk, and
   change validation
 - [Infrastructure ownership boundaries](ownership-boundaries.md) for deciding
   whether a capability owns repository state or product behavior
@@ -131,23 +131,23 @@ flowchart LR
 ## Leave This Handbook When
 
 - the question becomes about the command that invokes the workflow:
-  [Command handbook](../bijux-gnss/)
+  [Command handbook](../bijux-gnss/index.md)
 - the question becomes about receiver artifacts produced in memory before
   persistence:
-  [Receiver handbook](../bijux-gnss-receiver/)
+  [Receiver handbook](../bijux-gnss-receiver/index.md)
 - the question becomes about the shared artifact schema or observation meaning:
-  [Core handbook](../bijux-gnss-core/)
+  [Core handbook](../bijux-gnss-core/index.md)
 - the question becomes about navigation reference truth or estimation logic:
-  [Navigation handbook](../bijux-gnss-nav/)
+  [Navigation handbook](../bijux-gnss-nav/index.md)
 
 ## First Proof Check
 
-- [dataset registry source](../../crates/bijux-gnss-infra/src/datasets/registry.rs)
-- [raw-IQ metadata source](../../crates/bijux-gnss-infra/src/datasets/raw_iq_metadata.rs)
-- [run-layout source](../../crates/bijux-gnss-infra/src/run_layout/)
-- [override source](../../crates/bijux-gnss-infra/src/overrides/)
-- [sweep source](../../crates/bijux-gnss-infra/src/sweep.rs)
-- [run layout contracts](../../crates/bijux-gnss-infra/docs/RUN_LAYOUT.md)
+- [dataset registry source](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/src/datasets/registry.rs)
+- [raw-IQ metadata source](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/src/datasets/raw_iq_metadata.rs)
+- [run-layout source](https://github.com/bijux/bijux-gnss/tree/main/crates/bijux-gnss-infra/src/run_layout)
+- [override source](https://github.com/bijux/bijux-gnss/tree/main/crates/bijux-gnss-infra/src/overrides)
+- [sweep source](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/src/sweep.rs)
+- [run layout contracts](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/RUN_LAYOUT.md)
 
 ## Design Pressure
 

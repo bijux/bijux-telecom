@@ -17,7 +17,7 @@ repository state, command workflows, and test-fixture orchestration.
 ## Workspace Direction
 
 Core is signal’s only production workspace dependency. The
-[package manifest](../../../crates/bijux-gnss-signal/Cargo.toml) declares no
+[package manifest](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/Cargo.toml) declares no
 features and no optional workspace edges.
 
 ```mermaid
@@ -42,9 +42,9 @@ needs channel history, estimator state, a dataset registry, or operator
 configuration, the helper belongs with that higher owner or requires a smaller
 input contract.
 
-The [workspace dependency guardrail](../../../crates/bijux-gnss-policies/tests/integration_dep_rules.rs)
+The [workspace dependency guardrail](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-policies/tests/integration_dep_rules.rs)
 permits only the core edge for signal. The
-[package guardrail](../../../crates/bijux-gnss-signal/tests/integration_guardrails.rs)
+[package guardrail](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/tests/integration_guardrails.rs)
 checks package policy but does not prove scientific correctness.
 
 ## What Each Production Dependency Provides
@@ -106,7 +106,7 @@ or measure samples. A helper belongs where its primary invariant is defined.
 ## The Public API Is The Downstream Boundary
 
 Implementation modules are private. The
-[curated signal API](../../../crates/bijux-gnss-signal/src/api.rs) re-exports
+[curated signal API](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/src/api.rs) re-exports
 catalog, code, sample, DSP, validation, error, and trait contracts. Downstream
 packages should depend on that surface rather than source layout.
 
@@ -124,9 +124,9 @@ Before adding a public item:
 - check deterministic behavior across chunk boundaries where time evolves
 - add direct evidence for invalid rates, assignments, and metadata
 
-The [public API guide](../../../crates/bijux-gnss-signal/docs/PUBLIC_API.md)
+The [public API guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/PUBLIC_API.md)
 describes the supported families, and the
-[trait guide](../../../crates/bijux-gnss-signal/docs/TRAITS.md) defines effect
+[trait guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/TRAITS.md) defines effect
 ownership.
 
 ## Review A Dependency Change
@@ -156,7 +156,7 @@ effect model even if it is not a workspace package.
   its layout
 - using serialization support as justification for owning file placement
 
-The [signal boundary](../../../crates/bijux-gnss-signal/docs/BOUNDARY.md)
+The [signal boundary](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/BOUNDARY.md)
 defines the computational effect model. Dependency direction remains correct
 when signal facts and transformations stay reusable without knowledge of a run,
 repository, estimator, or operator workflow.

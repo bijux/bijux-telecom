@@ -66,8 +66,8 @@ logic out of its owner does not pass this test.
 
 ## Verify The Surface
 
-Compare the [curated API source](../../../crates/bijux-gnss-infra/src/api.rs)
-with the [public API contract](../../../crates/bijux-gnss-infra/docs/PUBLIC_API.md).
+Compare the [curated API source](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/src/api.rs)
+with the [public API contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/PUBLIC_API.md).
 Use [Public Imports](public-imports.md) for caller examples and
 [Compatibility Commitments](compatibility-commitments.md) before changing an
 existing export.

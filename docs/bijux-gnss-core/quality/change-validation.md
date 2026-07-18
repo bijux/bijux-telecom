@@ -48,9 +48,9 @@ API, numerical, serialization, validation, and consumer evidence.
 | Public export | curated API guardrail plus direct consumer-shaped use | feature exposure and semantic compatibility |
 | Dependency or ownership boundary | production manifest review and package guardrail | prove the concept remains independent of higher-package policy |
 
-The [test evidence guide](../../../crates/bijux-gnss-core/docs/TESTS.md)
+The [test evidence guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/TESTS.md)
 documents current checks and their limits. The
-[contract catalog](../../../crates/bijux-gnss-core/docs/CONTRACTS.md) identifies
+[contract catalog](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/CONTRACTS.md) identifies
 the owning semantic family.
 
 ## Build Evidence from the Invariant

@@ -58,7 +58,7 @@ cargo test -p bijux-gnss-infra
 | library tests | current module cases for datasets, metadata, parsing, artifacts, overrides, and selected provenance | untested public workflows or feature combinations |
 | full package | the integration and library cases compiled into the selected feature set | comprehensive run-layout, history, validation-adapter, or provenance coverage |
 
-The [infrastructure test map](../../../crates/bijux-gnss-infra/docs/TESTS.md)
+The [infrastructure test map](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/TESTS.md)
 describes the current families. Treat its missing-target guidance as a coverage
 gap, not as evidence that source review is equivalent to an executable test.
 
@@ -149,9 +149,9 @@ Report:
 7. compatibility decision
 8. missing integration coverage
 
-Use the [run-layout contract](../../../crates/bijux-gnss-infra/docs/RUN_LAYOUT.md),
-[dataset contract](../../../crates/bijux-gnss-infra/docs/DATASETS.md), and
-[validation boundary](../../../crates/bijux-gnss-infra/docs/VALIDATION.md) to
+Use the [run-layout contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/RUN_LAYOUT.md),
+[dataset contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/DATASETS.md), and
+[validation boundary](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/VALIDATION.md) to
 name the affected meaning.
 
 Verification is complete only when the durable record, refusal behavior,

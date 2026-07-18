@@ -40,9 +40,9 @@ flowchart LR
     observations --> artifacts
 ```
 
-The [top-level engine](../../../crates/bijux-gnss-receiver/src/engine/engine.rs)
+The [top-level engine](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/src/engine/engine.rs)
 is the composition authority. The
-[public receiver API](../../../crates/bijux-gnss-receiver/src/api.rs) defines
+[public receiver API](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/src/api.rs) defines
 what a caller receives. Stage-local APIs can expose more detail than the
 top-level run preserves.
 
@@ -100,8 +100,8 @@ first-ranked acquisition results, not the number whose hypothesis is accepted.
 Use acquisition statistics or hypotheses for acceptance counts; do not infer
 them from that trace label.
 
-See the [acquisition implementation](../../../crates/bijux-gnss-receiver/src/pipeline/acquisition.rs)
-and [acquisition explainability proof](../../../crates/bijux-gnss-receiver/tests/integration_acquisition_explainability.rs)
+See the [acquisition implementation](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/src/pipeline/acquisition.rs)
+and [acquisition explainability proof](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/tests/integration_acquisition_explainability.rs)
 when changing this boundary.
 
 ## Tracking to Observations
@@ -125,11 +125,11 @@ its decision and quality evidence explain why it cannot support navigation.
 Cardinality across the four vectors is not a general one-to-one contract;
 assert relationships only where the changed constructor guarantees them.
 
-The [tracking artifact types](../../../crates/bijux-gnss-receiver/src/pipeline/tracking/session_artifacts.rs),
-[channel lifecycle types](../../../crates/bijux-gnss-receiver/src/pipeline/tracking/channel_lifecycle.rs),
-and [observation artifact type](../../../crates/bijux-gnss-receiver/src/pipeline/observations.rs)
+The [tracking artifact types](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/src/pipeline/tracking/session_artifacts.rs),
+[channel lifecycle types](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/src/pipeline/tracking/channel_lifecycle.rs),
+and [observation artifact type](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/src/pipeline/observations.rs)
 define the detailed handoff. The
-[channel-state integration proof](../../../crates/bijux-gnss-receiver/tests/integration_tracking_channel_state_reports.rs)
+[channel-state integration proof](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/tests/integration_tracking_channel_state_reports.rs)
 checks the exported tracking/report relationship for receiver runs.
 
 ## Observation to Navigation
@@ -152,8 +152,8 @@ GPS ephemerides or broadcast navigation data. Those methods are separate from
 the automatic source-to-navigation bridge and must not be used to imply that a
 generic file or memory source automatically carries ephemerides.
 
-Use the [navigation bridge](../../../crates/bijux-gnss-receiver/src/engine/receiver.rs)
-and [multisatellite readiness proof](../../../crates/bijux-gnss-receiver/tests/integration_multisat_pvt_readiness.rs)
+Use the [navigation bridge](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/src/engine/receiver.rs)
+and [multisatellite readiness proof](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/tests/integration_multisat_pvt_readiness.rs)
 when changing this handoff.
 
 ## Evidence Channels
@@ -168,7 +168,7 @@ when changing this handoff.
 
 `StepStats` currently contains only optional processing milliseconds. It is a
 public stage-helper contract, not a top-level pipeline accounting record. The
-crate-local [pipeline guide](../../../crates/bijux-gnss-receiver/docs/PIPELINE.md)
+crate-local [pipeline guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/docs/PIPELINE.md)
 should be read with this distinction; its “step reporting” row does not mean
 that `RunArtifacts` contains step reports.
 
@@ -197,10 +197,10 @@ best-effort and not represented in the receiver result type.
    dropped.
 4. Follow the changed artifact into command reporting and infrastructure
    persistence before claiming compatibility.
-5. Keep reusable signal math in the [signal package](../../bijux-gnss-signal/),
-   navigation science in the [navigation package](../../bijux-gnss-nav/),
-   persisted run interpretation in the [infrastructure package](../../bijux-gnss-infra/),
-   and operator syntax in the [command package](../../bijux-gnss/).
+5. Keep reusable signal math in the [signal package](../../bijux-gnss-signal/index.md),
+   navigation science in the [navigation package](../../bijux-gnss-nav/index.md),
+   persisted run interpretation in the [infrastructure package](../../bijux-gnss-infra/index.md),
+   and operator syntax in the [command package](../../bijux-gnss/index.md).
 
 A stage contract is complete when success, refusal, degradation, emptiness,
 error, and evidence loss are all visible to the next reader.

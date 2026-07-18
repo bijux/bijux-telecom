@@ -39,14 +39,14 @@ skipping comparison because no baseline exists.
 
 | Surface | Evidence that exists | What it establishes | What remains unproved |
 | --- | --- | --- | --- |
-| package structure | [package guardrail integration](../../../crates/bijux-gnss-dev/tests/integration_guardrails.rs) | configured repository policy accepts this private binary package | command parsing, validation, output, writes, and subprocess behavior |
-| slow-test ledger | [suite-selection integration](../../../crates/bijux-gnss-dev/tests/integration_nextest_suite_selection.rs) | ledger order and uniqueness, heuristic resolution to test function names, legacy slow-name inclusion, and fast/slow expression relationship | duration, scientific value, exact package/test identity, and absence of unintended regex matches |
-| security exception validation | direct execution against the [current security ledger](../../../audit-allowlist.toml) | checked records currently satisfy implemented field-shape and lexical-expiry rules | malformed fixture matrix, real calendar-date validation, unknown-field policy, and risk acceptance |
-| deny deviation validation | direct execution against the [current deviation ledger](../../../configs/rust/deny.deviations.toml) | checked records currently satisfy implemented ownership, reason, link-substring, and lexical-expiry rules | malformed fixture matrix, upstream acceptance, exact review-link identity, and real calendar dates |
+| package structure | [package guardrail integration](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/tests/integration_guardrails.rs) | configured repository policy accepts this private binary package | command parsing, validation, output, writes, and subprocess behavior |
+| slow-test ledger | [suite-selection integration](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/tests/integration_nextest_suite_selection.rs) | ledger order and uniqueness, heuristic resolution to test function names, legacy slow-name inclusion, and fast/slow expression relationship | duration, scientific value, exact package/test identity, and absence of unintended regex matches |
+| security exception validation | direct execution against the [current security ledger](https://github.com/bijux/bijux-gnss/blob/main/audit-allowlist.toml) | checked records currently satisfy implemented field-shape and lexical-expiry rules | malformed fixture matrix, real calendar-date validation, unknown-field policy, and risk acceptance |
+| deny deviation validation | direct execution against the [current deviation ledger](https://github.com/bijux/bijux-gnss/blob/main/configs/rust/deny.deviations.toml) | checked records currently satisfy implemented ownership, reason, link-substring, and lexical-expiry rules | malformed fixture matrix, upstream acceptance, exact review-link identity, and real calendar dates |
 | audit argument derivation | direct command output consumed by the audit Make workflow | current recognized identifiers can be sorted, deduplicated, and rendered | dedicated tests for absent, malformed, legacy, duplicate, and mixed-validity inputs |
 | benchmark comparison | implementation and direct execution when deliberately invoked | curated child processes can run and current output can be normalized | dedicated parser/comparison tests, atomic writes, environment control, and historical regression enforcement |
 
-The [maintainer proof inventory](../../../crates/bijux-gnss-dev/docs/TESTS.md)
+The [maintainer proof inventory](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/TESTS.md)
 describes intended coverage. The table above reflects executable evidence in
 the current checkout, including where that inventory is aspirational.
 
@@ -127,7 +127,7 @@ contention, repetition, and source revision. A non-strict command reports
 threshold findings without failing. State all of these conditions before
 calling a run regression evidence.
 
-The [benchmark evidence contract](../../../crates/bijux-gnss-dev/docs/BENCHMARKS.md)
+The [benchmark evidence contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/BENCHMARKS.md)
 defines the intended workflow. The [known limitations](known-limitations.md)
 and [risk register](risk-register.md) should remain aligned with actual
 implementation behavior.
@@ -160,7 +160,7 @@ Reject these arguments:
 - [Risk register](risk-register.md) tracks ways maintainer evidence can
   mislead.
 
-Use [changing maintainer tooling](../operations/) for execution order and
-[maintainer interface contracts](../interfaces/) for compatibility decisions.
+Use [changing maintainer tooling](../operations/index.md) for execution order and
+[maintainer interface contracts](../interfaces/index.md) for compatibility decisions.
 Quality is sufficient only when the result, its consumer, and its omissions can
 be stated in one bounded claim.

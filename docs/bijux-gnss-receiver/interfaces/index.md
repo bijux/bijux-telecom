@@ -97,11 +97,11 @@ consumer-shaped calls.
 
 ## Sources Of Truth
 
-The [curated receiver API](../../../crates/bijux-gnss-receiver/src/api.rs) is
+The [curated receiver API](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/src/api.rs) is
 the supported import boundary. The
-[public API guide](../../../crates/bijux-gnss-receiver/docs/PUBLIC_API.md),
-[runtime guide](../../../crates/bijux-gnss-receiver/docs/RUNTIME.md),
-[pipeline guide](../../../crates/bijux-gnss-receiver/docs/PIPELINE.md),
-[port guide](../../../crates/bijux-gnss-receiver/docs/PORTS.md), and
-[artifact guide](../../../crates/bijux-gnss-receiver/docs/ARTIFACTS.md) define
+[public API guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/docs/PUBLIC_API.md),
+[runtime guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/docs/RUNTIME.md),
+[pipeline guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/docs/PIPELINE.md),
+[port guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/docs/PORTS.md), and
+[artifact guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/docs/ARTIFACTS.md) define
 the contract families behind it.

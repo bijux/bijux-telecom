@@ -35,9 +35,9 @@ flowchart TB
     dev -. no runtime dependency .-> product
 ```
 
-The [workspace release contract](../../../configs/release/crates.toml) assigns
+The [workspace release contract](https://github.com/bijux/bijux-gnss/blob/main/configs/release/crates.toml) assigns
 the package the `maintainer-control-plane` role and explicitly denies
-publication. Its [package manifest](../../../crates/bijux-gnss-dev/Cargo.toml)
+publication. Its [package manifest](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/Cargo.toml)
 also sets `publish = false` and declares only a binary target.
 
 ## Dependency Shape
@@ -67,7 +67,7 @@ benchmark baseline management into the product command would:
 - make a private validation change look like product compatibility
 - invite product code to depend on maintainer state
 
-Operator behavior belongs in the [command handbook](../../bijux-gnss/).
+Operator behavior belongs in the [command handbook](../../bijux-gnss/index.md).
 Developer tooling may remain private and change with repository governance,
 subject to its Make and maintainer callers.
 
@@ -105,16 +105,16 @@ contract.
 
 Current governed inputs are:
 
-- the [security exception ledger](../../../audit-allowlist.toml)
-- the [local standards deviation ledger](../../../configs/rust/deny.deviations.toml)
-- the [slow-test ledger](../../../configs/rust/nextest-slow-roster.txt), through
+- the [security exception ledger](https://github.com/bijux/bijux-gnss/blob/main/audit-allowlist.toml)
+- the [local standards deviation ledger](https://github.com/bijux/bijux-gnss/blob/main/configs/rust/deny.deviations.toml)
+- the [slow-test ledger](https://github.com/bijux/bijux-gnss/blob/main/configs/rust/nextest-slow-roster.txt), through
   integration proof rather than a binary command
 - an optional benchmark baseline, which is documented but not tracked in the
   current checkout
 
 Current consumers are:
 
-- the [repository audit workflow](../../../makes/rust.mk), which captures audit
+- the [repository audit workflow](https://github.com/bijux/bijux-gnss/blob/main/makes/rust.mk), which captures audit
   arguments and checks validator statuses
 - the benchmark Make target, which maps strictness into command flags
 - maintainers invoking commands directly
@@ -155,6 +155,6 @@ Review the package as misplaced when:
   interface
 - evidence paths or governed inputs exist only in implementation
 
-The [package guardrail integration](../../../crates/bijux-gnss-dev/tests/integration_guardrails.rs)
+The [package guardrail integration](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/tests/integration_guardrails.rs)
 checks configured structural policy, but it does not prove every invariant
 above. Manifest, release-contract, caller, and effect review remain necessary.

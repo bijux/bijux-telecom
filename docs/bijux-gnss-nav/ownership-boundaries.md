@@ -65,7 +65,7 @@ flowchart LR
     bytes --> parser --> typed --> science
 ```
 
-[Repository infrastructure](../bijux-gnss-infra/) owns the first transition
+[Repository infrastructure](../bijux-gnss-infra/index.md) owns the first transition
 when repository discovery is involved. Navigation owns the parser and every
 scientific interpretation after bytes or records enter the domain boundary.
 
@@ -85,7 +85,7 @@ Receiver and navigation can both contain state, but they own different state:
 | observation production and runtime handoff | observation correction, weighting, estimation, and refusal |
 | stage scheduling and run budgets | scientific convergence and uncertainty |
 
-The [receiver handbook](../bijux-gnss-receiver/) owns when observations are
+The [receiver handbook](../bijux-gnss-receiver/index.md) owns when observations are
 available and whether channels remain operational. Navigation owns whether
 those observations support a defensible solution.
 
@@ -95,13 +95,13 @@ depends on their output.
 
 ## Signal And Core Boundaries
 
-[Signal processing](../bijux-gnss-signal/) owns code families, component
+[Signal processing](../bijux-gnss-signal/index.md) owns code families, component
 modulation, sample conversion, carrier relationships, replicas, and reusable
 DSP. Navigation may use signal identities and frequencies when forming
 corrections or combinations, but it does not own raw-IQ generation or tracking
 correlators.
 
-[Shared GNSS contracts](../bijux-gnss-core/) own portable identities,
+[Shared GNSS contracts](../bijux-gnss-core/index.md) own portable identities,
 units, times, observations, diagnostics, artifact envelopes, and generic
 solution records. Navigation owns domain-specific algorithms and state that
 consume or populate those records.
@@ -129,7 +129,7 @@ navigation engine without owning estimator science.
 
 ## Product And Estimator Boundaries
 
-The [navigation public facade](../../crates/bijux-gnss-nav/src/api.rs) exposes
+The [navigation public facade](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/src/api.rs) exposes
 format decoders, precise-product providers, corrections, orbits, models,
 position estimation, integrity, PPP, RTK, and explicit advanced-claim
 evidence. A new capability belongs in that facade only when callers can use it
@@ -150,7 +150,7 @@ layout or operator wording.
 
 ## Command Boundary
 
-[Command workflows](../bijux-gnss/) select a requested navigation operation,
+[Command workflows](../bijux-gnss/index.md) select a requested navigation operation,
 translate operator inputs into typed requests, and render results. Command
 defaults may choose among navigation-owned policies, but they must not
 duplicate formulas or silently reinterpret refusal.
@@ -173,11 +173,11 @@ Reject a navigation change that:
   timescale, continuity, and quality checks.
 
 Review format changes with the
-[format contracts](../../crates/bijux-gnss-nav/docs/FORMATS.md), model changes
-with the [model contracts](../../crates/bijux-gnss-nav/docs/MODELS.md),
+[format contracts](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/FORMATS.md), model changes
+with the [model contracts](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/MODELS.md),
 estimation changes with the
-[estimation contracts](../../crates/bijux-gnss-nav/docs/ESTIMATION.md), and
+[estimation contracts](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/ESTIMATION.md), and
 scientific claims with the
-[navigation test guide](../../crates/bijux-gnss-nav/docs/TESTS.md). The owning
+[navigation test guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/TESTS.md). The owning
 proof must exercise the scientific decision, not only the command that exposed
 it.

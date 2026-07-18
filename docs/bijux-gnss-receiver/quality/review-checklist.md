@@ -30,10 +30,10 @@ flowchart LR
 
 | changed surface | accept only when | inspect before accepting |
 | --- | --- | --- |
-| acquisition, tracking, or observation stage | The stage contract and lock/error evidence remain understandable outside one test fixture. | [Stage contracts](../interfaces/stage-contracts.md) and [pipeline guide](../../../crates/bijux-gnss-receiver/docs/PIPELINE.md) |
+| acquisition, tracking, or observation stage | The stage contract and lock/error evidence remain understandable outside one test fixture. | [Stage contracts](../interfaces/stage-contracts.md) and [pipeline guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/docs/PIPELINE.md) |
 | runtime artifact or diagnostic output | The record describes receiver runtime meaning before infra persists it. | [Artifact Contracts](../interfaces/artifact-contracts.md), [Diagnostic Contracts](../interfaces/diagnostic-contracts.md) |
-| validation or simulation helper | Synthetic proof is bounded to receiver behavior and does not become a substitute truth system. | [Validation and simulation contracts](../interfaces/validation-and-simulation-contracts.md) and [reference validation guide](../../../crates/bijux-gnss-receiver/docs/REFERENCE_VALIDATION.md) |
-| public export | The export is a durable receiver boundary, not a shortcut to signal, nav, or infra internals. | [API surface](../interfaces/api-surface.md), [public API](../../../crates/bijux-gnss-receiver/docs/PUBLIC_API.md), and guardrail proof |
+| validation or simulation helper | Synthetic proof is bounded to receiver behavior and does not become a substitute truth system. | [Validation and simulation contracts](../interfaces/validation-and-simulation-contracts.md) and [reference validation guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/docs/REFERENCE_VALIDATION.md) |
+| public export | The export is a durable receiver boundary, not a shortcut to signal, nav, or infra internals. | [API surface](../interfaces/api-surface.md), [public API](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/docs/PUBLIC_API.md), and guardrail proof |
 | deterministic or performance-sensitive path | The proof covers reproducibility, runtime budget, and artifact stability together. | [Determinism and purity](determinism-and-purity.md), [validation budgets](validation-budgets.md), and pipeline determinism proof |
 
 ## Blocking Signs
@@ -49,9 +49,9 @@ flowchart LR
 
 ## Evidence To Require
 
-- Read the [receiver test guide](../../../crates/bijux-gnss-receiver/docs/TESTS.md),
-  [pipeline guide](../../../crates/bijux-gnss-receiver/docs/PIPELINE.md), and
-  [public API](../../../crates/bijux-gnss-receiver/docs/PUBLIC_API.md) before
+- Read the [receiver test guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/docs/TESTS.md),
+  [pipeline guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/docs/PIPELINE.md), and
+  [public API](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/docs/PUBLIC_API.md) before
   accepting broad runtime changes.
 - Require the narrow stage test family for the changed behavior before relying
   on a full pipeline test.

@@ -16,7 +16,7 @@ a shared record.
 
 ## What Core Positively Owns
 
-The [contract map](../../../crates/bijux-gnss-core/docs/CONTRACT_MAP.md) groups
+The [contract map](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/CONTRACT_MAP.md) groups
 the current surface into these responsibilities:
 
 | Shared responsibility | Core contribution |
@@ -128,9 +128,9 @@ arguments use core types.
 ## Public Does Not Mean Unbounded
 
 Supported downstream imports pass through the
-[curated public API](../../../crates/bijux-gnss-core/src/api.rs). Adding an item
+[curated public API](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/src/api.rs). Adding an item
 there commits the workspace to a shared name and meaning. The current
-[public-surface guardrail](../../../crates/bijux-gnss-core/tests/public_api_guardrail.rs)
+[public-surface guardrail](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/tests/public_api_guardrail.rs)
 finds public structs and free functions, but not every enum, trait, constant,
 alias, method, or semantic compatibility change. Review remains necessary.
 

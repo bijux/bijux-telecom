@@ -65,8 +65,8 @@ test is green.
 
 ## First Proof Check
 
-Start with the [receiver reference-validation guide](../../../crates/bijux-gnss-receiver/docs/REFERENCE_VALIDATION.md)
-and [receiver test guide](../../../crates/bijux-gnss-receiver/docs/TESTS.md).
+Start with the [receiver reference-validation guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/docs/REFERENCE_VALIDATION.md)
+and [receiver test guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/docs/TESTS.md).
 Then inspect the synthetic artifact-type source, the synthetic foundation tests,
 and the accuracy-budget tests for acquisition, tracking, observations,
 navigation PVT, receiver clock, and serialized navigation evidence.

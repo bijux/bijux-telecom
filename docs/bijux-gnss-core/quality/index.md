@@ -106,11 +106,11 @@ the [review checklist](review-checklist.md) and
 
 ## Evidence Sources
 
-The [core test guide](../../../crates/bijux-gnss-core/docs/TESTS.md) documents
+The [core test guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/TESTS.md) documents
 current proof and gaps. The
-[invariant guide](../../../crates/bijux-gnss-core/docs/INVARIANTS.md) states
+[invariant guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/INVARIANTS.md) states
 downstream assumptions. Concrete evidence includes the
-[public API guardrail](../../../crates/bijux-gnss-core/tests/public_api_guardrail.rs),
-[navigation artifact validation](../../../crates/bijux-gnss-core/tests/nav_artifact_validation.rs),
-[tracking artifact validation](../../../crates/bijux-gnss-core/tests/tracking_artifact_validation.rs),
-and [timekeeping properties](../../../crates/bijux-gnss-core/tests/prop_timekeeping.rs).
+[public API guardrail](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/tests/public_api_guardrail.rs),
+[navigation artifact validation](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/tests/nav_artifact_validation.rs),
+[tracking artifact validation](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/tests/tracking_artifact_validation.rs),
+and [timekeeping properties](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/tests/prop_timekeeping.rs).

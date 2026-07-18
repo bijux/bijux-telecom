@@ -60,7 +60,7 @@ flowchart LR
 
 ## Proof Path
 
-Start with the [core change rules](../../../crates/bijux-gnss-core/docs/CHANGE_RULES.md)
+Start with the [core change rules](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/CHANGE_RULES.md)
 and the public API guardrail test. If the extension affects serialization,
-also read the [serialization guide](../../../crates/bijux-gnss-core/docs/SERIALIZATION.md)
+also read the [serialization guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/SERIALIZATION.md)
 before accepting the shape.

@@ -43,9 +43,9 @@ The package also contains integration guardrails for its package boundary and
 for fast/slow nextest lane selection. Those are test-owned repository policy;
 there is no slow-roster subcommand in the current binary.
 
-The [command inventory](../../../crates/bijux-gnss-dev/docs/COMMANDS.md) defines
+The [command inventory](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/COMMANDS.md) defines
 the executable surface, and the
-[test guide](../../../crates/bijux-gnss-dev/docs/TESTS.md) defines the
+[test guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/TESTS.md) defines the
 guardrail surface.
 
 ## Ownership Test
@@ -136,8 +136,8 @@ Reconsider ownership when a proposal:
 - has no reviewed input, durable output, or stable maintenance decision
 - needs broad filesystem or network access unrelated to its stated contract
 
-Use the [maintainer boundary](../../../crates/bijux-gnss-dev/docs/BOUNDARY.md)
-and [workflow guide](../../../crates/bijux-gnss-dev/docs/WORKFLOWS.md) to
+Use the [maintainer boundary](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/BOUNDARY.md)
+and [workflow guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/WORKFLOWS.md) to
 resolve ambiguous proposals.
 
 The scope is correct when a maintainer can name the governed input, typed

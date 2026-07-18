@@ -76,7 +76,7 @@ as a blanket claim.
   contract defines refusal.
 - Keep generated test evidence isolated from repository-owned run history.
 
-The [infra test guide](../../../crates/bijux-gnss-infra/docs/TESTS.md) is the
+The [infra test guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/TESTS.md) is the
 short command map. Use [Known Limitations](known-limitations.md) before making a
 coverage claim and [Change Validation](change-validation.md) to match evidence
 to a proposed change.

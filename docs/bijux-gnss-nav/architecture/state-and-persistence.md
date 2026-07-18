@@ -70,7 +70,7 @@ sequenceDiagram
     Note over N,R: own scientific continuity and validation
 ```
 
-The [EKF checkpoint tests](../../../crates/bijux-gnss-nav/tests/integration_checkpoint.rs)
+The [EKF checkpoint tests](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/tests/integration_checkpoint.rs)
 cover round-trip state and resumed-update agreement. PPP checkpoint restoration
 has source-local tests for phase-windup continuity, lifecycle bookkeeping, and
 state identity reconstruction. Neither evidence set proves durable file
@@ -110,7 +110,7 @@ Format I/O must not grow into:
 - selecting artifact names from command context
 - retrying or recovering according to operator policy
 
-The [format guide](../../../crates/bijux-gnss-nav/docs/FORMATS.md) defines
+The [format guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/FORMATS.md) defines
 domain parsing. The [infrastructure ownership boundary](../../bijux-gnss-infra/foundation/ownership-boundary.md)
 defines repository persistence.
 

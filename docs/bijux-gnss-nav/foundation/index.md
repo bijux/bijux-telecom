@@ -46,7 +46,7 @@ a plausible-looking position.
 | Which atmospheric, bias, antenna, tide, or combination model applies? | [Correction contracts](../interfaces/correction-contracts.md) and [time and model contracts](../interfaces/time-and-model-contracts.md) |
 | What supports a position, PPP, RTK, or integrity outcome? | [Estimation contracts](../interfaces/estimation-contracts.md) |
 | Does this concern belong to navigation at all? | [Ownership boundary](ownership-boundary.md) |
-| Which proof is required before changing the claim? | [Navigation quality model](../quality/) |
+| Which proof is required before changing the claim? | [Navigation quality model](../quality/index.md) |
 
 ## Minimum Evidence For A Result
 
@@ -111,9 +111,9 @@ and [change principles](change-principles.md) before altering scientific
 behavior.
 
 Implementation evidence begins with the
-[navigation architecture](../../../crates/bijux-gnss-nav/docs/ARCHITECTURE.md),
-[format guide](../../../crates/bijux-gnss-nav/docs/FORMATS.md),
-[orbit guide](../../../crates/bijux-gnss-nav/docs/ORBITS.md),
-[correction guide](../../../crates/bijux-gnss-nav/docs/CORRECTIONS.md),
-[estimation guide](../../../crates/bijux-gnss-nav/docs/ESTIMATION.md), and
-[time guide](../../../crates/bijux-gnss-nav/docs/TIME.md).
+[navigation architecture](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/ARCHITECTURE.md),
+[format guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/FORMATS.md),
+[orbit guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/ORBITS.md),
+[correction guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/CORRECTIONS.md),
+[estimation guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/ESTIMATION.md), and
+[time guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/TIME.md).

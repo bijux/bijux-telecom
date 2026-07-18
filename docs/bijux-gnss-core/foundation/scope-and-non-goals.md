@@ -16,7 +16,7 @@ receiver, navigation, signal, infrastructure, or command workflows.
 
 ## What Belongs In Core
 
-The [contract map](../../../crates/bijux-gnss-core/docs/CONTRACT_MAP.md)
+The [contract map](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/CONTRACT_MAP.md)
 identifies the current families:
 
 | Contract family | Core-owned meaning |
@@ -94,12 +94,12 @@ manifest commits, command output, or recovery policy.
 
 | Outside core | Stronger owner | Why |
 | --- | --- | --- |
-| spreading codes, replicas, sample conversion, correlation, and DSP | [Signal handbook](../../bijux-gnss-signal/) | these define reusable signal behavior |
-| channel scheduling, acquisition execution, tracking loops, ports, and runtime metrics | [Receiver handbook](../../bijux-gnss-receiver/) | these require session state and runtime policy |
-| decoders, ephemerides, corrections, orbit models, estimators, PPP, RTK, and integrity | [Navigation handbook](../../bijux-gnss-nav/) | these require scientific implementation evidence |
-| datasets, provenance, run layout, manifests, history, and artifact discovery | [Infrastructure handbook](../../bijux-gnss-infra/) | these define repository state and persistence semantics |
-| flags, workflow composition, output rendering, exit status, and operator guidance | [Command handbook](../../bijux-gnss/) | these are user-facing product behavior |
-| independent expected values and fixture construction | [Testkit boundary](../../../crates/bijux-gnss-testkit/docs/BOUNDARY.md) | test oracles must remain independent of production contracts |
+| spreading codes, replicas, sample conversion, correlation, and DSP | [Signal handbook](../../bijux-gnss-signal/index.md) | these define reusable signal behavior |
+| channel scheduling, acquisition execution, tracking loops, ports, and runtime metrics | [Receiver handbook](../../bijux-gnss-receiver/index.md) | these require session state and runtime policy |
+| decoders, ephemerides, corrections, orbit models, estimators, PPP, RTK, and integrity | [Navigation handbook](../../bijux-gnss-nav/index.md) | these require scientific implementation evidence |
+| datasets, provenance, run layout, manifests, history, and artifact discovery | [Infrastructure handbook](../../bijux-gnss-infra/index.md) | these define repository state and persistence semantics |
+| flags, workflow composition, output rendering, exit status, and operator guidance | [Command handbook](../../bijux-gnss/index.md) | these are user-facing product behavior |
+| independent expected values and fixture construction | [Testkit boundary](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-testkit/docs/BOUNDARY.md) | test oracles must remain independent of production contracts |
 
 Core may define a record consumed by any of these owners. It must not absorb the
 algorithm or effect that produces, stores, or presents the record.
@@ -121,14 +121,14 @@ algorithm or effect that produces, stores, or presents the record.
 Before accepting a change:
 
 1. name the producer and at least one independent consumer
-2. place the meaning in the [contract catalog](../../../crates/bijux-gnss-core/docs/CONTRACTS.md)
+2. place the meaning in the [contract catalog](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/CONTRACTS.md)
 3. state invalid combinations in the
-   [invariant guide](../../../crates/bijux-gnss-core/docs/INVARIANTS.md)
+   [invariant guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/INVARIANTS.md)
 4. define reader compatibility in the
-   [serialization guide](../../../crates/bijux-gnss-core/docs/SERIALIZATION.md)
+   [serialization guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/SERIALIZATION.md)
    when persisted
 5. expose the item deliberately through the
-   [public API](../../../crates/bijux-gnss-core/src/api.rs)
+   [public API](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/src/api.rs)
 6. prove the contract in core and check its first producer and consumer
 
 The scope is healthy when core remains understandable without knowing which

@@ -157,15 +157,15 @@ and acquisition parity before readers can rely on it.
 
 ## Evidence
 
-- [Raw IQ implementation](../../../crates/bijux-gnss-signal/src/raw_iq.rs)
+- [Raw IQ implementation](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/src/raw_iq.rs)
   defines the serialized vocabulary and metadata defaults.
-- [Sample conversion implementation](../../../crates/bijux-gnss-signal/src/samples.rs)
+- [Sample conversion implementation](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/src/samples.rs)
   defines scaling, quantization, saturation, and encoding.
-- [Raw IQ contract tests](../../../crates/bijux-gnss-signal/tests/integration_raw_iq_metadata.rs)
+- [Raw IQ contract tests](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/tests/integration_raw_iq_metadata.rs)
   protect encoded widths and metadata round trips.
-- [Sample conversion tests](../../../crates/bijux-gnss-signal/tests/integration_iq_sample_conversion.rs)
+- [Sample conversion tests](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/tests/integration_iq_sample_conversion.rs)
   protect normalization, profile identity, quantized levels, and output widths.
-- [Receiver capture source tests](../../../crates/bijux-gnss-receiver/tests/integration_raw_iq_source.rs)
+- [Receiver capture source tests](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/tests/integration_raw_iq_source.rs)
   protect byte decoding, offsets, framing errors, and sample timing.
-- [Infrastructure metadata validation](../../../crates/bijux-gnss-infra/src/datasets/raw_iq_metadata/validation.rs)
+- [Infrastructure metadata validation](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/src/datasets/raw_iq_metadata/validation.rs)
   defines physical validation and source-agreement checks.

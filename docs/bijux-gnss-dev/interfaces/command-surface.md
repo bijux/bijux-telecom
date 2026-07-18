@@ -17,10 +17,10 @@ comparison have different missing-input and failure behavior.
 
 | command | reads | writes or prints | non-success condition | successful but incomplete condition |
 | --- | --- | --- | --- | --- |
-| `audit-allowlist` | [audit exception ledger](../../../audit-allowlist.toml) | human pass or error output | required ledger is missing, cannot be parsed, has malformed current advisory records, or contains expired records | an empty current advisory list passes |
-| `deny-policy-deviations` | [local standards deviations](../../../configs/rust/deny.deviations.toml) | human pass or error output | required file is missing, malformed, expired, or lacks required ownership and upstream review fields | an empty deviation list passes |
-| `audit-ignore-args` | [audit exception ledger](../../../audit-allowlist.toml) | sorted, deduplicated audit ignore arguments on stdout | an existing ledger cannot be read or parsed | a missing ledger succeeds with empty output; malformed IDs are omitted |
-| `bench-compare` | curated product benchmarks and the [benchmark output contract](../../../crates/bijux-gnss-dev/docs/OUTPUTS.md) | raw evidence, normalized current snapshot, messages, and optional regression findings | benchmark execution or parsing fails; strict mode finds a threshold regression | absent baseline skips comparison; non-strict regressions are reported without failing |
+| `audit-allowlist` | [audit exception ledger](https://github.com/bijux/bijux-gnss/blob/main/audit-allowlist.toml) | human pass or error output | required ledger is missing, cannot be parsed, has malformed current advisory records, or contains expired records | an empty current advisory list passes |
+| `deny-policy-deviations` | [local standards deviations](https://github.com/bijux/bijux-gnss/blob/main/configs/rust/deny.deviations.toml) | human pass or error output | required file is missing, malformed, expired, or lacks required ownership and upstream review fields | an empty deviation list passes |
+| `audit-ignore-args` | [audit exception ledger](https://github.com/bijux/bijux-gnss/blob/main/audit-allowlist.toml) | sorted, deduplicated audit ignore arguments on stdout | an existing ledger cannot be read or parsed | a missing ledger succeeds with empty output; malformed IDs are omitted |
+| `bench-compare` | curated product benchmarks and the [benchmark output contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/OUTPUTS.md) | raw evidence, normalized current snapshot, messages, and optional regression findings | benchmark execution or parsing fails; strict mode finds a threshold regression | absent baseline skips comparison; non-strict regressions are reported without failing |
 
 Every command accepts `--workspace-root`. Without it, the current directory is
 treated as the root. The executable does not walk parent directories.
@@ -73,7 +73,7 @@ stateDiagram-v2
 
 The command runs a fixed receiver and navigation benchmark inventory, writes
 raw run evidence and a normalized current snapshot to the locations defined by
-the [benchmark output contract](../../../crates/bijux-gnss-dev/docs/OUTPUTS.md),
+the [benchmark output contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/OUTPUTS.md),
 then compares against the baseline when one exists.
 
 Do not translate process success into “performance passed” unless a baseline
@@ -101,8 +101,8 @@ For any command change:
 4. Preserve a safe sequencing rule for commands used together.
 5. Add process-level evidence when automation depends on observable behavior.
 6. Update the
-   [command inventory](../../../crates/bijux-gnss-dev/docs/COMMANDS.md) and
-   [output contract](../../../crates/bijux-gnss-dev/docs/OUTPUTS.md).
+   [command inventory](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/COMMANDS.md) and
+   [output contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/OUTPUTS.md).
 
 Use the [workflow contracts](workflow-contracts.md) for safe operational
 sequences.

@@ -213,18 +213,18 @@ the reader supplies a safe default.
 
 ## Evidence and Known Limits
 
-- [Artifact implementation](../../../crates/bijux-gnss-core/src/artifact.rs)
+- [Artifact implementation](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/src/artifact.rs)
   defines the exact header, wrapper, kinds, traits, and read bounds.
-- [Version-one payload families](../../../crates/bijux-gnss-core/src/artifact/v1.rs)
+- [Version-one payload families](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/src/artifact/v1.rs)
   route the acquisition, tracking, observation, navigation, and support
   contracts.
-- [Serialization contract](../../../crates/bijux-gnss-core/docs/SERIALIZATION.md)
+- [Serialization contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/SERIALIZATION.md)
   records reader policy and current evidence gaps.
-- [Navigation artifact validation](../../../crates/bijux-gnss-core/tests/nav_artifact_validation.rs)
+- [Navigation artifact validation](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/tests/nav_artifact_validation.rs)
   protects selected solution-coherence diagnostics.
-- [Tracking artifact validation](../../../crates/bijux-gnss-core/tests/tracking_artifact_validation.rs)
+- [Tracking artifact validation](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/tests/tracking_artifact_validation.rs)
   protects selected uncertainty and navigation-bit diagnostics.
-- [Infrastructure artifact inspection](../../../crates/bijux-gnss-infra/src/artifact_inspection/mod.rs)
+- [Infrastructure artifact inspection](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/src/artifact_inspection/mod.rs)
   is the current repository-facing reader for four payload families.
 
 Current tests cover selected navigation and tracking invariants, plus

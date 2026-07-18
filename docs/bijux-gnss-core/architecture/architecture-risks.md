@@ -64,10 +64,10 @@ flowchart LR
 
 No single existing check proves core is architecturally sound:
 
-- The [public-surface guardrail](../../../crates/bijux-gnss-core/tests/public_api_guardrail.rs)
+- The [public-surface guardrail](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/tests/public_api_guardrail.rs)
   scans source text for public structs and free functions. It does not cover
   enums, traits, constants, aliases, methods, or semantic compatibility.
-- The [package guardrail](../../../crates/bijux-gnss-core/tests/integration_guardrails.rs)
+- The [package guardrail](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/tests/integration_guardrails.rs)
   applies shared source and API policy. It does not prove unit meaning,
   serialization compatibility, or correct ownership.
 - Navigation and tracking artifact tests exercise selected invalid records.

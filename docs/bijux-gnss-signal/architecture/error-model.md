@@ -134,9 +134,9 @@ For each failure path, prove:
 - first downstream translation or refusal behavior
 - display text only when human diagnostics are themselves contractual
 
-Use the [signal contract guide](../../../crates/bijux-gnss-signal/docs/CONTRACTS.md),
-[validation guide](../../../crates/bijux-gnss-signal/docs/VALIDATION.md), and
-[public API guide](../../../crates/bijux-gnss-signal/docs/PUBLIC_API.md) to
+Use the [signal contract guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/CONTRACTS.md),
+[validation guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/VALIDATION.md), and
+[public API guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/PUBLIC_API.md) to
 locate affected consumers.
 
 The failure model is sound when invalid signal meaning remains typed and local,

@@ -38,13 +38,13 @@ flowchart LR
 
 ## Read These First
 
-- open [Foundation](foundation/) when the question is why this crate owns a
+- open [Foundation](foundation/index.md) when the question is why this crate owns a
   scientific concern at all
-- open [Interfaces](interfaces/) when the dispute is already about public
+- open [Interfaces](interfaces/index.md) when the dispute is already about public
   decoders, orbit products, solver types, or time and correction contracts
-- open [Architecture](architecture/) when the question is structural: where
+- open [Architecture](architecture/index.md) when the question is structural: where
   formats, corrections, estimation, models, and orbit logic live in code
-- open [Quality](quality/) when ownership is clear and the question becomes
+- open [Quality](quality/index.md) when ownership is clear and the question becomes
   whether the proof bar is strong enough
 
 ## Why This Package Exists
@@ -86,21 +86,21 @@ them into one generic "nav logic" bucket.
 ## Strongest Proof Surfaces
 
 - crate README:
-  [Navigation crate README](../../crates/bijux-gnss-nav/README.md)
+  [Navigation crate README](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/README.md)
 - crate-local scientific docs:
-  [Navigation architecture](../../crates/bijux-gnss-nav/docs/ARCHITECTURE.md),
-  [Navigation contracts](../../crates/bijux-gnss-nav/docs/CONTRACTS.md),
-  [Orbit guide](../../crates/bijux-gnss-nav/docs/ORBITS.md),
-  [Correction guide](../../crates/bijux-gnss-nav/docs/CORRECTIONS.md),
-  [Estimation guide](../../crates/bijux-gnss-nav/docs/ESTIMATION.md),
-  [Navigation time guide](../../crates/bijux-gnss-nav/docs/TIME.md)
+  [Navigation architecture](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/ARCHITECTURE.md),
+  [Navigation contracts](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/CONTRACTS.md),
+  [Orbit guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/ORBITS.md),
+  [Correction guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/CORRECTIONS.md),
+  [Estimation guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/ESTIMATION.md),
+  [Navigation time guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/TIME.md)
 - source roots:
-  [format source](../../crates/bijux-gnss-nav/src/formats),
-  [orbit source](../../crates/bijux-gnss-nav/src/orbits),
-  [correction source](../../crates/bijux-gnss-nav/src/corrections),
-  [estimation source](../../crates/bijux-gnss-nav/src/estimation)
+  [format source](https://github.com/bijux/bijux-gnss/tree/main/crates/bijux-gnss-nav/src/formats),
+  [orbit source](https://github.com/bijux/bijux-gnss/tree/main/crates/bijux-gnss-nav/src/orbits),
+  [correction source](https://github.com/bijux/bijux-gnss/tree/main/crates/bijux-gnss-nav/src/corrections),
+  [estimation source](https://github.com/bijux/bijux-gnss/tree/main/crates/bijux-gnss-nav/src/estimation)
 - proof tests:
-  [navigation integration tests](../../crates/bijux-gnss-nav/tests)
+  [navigation integration tests](https://github.com/bijux/bijux-gnss/tree/main/crates/bijux-gnss-nav/tests)
 
 ## Support Crates That Matter Here
 
@@ -113,15 +113,15 @@ them into one generic "nav logic" bucket.
 
 ## Sections In This Handbook
 
-- [Foundation](foundation/) for role, scope, ownership, repository fit, and
+- [Foundation](foundation/index.md) for role, scope, ownership, repository fit, and
   navigation vocabulary
-- [Architecture](architecture/) for module layout, dependency direction,
+- [Architecture](architecture/index.md) for module layout, dependency direction,
   persistence boundaries, and integration seams
-- [Interfaces](interfaces/) for public API, product contracts, correction
+- [Interfaces](interfaces/index.md) for public API, product contracts, correction
   contracts, estimator contracts, and compatibility expectations
-- [Operations](operations/) for safe change sequence, verification, review
+- [Operations](operations/index.md) for safe change sequence, verification, review
   scope, and benchmark-aware maintenance
-- [Quality](quality/) for invariants, proof strategy, limitations, risk, and
+- [Quality](quality/index.md) for invariants, proof strategy, limitations, risk, and
   change validation
 - [Navigation ownership boundaries](ownership-boundaries.md) for deciding
   whether behavior is navigation science or a neighboring concern
@@ -150,25 +150,25 @@ them into one generic "nav logic" bucket.
 ## Leave This Handbook When
 
 - the question becomes about user-facing commands:
-  [Command handbook](../bijux-gnss/)
+  [Command handbook](../bijux-gnss/index.md)
 - the question becomes about shared observation or artifact schemas:
-  [Core handbook](../bijux-gnss-core/)
+  [Core handbook](../bijux-gnss-core/index.md)
 - the question becomes about persisted repository evidence:
-  [Infra handbook](../bijux-gnss-infra/)
+  [Infra handbook](../bijux-gnss-infra/index.md)
 - the question becomes about runtime scheduling and acquisition or tracking
   orchestration:
-  [Receiver handbook](../bijux-gnss-receiver/)
+  [Receiver handbook](../bijux-gnss-receiver/index.md)
 
 ## Evidence Routes
 
-- [curated navigation API source](../../crates/bijux-gnss-nav/src/api.rs)
-- [format source](../../crates/bijux-gnss-nav/src/formats/)
-- [orbit source](../../crates/bijux-gnss-nav/src/orbits/)
-- [correction source](../../crates/bijux-gnss-nav/src/corrections/)
-- [estimation source](../../crates/bijux-gnss-nav/src/estimation/)
-- [model source](../../crates/bijux-gnss-nav/src/models/)
-- [rollover handling source](../../crates/bijux-gnss-nav/src/time/rollover.rs)
-- [public API guide](../../crates/bijux-gnss-nav/docs/PUBLIC_API.md)
+- [curated navigation API source](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/src/api.rs)
+- [format source](https://github.com/bijux/bijux-gnss/tree/main/crates/bijux-gnss-nav/src/formats)
+- [orbit source](https://github.com/bijux/bijux-gnss/tree/main/crates/bijux-gnss-nav/src/orbits)
+- [correction source](https://github.com/bijux/bijux-gnss/tree/main/crates/bijux-gnss-nav/src/corrections)
+- [estimation source](https://github.com/bijux/bijux-gnss/tree/main/crates/bijux-gnss-nav/src/estimation)
+- [model source](https://github.com/bijux/bijux-gnss/tree/main/crates/bijux-gnss-nav/src/models)
+- [rollover handling source](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/src/time/rollover.rs)
+- [public API guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/PUBLIC_API.md)
 
 ## Design Pressure
 

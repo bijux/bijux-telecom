@@ -84,7 +84,7 @@ named, or how evidence is registered.
 | Where is output written, versioned, indexed, or replayed? | navigation supplies typed evidence | infrastructure owns persistence |
 | Which option does an operator invoke and how is the result summarized? | navigation supplies meaning | command owns invocation and presentation |
 
-Use the [navigation boundary](../../../crates/bijux-gnss-nav/docs/BOUNDARY.md)
+Use the [navigation boundary](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/BOUNDARY.md)
 for crate-local ownership and the
 [core ownership guide](../../bijux-gnss-core/foundation/ownership-boundary.md)
 before moving records downward.
@@ -108,15 +108,15 @@ contract. That adapter does not transfer scientific ownership.
 
 Start with the scientific family, not the caller that exposed the problem:
 
-- [format contracts](../../../crates/bijux-gnss-nav/docs/FORMATS.md) for decoded
+- [format contracts](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/FORMATS.md) for decoded
   product meaning;
-- [orbit contracts](../../../crates/bijux-gnss-nav/docs/ORBITS.md) and
-  [time contracts](../../../crates/bijux-gnss-nav/docs/TIME.md) for state and
+- [orbit contracts](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/ORBITS.md) and
+  [time contracts](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/TIME.md) for state and
   epoch interpretation;
-- [correction contracts](../../../crates/bijux-gnss-nav/docs/CORRECTIONS.md) and
-  [model contracts](../../../crates/bijux-gnss-nav/docs/MODELS.md) for physical
+- [correction contracts](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/CORRECTIONS.md) and
+  [model contracts](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/MODELS.md) for physical
   assumptions;
-- [estimation contracts](../../../crates/bijux-gnss-nav/docs/ESTIMATION.md) for
+- [estimation contracts](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/ESTIMATION.md) for
   solution and refusal semantics.
 
 Then follow the result outward through the

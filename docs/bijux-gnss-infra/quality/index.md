@@ -99,8 +99,8 @@ Use [known limitations](known-limitations.md), the
 
 ## Evidence Sources
 
-The [package test guide](../../../crates/bijux-gnss-infra/docs/TESTS.md) maps
+The [package test guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/TESTS.md) maps
 current evidence. Representative proof includes
-[override integration](../../../crates/bijux-gnss-infra/tests/integration_overrides.rs),
-[artifact inspection tests](../../../crates/bijux-gnss-infra/src/artifact_inspection/tests.rs),
-and [package guardrails](../../../crates/bijux-gnss-infra/tests/integration_guardrails.rs).
+[override integration](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/tests/integration_overrides.rs),
+[artifact inspection tests](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/src/artifact_inspection/tests.rs),
+and [package guardrails](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/tests/integration_guardrails.rs).

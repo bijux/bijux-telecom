@@ -43,11 +43,11 @@ flowchart TD
 | surface | compatibility promise | proof anchor |
 | --- | --- | --- |
 | curated public API | stable cross-crate exports enter through `bijux_gnss_core::api` | curated API source and public API guardrail |
-| serialized artifacts | field meaning changes through explicit version boundaries | [serialization guide](../../../crates/bijux-gnss-core/docs/SERIALIZATION.md) and artifact validation tests |
+| serialized artifacts | field meaning changes through explicit version boundaries | [serialization guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/SERIALIZATION.md) and artifact validation tests |
 | shared units and time | typed wrappers and time records keep meaning explicit | unit, time, and timekeeping proof |
 | identifiers | constellation, satellite, signal, band, and code identity stay shared | identity source and support-matrix tests |
 | observations and navigation records | higher crates exchange records without importing private layout | observation and navigation-solution source |
-| diagnostics | severity, code, and event shape remain machine-readable | diagnostic source and [diagnostic guide](../../../crates/bijux-gnss-core/docs/DIAGNOSTICS.md) |
+| diagnostics | severity, code, and event shape remain machine-readable | diagnostic source and [diagnostic guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/DIAGNOSTICS.md) |
 
 ## Non-Commitments
 
@@ -69,9 +69,9 @@ flowchart TD
 
 ## First Proof Check
 
-Inspect the [core change rules](../../../crates/bijux-gnss-core/docs/CHANGE_RULES.md),
-[public API](../../../crates/bijux-gnss-core/docs/PUBLIC_API.md),
-[contract guide](../../../crates/bijux-gnss-core/docs/CONTRACTS.md),
-[serialization guide](../../../crates/bijux-gnss-core/docs/SERIALIZATION.md),
-[invariant guide](../../../crates/bijux-gnss-core/docs/INVARIANTS.md), and
+Inspect the [core change rules](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/CHANGE_RULES.md),
+[public API](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/PUBLIC_API.md),
+[contract guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/CONTRACTS.md),
+[serialization guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/SERIALIZATION.md),
+[invariant guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/INVARIANTS.md), and
 public API guardrail proof.

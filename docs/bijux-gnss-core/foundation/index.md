@@ -49,11 +49,11 @@ such a helper through core would hide the disagreement rather than resolve it.
 | --- | --- |
 | How is a satellite, signal, component, or channel identified? | [Shared concepts](shared-concepts.md) and [domain language](domain-language.md) |
 | Which units, clock, time scale, or coordinate frame apply? | [Shared concepts](shared-concepts.md) |
-| What record crosses acquisition, tracking, observation, or navigation boundaries? | [Contract interfaces](../interfaces/) |
+| What record crosses acquisition, tracking, observation, or navigation boundaries? | [Contract interfaces](../interfaces/index.md) |
 | What makes a persisted record readable and valid? | [Artifact contracts](../interfaces/artifact-contracts.md) |
 | Is a proposed type genuinely shared or merely convenient? | [Ownership boundary](ownership-boundary.md) |
 | Can the contract remain portable outside this workspace? | [Portability decision](portability-decision.md) |
-| What compatibility burden follows a change? | [Core quality model](../quality/) |
+| What compatibility burden follows a change? | [Core quality model](../quality/index.md) |
 
 ## The Semantic Checklist
 
@@ -94,12 +94,12 @@ created.
 Use the [package overview](package-overview.md) for the concise package role,
 [scope and non-goals](scope-and-non-goals.md) for explicit refusals, and
 [repository fit](repository-fit.md) for dependency context. The
-[architecture guide](../architecture/) explains how private families reach the
+[architecture guide](../architecture/index.md) explains how private families reach the
 curated API. [Glossary routes](glossary-routes.md) point to canonical terms,
 while [change principles](change-principles.md) set the compatibility standard.
 
 For implementation evidence, inspect the
-[curated API](../../../crates/bijux-gnss-core/src/api.rs),
-[contract map](../../../crates/bijux-gnss-core/docs/CONTRACT_MAP.md),
-[invariant guide](../../../crates/bijux-gnss-core/docs/INVARIANTS.md), and
-[serialization guide](../../../crates/bijux-gnss-core/docs/SERIALIZATION.md).
+[curated API](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/src/api.rs),
+[contract map](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/CONTRACT_MAP.md),
+[invariant guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/INVARIANTS.md), and
+[serialization guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/SERIALIZATION.md).

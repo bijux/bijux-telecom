@@ -90,9 +90,9 @@ and refused outcomes, independent evidence, public contract, and necessary
 consumer adaptations agree. Keep unrelated estimator families separate even
 when they share mathematical helpers.
 
-The [format guide](../../../crates/bijux-gnss-nav/docs/FORMATS.md),
-[orbit guide](../../../crates/bijux-gnss-nav/docs/ORBITS.md),
-[correction guide](../../../crates/bijux-gnss-nav/docs/CORRECTIONS.md),
-[estimation guide](../../../crates/bijux-gnss-nav/docs/ESTIMATION.md), and
-[test guide](../../../crates/bijux-gnss-nav/docs/TESTS.md) are the package-level
+The [format guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/FORMATS.md),
+[orbit guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/ORBITS.md),
+[correction guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/CORRECTIONS.md),
+[estimation guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/ESTIMATION.md), and
+[test guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-nav/docs/TESTS.md) are the package-level
 authorities.

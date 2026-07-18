@@ -64,7 +64,7 @@ flowchart TD
 
 ## Proof Path
 
-Start with the [infra contract guide](../../../crates/bijux-gnss-infra/docs/CONTRACTS.md)
+Start with the [infra contract guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/CONTRACTS.md)
 and the infra guardrail test. If the change persists data, also read the
-[run layout guide](../../../crates/bijux-gnss-infra/docs/RUN_LAYOUT.md) before
+[run layout guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/RUN_LAYOUT.md) before
 accepting the extension.

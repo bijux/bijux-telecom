@@ -41,7 +41,7 @@ flowchart LR
     validation --> api --> consumers
 ```
 
-The [curated signal API](../../../crates/bijux-gnss-signal/src/api.rs) is the
+The [curated signal API](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/src/api.rs) is the
 supported downstream surface. Source placement helps maintainers find an
 implementation; it does not grant stability to private modules.
 
@@ -49,13 +49,13 @@ implementation; it does not grant stability to private modules.
 
 | Reader question | Start here | Expected owner |
 | --- | --- | --- |
-| Which signals, bands, components, frequencies, or wavelengths are supported? | [Catalog architecture](../../../crates/bijux-gnss-signal/docs/CATALOG.md) | catalog |
-| How is a primary, secondary, or data-symbol sequence generated and sampled? | [Code-family architecture](../../../crates/bijux-gnss-signal/docs/CODE_FAMILIES.md) | constellation code family |
-| How are raw bytes described, normalized, or quantized? | [Raw-IQ contract](../../../crates/bijux-gnss-signal/docs/RAW_IQ.md) and [sample conversion](../../../crates/bijux-gnss-signal/docs/SAMPLES.md) | raw-IQ metadata and sample conversion |
-| How are phase, timing, replicas, front-end response, spectra, and tracking math computed? | [DSP architecture](../../../crates/bijux-gnss-signal/docs/DSP.md) | reusable DSP primitive |
-| Which observation pairs or epoch structures are signal-compatible? | [Signal validation](../../../crates/bijux-gnss-signal/docs/VALIDATION.md) | observation validation |
+| Which signals, bands, components, frequencies, or wavelengths are supported? | [Catalog architecture](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/CATALOG.md) | catalog |
+| How is a primary, secondary, or data-symbol sequence generated and sampled? | [Code-family architecture](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/CODE_FAMILIES.md) | constellation code family |
+| How are raw bytes described, normalized, or quantized? | [Raw-IQ contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/RAW_IQ.md) and [sample conversion](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/SAMPLES.md) | raw-IQ metadata and sample conversion |
+| How are phase, timing, replicas, front-end response, spectra, and tracking math computed? | [DSP architecture](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/DSP.md) | reusable DSP primitive |
+| Which observation pairs or epoch structures are signal-compatible? | [Signal validation](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/VALIDATION.md) | observation validation |
 | Should a behavior be a trait or a free function? | [Trait contracts](../interfaces/trait-contracts.md) | public integration seam only when polymorphism is required |
-| Which crate should own a cross-package behavior? | [Signal boundary](../../../crates/bijux-gnss-signal/docs/BOUNDARY.md) | lowest crate that can express it without higher-level policy |
+| Which crate should own a cross-package behavior? | [Signal boundary](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/BOUNDARY.md) | lowest crate that can express it without higher-level policy |
 
 ## Computation Versus Orchestration
 
@@ -138,7 +138,7 @@ operation.
 | adding a signal family or DSP capability | [Extensibility model](extensibility-model.md) |
 | known structural hazards | [Architecture risks](architecture-risks.md) |
 
-The [full architecture guide](../../../crates/bijux-gnss-signal/docs/ARCHITECTURE.md)
+The [full architecture guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/ARCHITECTURE.md)
 defines the package-level flow, and the
-[signal proof inventory](../../../crates/bijux-gnss-signal/docs/TESTS.md) maps
+[signal proof inventory](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/TESTS.md) maps
 each region to its verification families.

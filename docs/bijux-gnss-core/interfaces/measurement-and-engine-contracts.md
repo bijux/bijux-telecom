@@ -33,7 +33,7 @@ flowchart LR
 
 | family | owns | first proof |
 | --- | --- | --- |
-| sample bridge | sample-frame records that cross source, signal, and receiver boundaries | observation source and [core contract guide](../../../crates/bijux-gnss-core/docs/CONTRACTS.md) |
+| sample bridge | sample-frame records that cross source, signal, and receiver boundaries | observation source and [core contract guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/CONTRACTS.md) |
 | acquisition records | request/result records and explainability payload meaning | observation source |
 | tracking records | tracking epochs, transitions, uncertainty, and channel-state language | observation source |
 | observation records | `ObsEpoch`, metadata, receiver roles, timing, rejection, and uncertainty classes | observation source |
@@ -61,8 +61,8 @@ flowchart LR
 
 ## First Proof Check
 
-Inspect the [core contract guide](../../../crates/bijux-gnss-core/docs/CONTRACTS.md),
-[contract map](../../../crates/bijux-gnss-core/docs/CONTRACT_MAP.md), and
-[serialization guide](../../../crates/bijux-gnss-core/docs/SERIALIZATION.md).
+Inspect the [core contract guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/CONTRACTS.md),
+[contract map](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/CONTRACT_MAP.md), and
+[serialization guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/SERIALIZATION.md).
 Then inspect artifact, observation, and navigation-solution source for the
 record family that moved.

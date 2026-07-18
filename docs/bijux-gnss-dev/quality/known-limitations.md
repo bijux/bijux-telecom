@@ -44,7 +44,7 @@ environment. Review authority remains outside the executable.
 | derivation accepts two shapes | ignore arguments come from reviewed advisory rows and a legacy ignore array | the validator checks only reviewed rows, while the adapter can emit legacy entries | run validation before derivation and retire or explicitly govern the legacy shape |
 | invalid derived identifiers disappear | malformed identifiers are skipped by the adapter | mixed-validity input can produce plausible partial output | validate the source and add exact mixed-input tests |
 
-The [audit policy](../../../crates/bijux-gnss-dev/docs/AUDIT_POLICY.md) describes
+The [audit policy](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/AUDIT_POLICY.md) describes
 intended review discipline. The [maintainer evidence ledger](index.md)
 distinguishes that intent from current automated proof.
 
@@ -69,7 +69,7 @@ diagnostic envelope, or stable error-code catalog. Automation should rely on
 documented process status and the exact adapter output, not parse incidental
 wording.
 
-Use [maintainer interface contracts](../interfaces/) for current command,
+Use [maintainer interface contracts](../interfaces/index.md) for current command,
 status, and output behavior.
 
 ## Test Coverage Limits
@@ -117,7 +117,7 @@ The expression proof checks inclusion of every ledger entry and the fast/slow
 negation relationship. It does not enumerate all tests selected by the regular
 expression or establish that each rostered test deserves slow-lane placement.
 
-The [suite-selection integration](../../../crates/bijux-gnss-dev/tests/integration_nextest_suite_selection.rs)
+The [suite-selection integration](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/tests/integration_nextest_suite_selection.rs)
 is therefore a policy-coherence check, not scientific or performance evidence.
 
 ## Benchmark Limits
@@ -138,7 +138,7 @@ receiver and navigation targets. It is not a general benchmark framework.
 
 A successful run without a baseline means the selected benchmarks executed and
 current evidence was written. It does not mean performance remained stable.
-The [benchmark evidence guide](../../../crates/bijux-gnss-dev/docs/BENCHMARKS.md)
+The [benchmark evidence guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/BENCHMARKS.md)
 defines the intended review context, and the
 [execution model](../architecture/execution-model.md) describes write ordering.
 

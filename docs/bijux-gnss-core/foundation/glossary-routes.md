@@ -37,14 +37,14 @@ flowchart TD
 
 | reader question | shared vocabulary | continue with |
 | --- | --- | --- |
-| Which constellation, satellite, signal, band, code, component, slot, or GLONASS channel is this? | `Constellation`, `SatId`, `SigId`, `SignalBand`, `SignalCode`, component specifications, and frequency-channel types | [Identity contracts](../../../crates/bijux-gnss-core/src/ids.rs) |
-| When did this value occur, and is the timestamp based on GPS, UTC, TAI, an epoch, or a receiver sample? | `GpsTime`, `UtcTime`, `TaiTime`, `Epoch`, `SampleClock`, and `ReceiverSampleTrace` | [Time contracts](../../../crates/bijux-gnss-core/src/time.rs) |
-| What physical quantity, sign, or coordinate frame does this number use? | meters, seconds, hertz, chips, cycles, WGS-84, ECEF, ENU, and LLH | [Unit contracts](../../../crates/bijux-gnss-core/src/units.rs), [coordinate contracts](../../../crates/bijux-gnss-core/src/geo.rs), and [engineering conventions](../interfaces/engineering-conventions.md) |
+| Which constellation, satellite, signal, band, code, component, slot, or GLONASS channel is this? | `Constellation`, `SatId`, `SigId`, `SignalBand`, `SignalCode`, component specifications, and frequency-channel types | [Identity contracts](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/src/ids.rs) |
+| When did this value occur, and is the timestamp based on GPS, UTC, TAI, an epoch, or a receiver sample? | `GpsTime`, `UtcTime`, `TaiTime`, `Epoch`, `SampleClock`, and `ReceiverSampleTrace` | [Time contracts](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/src/time.rs) |
+| What physical quantity, sign, or coordinate frame does this number use? | meters, seconds, hertz, chips, cycles, WGS-84, ECEF, ENU, and LLH | [Unit contracts](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/src/units.rs), [coordinate contracts](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/src/geo.rs), and [engineering conventions](../interfaces/engineering-conventions.md) |
 | What evidence crossed the acquisition, tracking, or observation boundary? | requests, hypotheses, results, tracking epochs, transitions, observation epochs, uncertainty, quality, and differencing records | [Observation and tracking contracts](../interfaces/observation-and-tracking-contracts.md) |
 | What did navigation produce without exposing solver internals? | solution status, validity, lifecycle, residuals, inter-system bias, uncertainty, refusal, and position fields | [Navigation result contracts](../interfaces/navigation-solution-contracts.md) |
 | How is evidence versioned, diagnosed, validated, or declared supported? | artifact envelopes, payload kinds, diagnostic events, validation reports, and support rows | [Artifact contracts](../interfaces/artifact-contracts.md) and [configuration and diagnostics](../interfaces/configuration-and-diagnostics.md) |
 
-The [contract map](../../../crates/bijux-gnss-core/docs/CONTRACT_MAP.md) is the
+The [contract map](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/CONTRACT_MAP.md) is the
 complete ownership index. Source links identify where meaning is defined; public
 consumers import supported items through `bijux_gnss_core::api`.
 
@@ -104,16 +104,16 @@ flowchart LR
 ```
 
 - For code generation, sampling, spectra, replicas, or loop mathematics, follow
-  the [signal handbook](../../bijux-gnss-signal/).
+  the [signal handbook](../../bijux-gnss-signal/index.md).
 - For acquisition decisions, tracking lifecycle, observation construction, or
   runtime artifacts, follow the
-  [receiver handbook](../../bijux-gnss-receiver/).
+  [receiver handbook](../../bijux-gnss-receiver/index.md).
 - For orbit products, corrections, position estimation, PPP, RTK, or integrity,
-  follow the [navigation handbook](../../bijux-gnss-nav/).
+  follow the [navigation handbook](../../bijux-gnss-nav/index.md).
 - For registry interpretation, run layout, persistence, or artifact inspection,
-  follow the [infrastructure handbook](../../bijux-gnss-infra/).
+  follow the [infrastructure handbook](../../bijux-gnss-infra/index.md).
 - For command behavior and rendered output, follow the
-  [operator handbook](../../bijux-gnss/).
+  [operator handbook](../../bijux-gnss/index.md).
 
 ## Adding Shared Language
 

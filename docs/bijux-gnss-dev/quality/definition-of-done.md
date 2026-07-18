@@ -18,11 +18,11 @@ or become a product API.
 
 | changed surface | done means | proof to start from |
 | --- | --- | --- |
-| `audit-allowlist` | advisory exceptions remain explicit, attributable, linked, and time-bounded | command test plus [audit policy](../../../crates/bijux-gnss-dev/docs/AUDIT_POLICY.md) |
-| `deny-policy-deviations` | local cargo-deny deviations still name owner, reason, review link, and expiry | command test plus [governance file guide](../../../crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md) |
-| `audit-ignore-args` | generated ignore flags come only from the reviewed allowlist | command behavior plus [workflow guide](../../../crates/bijux-gnss-dev/docs/WORKFLOWS.md) |
-| `bench-compare` | benchmark output, normalized snapshot, baseline comparison, and strict-mode behavior remain documented | [benchmark guide](../../../crates/bijux-gnss-dev/docs/BENCHMARKS.md) and output proof |
-| command inventory | public command names and inputs match the binary and docs | [command guide](../../../crates/bijux-gnss-dev/docs/COMMANDS.md) and guardrail tests |
+| `audit-allowlist` | advisory exceptions remain explicit, attributable, linked, and time-bounded | command test plus [audit policy](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/AUDIT_POLICY.md) |
+| `deny-policy-deviations` | local cargo-deny deviations still name owner, reason, review link, and expiry | command test plus [governance file guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md) |
+| `audit-ignore-args` | generated ignore flags come only from the reviewed allowlist | command behavior plus [workflow guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/WORKFLOWS.md) |
+| `bench-compare` | benchmark output, normalized snapshot, baseline comparison, and strict-mode behavior remain documented | [benchmark guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/BENCHMARKS.md) and output proof |
+| command inventory | public command names and inputs match the binary and docs | [command guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/COMMANDS.md) and guardrail tests |
 
 ## Proof Flow
 
@@ -46,12 +46,12 @@ flowchart TD
 
 ## Proof Route
 
-1. Read the [maintainer boundary guide](../../../crates/bijux-gnss-dev/docs/BOUNDARY.md).
-2. Read the [command guide](../../../crates/bijux-gnss-dev/docs/COMMANDS.md),
-   [workflow guide](../../../crates/bijux-gnss-dev/docs/WORKFLOWS.md), and
-   [output guide](../../../crates/bijux-gnss-dev/docs/OUTPUTS.md).
+1. Read the [maintainer boundary guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/BOUNDARY.md).
+2. Read the [command guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/COMMANDS.md),
+   [workflow guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/WORKFLOWS.md), and
+   [output guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/OUTPUTS.md).
 3. Inspect command implementation.
-4. Run the narrow check named in the [maintainer test guide](../../../crates/bijux-gnss-dev/docs/TESTS.md).
+4. Run the narrow check named in the [maintainer test guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/TESTS.md).
 
 Do not call a maintainer workflow done because it is convenient locally. It is
 done only when the repository rule remains explicit, reviewable, and enforced by

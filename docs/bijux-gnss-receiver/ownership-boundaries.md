@@ -80,7 +80,7 @@ flowchart LR
     history --> state
 ```
 
-Move behavior to [signal processing](../bijux-gnss-signal/) when it can be
+Move behavior to [signal processing](../bijux-gnss-signal/index.md) when it can be
 tested with explicit mathematical inputs and remains useful outside a receiver
 session. Keep it here when channel history, stage ordering, configured
 thresholds, degraded-state handling, or run evidence changes the outcome.
@@ -88,7 +88,7 @@ thresholds, degraded-state handling, or run evidence changes the outcome.
 ## Navigation Boundary
 
 Receiver owns when observations are handed to navigation and how navigation
-results participate in a receiver run. [Navigation science](../bijux-gnss-nav/)
+results participate in a receiver run. [Navigation science](../bijux-gnss-nav/index.md)
 owns:
 
 - product decoding and orbit state;
@@ -103,7 +103,7 @@ continuity; navigation tests should prove the scientific decision.
 
 ## Ports And Effects
 
-The [receiver public facade](../../crates/bijux-gnss-receiver/src/api.rs)
+The [receiver public facade](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/src/api.rs)
 exposes runtime configuration, metrics, traces, clocks, sample and artifact
 ports, concrete sample sources, stage engines, tracking sessions, observation
 builders, and run artifacts.
@@ -137,7 +137,7 @@ Receiver owns `RunArtifacts` and the acquisition, tracking, observation,
 navigation, diagnostic, and support evidence accumulated in memory. It also
 owns the invariant that those records truthfully reflect stage execution.
 
-[Repository infrastructure](../bijux-gnss-infra/) owns:
+[Repository infrastructure](../bijux-gnss-infra/index.md) owns:
 
 - run directory identity and file placement;
 - manifests, run reports, and history;
@@ -163,11 +163,11 @@ receiver state that should already be explicit in the artifact.
 
 ## Shared Contracts And Presentation
 
-[Shared GNSS contracts](../bijux-gnss-core/) define portable request,
+[Shared GNSS contracts](../bijux-gnss-core/index.md) define portable request,
 result, observation, lifecycle, diagnostic, uncertainty, and artifact record
 meaning. Receiver decides when runtime evidence takes those values.
 
-[Command workflows](../bijux-gnss/) define operator syntax, workflow
+[Command workflows](../bijux-gnss/index.md) define operator syntax, workflow
 selection, and report rendering. A command default may select a receiver
 configuration, but receiver owns validation and runtime consequences of that
 configuration.
@@ -200,9 +200,9 @@ Reject a receiver change that:
 - optimizes away diagnostic or uncertainty evidence;
 - treats final position quality as sufficient proof of acquisition or tracking.
 
-Use the [pipeline contract](../../crates/bijux-gnss-receiver/docs/PIPELINE.md),
-[runtime contract](../../crates/bijux-gnss-receiver/docs/RUNTIME.md),
-[port contract](../../crates/bijux-gnss-receiver/docs/PORTS.md),
-[artifact contract](../../crates/bijux-gnss-receiver/docs/ARTIFACTS.md), and
-[receiver test guide](../../crates/bijux-gnss-receiver/docs/TESTS.md) to review
+Use the [pipeline contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/docs/PIPELINE.md),
+[runtime contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/docs/RUNTIME.md),
+[port contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/docs/PORTS.md),
+[artifact contract](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/docs/ARTIFACTS.md), and
+[receiver test guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/docs/TESTS.md) to review
 the affected boundary.

@@ -38,10 +38,10 @@ public promise.
 
 ## Protecting Proof
 
-- the [public API facade](../../../crates/bijux-gnss-signal/src/api.rs)
-- the [public API guide](../../../crates/bijux-gnss-signal/docs/PUBLIC_API.md)
-- the [catalog guide](../../../crates/bijux-gnss-signal/docs/CATALOG.md)
-- the [DSP guide](../../../crates/bijux-gnss-signal/docs/DSP.md)
-- the [raw-IQ guide](../../../crates/bijux-gnss-signal/docs/RAW_IQ.md)
-- the [trait guide](../../../crates/bijux-gnss-signal/docs/TRAITS.md)
-- the [validation guide](../../../crates/bijux-gnss-signal/docs/VALIDATION.md)
+- the [public API facade](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/src/api.rs)
+- the [public API guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/PUBLIC_API.md)
+- the [catalog guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/CATALOG.md)
+- the [DSP guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/DSP.md)
+- the [raw-IQ guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/RAW_IQ.md)
+- the [trait guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/TRAITS.md)
+- the [validation guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/VALIDATION.md)

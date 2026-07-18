@@ -113,9 +113,9 @@ write, or empty reference alignment. Replacing these failures with a generic
 "infrastructure error" removes the evidence an operator needs.
 
 For deeper contracts, continue with the
-[dataset guide](../../../crates/bijux-gnss-infra/docs/DATASETS.md),
-[run layout guide](../../../crates/bijux-gnss-infra/docs/RUN_LAYOUT.md),
-[validation guide](../../../crates/bijux-gnss-infra/docs/VALIDATION.md), or
-[override guide](../../../crates/bijux-gnss-infra/docs/OVERRIDES.md). The
-[curated API source](../../../crates/bijux-gnss-infra/src/api.rs) remains the
+[dataset guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/DATASETS.md),
+[run layout guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/RUN_LAYOUT.md),
+[validation guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/VALIDATION.md), or
+[override guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/OVERRIDES.md). The
+[curated API source](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/src/api.rs) remains the
 authoritative list of available names.

@@ -37,14 +37,14 @@ flowchart LR
 
 ## Read These First
 
-- open [Foundation](foundation/) when the question is why the crate exists,
+- open [Foundation](foundation/index.md) when the question is why the crate exists,
   what it owns, and where it should refuse more work
-- open [Interfaces](interfaces/) when the dispute is already about public
+- open [Interfaces](interfaces/index.md) when the dispute is already about public
   imports, artifact envelopes, observation records, or configuration-facing
   contracts
-- open [Architecture](architecture/) when the question is structural: which
+- open [Architecture](architecture/index.md) when the question is structural: which
   module owns which contract family and how the crate stays dependency-light
-- open [Quality](quality/) when the boundary is clear and the question becomes
+- open [Quality](quality/index.md) when the boundary is clear and the question becomes
   whether the proofs are strong enough
 
 ## Why This Package Exists
@@ -79,19 +79,19 @@ flowchart LR
 ## Strongest Proof Surfaces
 
 - crate README:
-  [Core crate README](../../crates/bijux-gnss-core/README.md)
+  [Core crate README](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/README.md)
 - public contract docs:
-  [Core public API](../../crates/bijux-gnss-core/docs/PUBLIC_API.md),
-  [Core contracts](../../crates/bijux-gnss-core/docs/CONTRACTS.md)
+  [Core public API](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/PUBLIC_API.md),
+  [Core contracts](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/CONTRACTS.md)
 - invariant and serialization docs:
-  [Core invariants](../../crates/bijux-gnss-core/docs/INVARIANTS.md),
-  [Serialization contracts](../../crates/bijux-gnss-core/docs/SERIALIZATION.md)
+  [Core invariants](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/INVARIANTS.md),
+  [Serialization contracts](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/SERIALIZATION.md)
 - source roots:
-  [curated core API source](../../crates/bijux-gnss-core/src/api.rs),
-  [artifact contract source](../../crates/bijux-gnss-core/src/artifact),
-  [observation contract source](../../crates/bijux-gnss-core/src/observation)
+  [curated core API source](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/src/api.rs),
+  [artifact contract source](https://github.com/bijux/bijux-gnss/tree/main/crates/bijux-gnss-core/src/artifact),
+  [observation contract source](https://github.com/bijux/bijux-gnss/tree/main/crates/bijux-gnss-core/src/observation)
 - proof tests:
-  [core contract tests](../../crates/bijux-gnss-core/tests)
+  [core contract tests](https://github.com/bijux/bijux-gnss/tree/main/crates/bijux-gnss-core/tests)
 
 ## Support Crates That Matter Here
 
@@ -104,15 +104,15 @@ flowchart LR
 
 ## Sections In This Handbook
 
-- [Foundation](foundation/) for role, scope, ownership, repository fit, and
+- [Foundation](foundation/index.md) for role, scope, ownership, repository fit, and
   contract-language discipline
-- [Architecture](architecture/) for module layout, dependency direction,
+- [Architecture](architecture/index.md) for module layout, dependency direction,
   extensibility, and code navigation
-- [Interfaces](interfaces/) for public imports, artifact envelopes,
+- [Interfaces](interfaces/index.md) for public imports, artifact envelopes,
   observation contracts, navigation-solution records, and examples
-- [Operations](operations/) for safe change sequence, local verification, and
+- [Operations](operations/index.md) for safe change sequence, local verification, and
   maintenance workflows around the crate
-- [Quality](quality/) for invariants, trust boundaries, validation commands,
+- [Quality](quality/index.md) for invariants, trust boundaries, validation commands,
   and known risks
 - [Shared contract ownership boundaries](ownership-boundaries.md) for deciding
   whether a type or invariant is truly cross-package
@@ -138,23 +138,23 @@ flowchart LR
 ## Leave This Handbook When
 
 - the question becomes about persisted dataset or run layout behavior:
-  [Infra handbook](../bijux-gnss-infra/)
+  [Infra handbook](../bijux-gnss-infra/index.md)
 - the question becomes about signal codes, raw-IQ contracts, or DSP:
-  [Signal handbook](../bijux-gnss-signal/)
+  [Signal handbook](../bijux-gnss-signal/index.md)
 - the question becomes about navigation estimation or orbit products:
-  [Navigation handbook](../bijux-gnss-nav/)
+  [Navigation handbook](../bijux-gnss-nav/index.md)
 - the question becomes about runtime composition or stage execution:
-  [Receiver handbook](../bijux-gnss-receiver/)
+  [Receiver handbook](../bijux-gnss-receiver/index.md)
 
 ## First Proof Check
 
-- [curated core API source](../../crates/bijux-gnss-core/src/api.rs)
-- [identity contracts](../../crates/bijux-gnss-core/src/ids.rs)
-- [time contracts](../../crates/bijux-gnss-core/src/time.rs)
-- [unit contracts](../../crates/bijux-gnss-core/src/units.rs)
-- [observation contract source](../../crates/bijux-gnss-core/src/observation/)
-- [artifact contract source](../../crates/bijux-gnss-core/src/artifact/)
-- [core contract map](../../crates/bijux-gnss-core/docs/CONTRACT_MAP.md)
+- [curated core API source](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/src/api.rs)
+- [identity contracts](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/src/ids.rs)
+- [time contracts](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/src/time.rs)
+- [unit contracts](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/src/units.rs)
+- [observation contract source](https://github.com/bijux/bijux-gnss/tree/main/crates/bijux-gnss-core/src/observation)
+- [artifact contract source](https://github.com/bijux/bijux-gnss/tree/main/crates/bijux-gnss-core/src/artifact)
+- [core contract map](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-core/docs/CONTRACT_MAP.md)
 
 ## Design Pressure
 

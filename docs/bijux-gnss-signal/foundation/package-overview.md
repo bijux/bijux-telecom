@@ -37,8 +37,8 @@ flowchart LR
 
 | family | owns | first proof |
 | --- | --- | --- |
-| catalog | supported signal identities, carrier and wavelength helpers, default acquisition signal selection | catalog source and [signal catalog guide](../../../crates/bijux-gnss-signal/docs/CATALOG.md) |
-| code families | GPS L1 C/A, GPS L2C, GPS L5, Galileo E1/E5, BeiDou B1I/B2I/D1 helpers, GLONASS L1 | code-family source and [code family guide](../../../crates/bijux-gnss-signal/docs/CODE_FAMILIES.md) |
+| catalog | supported signal identities, carrier and wavelength helpers, default acquisition signal selection | catalog source and [signal catalog guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/CATALOG.md) |
+| code families | GPS L1 C/A, GPS L2C, GPS L5, Galileo E1/E5, BeiDou B1I/B2I/D1 helpers, GLONASS L1 | code-family source and [code family guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/CODE_FAMILIES.md) |
 | front-end quality | I/Q metrics, noise-floor estimation, DC-offset handling, front-end response measurement | front-end and quality source |
 | replica and timing | local code models, sample timing, carrier trajectories, modulated replicas, wipeoff helpers | local-code and replica source |
 | oscillator and spectrum | NCO state, spectrum summaries, power spectral density, spectrum nulls | NCO and spectrum source |
@@ -68,8 +68,8 @@ to patch downstream crates independently.
 
 ## First Proof Check
 
-Inspect the [signal crate README](../../../crates/bijux-gnss-signal/README.md),
-[signal catalog guide](../../../crates/bijux-gnss-signal/docs/CATALOG.md),
-[code family guide](../../../crates/bijux-gnss-signal/docs/CODE_FAMILIES.md),
-[DSP guide](../../../crates/bijux-gnss-signal/docs/DSP.md), curated public API
+Inspect the [signal crate README](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/README.md),
+[signal catalog guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/CATALOG.md),
+[code family guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/CODE_FAMILIES.md),
+[DSP guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-signal/docs/DSP.md), curated public API
 source, and the integration tests named in the crate README.

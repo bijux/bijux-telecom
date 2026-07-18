@@ -87,8 +87,8 @@ assumption.
 
 The package consumes three kinds of durable input:
 
-- the [audit exception register](../../../audit-allowlist.toml);
-- the [dependency-policy deviation register](../../../configs/rust/deny.deviations.toml);
+- the [audit exception register](https://github.com/bijux/bijux-gnss/blob/main/audit-allowlist.toml);
+- the [dependency-policy deviation register](https://github.com/bijux/bijux-gnss/blob/main/configs/rust/deny.deviations.toml);
 - the curated benchmark inventory and optional maintained baseline.
 
 Validation does not make an input trustworthy by itself. A well-formed
@@ -178,6 +178,6 @@ Put scientific and runtime behavior in the product package that owns it.
   a full calendar parser.
 
 These are operational boundaries, not hidden guarantees. Changes that remove
-one should update the [command reference](../../../crates/bijux-gnss-dev/docs/COMMANDS.md),
-[workflow guide](../../../crates/bijux-gnss-dev/docs/WORKFLOWS.md), and
-[test evidence](../../../crates/bijux-gnss-dev/docs/TESTS.md) together.
+one should update the [command reference](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/COMMANDS.md),
+[workflow guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/WORKFLOWS.md), and
+[test evidence](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/docs/TESTS.md) together.

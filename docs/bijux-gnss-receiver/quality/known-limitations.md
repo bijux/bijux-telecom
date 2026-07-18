@@ -81,7 +81,7 @@ Use only as much of this chain as the claim needs:
   validation.
 
 The [receiver change validation guide](change-validation.md) maps runtime claims
-to appropriate evidence. The [test guide](../../../crates/bijux-gnss-receiver/docs/TESTS.md)
+to appropriate evidence. The [test guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-receiver/docs/TESTS.md)
 describes the major executable families.
 
 ## What A Successful Run Does Not Say
