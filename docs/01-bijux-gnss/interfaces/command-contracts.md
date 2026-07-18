@@ -55,9 +55,9 @@ flowchart LR
 
 ## First Proof Check
 
-Inspect `crates/bijux-gnss/src/cli/command_catalog/`,
-`crates/bijux-gnss/src/cli/command_line.rs`,
-`crates/bijux-gnss/src/cli/commands/`,
-`crates/bijux-gnss/src/cli/command_runtime/`,
-`crates/bijux-gnss/src/cli/command_support/`, and
-`crates/bijux-gnss/docs/COMMANDS.md`.
+Start with the command [catalog source](../../../crates/bijux-gnss/src/cli/command_catalog/),
+[command-line parser](../../../crates/bijux-gnss/src/cli/command_line.rs),
+[handler source](../../../crates/bijux-gnss/src/cli/commands/),
+[runtime source](../../../crates/bijux-gnss/src/cli/command_runtime/), and
+[support source](../../../crates/bijux-gnss/src/cli/command_support/). Then
+confirm operator-facing promises against the [command guide](../../../crates/bijux-gnss/docs/COMMANDS.md).
