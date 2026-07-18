@@ -22,14 +22,14 @@ ledger to keep scientific breadth from turning into boundary sprawl.
 
 ## Strongest Neighboring Owners
 
-- [01-bijux-gnss](../01-bijux-gnss/) for command ownership and operator policy
-- [03-bijux-gnss-infra](../03-bijux-gnss-infra/) for persisted evidence and
+- [Command handbook](../01-bijux-gnss/) for command ownership and operator policy
+- [Infra handbook](../03-bijux-gnss-infra/) for persisted evidence and
   repository mechanics
-- [05-bijux-gnss-receiver](../05-bijux-gnss-receiver/) for runtime stage
+- [Receiver handbook](../05-bijux-gnss-receiver/) for runtime stage
   control and orchestration
-- [06-bijux-gnss-signal](../06-bijux-gnss-signal/) for raw-sample and
+- [Signal handbook](../06-bijux-gnss-signal/) for raw-sample and
   reusable signal behavior below navigation science
-- [02-bijux-gnss-core](../02-bijux-gnss-core/) for shared record meaning that
+- [Core handbook](../02-bijux-gnss-core/) for shared record meaning that
   does not require navigation ownership
 
 ## Review Trigger
@@ -40,10 +40,10 @@ review pressure reveals a new boundary worth naming.
 
 ## First Neighbor Proof Check
 
-Inspect [01-bijux-gnss](../01-bijux-gnss/),
-[03-bijux-gnss-infra](../03-bijux-gnss-infra/),
-[05-bijux-gnss-receiver](../05-bijux-gnss-receiver/),
-[06-bijux-gnss-signal](../06-bijux-gnss-signal/), and
-[02-bijux-gnss-core](../02-bijux-gnss-core/) before widening navigation
+Inspect the [Command handbook](../01-bijux-gnss/),
+[Infra handbook](../03-bijux-gnss-infra/),
+[Receiver handbook](../05-bijux-gnss-receiver/),
+[Signal handbook](../06-bijux-gnss-signal/), and
+[Core handbook](../02-bijux-gnss-core/) before widening navigation
 ownership. That check is what keeps scientific breadth from hardening into
 dishonest cross-owner sprawl.

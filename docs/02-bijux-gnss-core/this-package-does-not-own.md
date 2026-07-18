@@ -24,15 +24,15 @@ become a shortcut for moving local behavior into core.
 
 ## Strongest Neighboring Owners
 
-- [06-bijux-gnss-signal](../06-bijux-gnss-signal/) for signal-layer
+- [Signal handbook](../06-bijux-gnss-signal/) for signal-layer
   computation and sample-boundary behavior
-- [04-bijux-gnss-nav](../04-bijux-gnss-nav/) for navigation science and
+- [Navigation handbook](../04-bijux-gnss-nav/) for navigation science and
   estimator logic
-- [05-bijux-gnss-receiver](../05-bijux-gnss-receiver/) for runtime execution
+- [Receiver handbook](../05-bijux-gnss-receiver/) for runtime execution
   and stage coordination
-- [03-bijux-gnss-infra](../03-bijux-gnss-infra/) for repository persistence
+- [Infra handbook](../03-bijux-gnss-infra/) for repository persistence
   and dataset mechanics
-- [01-bijux-gnss](../01-bijux-gnss/) for operator-facing command policy
+- [Command handbook](../01-bijux-gnss/) for operator-facing command policy
 
 ## Review Trigger
 
@@ -45,8 +45,8 @@ certainly not `bijux-gnss-core`.
 
 ## First Neighbor Proof Check
 
-- `../06-bijux-gnss-signal/index.md`
-- `../04-bijux-gnss-nav/index.md`
-- `../05-bijux-gnss-receiver/index.md`
-- `../03-bijux-gnss-infra/index.md`
-- `../01-bijux-gnss/index.md`
+- [Signal handbook](../06-bijux-gnss-signal/index.md)
+- [Navigation handbook](../04-bijux-gnss-nav/index.md)
+- [Receiver handbook](../05-bijux-gnss-receiver/index.md)
+- [Infra handbook](../03-bijux-gnss-infra/index.md)
+- [Command handbook](../01-bijux-gnss/index.md)

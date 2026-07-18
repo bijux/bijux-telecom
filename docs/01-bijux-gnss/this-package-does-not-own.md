@@ -23,15 +23,15 @@ the command crate unless the ownership model itself changes.
 
 ## Strongest Neighboring Owners
 
-- [03-bijux-gnss-infra](../03-bijux-gnss-infra/) for persisted repository
+- [Infra handbook](../03-bijux-gnss-infra/) for persisted repository
   mechanics, datasets, manifests, and run history
-- [05-bijux-gnss-receiver](../05-bijux-gnss-receiver/) for runtime execution,
+- [Receiver handbook](../05-bijux-gnss-receiver/) for runtime execution,
   stage orchestration, and in-memory receiver artifacts
-- [04-bijux-gnss-nav](../04-bijux-gnss-nav/) for navigation science, orbit
+- [Navigation handbook](../04-bijux-gnss-nav/) for navigation science, orbit
   products, and estimator behavior
-- [06-bijux-gnss-signal](../06-bijux-gnss-signal/) for signal ownership,
+- [Signal handbook](../06-bijux-gnss-signal/) for signal ownership,
   sample contracts, code families, and reusable DSP
-- [02-bijux-gnss-core](../02-bijux-gnss-core/) for cross-package semantic
+- [Core handbook](../02-bijux-gnss-core/) for cross-package semantic
   contracts that the CLI only consumes
 
 ## Review Trigger
@@ -42,10 +42,10 @@ because a command happens to call into the neighboring owner more often.
 
 ## First Neighbor Proof Check
 
-Inspect [03-bijux-gnss-infra](../03-bijux-gnss-infra/),
-[05-bijux-gnss-receiver](../05-bijux-gnss-receiver/),
-[04-bijux-gnss-nav](../04-bijux-gnss-nav/),
-[06-bijux-gnss-signal](../06-bijux-gnss-signal/), and
-[02-bijux-gnss-core](../02-bijux-gnss-core/) before widening the command
+Inspect the [Infra handbook](../03-bijux-gnss-infra/),
+[Receiver handbook](../05-bijux-gnss-receiver/),
+[Navigation handbook](../04-bijux-gnss-nav/),
+[Signal handbook](../06-bijux-gnss-signal/), and
+[Core handbook](../02-bijux-gnss-core/) before widening the command
 crate. That check is what keeps public entrypoint convenience from hardening
 into dishonest cross-owner behavior.

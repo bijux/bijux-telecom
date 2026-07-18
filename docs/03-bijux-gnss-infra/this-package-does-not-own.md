@@ -23,14 +23,14 @@ becoming an excuse to absorb neighboring product ownership.
 
 ## Strongest Neighboring Owners
 
-- [05-bijux-gnss-receiver](../05-bijux-gnss-receiver/) for runtime execution
+- [Receiver handbook](../05-bijux-gnss-receiver/) for runtime execution
   and in-memory artifacts before persistence
-- [06-bijux-gnss-signal](../06-bijux-gnss-signal/) for signal behavior and
+- [Signal handbook](../06-bijux-gnss-signal/) for signal behavior and
   raw-sample meaning
-- [04-bijux-gnss-nav](../04-bijux-gnss-nav/) for navigation science and
+- [Navigation handbook](../04-bijux-gnss-nav/) for navigation science and
   reference-product interpretation
-- [01-bijux-gnss](../01-bijux-gnss/) for command-line policy and report shape
-- [02-bijux-gnss-core](../02-bijux-gnss-core/) for cross-package semantic
+- [Command handbook](../01-bijux-gnss/) for command-line policy and report shape
+- [Core handbook](../02-bijux-gnss-core/) for cross-package semantic
   records and envelopes
 
 ## Review Trigger
@@ -41,8 +41,8 @@ shows up repeatedly in review.
 
 ## First Neighbor Proof Check
 
-- `../05-bijux-gnss-receiver/index.md`
-- `../06-bijux-gnss-signal/index.md`
-- `../04-bijux-gnss-nav/index.md`
-- `../01-bijux-gnss/index.md`
-- `../02-bijux-gnss-core/index.md`
+- [Receiver handbook](../05-bijux-gnss-receiver/index.md)
+- [Signal handbook](../06-bijux-gnss-signal/index.md)
+- [Navigation handbook](../04-bijux-gnss-nav/index.md)
+- [Command handbook](../01-bijux-gnss/index.md)
+- [Core handbook](../02-bijux-gnss-core/index.md)

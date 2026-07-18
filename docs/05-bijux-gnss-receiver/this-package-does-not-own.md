@@ -23,15 +23,15 @@ ledger.
 
 ## Strongest Neighboring Owners
 
-- [01-bijux-gnss](../01-bijux-gnss/) for command ownership and operator
+- [Command handbook](../01-bijux-gnss/) for command ownership and operator
   workflow policy
-- [03-bijux-gnss-infra](../03-bijux-gnss-infra/) for persisted repository
+- [Infra handbook](../03-bijux-gnss-infra/) for persisted repository
   mechanics and run layout
-- [04-bijux-gnss-nav](../04-bijux-gnss-nav/) for navigation science and
+- [Navigation handbook](../04-bijux-gnss-nav/) for navigation science and
   estimator behavior
-- [06-bijux-gnss-signal](../06-bijux-gnss-signal/) for signal ownership,
+- [Signal handbook](../06-bijux-gnss-signal/) for signal ownership,
   sample contracts, and reusable DSP
-- [02-bijux-gnss-core](../02-bijux-gnss-core/) for shared exchange records and
+- [Core handbook](../02-bijux-gnss-core/) for shared exchange records and
   artifact envelopes
 
 ## Review Trigger
@@ -42,10 +42,10 @@ pressure keeps trying to move neighboring ownership into the runtime crate.
 
 ## First Neighbor Proof Check
 
-Inspect [01-bijux-gnss](../01-bijux-gnss/),
-[03-bijux-gnss-infra](../03-bijux-gnss-infra/),
-[04-bijux-gnss-nav](../04-bijux-gnss-nav/),
-[06-bijux-gnss-signal](../06-bijux-gnss-signal/), and
-[02-bijux-gnss-core](../02-bijux-gnss-core/) before widening receiver
+Inspect the [Command handbook](../01-bijux-gnss/),
+[Infra handbook](../03-bijux-gnss-infra/),
+[Navigation handbook](../04-bijux-gnss-nav/),
+[Signal handbook](../06-bijux-gnss-signal/), and
+[Core handbook](../02-bijux-gnss-core/) before widening receiver
 ownership. That check is what keeps runtime centrality from hardening into
 dishonest cross-owner sprawl.

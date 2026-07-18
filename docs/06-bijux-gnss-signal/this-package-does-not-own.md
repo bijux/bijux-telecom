@@ -28,14 +28,14 @@ decision here instead of letting the boundary blur.
 
 ## Strongest Neighboring Owners
 
-- [05-bijux-gnss-receiver](../05-bijux-gnss-receiver/) for runtime sequencing,
+- [Receiver handbook](../05-bijux-gnss-receiver/) for runtime sequencing,
   channels, and run-budget policy
-- [03-bijux-gnss-infra](../03-bijux-gnss-infra/) for persisted capture lookup,
+- [Infra handbook](../03-bijux-gnss-infra/) for persisted capture lookup,
   dataset layout, and repository metadata
-- [04-bijux-gnss-nav](../04-bijux-gnss-nav/) for navigation judgment and
+- [Navigation handbook](../04-bijux-gnss-nav/) for navigation judgment and
   solution acceptance
-- [01-bijux-gnss](../01-bijux-gnss/) for commands and operator workflow policy
-- [02-bijux-gnss-core](../02-bijux-gnss-core/) for shared IDs, units, and
+- [Command handbook](../01-bijux-gnss/) for commands and operator workflow policy
+- [Core handbook](../02-bijux-gnss-core/) for shared IDs, units, and
   cross-package observation meaning
 
 ## Review Trigger
@@ -50,11 +50,11 @@ decision here instead of letting the boundary blur.
 
 ## First Neighbor Proof Check
 
-- `../05-bijux-gnss-receiver/index.md`
-- `../03-bijux-gnss-infra/index.md`
-- `../04-bijux-gnss-nav/index.md`
-- `../01-bijux-gnss/index.md`
-- `../02-bijux-gnss-core/index.md`
+- [Receiver handbook](../05-bijux-gnss-receiver/index.md)
+- [Infra handbook](../03-bijux-gnss-infra/index.md)
+- [Navigation handbook](../04-bijux-gnss-nav/index.md)
+- [Command handbook](../01-bijux-gnss/index.md)
+- [Core handbook](../02-bijux-gnss-core/index.md)
 
 When the pressure sounds reasonable because the implementation touches samples,
 correlations, or observations, inspect the neighbor handbook first anyway.
