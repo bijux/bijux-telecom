@@ -219,6 +219,13 @@ fn galileo_e1_signal_only_streaming_frame_returns_explicit_ambiguity() {
 
     assert_eq!(selected.hypothesis.to_string(), "ambiguous", "{run:?}");
     assert_eq!(run.explains[0].selected_reason, "ambiguous_ratio_thresholds", "{run:?}");
+    assert!(
+        selected
+            .explain_selection_reason
+            .as_deref()
+            .is_some_and(|reason| reason.contains("component_strategy_ambiguity")),
+        "{run:?}"
+    );
     assert_eq!(provenance.combination_mode, AcqComponentCombinationMode::SingleComponent);
     assert_eq!(
         provenance.components.iter().map(|component| component.role).collect::<Vec<_>>(),

@@ -37,19 +37,20 @@ use bijux_gnss_signal::api::{measure_iq_front_end_metrics, AcquisitionSignalMode
 mod peak_metrics;
 
 use cache::{CodeFftCache, CodeFftRequest};
-use candidate_decision::{
-    acquisition_decision, multipath_candidate_reason, multipath_suspect_decision,
-    ranked_alternative_candidate_reason, selected_candidate_reason,
-};
 #[cfg(test)]
+use candidate_decision::selected_reason_for_candidate;
 use candidate_decision::{
-    selected_reason_for_candidate, AcquisitionDecision, AcquisitionDecisionReason,
+    acquisition_decision, component_strategy_ambiguity_reason, multipath_candidate_reason,
+    multipath_suspect_decision, ranked_alternative_candidate_reason, selected_candidate_reason,
+    AcquisitionDecision, AcquisitionDecisionReason,
 };
 use candidate_failures::{
     acquisition_request_error_candidates, insufficient_frame_candidates,
     unsupported_coherent_integration_candidates, AcquisitionCandidateContext,
 };
-use candidate_ranking::competing_candidate_ratio;
+use candidate_ranking::{
+    competing_candidate_ratio, has_strong_same_hypothesis_component_alternative,
+};
 use candidate_refinement::refine_acquisition_candidates;
 #[cfg(test)]
 use code_phase_profile::{
@@ -695,6 +696,19 @@ impl Acquisition {
                 primary
             });
             let competing_peak_ratio = competing_candidate_ratio(&ranked_candidates);
+            let component_strategy_ambiguity =
+                front_end_metrics.power_imbalance_warning || competing_peak_ratio.is_infinite();
+            let component_strategy_ambiguity = component_strategy_ambiguity
+                && has_strong_same_hypothesis_component_alternative(
+                    &ranked_candidates,
+                    resolved_thresholds.peak_mean_threshold,
+                    resolved_thresholds.peak_second_threshold,
+                );
+            let component_strategy_evidence_gap = if front_end_metrics.power_imbalance_warning {
+                "front_end_power_imbalance"
+            } else {
+                "no_independent_competing_peak"
+            };
             let mut candidates = ranked_candidates;
             candidates.truncate(top_n.max(1));
             if strategies.len() == 1
@@ -844,6 +858,20 @@ impl Acquisition {
                                     diagnostic,
                                 )
                             });
+                        let decision = if multipath_diagnostic.is_none()
+                            && component_strategy_ambiguity
+                            && matches!(decision.hypothesis, AcqHypothesis::Accepted)
+                        {
+                            AcquisitionDecision {
+                                hypothesis: AcqHypothesis::Ambiguous,
+                                reason: AcquisitionDecisionReason::AmbiguousRatioThresholds,
+                                score: (candidate.peak_mean_ratio * 0.35)
+                                    + (candidate.peak_second_ratio.min(competing_peak_ratio)
+                                        * 0.15),
+                            }
+                        } else {
+                            decision
+                        };
                         candidate.hypothesis = decision.hypothesis;
                         candidate.score = decision.score;
                         candidate.explain_selection_reason =
@@ -857,6 +885,17 @@ impl Acquisition {
                                     signal_model.code_length,
                                     decision.score,
                                 ),
+                                None if component_strategy_ambiguity
+                                    && matches!(decision.hypothesis, AcqHypothesis::Ambiguous) =>
+                                {
+                                    component_strategy_ambiguity_reason(
+                                        candidate.peak_mean_ratio,
+                                        local_peak_separation_ratio,
+                                        competing_peak_ratio,
+                                        component_strategy_evidence_gap,
+                                        decision.score,
+                                    )
+                                }
                                 None => selected_candidate_reason(
                                     decision,
                                     candidate.peak_mean_ratio,

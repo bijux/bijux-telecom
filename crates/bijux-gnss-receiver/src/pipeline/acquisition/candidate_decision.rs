@@ -162,6 +162,24 @@ pub(super) fn selected_candidate_reason(
     }
 }
 
+pub(super) fn component_strategy_ambiguity_reason(
+    peak_mean_ratio: f32,
+    peak_second_ratio: f32,
+    competing_peak_ratio: f32,
+    evidence_gap: &str,
+    score: f32,
+) -> String {
+    format!(
+        "{}: component_strategy_ambiguity evidence_gap={} peak_mean_ratio={:.6}, local_peak_separation_ratio={:.6}, competing_peak_ratio={:.6}, score={:.6}",
+        AcquisitionDecisionReason::AmbiguousRatioThresholds.as_str(),
+        evidence_gap,
+        peak_mean_ratio,
+        peak_second_ratio,
+        competing_peak_ratio,
+        score,
+    )
+}
+
 pub(super) fn multipath_suspect_decision(
     peak_mean_ratio: f32,
     peak_second_ratio: f32,
