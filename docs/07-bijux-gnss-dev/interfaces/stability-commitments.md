@@ -4,40 +4,66 @@ audience: mixed
 type: interfaces
 status: canonical
 owner: bijux-gnss-dev-docs
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-18
 ---
 
 # Stability Commitments
 
-This page replaces the old root-level API stability note. It explains which
-repository-facing interfaces are expected to move slowly and which remain
-experimental.
+Maintainer stability means the repository is willing to pay compatibility cost
+for a command, governed input, or evidence location. Existing callers alone do
+not make a surface stable.
+
+## Stability Decision Route
+
+```mermaid
+flowchart TD
+    surface["repository-facing surface"]
+    governed["used by governed make lane<br/>or reviewed workflow?"]
+    evidence["does it read/write governed evidence?"]
+    compatible["can changes stay backward-readable?"]
+    stable["document as stable"]
+    private["keep private or explicitly experimental"]
+
+    surface --> governed
+    governed -- yes --> evidence
+    governed -- no --> private
+    evidence -- yes --> compatible
+    evidence -- no --> private
+    compatible -- yes --> stable
+    compatible -- no --> private
+```
 
 ## Stable Surfaces
 
-- shared artifact types and headers in `bijux-gnss-core`
-- run-layout and manifest helpers in `bijux-gnss-infra`
-- documented maintainer command inputs and outputs in `bijux-gnss-dev` once
-  they are referenced by a governed make lane or reviewed repository workflow
+| surface | stability reason | proof route |
+| --- | --- | --- |
+| `audit-allowlist.toml` validation | security exceptions must remain reviewed and attributable | `docs/GOVERNANCE_FILES.md`, guardrail tests |
+| `configs/rust/deny.deviations.toml` validation | standards deviations must keep owner, reason, review link, and expiry | governance docs and policy tests |
+| audit ignore argument derivation | automation must derive ignores from one reviewed source | command docs and workflow tests |
+| benchmark comparison outputs | performance evidence is reviewed through governed benchmark files | benchmark docs and comparison tests |
+| documented maintainer command outputs | reviewed workflows need stable evidence locations | `docs/OUTPUTS.md` and integration tests |
 
-## Experimental Surfaces
+## Not Stable By Default
 
-- navigation estimator families whose scientific scope is still expanding
-- receiver pipeline stages and DSP-adjacent helpers that are not yet committed
-  as durable public APIs
-- CLI output schemas that are still evolving with operator workflows
+- Private module layout inside `crates/bijux-gnss-dev`.
+- Product crate internals used by benchmark workflows.
+- CLI output schemas that are not documented as governed maintainer evidence.
+- Experimental maintainer helpers without a governed make lane or review path.
 
-## Maintainer Rule
+## Change Rules
 
-Do not call a surface stable merely because it already has callers. Stability
-means the repository is willing to pay the compatibility cost.
+- When a stable surface changes, update command docs, output docs, and tests in
+  the same change.
+- When a workflow stops being governed, remove the stability claim instead of
+  leaving stale compatibility promises.
+- When a product behavior changes, update product docs; dev docs only cover the
+  maintainer workflow that detects or records it.
 
-## Protecting Proof
+## First Proof Check
 
 Inspect `crates/bijux-gnss-dev/docs/COMMANDS.md`,
 `crates/bijux-gnss-dev/docs/WORKFLOWS.md`,
-`crates/bijux-gnss-dev/docs/OUTPUTS.md`, and
-`crates/bijux-gnss-dev/src/main.rs`. Then inspect
-`crates/bijux-gnss-dev/tests/integration_guardrails.rs` to confirm that the
-stability claims here still match the actual maintainer command surface and
-governed evidence contracts.
+`crates/bijux-gnss-dev/docs/OUTPUTS.md`,
+`crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md`,
+`crates/bijux-gnss-dev/src/main.rs`, and
+`crates/bijux-gnss-dev/tests/integration_guardrails.rs`.
