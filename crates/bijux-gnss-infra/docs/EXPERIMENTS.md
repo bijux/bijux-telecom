@@ -1,23 +1,58 @@
 # Experiments
 
-`bijux-gnss-infra` owns repository-facing experiment and sweep description for batch runs.
+`bijux-gnss-infra` owns repository-facing experiment and sweep descriptions for
+batch runs. Experiments describe how one maintained configuration becomes a set
+of reproducible variants; they do not decide the scientific meaning of receiver
+parameters.
 
-## Experiment responsibilities
+## Experiment Flow
 
-The experiment surface currently owns:
+```mermaid
+flowchart LR
+    spec["ExperimentSpec"]
+    sweep["SweepParameter"]
+    expand["expand_sweep"]
+    variants["run variants"]
+    receiver["receiver profile"]
+    evidence["run evidence"]
 
-- `ExperimentSpec`
-- `SweepParameter`
-- sweep parsing through `parse_sweep`
-- Cartesian expansion through `expand_sweep`
+    spec --> sweep
+    sweep --> expand
+    expand --> variants
+    variants --> receiver
+    receiver --> evidence
+```
 
-## Why this lives here
+## Owned Surface
 
-Experiment batching is a repository-facing concern: it describes how one maintained configuration
-becomes a set of reproducible run variants. It is not low-level receiver science and not just CLI
-argument handling.
+| item | responsibility |
+| --- | --- |
+| `ExperimentSpec` | Captures the repository-level description of a repeatable experiment. |
+| `SweepParameter` | Describes one controlled axis that can become multiple run variants. |
+| `parse_sweep` | Parses reviewable sweep syntax into typed sweep parameters. |
+| `expand_sweep` | Expands sweep parameters into concrete Cartesian run variants. |
 
-## Boundary rule
+## Contract Rules
 
-This crate owns typed experiment description and expansion. It does not own the scientific meaning
-of the underlying receiver parameters.
+- Sweep axes must be explicit and typed before they affect receiver
+  configuration.
+- Expansion must be deterministic; the same spec should produce the same variant
+  order and values.
+- Experiment infra may vary inputs and describe evidence, but receiver and
+  navigation crates own the scientific interpretation of the result.
+- A failed or unsupported sweep value should be reported as input invalidity,
+  not silently skipped.
+
+## Reader Guidance
+
+Use this doc when adding a new batch-run axis or changing how experiment inputs
+expand. Use [OVERRIDES.md](OVERRIDES.md) when the question is how a concrete
+variant mutates a receiver profile. Use run-layout docs when the question is
+where experiment artifacts are written.
+
+## Review Checks
+
+- New sweep keys need unit meaning, valid values, and override parity.
+- Variant ordering changes need a reason because they affect artifact
+  comparison and reviewer expectations.
+- Tests should include multi-axis expansion and invalid-value behavior.
