@@ -1,27 +1,46 @@
 # Artifacts
 
-`bijux-gnss-receiver` owns the in-memory result of a receiver run before repository persistence.
+`bijux-gnss-receiver` owns the in-memory result of a receiver run before
+repository persistence. These artifacts describe what happened at runtime; they
+do not decide where files live in the repository.
 
-## Receiver artifact responsibilities
+## Artifact Flow
 
-The receiver boundary owns:
+```mermaid
+flowchart LR
+    stages["receiver stages"]
+    run["RunArtifacts"]
+    infra["infra persistence"]
+    report["operator or maintainer report"]
 
-- `RunArtifacts` as the top-level collected output of a pipeline run
-- acquisition explainability and result collections
-- tracking reports and per-channel state reports
-- observation decisions, epochs, residuals, and quality reports
-- navigation epochs and support-matrix capture
+    stages --> run
+    run --> infra
+    run --> report
+```
 
-## Why this is distinct from infrastructure
+## Receiver Artifact Families
 
-The receiver crate decides what runtime information exists at the end of execution. The
-infrastructure crate decides how that information is named, persisted, and indexed in the
-repository. Keeping those responsibilities separate prevents runtime code from hard-coding
-repository layout policy.
+| family | responsibility |
+| --- | --- |
+| input accounting | `processed_input_samples` and `processed_input_epochs` describe how much input was consumed. |
+| acquisition evidence | Accepted acquisition results and explain artifacts. |
+| tracking evidence | Tracking results, transition artifacts, and per-channel state reports. |
+| observation evidence | Observation decisions, observation epochs, residuals, and measurement-quality reports. |
+| support evidence | Signal support matrix captured at the receiver boundary. |
+| navigation evidence | Navigation solution epochs and validation reports when the `nav` feature is enabled. |
 
-## Boundary rules
+## Boundary Rules
 
 - Runtime artifacts may be rich and execution-oriented.
-- Persisted manifest/report/file naming does not belong here.
-- Reference validation can exist here when it is receiver-boundary logic rather than repository
-  inspection logic.
+- Persisted manifest, report, and file naming policy belongs to
+  `bijux-gnss-infra`.
+- Reference validation belongs here only when it is receiver-boundary logic over
+  receiver artifacts.
+- Operator prose belongs to CLI reports; receiver artifacts should stay typed
+  enough for machines and tests.
+
+## Review Checks
+
+- New artifact fields need a producer, consumer, and compatibility expectation.
+- A field that will be persisted needs core or infra schema ownership reviewed.
+- Do not replace typed refusal or diagnostic evidence with prose-only summaries.
