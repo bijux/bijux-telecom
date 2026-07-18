@@ -1,27 +1,50 @@
 # DSP
 
-`bijux-gnss-signal` owns reusable DSP primitives that sit below receiver orchestration.
+`bijux-gnss-signal` owns reusable DSP primitives below receiver orchestration.
+These helpers transform samples, phases, correlations, spectra, and signal
+models without deciding channel scheduling, runtime state, or artifact layout.
 
-## DSP families
+## DSP Flow
 
-`src/dsp/` currently owns:
+```mermaid
+flowchart LR
+    samples["sample frames"]
+    timing["timing and NCO"]
+    replica["replica and code model"]
+    correlation["correlation and tracking math"]
+    consumer["receiver or validation"]
 
-- `front_end` for FIR front-end response handling
-- `local_code`, `sample_timing`, and `signal` for code-phase and timing math
-- `nco` for oscillator state and phase progression
-- `replica` for synthetic carrier/code generation and wipeoff helpers
-- `quality` and `spectrum` for front-end and PSD analysis
-- `tracking` for reusable loop and discriminator primitives
+    samples --> timing
+    timing --> replica
+    replica --> correlation
+    correlation --> consumer
+```
 
-## Boundary rules
+## DSP Families
 
-- These helpers may transform samples and correlations, but they must stay runtime-neutral.
-- Receiver stage sequencing, channel scheduling, and artifact persistence belong in
-  `bijux-gnss-receiver`.
+| family | responsibility |
+| --- | --- |
+| `front_end` | FIR front-end response and transfer-function helpers. |
+| `local_code`, `sample_timing`, `signal` | Code-phase, sample-index, wrapping, and timing math. |
+| `nco` | Oscillator state and phase progression. |
+| `replica` | Synthetic carrier/code generation, modulation, trajectories, and wipeoff helpers. |
+| `quality` and `spectrum` | Front-end quality metrics and power spectral density analysis. |
+| `tracking` | Reusable loop, discriminator, CN0, uncertainty, and lock-threshold primitives. |
+
+## Boundary Rules
+
+- DSP helpers may transform samples and correlations, but must stay
+  runtime-neutral.
+- Receiver sequencing, channel scheduling, lock lifecycle, and artifact
+  persistence belong in `bijux-gnss-receiver`.
 - Navigation-state interpretation belongs in `bijux-gnss-nav`.
+- Long-duration continuity and deterministic wrapping are part of the public
+  contract for timing-sensitive helpers.
 
-## Stability expectation
+## Review Checks
 
-When these helpers change, downstream acquisition, tracking, and validation behavior can all move
-at once. Determinism, reference alignment, and long-duration continuity are therefore part of the
-contract, not just implementation quality.
+- Changes to phase, frequency, sample-index, or wrapping behavior need boundary
+  and long-duration tests.
+- Tracking primitives should expose math and thresholds, not receiver lifecycle
+  decisions.
+- Spectrum and quality helpers must document units and normalization assumptions.

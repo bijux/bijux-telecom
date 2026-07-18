@@ -1,24 +1,47 @@
 # Validation
 
-`bijux-gnss-infra` owns infrastructure-side validation over persisted artifacts and reference
-comparison entrypoints.
+`bijux-gnss-infra` owns infrastructure-side validation over persisted artifacts
+and reference comparison entrypoints. It validates evidence after it exists in a
+repository context; it does not decide receiver runtime behavior while a run is
+executing.
 
-## Validation families
+## Validation Flow
 
-The crate currently owns:
+```mermaid
+flowchart LR
+    artifact["persisted artifact"]
+    manifest["run manifest or sidecar"]
+    validator["infra validation adapter"]
+    owner["receiver, nav, core, or signal contract"]
+    report["repository-facing report"]
 
-- artifact explanation and validation in `src/artifact_inspection/`
-- repository-facing validation adapters in `src/validate_reference.rs`
-- infrastructure-friendly re-export points for receiver and optional nav validation helpers
+    artifact --> validator
+    manifest --> validator
+    validator --> owner
+    owner --> report
+```
 
-## Why this is distinct from receiver validation
+## Validation Families
 
-The receiver crate owns runtime-side validation capabilities during and immediately after execution.
-This crate owns the repository-facing side: loading, interrogating, and comparing persisted
-artifacts once they exist in an infrastructure context.
+| family | responsibility |
+| --- | --- |
+| artifact inspection | Explain and validate persisted artifact payloads in `src/artifact_inspection/`. |
+| reference comparison | Route repository-facing comparison through `src/validate_reference.rs`. |
+| receiver validation bridge | Re-export receiver validation helpers for infrastructure workflows. |
+| feature-gated nav validation | Re-export navigation validation helpers only when `nav` is enabled. |
 
-## Boundary rule
+## Boundary Rules
 
-If a validation flow is fundamentally about persisted artifacts, manifests, sidecars, or
-repository-facing interpretation, it belongs here. If it is about runtime stage behavior, it
-belongs in `bijux-gnss-receiver`.
+- Persisted artifacts, manifests, sidecars, and repository-facing interpretation
+  belong here.
+- Runtime stage behavior belongs to `bijux-gnss-receiver`.
+- Artifact schema meaning belongs to `bijux-gnss-core` when the payload is a
+  shared contract.
+- Validation reports must preserve the owning crate's refusal or degraded status
+  rather than converting it into a generic pass/fail phrase.
+
+## Review Checks
+
+- New validation adapters need the owning contract named in docs or code.
+- Feature-gated validation needs clear unavailable behavior when `nav` is off.
+- Tests should cover malformed persisted inputs, not only successful artifacts.

@@ -1,26 +1,54 @@
 # Estimation
 
-`bijux-gnss-nav` owns navigation estimation as a scientific boundary, not as a receiver runtime.
+`bijux-gnss-nav` owns navigation estimation as a scientific boundary, not as a
+receiver runtime. Estimators consume observations, satellite states,
+corrections, clocks, and covariance assumptions, then return a solution,
+degraded claim, or typed refusal evidence.
 
-## Estimation families
+## Estimation Flow
 
-`src/estimation/` owns several durable families:
+```mermaid
+flowchart LR
+    observations["observations"]
+    products["navigation products"]
+    corrections["corrections"]
+    estimator["estimator"]
+    integrity["integrity checks"]
+    output["solution or refusal"]
 
-- `ekf/` for reusable state-estimation primitives
-- `position/` for positioning, integrity, smoothing, weighting, and runtime-neutral solution logic
-- `ppp/` for precise point positioning filters, measurements, and lifecycle evidence
-- `rtk/` for ambiguity, baseline, differencing, fix policy, and quality surfaces
-- `solution_claims.rs` for advanced claim, downgrade, and support-matrix reporting
+    observations --> estimator
+    products --> corrections
+    corrections --> estimator
+    estimator --> integrity
+    integrity --> output
+```
 
-## Boundary rules
+## Estimation Families
 
-- Estimation here may consume observations, satellite states, and corrections.
-- Stage scheduling, sample-flow orchestration, and persisted run layout belong elsewhere.
-- Solver outputs may be consumed by `receiver`, `infra`, and CLI crates, but the estimation logic
-  itself stays owned here.
+| family | responsibility |
+| --- | --- |
+| `ekf/` | Reusable state-estimation primitives and measurement models. |
+| `position/` | Positioning, integrity, smoothing, weighting, runtime-neutral solution logic, and refusal evidence. |
+| `ppp/` | Precise point positioning filters, measurement models, product policy, and lifecycle evidence. |
+| `rtk/` | Ambiguity, baseline, differencing, fix policy, and quality surfaces. |
+| `solution_claims.rs` | Advanced claim, downgrade, prerequisite, and support-matrix reporting. |
 
-## Public-surface discipline
+## Boundary Rules
 
-The API exposes broad estimation capabilities because higher-level crates genuinely need them, but
-solver-local helpers should stay private. If an item is only meaningful to one internal solver
-path, it should not become part of the shared navigation API.
+- Estimation may consume observations, satellite states, corrections, and
+  covariance assumptions.
+- Stage scheduling, sample-flow orchestration, and persisted run layout belong
+  elsewhere.
+- Solver outputs may be consumed by receiver, infra, and CLI crates, but the
+  estimation logic itself stays owned here.
+- Solvers must refuse unsupported claims explicitly rather than emitting
+  clean-looking invalid solutions.
+
+## Review Checks
+
+- New estimator APIs need input assumptions, covariance behavior, and refusal
+  paths documented.
+- Solver-local helpers should stay private unless higher-level crates need a
+  durable navigation contract.
+- Integrity and protection-level behavior need tests for both accepted and
+  rejected claims.
