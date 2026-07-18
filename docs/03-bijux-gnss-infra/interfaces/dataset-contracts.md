@@ -4,37 +4,63 @@ audience: mixed
 type: interfaces
 status: canonical
 owner: bijux-gnss-infra-docs
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-18
 ---
 
 # Dataset Contracts
 
-Dataset contracts are where repository files become typed capture metadata
-instead of ad hoc path handling.
+Dataset contracts turn repository files into typed capture metadata. They keep
+commands, tests, receiver runs, and validation tooling from inventing separate
+rules for registry lookup, sidecar loading, coordinates, and recorded capture
+provenance.
 
-## Main Owned Records And Helpers
+## Dataset Resolution Flow
 
-- `DatasetRegistry`
-- `DatasetEntry`
-- `RecordedCaptureProvenance`
-- `load_raw_iq_metadata`
-- `resolve_raw_iq_metadata`
-- `parse_ecef`
+```mermaid
+flowchart TD
+    registry["datasets/registry.toml"]
+    entry["DatasetEntry"]
+    sidecar["raw-IQ sidecar"]
+    metadata["RawIqMetadata"]
+    provenance["RecordedCaptureProvenance"]
+    caller["command, receiver, test"]
 
-## Why They Matter
+    registry --> entry
+    entry --> provenance
+    entry --> sidecar --> metadata
+    metadata --> caller
+    provenance --> caller
+```
 
-These contracts let commands, tests, and tooling share one interpretation of
-registry files, sidecars, and capture provenance instead of inventing slightly
-different repository behavior in each caller.
+## Contract Families
 
-## Boundary Rule
+| family | owns | first proof |
+| --- | --- | --- |
+| registry | dataset ids, capture file routes, declared metadata, and dataset entries | `crates/bijux-gnss-infra/src/datasets/registry.rs` |
+| sidecar loading | file-backed raw-IQ metadata loading and validation handoff | `crates/bijux-gnss-infra/src/datasets/raw_iq_metadata.rs` |
+| metadata resolution | dataset-aware sidecar and explicit metadata resolution | `crates/bijux-gnss-infra/src/datasets/raw_iq_metadata.rs` |
+| capture provenance | recorded capture context attached to dataset entries | `crates/bijux-gnss-infra/src/datasets/registry/` |
+| coordinate parsing | repository-side ECEF parsing for dataset records | `crates/bijux-gnss-infra/src/parse/coordinates.rs` |
 
-Infra owns the repository interpretation of dataset state. It does not own
-signal-layer sample semantics or receiver execution over those datasets.
+## Boundary Rules
 
-## Protecting Proof
+- Infra owns where repository metadata comes from and how callers resolve it.
+- Signal owns raw-IQ metadata types, quantization, and sample semantics.
+- Receiver owns execution over resolved datasets.
+- Command owns operator flags and report rendering, not registry semantics.
 
-- `crates/bijux-gnss-infra/docs/DATASETS.md`
-- `crates/bijux-gnss-infra/src/datasets/registry.rs`
-- `crates/bijux-gnss-infra/src/datasets/raw_iq_metadata.rs`
-- `crates/bijux-gnss-infra/src/parse/coordinates.rs`
+## Reader Checks
+
+- Does the dataset id resolve to the same capture meaning from every caller?
+- Is sidecar metadata validated once instead of reinterpreted by command code?
+- Is coordinate parsing explicit enough to avoid silent frame or unit changes?
+- Can the reader see which capture provenance came from the registry and which
+  came from runtime execution?
+
+## First Proof Check
+
+Inspect `crates/bijux-gnss-infra/docs/DATASETS.md`,
+`crates/bijux-gnss-infra/src/datasets/registry.rs`,
+`crates/bijux-gnss-infra/src/datasets/raw_iq_metadata.rs`,
+`crates/bijux-gnss-infra/src/parse/coordinates.rs`, and dataset or sidecar
+integration tests before changing dataset contract claims.
