@@ -4,39 +4,113 @@ audience: mixed
 type: architecture
 status: canonical
 owner: bijux-gnss-core-docs
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-18
 ---
 
 # Dependency Direction
 
-`bijux-gnss-core` should be depended on far more often than it depends outward.
+Core is the common vocabulary beneath the GNSS packages. Production code in
+signal, navigation, receiver, infrastructure, and command may consume it.
+Core production code must not consume those packages, because doing so would
+attach shared meaning to one algorithm, runtime, repository, or user
+interface.
 
-## Direction Rule
+## Allowed Production Graph
 
-- `bijux-gnss-signal`, `bijux-gnss-nav`, `bijux-gnss-receiver`,
-  `bijux-gnss-infra`, and `bijux-gnss` may depend on core
-- core must not depend on those higher-level crates
+```mermaid
+flowchart BT
+    core["core contracts"]
+    signal["signal facts and DSP"]
+    navigation["navigation science"]
+    receiver["receiver runtime"]
+    infrastructure["repositories and artifacts"]
+    command["operator workflows"]
 
-## Why The Rule Exists
+    signal --> core
+    navigation --> core
+    receiver --> core
+    infrastructure --> core
+    command --> core
+```
 
-The crate’s value is portability of meaning. Once it starts importing runtime,
-solver, or repository behavior, its records stop being safe common language and
-start carrying one owner’s assumptions.
+The [production manifest](../../../crates/bijux-gnss-core/Cargo.toml) currently
+depends only on general-purpose libraries for errors, complex numbers, and
+serialization. Its development dependencies may include repository policy
+tooling used to test the package; development tooling is not part of the
+production contract graph.
 
-## Healthy Pressure
+## Distinguish Reuse from Ownership
 
-- higher-level crates pull types from core
-- core defines no knowledge of their scheduling, persistence, or command paths
+Duplication is not, by itself, a reason to move code into core. First identify
+what is shared.
 
-## Unhealthy Pressure
+| Proposal | Correct direction |
+| --- | --- |
+| A stable identity, unit, time value, diagnostic, or exchanged record | consider admission to a core contract family |
+| Receiver scheduling, channel lifecycle, or retry behavior | keep in receiver |
+| Estimator, correction, integrity, or solution policy | keep in navigation |
+| Signal generation, modulation, raw-sample, or reusable DSP behavior | keep in signal |
+| Repository layout, dataset discovery, manifests, or history | keep in infrastructure |
+| Argument parsing, command selection, rendering, or exit policy | keep in command |
+| A test helper used by several packages | place with test tooling unless production semantics are genuinely shared |
 
-- a convenience helper in `receiver` or `infra` gets pulled into core to avoid
-  duplication
-- artifact-envelope logic starts needing filesystem layout context
-- navigation-solver details become encoded in supposedly shared record fields
+Core may define the record exchanged at a boundary without owning either side’s
+behavior. For example, it can define a navigation result while navigation owns
+the estimator and receiver owns the handoff.
 
-## First Proof Check
+## Admission Test
 
-- `crates/bijux-gnss-core/Cargo.toml`
-- `crates/bijux-gnss-core/tests/integration_guardrails.rs`
-- `crates/bijux-gnss-core/docs/BOUNDARY.md`
+```mermaid
+flowchart TD
+    proposal["proposed shared item"]
+    meaning{"same meaning for<br/>multiple packages?"}
+    policy{"independent of runtime,<br/>storage, and algorithm policy?"}
+    contract{"units, validity, ordering,<br/>and refusal explicit?"}
+    core["place in an existing<br/>core family"]
+    owner["keep with the stronger<br/>domain owner"]
+
+    proposal --> meaning
+    meaning -- no --> owner
+    meaning -- yes --> policy
+    policy -- no --> owner
+    policy -- yes --> contract
+    contract -- no --> owner
+    contract -- yes --> core
+```
+
+If a proposal passes this test, follow the
+[extensibility model](extensibility-model.md) and
+[API contract](../interfaces/api-surface.md). A new production dependency still
+requires separate review: a sound type placement does not automatically
+justify another library edge.
+
+## Detect a Reversed Edge
+
+Treat these as architecture failures:
+
+- a core function needs a receiver configuration or runtime handle
+- a shared record can be interpreted only with repository path conventions
+- a core validator invokes navigation or signal algorithms
+- an error or diagnostic contains command-specific recovery instructions
+- a feature flag exists only to make core aware of a higher package
+- a convenience adapter imports a downstream type instead of living beside
+  that downstream consumer
+
+Move behavior outward and leave only the stable exchanged meaning in core.
+When two downstream packages need adapters, prefer adapters at each boundary
+over teaching core both owners’ policies.
+
+## Evidence and Its Limit
+
+Review the production and development sections of the manifest separately.
+The [crate architecture](../../../crates/bijux-gnss-core/docs/ARCHITECTURE.md)
+documents the intended graph, and the
+[package guardrail](../../../crates/bijux-gnss-core/tests/integration_guardrails.rs)
+checks shared repository policy. The guardrail is not a complete dependency
+architecture proof; manifest review and downstream impact review remain
+necessary.
+
+A dependency change is ready when the edge has a stable semantic reason,
+production remains independent of higher GNSS packages, public contracts do
+not absorb consumer policy, and the review states what automation does and
+does not enforce.
