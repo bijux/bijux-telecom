@@ -9,16 +9,53 @@ last_reviewed: 2026-07-17
 
 # Review Checklist
 
-- Is this really repository-facing infrastructure, not command or runtime
-  behavior wearing an infra label?
-- Did dataset or sidecar interpretation change?
-- Did persisted run-footprint meaning change?
-- Did override or sweep behavior become more implicit?
-- Are docs aligned with the new repository contract?
-- If automated coverage is narrow here, did the change state that honestly?
+Review `bijux-gnss-infra` as repository-state infrastructure. It may own
+dataset identity, run footprints, persisted evidence contracts, artifact
+inspection, override expansion, and provenance. It should not become the place
+where command policy, receiver runtime behavior, or product-science meaning is
+repackaged as "infrastructure."
 
-## Protecting Proof
+```mermaid
+flowchart LR
+    input["changed repository-facing behavior"]
+    owner{"state, footprint, or evidence contract?"}
+    reject["send to command, receiver, nav, signal, or core owner"]
+    inspect["inspect infra contracts and guardrails"]
+    accept["accept only with durable repository proof"]
 
-- `crates/bijux-gnss-infra/docs/TESTS.md`
-- `crates/bijux-gnss-infra/docs/CONTRACTS.md`
-- `docs/03-bijux-gnss-infra/this-package-does-not-own.md`
+    input --> owner
+    owner -- no --> reject
+    owner -- yes --> inspect --> accept
+```
+
+## Review Gates
+
+| changed surface | accept only when | inspect before accepting |
+| --- | --- | --- |
+| dataset or sidecar interpretation | The same on-disk dataset state resolves identically across callers. | [Dataset Contracts](../interfaces/dataset-contracts.md), `crates/bijux-gnss-infra/docs/CONTRACTS.md` |
+| run footprint or persisted artifact | The artifact remains understandable after the producing process is gone. | [Run Footprint Contracts](../interfaces/run-footprint-contracts.md), [Persisted Artifact Contracts](../interfaces/persisted-artifact-contracts.md) |
+| override or sweep behavior | Expansion is typed, reviewable, and reproducible; it is not hidden command policy. | [Override And Sweep Contracts](../interfaces/override-and-sweep-contracts.md), `crates/bijux-gnss-infra/tests/integration_overrides.rs` |
+| provenance or hashing | The hash explains repository reproducibility instead of becoming a general cryptographic helper. | [Provenance And Hashing](../interfaces/provenance-and-hashing.md), `crates/bijux-gnss-infra/docs/BOUNDARY.md` |
+| public import or adapter | The export is an infrastructure contract, not a shortcut to another crate's owner. | [API Surface](../interfaces/api-surface.md), `crates/bijux-gnss-infra/src/api.rs`, `crates/bijux-gnss-infra/tests/integration_guardrails.rs` |
+
+## Blocking Signs
+
+- A command workflow rule is stored here because it was easier than extending
+  the command crate.
+- A receiver artifact gains persistence semantics before infra describes the
+  reader contract.
+- A dataset field is accepted by one caller but has no repository-wide
+  interpretation.
+- A new helper has no durable relationship to datasets, run identity,
+  persisted artifacts, overrides, provenance, or inspection.
+
+## Evidence To Require
+
+- Read `crates/bijux-gnss-infra/docs/CONTRACTS.md` and
+  `crates/bijux-gnss-infra/docs/TESTS.md` before accepting changed behavior.
+- Require `crates/bijux-gnss-infra/tests/integration_guardrails.rs` coverage
+  or a narrower contract test for boundary-sensitive changes.
+- Update the matching interface page whenever an on-disk repository contract
+  changes.
+- Send product meaning back to `bijux-gnss-core`, runtime behavior back to
+  `bijux-gnss-receiver`, and operator policy back to `bijux-gnss`.

@@ -9,22 +9,51 @@ last_reviewed: 2026-07-17
 
 # Review Checklist
 
-Use this checklist when reviewing a nav change.
+Review `bijux-gnss-nav` as the owner of reusable navigation science:
+products, time models, orbit and clock interpretation, correction laws,
+estimation, refusal behavior, and integrity evidence. The crate may consume
+observations and signal facts, but it should not own receiver scheduling,
+repository persistence, or command presentation.
 
-## Checklist
+```mermaid
+flowchart TB
+    claim["changed navigation claim"]
+    family["name the scientific family"]
+    model["inspect model and product contracts"]
+    proof["inspect estimator, product, or refusal proof"]
+    boundary["confirm runtime and repository concerns stay outside"]
 
-- is the owning scientific family named clearly
-- does the change preserve the crate boundary against runtime or repository
-  creep
-- if `api.rs` changed, is the public promise durable
-- do refusal, rejection, downgrade, or integrity outcomes still make sense
-- did the author run the narrowest honest validation commands
-- if a reference or fixture changed, is the reason explicit and scientifically
-  credible
-- do the handbook pages still match the changed behavior
+    claim --> family --> model --> proof --> boundary
+```
 
-## Protecting Proof
+## Review Gates
 
-- `crates/bijux-gnss-nav/docs/TESTS.md`
-- `crates/bijux-gnss-nav/docs/PUBLIC_API.md`
-- `docs/04-bijux-gnss-nav/this-package-does-not-own.md`
+| changed surface | accept only when | inspect before accepting |
+| --- | --- | --- |
+| navigation product parser or provider | Product meaning is documented and reusable without repository-file policy. | [Format And Product Contracts](../interfaces/format-and-product-contracts.md), `crates/bijux-gnss-nav/docs/CONTRACTS.md` |
+| orbit, clock, time, or model logic | Scientific assumptions and units are explicit enough for downstream callers. | [Orbit Contracts](../interfaces/orbit-contracts.md), [Time And Model Contracts](../interfaces/time-and-model-contracts.md) |
+| correction law | The correction remains a reusable navigation surface, not receiver tuning. | [Correction Contracts](../interfaces/correction-contracts.md), `crates/bijux-gnss-nav/tests/integration_precise_correction_queries.rs` |
+| estimator or positioning behavior | Refusal, downgrade, residual, and integrity outcomes are backed by targeted tests. | [Estimation Contracts](../interfaces/estimation-contracts.md), `crates/bijux-gnss-nav/docs/ESTIMATION.md` |
+| public export | The export represents durable navigation science rather than a caller shortcut. | [API Surface](../interfaces/api-surface.md), `crates/bijux-gnss-nav/docs/PUBLIC_API.md`, `crates/bijux-gnss-nav/tests/integration_guardrails.rs` |
+
+## Blocking Signs
+
+- A solver accepts impossible geometry, missing reference coordinates, or weak
+  residual evidence without a documented refusal or downgrade path.
+- A product parser explains file handling but not the scientific meaning of the
+  parsed state.
+- A runtime convenience becomes a navigation API even though it only makes one
+  receiver flow easier.
+- A reference fixture changes without explaining why the new expectation is
+  scientifically stronger or more representative.
+
+## Evidence To Require
+
+- Read `crates/bijux-gnss-nav/docs/TESTS.md`,
+  `crates/bijux-gnss-nav/docs/ESTIMATION.md`, and
+  `crates/bijux-gnss-nav/docs/PUBLIC_API.md` before accepting broad changes.
+- Require the narrow test family that matches the changed scientific claim:
+  product, orbit, correction, estimator, integrity, or refusal behavior.
+- Update interface docs when public navigation meaning changes.
+- Route command rendering, receiver scheduling, and persisted-evidence layout
+  back to their owning crates instead of expanding nav to host them.
