@@ -37,7 +37,7 @@ Workspace-wide release notes live in the [workspace changelog](../../CHANGELOG.m
 - Default features include navigation. A feature-default or navigation-handoff
   change must describe behavior with and without navigation enabled.
 
-The [receiver release guide](../../docs/05-bijux-gnss-receiver/operations/release-and-versioning.md)
+The [receiver release guide](../../docs/bijux-gnss-receiver/operations/release-and-versioning.md)
 defines the proof route for runtime, artifact, port, and validation changes.
 
 ## What Belongs Here

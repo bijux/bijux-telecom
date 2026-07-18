@@ -13,7 +13,7 @@ recorded here. Workspace-wide release notes live in the
 - The [signal catalog](docs/CATALOG.md), [code-family guide](docs/CODE_FAMILIES.md),
   [DSP guide](docs/DSP.md), and [raw-IQ guide](docs/RAW_IQ.md) now define the
   reusable facts and behavior consumed by receiver and validation code.
-- The [release guide](../../docs/06-bijux-gnss-signal/operations/release-and-versioning.md)
+- The [release guide](../../docs/bijux-gnss-signal/operations/release-and-versioning.md)
   connects registry, code, sampling, DSP, and raw-IQ changes to reference and
   continuity evidence.
 

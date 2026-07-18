@@ -85,7 +85,7 @@ cargo run -q -p bijux-gnss -- gnss validate-synthetic-iq \
 Read the output manifest first. It connects the input identity, configuration,
 reports, and generated artifacts so the result can be reviewed without
 reconstructing the command from terminal history. The
-[command workflow guide](docs/01-bijux-gnss/operations/common-workflows.md) covers the
+[command workflow guide](docs/bijux-gnss/operations/common-workflows.md) covers the
 other acquisition, synthetic-IQ, quantization, and navigation workflows.
 
 ## Follow A Sample Through The Workspace
@@ -166,7 +166,7 @@ make test-all
 
 `make test` excludes the governed slow roster. `make test-slow` runs that
 roster, and `make test-all` runs both lanes. The
-[repository test policy](docs/07-bijux-gnss-dev/quality/repository-test-policy.md)
+[repository test policy](docs/bijux-gnss-dev/quality/repository-test-policy.md)
 defines the selection contract and the evidence each lane is intended to
 provide.
 

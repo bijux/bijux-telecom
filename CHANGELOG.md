@@ -58,7 +58,7 @@ flowchart LR
     tag --> github
 ```
 
-The [release handbook](docs/07-bijux-gnss-dev/operations/release-and-versioning.md)
+The [release handbook](docs/bijux-gnss-dev/operations/release-and-versioning.md)
 defines the publication boundary, commands, channels, version rules, and
 failure policy. The [facade changelog](crates/bijux-gnss/CHANGELOG.md) records
 changes to the `bijux` command and the top-level Rust API.

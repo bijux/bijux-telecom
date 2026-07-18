@@ -6,7 +6,7 @@
 [![infra](https://img.shields.io/crates/v/bijux-gnss-infra?label=infra&logo=rust)](https://crates.io/crates/bijux-gnss-infra)
 [![ghcr-infra](https://img.shields.io/badge/ghcr-infra-181717?logo=github)](https://github.com/bijux/bijux-gnss/pkgs/container/bijux-gnss%2Fbijux-gnss-infra)
 [![rust-docs](https://img.shields.io/badge/rust--docs-infra-DEA584?logo=rust&logoColor=white)](https://docs.rs/bijux-gnss-infra/latest/bijux_gnss_infra/)
-[![Infrastructure handbook](https://img.shields.io/badge/docs-infrastructure%20handbook-2563EB?logo=materialformkdocs&logoColor=white)](https://github.com/bijux/bijux-gnss/tree/main/docs/03-bijux-gnss-infra)
+[![Infrastructure handbook](https://img.shields.io/badge/docs-infrastructure%20handbook-2563EB?logo=materialformkdocs&logoColor=white)](https://github.com/bijux/bijux-gnss/tree/main/docs/bijux-gnss-infra)
 
 `bijux-gnss-infra` makes GNSS inputs and outputs reproducible at the repository
 boundary. It resolves registered datasets, records provenance, derives run
@@ -111,4 +111,4 @@ name is `bijux-gnss-infra`, and the Rust import name is
 Use the [test evidence guide](docs/TESTS.md) to match dataset, persistence,
 hashing, override, sweep, and inspection changes with focused proof.
 Compatibility changes belong in the [package release history](CHANGELOG.md)
-and follow the [infrastructure release guide](../../docs/03-bijux-gnss-infra/operations/release-and-versioning.md).
+and follow the [infrastructure release guide](../../docs/bijux-gnss-infra/operations/release-and-versioning.md).

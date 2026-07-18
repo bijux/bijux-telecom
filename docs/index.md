@@ -49,13 +49,13 @@ source, and tests.
 
 | question | owning handbook | strongest starting evidence |
 | --- | --- | --- |
-| What does an operator command accept, execute, or report? | [Command workflows](01-bijux-gnss/) | [command contracts](../crates/bijux-gnss/docs/COMMANDS.md) and [workflow implementation](../crates/bijux-gnss/src/cli/) |
-| What do shared identities, units, times, diagnostics, and artifact envelopes mean? | [Shared GNSS contracts](02-bijux-gnss-core/) | [core contracts](../crates/bijux-gnss-core/docs/CONTRACTS.md) and [public facade](../crates/bijux-gnss-core/src/api.rs) |
-| How are datasets, run identities, overrides, and persisted evidence handled? | [Repository infrastructure](03-bijux-gnss-infra/) | [infrastructure contracts](../crates/bijux-gnss-infra/docs/CONTRACTS.md) and [run layout](../crates/bijux-gnss-infra/docs/RUN_LAYOUT.md) |
-| Which parser, orbit model, correction, or estimator owns a navigation result? | [Navigation science](04-bijux-gnss-nav/) | [navigation contracts](../crates/bijux-gnss-nav/docs/CONTRACTS.md) and [navigation test evidence](../crates/bijux-gnss-nav/docs/TESTS.md) |
-| How are acquisition, tracking, observations, and runtime validation staged? | [Receiver execution](05-bijux-gnss-receiver/) | [pipeline contract](../crates/bijux-gnss-receiver/docs/PIPELINE.md) and [receiver tests](../crates/bijux-gnss-receiver/docs/TESTS.md) |
-| Which signal identities, code families, sample contracts, and DSP primitives are reusable? | [Signal processing](06-bijux-gnss-signal/) | [signal architecture](../crates/bijux-gnss-signal/docs/ARCHITECTURE.md) and [signal tests](../crates/bijux-gnss-signal/docs/TESTS.md) |
-| Which typed command validates repository governance or benchmark evidence? | [Maintainer tooling](07-bijux-gnss-dev/) | [maintainer commands](../crates/bijux-gnss-dev/docs/COMMANDS.md) and [workflow behavior](../crates/bijux-gnss-dev/docs/WORKFLOWS.md) |
+| What does an operator command accept, execute, or report? | [Command workflows](bijux-gnss/) | [command contracts](../crates/bijux-gnss/docs/COMMANDS.md) and [workflow implementation](../crates/bijux-gnss/src/cli/) |
+| What do shared identities, units, times, diagnostics, and artifact envelopes mean? | [Shared GNSS contracts](bijux-gnss-core/) | [core contracts](../crates/bijux-gnss-core/docs/CONTRACTS.md) and [public facade](../crates/bijux-gnss-core/src/api.rs) |
+| How are datasets, run identities, overrides, and persisted evidence handled? | [Repository infrastructure](bijux-gnss-infra/) | [infrastructure contracts](../crates/bijux-gnss-infra/docs/CONTRACTS.md) and [run layout](../crates/bijux-gnss-infra/docs/RUN_LAYOUT.md) |
+| Which parser, orbit model, correction, or estimator owns a navigation result? | [Navigation science](bijux-gnss-nav/) | [navigation contracts](../crates/bijux-gnss-nav/docs/CONTRACTS.md) and [navigation test evidence](../crates/bijux-gnss-nav/docs/TESTS.md) |
+| How are acquisition, tracking, observations, and runtime validation staged? | [Receiver execution](bijux-gnss-receiver/) | [pipeline contract](../crates/bijux-gnss-receiver/docs/PIPELINE.md) and [receiver tests](../crates/bijux-gnss-receiver/docs/TESTS.md) |
+| Which signal identities, code families, sample contracts, and DSP primitives are reusable? | [Signal processing](bijux-gnss-signal/) | [signal architecture](../crates/bijux-gnss-signal/docs/ARCHITECTURE.md) and [signal tests](../crates/bijux-gnss-signal/docs/TESTS.md) |
+| Which typed command validates repository governance or benchmark evidence? | [Maintainer tooling](bijux-gnss-dev/) | [maintainer commands](../crates/bijux-gnss-dev/docs/COMMANDS.md) and [workflow behavior](../crates/bijux-gnss-dev/docs/WORKFLOWS.md) |
 | What changed across the workspace? | [Workspace changelog](../CHANGELOG.md) | the affected package changelog and commit history |
 
 ```mermaid
@@ -142,18 +142,18 @@ evidence; it does not make an implementation authoritative.
 
 The root contains one handbook for each primary owner:
 
-- [Command workflows](01-bijux-gnss/)
-- [Shared GNSS contracts](02-bijux-gnss-core/)
-- [Repository infrastructure](03-bijux-gnss-infra/)
-- [Navigation science](04-bijux-gnss-nav/)
-- [Receiver execution](05-bijux-gnss-receiver/)
-- [Signal processing](06-bijux-gnss-signal/)
-- [Maintainer tooling](07-bijux-gnss-dev/)
+- [Command workflows](bijux-gnss/)
+- [Shared GNSS contracts](bijux-gnss-core/)
+- [Repository infrastructure](bijux-gnss-infra/)
+- [Navigation science](bijux-gnss-nav/)
+- [Receiver execution](bijux-gnss-receiver/)
+- [Signal processing](bijux-gnss-signal/)
+- [Maintainer tooling](bijux-gnss-dev/)
 - [Badge reference](badges.md)
 
-The numbered directory names preserve handbook ordering but are not
-reader-facing titles. Link text should describe the domain, as above, rather
-than exposing storage names.
+Handbook directory names match durable package ownership so published URLs,
+repository links, and crate identities remain aligned. Link text should
+describe the reader's question or the owning domain.
 
 ## When Sources Disagree
 

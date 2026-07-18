@@ -6,7 +6,7 @@
 [![core](https://img.shields.io/crates/v/bijux-gnss-core?label=core&logo=rust)](https://crates.io/crates/bijux-gnss-core)
 [![ghcr-core](https://img.shields.io/badge/ghcr-core-181717?logo=github)](https://github.com/bijux/bijux-gnss/pkgs/container/bijux-gnss%2Fbijux-gnss-core)
 [![rust-docs](https://img.shields.io/badge/rust--docs-core-DEA584?logo=rust&logoColor=white)](https://docs.rs/bijux-gnss-core/latest/bijux_gnss_core/)
-[![Core handbook](https://img.shields.io/badge/docs-core%20handbook-2563EB?logo=materialformkdocs&logoColor=white)](https://github.com/bijux/bijux-gnss/tree/main/docs/02-bijux-gnss-core)
+[![Core handbook](https://img.shields.io/badge/docs-core%20handbook-2563EB?logo=materialformkdocs&logoColor=white)](https://github.com/bijux/bijux-gnss/tree/main/docs/bijux-gnss-core)
 
 `bijux-gnss-core` is the shared vocabulary of the bijux GNSS packages. It
 defines identities, units, time, coordinates, observations, diagnostics,

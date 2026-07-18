@@ -12,7 +12,7 @@ release notes live in the [workspace changelog](../../CHANGELOG.md).
 - The [contract guide](docs/CONTRACTS.md) and
   [serialization guide](docs/SERIALIZATION.md) identify the shared records and
   persisted meanings that downstream crates may rely on.
-- The [release guide](../../docs/02-bijux-gnss-core/operations/release-and-versioning.md)
+- The [release guide](../../docs/bijux-gnss-core/operations/release-and-versioning.md)
   maps public exports, validation changes, serialized data, units, time
   systems, and diagnostics to explicit compatibility decisions.
 

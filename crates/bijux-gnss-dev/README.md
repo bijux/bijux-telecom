@@ -111,7 +111,7 @@ expression.
 That proof is not a `bijux-gnss-dev` subcommand. It executes the repository’s
 lane-expression generator as test evidence. The
 [test evidence guide](docs/TESTS.md) explains this package boundary and the
-[repository test policy](../../docs/07-bijux-gnss-dev/quality/repository-test-policy.md)
+[repository test policy](../../docs/bijux-gnss-dev/quality/repository-test-policy.md)
 defines the governed lanes.
 
 ## Change The Smallest Authority

@@ -6,7 +6,7 @@
 [![signal](https://img.shields.io/crates/v/bijux-gnss-signal?label=signal&logo=rust)](https://crates.io/crates/bijux-gnss-signal)
 [![ghcr-signal](https://img.shields.io/badge/ghcr-signal-181717?logo=github)](https://github.com/bijux/bijux-gnss/pkgs/container/bijux-gnss%2Fbijux-gnss-signal)
 [![rust-docs](https://img.shields.io/badge/rust--docs-signal-DEA584?logo=rust&logoColor=white)](https://docs.rs/bijux-gnss-signal/latest/bijux_gnss_signal/)
-[![Signal handbook](https://img.shields.io/badge/docs-signal%20handbook-2563EB?logo=materialformkdocs&logoColor=white)](https://github.com/bijux/bijux-gnss/tree/main/docs/06-bijux-gnss-signal)
+[![Signal handbook](https://img.shields.io/badge/docs-signal%20handbook-2563EB?logo=materialformkdocs&logoColor=white)](https://github.com/bijux/bijux-gnss/tree/main/docs/bijux-gnss-signal)
 
 `bijux-gnss-signal` turns a GNSS signal identity into reusable physical and
 digital behavior. It provides the catalog, primary and secondary codes, raw-IQ
@@ -113,5 +113,5 @@ changed physical claim.
 
 Compatibility and support changes belong in the
 [package release history](CHANGELOG.md). The
-[signal release guide](../../docs/06-bijux-gnss-signal/operations/release-and-versioning.md)
+[signal release guide](../../docs/bijux-gnss-signal/operations/release-and-versioning.md)
 defines the evidence expected before publication.

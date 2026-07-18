@@ -6,7 +6,7 @@
 [![nav](https://img.shields.io/crates/v/bijux-gnss-nav?label=nav&logo=rust)](https://crates.io/crates/bijux-gnss-nav)
 [![ghcr-nav](https://img.shields.io/badge/ghcr-nav-181717?logo=github)](https://github.com/bijux/bijux-gnss/pkgs/container/bijux-gnss%2Fbijux-gnss-nav)
 [![rust-docs](https://img.shields.io/badge/rust--docs-nav-DEA584?logo=rust&logoColor=white)](https://docs.rs/bijux-gnss-nav/latest/bijux_gnss_nav/)
-[![Navigation handbook](https://img.shields.io/badge/docs-navigation%20handbook-2563EB?logo=materialformkdocs&logoColor=white)](https://github.com/bijux/bijux-gnss/tree/main/docs/04-bijux-gnss-nav)
+[![Navigation handbook](https://img.shields.io/badge/docs-navigation%20handbook-2563EB?logo=materialformkdocs&logoColor=white)](https://github.com/bijux/bijux-gnss/tree/main/docs/bijux-gnss-nav)
 
 `bijux-gnss-nav` interprets navigation products and observations to produce a
 positioning result, integrity evidence, or an explicit refusal. Its scope spans
@@ -106,4 +106,4 @@ Use the [test evidence guide](docs/TESTS.md) to select the relevant proof and
 the [architecture guide](docs/ARCHITECTURE.md) to preserve dependency
 direction. Scientific and compatibility changes belong in the
 [package release history](CHANGELOG.md) and follow the
-[navigation release guide](../../docs/04-bijux-gnss-nav/operations/release-and-versioning.md).
+[navigation release guide](../../docs/bijux-gnss-nav/operations/release-and-versioning.md).

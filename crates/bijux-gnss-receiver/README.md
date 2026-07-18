@@ -6,7 +6,7 @@
 [![receiver](https://img.shields.io/crates/v/bijux-gnss-receiver?label=receiver&logo=rust)](https://crates.io/crates/bijux-gnss-receiver)
 [![ghcr-receiver](https://img.shields.io/badge/ghcr-receiver-181717?logo=github)](https://github.com/bijux/bijux-gnss/pkgs/container/bijux-gnss%2Fbijux-gnss-receiver)
 [![rust-docs](https://img.shields.io/badge/rust--docs-receiver-DEA584?logo=rust&logoColor=white)](https://docs.rs/bijux-gnss-receiver/latest/bijux_gnss_receiver/)
-[![Receiver handbook](https://img.shields.io/badge/docs-receiver%20handbook-2563EB?logo=materialformkdocs&logoColor=white)](https://github.com/bijux/bijux-gnss/tree/main/docs/05-bijux-gnss-receiver)
+[![Receiver handbook](https://img.shields.io/badge/docs-receiver%20handbook-2563EB?logo=materialformkdocs&logoColor=white)](https://github.com/bijux/bijux-gnss/tree/main/docs/bijux-gnss-receiver)
 
 `bijux-gnss-receiver` turns complex samples into typed evidence about
 acquisition, tracking, observations, and optional navigation. It owns receiver
@@ -121,4 +121,4 @@ The [test evidence guide](docs/TESTS.md) maps each claim to focused integration,
 property, synthetic, reference, and guardrail tests. Compatibility changes to
 defaults, stage transitions, ports, or artifacts belong in the
 [package release history](CHANGELOG.md) and follow the
-[receiver release guide](../../docs/05-bijux-gnss-receiver/operations/release-and-versioning.md).
+[receiver release guide](../../docs/bijux-gnss-receiver/operations/release-and-versioning.md).

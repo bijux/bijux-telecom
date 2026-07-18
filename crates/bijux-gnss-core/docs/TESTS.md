@@ -95,7 +95,7 @@ flowchart TD
 ```
 
 For numerical work, derive tolerances using the
-[numerical evidence standard](../../../docs/02-bijux-gnss-core/quality/numerical-budgets.md).
+[numerical evidence standard](../../../docs/bijux-gnss-core/quality/numerical-budgets.md).
 For a serialized change, test both old-reader expectations and invalid
 cross-field combinations. For a new public enum, trait, constant, alias, or
 method, add direct coverage because the current surface guardrail will not find
@@ -125,6 +125,6 @@ invalid condition at a time, and fail with the moved invariant. Record residual
 gaps rather than turning a representative fixture or textual guardrail into a
 broader compatibility claim.
 
-The [handbook test strategy](../../../docs/02-bijux-gnss-core/quality/test-strategy.md)
+The [handbook test strategy](../../../docs/bijux-gnss-core/quality/test-strategy.md)
 documents current coverage limits and the [invariant guide](INVARIANTS.md)
 states the downstream assumptions intended to remain stable.

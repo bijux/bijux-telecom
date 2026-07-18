@@ -101,7 +101,7 @@ representative contract checks, not exhaustive historical compatibility.
 The [observation JSONL record](../tests/data/obs_fixture.jsonl) is checked in
 but no current source or test reads it. It is dormant example data, not active
 round-trip or backward-compatibility evidence. The
-[fixture evidence guide](../../../docs/02-bijux-gnss-core/operations/fixture-and-regression-care.md)
+[fixture evidence guide](../../../docs/bijux-gnss-core/operations/fixture-and-regression-care.md)
 defines what an active reader must prove before that status changes.
 
 ## Evidence Gaps

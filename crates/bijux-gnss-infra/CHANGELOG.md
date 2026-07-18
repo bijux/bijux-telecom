@@ -39,7 +39,7 @@ Workspace-wide release notes live in the [workspace changelog](../../CHANGELOG.m
 - Artifact-inspection output is reader-visible behavior; report fields and
   validation summaries need compatibility treatment.
 
-The [infrastructure release guide](../../docs/03-bijux-gnss-infra/operations/release-and-versioning.md)
+The [infrastructure release guide](../../docs/bijux-gnss-infra/operations/release-and-versioning.md)
 defines release treatment for persisted footprints and metadata meaning.
 
 ## What Belongs Here

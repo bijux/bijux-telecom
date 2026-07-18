@@ -12,7 +12,7 @@ Workspace-wide release notes live in the [workspace changelog](../../CHANGELOG.m
 - The [format guide](docs/FORMATS.md), [correction guide](docs/CORRECTIONS.md),
   [orbit guide](docs/ORBITS.md), and [estimation guide](docs/ESTIMATION.md)
   connect external products to solution, degraded, and refusal evidence.
-- The [release guide](../../docs/04-bijux-gnss-nav/operations/release-and-versioning.md)
+- The [release guide](../../docs/bijux-gnss-nav/operations/release-and-versioning.md)
   defines the scientific claim and proof required for parser, model, orbit,
   estimator, integrity, and tolerance changes.
 

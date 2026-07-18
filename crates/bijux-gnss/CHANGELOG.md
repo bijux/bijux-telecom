@@ -35,7 +35,7 @@ Workspace-wide release notes live in the [workspace changelog](../../CHANGELOG.m
 | facade export or feature default | Rust consumers may need to change imports or features |
 | delegated lower-crate behavior | the owning package changelog defines compatibility |
 
-The [workspace release handbook](../../docs/07-bijux-gnss-dev/operations/release-and-versioning.md)
+The [workspace release handbook](../../docs/bijux-gnss-dev/operations/release-and-versioning.md)
 defines versioning and publication order. Entries here describe only the facade
 and command behavior included in that release.
 
