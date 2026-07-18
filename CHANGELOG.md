@@ -1,52 +1,73 @@
 # Changelog
 
-This file records workspace-level changes for `bijux-telecom`. Package-specific
-API, command, runtime, fixture, signal, navigation, infrastructure, and policy
-changes are recorded beside the package that owns the changed surface.
+This file records changes that affect the `bijux-telecom` workspace as a whole.
+Package changelogs record API, command, signal, navigation, receiver, and
+infrastructure changes owned by one crate.
 
 The repository is in `0.1.0` development. Entries under `Unreleased` describe
-work that has not been cut as a published release.
-
-## How To Read This File
-
-Use this changelog when a change affects more than one crate, changes the
-workspace contract, or changes how maintainers validate the repository. If the
-change is local to one crate, start in that crate's `CHANGELOG.md` and link back
-here only when the workspace reader needs the context.
-
-```mermaid
-flowchart LR
-    change["repository change"]
-    workspace["workspace-wide contract"]
-    package["package-owned behavior"]
-    root["root changelog"]
-    local["crate changelog"]
-
-    change --> workspace
-    change --> package
-    workspace --> root
-    package --> local
-```
+release preparation and behavior that have not been published.
 
 ## Unreleased
 
+No crate, container artifact, or GitHub release described below has been
+published. Publication will run through the managed release workflows after a
+version and tag are approved.
+
 ### Added
 
-- Workspace and crate-local changelog entrypoints now exist for every package.
-- Package documentation now carries reader routes, ownership boundaries,
-  verification focus, and API-reference surfaces.
+- A machine-readable [crate publication contract](configs/release/crates.toml)
+  identifies the six public crates, their dependency order, and the three
+  repository-only support crates.
+- Local release validation checks package metadata, license inclusion,
+  dependency versions, publication eligibility, and packaged crate contents
+  without uploading to a registry.
+- The release builder produces per-crate source bundles and checksums for GHCR
+  and GitHub Releases. GHCR receives source artifacts, not runnable images.
+- Every public crate carries an Apache-2.0 license and direct routes to its
+  crates.io package, API documentation, source bundle, and handbook.
 
 ### Changed
 
-- Documentation is being tightened around package ownership, release history,
-  evidence artifacts, and validation lanes.
+- The six public crates share workspace version `0.1.0` and complete crates.io
+  metadata. Public dependencies declare both a workspace path and the release
+  version.
+- `bijux-gnss-dev`, `bijux-gnss-policies`, and `bijux-gnss-testkit` are
+  explicitly repository-only. Public crates use them only as path-based
+  development dependencies, so they are absent from published manifests.
+- Release automation now separates proof from publication: local commands
+  validate and package the release, while managed GitHub workflows own
+  crates.io, GHCR, and GitHub publication.
+- Workspace and package documentation now state which crate owns each public
+  contract and which evidence supports a release decision.
+
+## Release Route
+
+```mermaid
+flowchart LR
+    source["approved source and version"]
+    proof["local release proof"]
+    tag["reviewed release tag"]
+    crates["crates.io and docs.rs"]
+    ghcr["GHCR source bundles"]
+    github["GitHub release"]
+
+    source --> proof
+    proof --> tag
+    tag --> crates
+    tag --> ghcr
+    tag --> github
+```
+
+The [release handbook](docs/07-bijux-gnss-dev/operations/release-and-versioning.md)
+defines the publication boundary, commands, channels, version rules, and
+failure policy. The [facade changelog](crates/bijux-gnss/CHANGELOG.md) records
+changes to the `bijux` command and the top-level Rust API.
 
 ## Entry Rules
 
-- Record cross-crate behavior, repository structure, or release-process changes
-  here.
-- Record package-owned changes in the package changelog first.
-- Do not duplicate low-level implementation details across root and package
-  changelogs.
-- Prefer reader impact over commit narration: what changed, who is affected, and
-  which package owns the follow-up.
+- Record a change here when it alters the publication boundary, shared version,
+  cross-crate behavior, or repository-wide validation.
+- Record package-owned behavior in that package's changelog instead of
+  duplicating implementation detail here.
+- Describe what changes for users or maintainers, the compatibility impact, and
+  the evidence required before release.
