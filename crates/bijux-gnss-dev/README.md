@@ -12,11 +12,11 @@ models, or general shell helpers that have no durable repository owner.
 
 | question | go next |
 | --- | --- |
-| Which maintainer command exists? | [docs/COMMANDS.md](docs/COMMANDS.md), `src/main.rs` |
-| Which governed input file is validated? | [docs/GOVERNANCE_FILES.md](docs/GOVERNANCE_FILES.md), [docs/AUDIT_POLICY.md](docs/AUDIT_POLICY.md) |
-| Where does maintenance evidence go? | [docs/OUTPUTS.md](docs/OUTPUTS.md), [docs/BENCHMARKS.md](docs/BENCHMARKS.md) |
-| How are fast and slow test lanes protected? | [docs/TESTS.md](docs/TESTS.md), `tests/integration_nextest_suite_selection.rs` |
-| What changed in this package? | [CHANGELOG.md](CHANGELOG.md) |
+| Which maintainer command exists? | [Command guide](docs/COMMANDS.md), `src/main.rs` |
+| Which governed input file is validated? | [Governance file guide](docs/GOVERNANCE_FILES.md), [Audit policy](docs/AUDIT_POLICY.md) |
+| Where does maintenance evidence go? | [Output guide](docs/OUTPUTS.md), [Benchmark guide](docs/BENCHMARKS.md) |
+| How are fast and slow test lanes protected? | [Test guide](docs/TESTS.md), `tests/integration_nextest_suite_selection.rs` |
+| What changed in this package? | [Package changelog](CHANGELOG.md) |
 
 ## Owned Boundary
 
@@ -53,17 +53,17 @@ flowchart LR
 
 ## Documentation Map
 
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-- [docs/AUDIT_POLICY.md](docs/AUDIT_POLICY.md)
-- [docs/BENCHMARKS.md](docs/BENCHMARKS.md)
-- [docs/BOUNDARY.md](docs/BOUNDARY.md)
-- [docs/COMMANDS.md](docs/COMMANDS.md)
-- [docs/CONTRACTS.md](docs/CONTRACTS.md)
-- [docs/GOVERNANCE_FILES.md](docs/GOVERNANCE_FILES.md)
-- [docs/OUTPUTS.md](docs/OUTPUTS.md)
-- [docs/PUBLIC_API.md](docs/PUBLIC_API.md)
-- [docs/TESTS.md](docs/TESTS.md)
-- [docs/WORKFLOWS.md](docs/WORKFLOWS.md)
+- [Architecture guide](docs/ARCHITECTURE.md)
+- [Audit policy](docs/AUDIT_POLICY.md)
+- [Benchmark guide](docs/BENCHMARKS.md)
+- [Boundary guide](docs/BOUNDARY.md)
+- [Command guide](docs/COMMANDS.md)
+- [Contract guide](docs/CONTRACTS.md)
+- [Governance file guide](docs/GOVERNANCE_FILES.md)
+- [Output guide](docs/OUTPUTS.md)
+- [Public API](docs/PUBLIC_API.md)
+- [Test guide](docs/TESTS.md)
+- [Workflow guide](docs/WORKFLOWS.md)
 
 ## Verification Focus
 
@@ -76,5 +76,5 @@ cargo run -p bijux-gnss-dev -- audit-allowlist
 cargo run -p bijux-gnss-dev -- deny-policy-deviations
 ```
 
-Repository-wide lanes and package routing are documented in
-[../../README.md](../../README.md).
+Repository-wide lanes and package routing are documented in the
+[workspace README](../../README.md).

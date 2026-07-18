@@ -11,11 +11,11 @@ absorb their science, persistence rules, or runtime internals.
 
 | question | go next |
 | --- | --- |
-| Which command or argument exists? | [docs/COMMANDS.md](docs/COMMANDS.md), `src/cli/command_line.rs` |
-| How does a command assemble work? | [docs/EXECUTION.md](docs/EXECUTION.md), `src/cli/command_runtime.rs` |
-| What does a report promise to operators? | [docs/REPORTING.md](docs/REPORTING.md), `src/cli/report.rs` |
-| What does the Rust facade expose? | [docs/FACADE.md](docs/FACADE.md), [docs/PUBLIC_API.md](docs/PUBLIC_API.md), `src/lib.rs` |
-| What changed in this package? | [CHANGELOG.md](CHANGELOG.md) |
+| Which command or argument exists? | [Command guide](docs/COMMANDS.md), `src/cli/command_line.rs` |
+| How does a command assemble work? | [Execution guide](docs/EXECUTION.md), `src/cli/command_runtime.rs` |
+| What does a report promise to operators? | [Reporting guide](docs/REPORTING.md), `src/cli/report.rs` |
+| What does the Rust facade expose? | [Facade guide](docs/FACADE.md), [Public API](docs/PUBLIC_API.md), `src/lib.rs` |
+| What changed in this package? | [Package changelog](CHANGELOG.md) |
 
 ## Owned Boundary
 
@@ -51,17 +51,17 @@ flowchart LR
 
 ## Documentation Map
 
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-- [docs/BOUNDARY.md](docs/BOUNDARY.md)
-- [docs/COMMANDS.md](docs/COMMANDS.md)
-- [docs/CONTRACTS.md](docs/CONTRACTS.md)
-- [docs/EXECUTION.md](docs/EXECUTION.md)
-- [docs/FACADE.md](docs/FACADE.md)
-- [docs/PUBLIC_API.md](docs/PUBLIC_API.md)
-- [docs/REPORTING.md](docs/REPORTING.md)
-- [docs/TESTS.md](docs/TESTS.md)
-- [docs/VALIDATION.md](docs/VALIDATION.md)
-- [docs/WORKFLOWS.md](docs/WORKFLOWS.md)
+- [Architecture guide](docs/ARCHITECTURE.md)
+- [Boundary guide](docs/BOUNDARY.md)
+- [Command guide](docs/COMMANDS.md)
+- [Contract guide](docs/CONTRACTS.md)
+- [Execution guide](docs/EXECUTION.md)
+- [Facade guide](docs/FACADE.md)
+- [Public API](docs/PUBLIC_API.md)
+- [Reporting guide](docs/REPORTING.md)
+- [Test guide](docs/TESTS.md)
+- [Validation guide](docs/VALIDATION.md)
+- [Workflow guide](docs/WORKFLOWS.md)
 
 ## Verification Focus
 
@@ -73,5 +73,5 @@ cargo test -p bijux-gnss --test integration_nav_decode
 cargo test -p bijux-gnss --test integration_validate_synthetic_navigation
 ```
 
-Repository-wide lanes and package routing are documented in
-[../../README.md](../../README.md).
+Repository-wide lanes and package routing are documented in the
+[workspace README](../../README.md).

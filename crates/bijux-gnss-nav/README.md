@@ -13,11 +13,11 @@ ingest, receiver scheduling, signal-code generation, or CLI presentation.
 
 | question | go next |
 | --- | --- |
-| Which external format or product is parsed? | [docs/FORMATS.md](docs/FORMATS.md), `src/formats.rs` |
-| Which correction or model owns the science? | [docs/CORRECTIONS.md](docs/CORRECTIONS.md), [docs/MODELS.md](docs/MODELS.md) |
-| Which orbit or clock contract applies? | [docs/ORBITS.md](docs/ORBITS.md), `src/orbits/` |
-| How is a solution estimated or refused? | [docs/ESTIMATION.md](docs/ESTIMATION.md), `src/estimation/` |
-| What changed in this package? | [CHANGELOG.md](CHANGELOG.md) |
+| Which external format or product is parsed? | [Format guide](docs/FORMATS.md), `src/formats.rs` |
+| Which correction or model owns the science? | [Correction guide](docs/CORRECTIONS.md), [Model guide](docs/MODELS.md) |
+| Which orbit or clock contract applies? | [Orbit guide](docs/ORBITS.md), `src/orbits/` |
+| How is a solution estimated or refused? | [Estimation guide](docs/ESTIMATION.md), `src/estimation/` |
+| What changed in this package? | [Package changelog](CHANGELOG.md) |
 
 ## Owned Boundary
 
@@ -57,17 +57,17 @@ flowchart TB
 
 ## Documentation Map
 
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-- [docs/BOUNDARY.md](docs/BOUNDARY.md)
-- [docs/CORRECTIONS.md](docs/CORRECTIONS.md)
-- [docs/CONTRACTS.md](docs/CONTRACTS.md)
-- [docs/ESTIMATION.md](docs/ESTIMATION.md)
-- [docs/FORMATS.md](docs/FORMATS.md)
-- [docs/MODELS.md](docs/MODELS.md)
-- [docs/ORBITS.md](docs/ORBITS.md)
-- [docs/PUBLIC_API.md](docs/PUBLIC_API.md)
-- [docs/TESTS.md](docs/TESTS.md)
-- [docs/TIME.md](docs/TIME.md)
+- [Architecture guide](docs/ARCHITECTURE.md)
+- [Boundary guide](docs/BOUNDARY.md)
+- [Correction guide](docs/CORRECTIONS.md)
+- [Contract guide](docs/CONTRACTS.md)
+- [Estimation guide](docs/ESTIMATION.md)
+- [Format guide](docs/FORMATS.md)
+- [Model guide](docs/MODELS.md)
+- [Orbit guide](docs/ORBITS.md)
+- [Public API](docs/PUBLIC_API.md)
+- [Test guide](docs/TESTS.md)
+- [Time guide](docs/TIME.md)
 
 ## Verification Focus
 
@@ -79,5 +79,5 @@ cargo test -p bijux-gnss-nav --test integration_position
 cargo test -p bijux-gnss-nav --test integration_rtk_double_difference
 ```
 
-Repository-wide lanes and package routing are documented in
-[../../README.md](../../README.md).
+Repository-wide lanes and package routing are documented in the
+[workspace README](../../README.md).

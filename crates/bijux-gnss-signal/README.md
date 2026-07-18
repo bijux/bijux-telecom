@@ -13,11 +13,11 @@ operator command behavior.
 
 | question | go next |
 | --- | --- |
-| Which signal identity or wavelength is registered? | [docs/CATALOG.md](docs/CATALOG.md), `src/catalog.rs` |
-| Which code family or secondary code is implemented? | [docs/CODE_FAMILIES.md](docs/CODE_FAMILIES.md), `src/codes/` |
-| Which DSP primitive owns timing, NCO, replica, or spectrum behavior? | [docs/DSP.md](docs/DSP.md), `src/dsp/` |
-| Which raw sample or metadata contract applies? | [docs/RAW_IQ.md](docs/RAW_IQ.md), [docs/SAMPLES.md](docs/SAMPLES.md) |
-| What changed in this package? | [CHANGELOG.md](CHANGELOG.md) |
+| Which signal identity or wavelength is registered? | [Signal catalog guide](docs/CATALOG.md), `src/catalog.rs` |
+| Which code family or secondary code is implemented? | [Code family guide](docs/CODE_FAMILIES.md), `src/codes/` |
+| Which DSP primitive owns timing, NCO, replica, or spectrum behavior? | [DSP guide](docs/DSP.md), `src/dsp/` |
+| Which raw sample or metadata contract applies? | [Raw IQ guide](docs/RAW_IQ.md), [Sample guide](docs/SAMPLES.md) |
+| What changed in this package? | [Package changelog](CHANGELOG.md) |
 
 ## Owned Boundary
 
@@ -56,18 +56,18 @@ flowchart TB
 
 ## Documentation Map
 
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-- [docs/BOUNDARY.md](docs/BOUNDARY.md)
-- [docs/CATALOG.md](docs/CATALOG.md)
-- [docs/CODE_FAMILIES.md](docs/CODE_FAMILIES.md)
-- [docs/CONTRACTS.md](docs/CONTRACTS.md)
-- [docs/DSP.md](docs/DSP.md)
-- [docs/RAW_IQ.md](docs/RAW_IQ.md)
-- [docs/SAMPLES.md](docs/SAMPLES.md)
-- [docs/TRAITS.md](docs/TRAITS.md)
-- [docs/PUBLIC_API.md](docs/PUBLIC_API.md)
-- [docs/TESTS.md](docs/TESTS.md)
-- [docs/VALIDATION.md](docs/VALIDATION.md)
+- [Architecture guide](docs/ARCHITECTURE.md)
+- [Boundary guide](docs/BOUNDARY.md)
+- [Signal catalog guide](docs/CATALOG.md)
+- [Code family guide](docs/CODE_FAMILIES.md)
+- [Contract guide](docs/CONTRACTS.md)
+- [DSP guide](docs/DSP.md)
+- [Raw IQ guide](docs/RAW_IQ.md)
+- [Sample guide](docs/SAMPLES.md)
+- [Trait guide](docs/TRAITS.md)
+- [Public API](docs/PUBLIC_API.md)
+- [Test guide](docs/TESTS.md)
+- [Validation guide](docs/VALIDATION.md)
 
 ## Verification Focus
 
@@ -79,5 +79,5 @@ cargo test -p bijux-gnss-signal --test integration_signal_spectrum_cboc
 cargo test -p bijux-gnss-signal --test prop_obs_epoch_validation
 ```
 
-Repository-wide lanes and package routing are documented in
-[../../README.md](../../README.md).
+Repository-wide lanes and package routing are documented in the
+[workspace README](../../README.md).

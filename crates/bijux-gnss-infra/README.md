@@ -13,11 +13,11 @@ operator report wording.
 
 | question | go next |
 | --- | --- |
-| Which dataset metadata is trusted? | [docs/DATASETS.md](docs/DATASETS.md), `src/datasets/` |
-| Where should a run write files? | [docs/RUN_LAYOUT.md](docs/RUN_LAYOUT.md), `src/run_layout/` |
-| How is provenance or hashing computed? | [docs/HASHING.md](docs/HASHING.md), `src/hash/` |
-| How do overrides and sweeps expand? | [docs/OVERRIDES.md](docs/OVERRIDES.md), [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md) |
-| What changed in this package? | [CHANGELOG.md](CHANGELOG.md) |
+| Which dataset metadata is trusted? | [Dataset guide](docs/DATASETS.md), `src/datasets/` |
+| Where should a run write files? | [Run layout guide](docs/RUN_LAYOUT.md), `src/run_layout/` |
+| How is provenance or hashing computed? | [Hashing guide](docs/HASHING.md), `src/hash/` |
+| How do overrides and sweeps expand? | [Override guide](docs/OVERRIDES.md), [Experiment guide](docs/EXPERIMENTS.md) |
+| What changed in this package? | [Package changelog](CHANGELOG.md) |
 
 ## Owned Boundary
 
@@ -57,17 +57,17 @@ flowchart LR
 
 ## Documentation Map
 
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-- [docs/BOUNDARY.md](docs/BOUNDARY.md)
-- [docs/CONTRACTS.md](docs/CONTRACTS.md)
-- [docs/DATASETS.md](docs/DATASETS.md)
-- [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md)
-- [docs/HASHING.md](docs/HASHING.md)
-- [docs/OVERRIDES.md](docs/OVERRIDES.md)
-- [docs/PUBLIC_API.md](docs/PUBLIC_API.md)
-- [docs/RUN_LAYOUT.md](docs/RUN_LAYOUT.md)
-- [docs/TESTS.md](docs/TESTS.md)
-- [docs/VALIDATION.md](docs/VALIDATION.md)
+- [Architecture guide](docs/ARCHITECTURE.md)
+- [Boundary guide](docs/BOUNDARY.md)
+- [Contract guide](docs/CONTRACTS.md)
+- [Dataset guide](docs/DATASETS.md)
+- [Experiment guide](docs/EXPERIMENTS.md)
+- [Hashing guide](docs/HASHING.md)
+- [Override guide](docs/OVERRIDES.md)
+- [Public API](docs/PUBLIC_API.md)
+- [Run layout guide](docs/RUN_LAYOUT.md)
+- [Test guide](docs/TESTS.md)
+- [Validation guide](docs/VALIDATION.md)
 
 ## Verification Focus
 
@@ -78,5 +78,5 @@ cargo test -p bijux-gnss-infra --test integration_overrides
 cargo test -p bijux-gnss-infra --test integration_guardrails
 ```
 
-Repository-wide lanes and package routing are documented in
-[../../README.md](../../README.md).
+Repository-wide lanes and package routing are documented in the
+[workspace README](../../README.md).

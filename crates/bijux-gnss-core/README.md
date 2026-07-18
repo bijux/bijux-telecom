@@ -12,11 +12,11 @@ layout unless that surface needs a shared record type.
 
 | question | go next |
 | --- | --- |
-| Which ID, unit, time, coordinate, or observation type is canonical? | [docs/CONTRACTS.md](docs/CONTRACTS.md), `src/api.rs` |
-| Which artifact envelope or schema rule applies? | [docs/CONTRACT_MAP.md](docs/CONTRACT_MAP.md), [docs/SERIALIZATION.md](docs/SERIALIZATION.md) |
-| Which diagnostic or error category should a downstream crate use? | [docs/DIAGNOSTICS.md](docs/DIAGNOSTICS.md), `src/diagnostic/`, `src/error.rs` |
-| Which invariant must not be weakened? | [docs/INVARIANTS.md](docs/INVARIANTS.md), [docs/CHANGE_RULES.md](docs/CHANGE_RULES.md) |
-| What changed in this package? | [CHANGELOG.md](CHANGELOG.md) |
+| Which ID, unit, time, coordinate, or observation type is canonical? | [Contract guide](docs/CONTRACTS.md), `src/api.rs` |
+| Which artifact envelope or schema rule applies? | [Contract map](docs/CONTRACT_MAP.md), [Serialization guide](docs/SERIALIZATION.md) |
+| Which diagnostic or error category should a downstream crate use? | [Diagnostic guide](docs/DIAGNOSTICS.md), `src/diagnostic/`, `src/error.rs` |
+| Which invariant must not be weakened? | [Invariant guide](docs/INVARIANTS.md), [Change rules](docs/CHANGE_RULES.md) |
+| What changed in this package? | [Package changelog](CHANGELOG.md) |
 
 ## Owned Boundary
 
@@ -61,17 +61,17 @@ flowchart TB
 
 ## Documentation Map
 
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-- [docs/BOUNDARY.md](docs/BOUNDARY.md)
-- [docs/CHANGE_RULES.md](docs/CHANGE_RULES.md)
-- [docs/CONTRACTS.md](docs/CONTRACTS.md)
-- [docs/CONTRACT_MAP.md](docs/CONTRACT_MAP.md)
-- [docs/DIAGNOSTICS.md](docs/DIAGNOSTICS.md)
-- [docs/INVARIANTS.md](docs/INVARIANTS.md)
-- [docs/PUBLIC_API.md](docs/PUBLIC_API.md)
-- [docs/SERIALIZATION.md](docs/SERIALIZATION.md)
-- [docs/SUPPORT_MATRIX.md](docs/SUPPORT_MATRIX.md)
-- [docs/TESTS.md](docs/TESTS.md)
+- [Architecture guide](docs/ARCHITECTURE.md)
+- [Boundary guide](docs/BOUNDARY.md)
+- [Change rules](docs/CHANGE_RULES.md)
+- [Contract guide](docs/CONTRACTS.md)
+- [Contract map](docs/CONTRACT_MAP.md)
+- [Diagnostic guide](docs/DIAGNOSTICS.md)
+- [Invariant guide](docs/INVARIANTS.md)
+- [Public API](docs/PUBLIC_API.md)
+- [Serialization guide](docs/SERIALIZATION.md)
+- [Support matrix](docs/SUPPORT_MATRIX.md)
+- [Test guide](docs/TESTS.md)
 
 ## Verification Focus
 
@@ -84,5 +84,5 @@ cargo test -p bijux-gnss-core --test tracking_artifact_validation
 cargo test -p bijux-gnss-core --test prop_timekeeping
 ```
 
-Repository-wide lanes and package routing are documented in
-[../../README.md](../../README.md).
+Repository-wide lanes and package routing are documented in the
+[workspace README](../../README.md).

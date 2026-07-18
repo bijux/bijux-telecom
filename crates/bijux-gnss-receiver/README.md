@@ -12,11 +12,11 @@ repository persistence policy, or operator-facing command wording.
 
 | question | go next |
 | --- | --- |
-| How does a run move through stages? | [docs/PIPELINE.md](docs/PIPELINE.md), `src/pipeline/` |
-| Which runtime knobs and defaults are supported? | [docs/RUNTIME.md](docs/RUNTIME.md), `src/engine/receiver_config.rs` |
-| Which ports isolate clock, source, and sink behavior? | [docs/PORTS.md](docs/PORTS.md), `src/ports/`, `src/io/` |
-| Which reports or artifacts come from receiver execution? | [docs/ARTIFACTS.md](docs/ARTIFACTS.md), `src/artifacts.rs`, `src/validation_report.rs` |
-| What changed in this package? | [CHANGELOG.md](CHANGELOG.md) |
+| How does a run move through stages? | [Pipeline guide](docs/PIPELINE.md), `src/pipeline/` |
+| Which runtime knobs and defaults are supported? | [Runtime guide](docs/RUNTIME.md), `src/engine/receiver_config.rs` |
+| Which ports isolate clock, source, and sink behavior? | [Port guide](docs/PORTS.md), `src/ports/`, `src/io/` |
+| Which reports or artifacts come from receiver execution? | [Artifact guide](docs/ARTIFACTS.md), `src/artifacts.rs`, `src/validation_report.rs` |
+| What changed in this package? | [Package changelog](CHANGELOG.md) |
 
 ## Owned Boundary
 
@@ -60,17 +60,17 @@ flowchart LR
 
 ## Documentation Map
 
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-- [docs/ARTIFACTS.md](docs/ARTIFACTS.md)
-- [docs/BOUNDARY.md](docs/BOUNDARY.md)
-- [docs/CONTRACTS.md](docs/CONTRACTS.md)
-- [docs/PIPELINE.md](docs/PIPELINE.md)
-- [docs/PORTS.md](docs/PORTS.md)
-- [docs/PUBLIC_API.md](docs/PUBLIC_API.md)
-- [docs/REFERENCE_VALIDATION.md](docs/REFERENCE_VALIDATION.md)
-- [docs/RUNTIME.md](docs/RUNTIME.md)
-- [docs/SIMULATION.md](docs/SIMULATION.md)
-- [docs/TESTS.md](docs/TESTS.md)
+- [Architecture guide](docs/ARCHITECTURE.md)
+- [Artifact guide](docs/ARTIFACTS.md)
+- [Boundary guide](docs/BOUNDARY.md)
+- [Contract guide](docs/CONTRACTS.md)
+- [Pipeline guide](docs/PIPELINE.md)
+- [Port guide](docs/PORTS.md)
+- [Public API](docs/PUBLIC_API.md)
+- [Reference validation guide](docs/REFERENCE_VALIDATION.md)
+- [Runtime guide](docs/RUNTIME.md)
+- [Simulation guide](docs/SIMULATION.md)
+- [Test guide](docs/TESTS.md)
 
 ## Verification Focus
 
@@ -82,5 +82,5 @@ cargo test -p bijux-gnss-receiver --test integration_receiver_support_matrix_inv
 cargo test -p bijux-gnss-receiver --test integration_navigation_pvt_accuracy_budget
 ```
 
-Repository-wide lanes and package routing are documented in
-[../../README.md](../../README.md).
+Repository-wide lanes and package routing are documented in the
+[workspace README](../../README.md).

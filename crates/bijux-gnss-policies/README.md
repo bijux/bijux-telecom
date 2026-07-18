@@ -13,11 +13,11 @@ scientific semantics, maintainer command UX, or release automation.
 
 | question | go next |
 | --- | --- |
-| Which guardrail ran? | [docs/GUARDRAILS.md](docs/GUARDRAILS.md), `src/guardrails/` |
-| Which configuration drives it? | [docs/CONFIGURATION.md](docs/CONFIGURATION.md) |
-| Which public API is reusable? | [docs/PUBLIC_API.md](docs/PUBLIC_API.md), `src/api.rs` |
-| Which snapshot or report must be reviewed? | [docs/SNAPSHOTS.md](docs/SNAPSHOTS.md), [docs/REPORTING.md](docs/REPORTING.md) |
-| What changed in this package? | [CHANGELOG.md](CHANGELOG.md) |
+| Which guardrail ran? | [Guardrail guide](docs/GUARDRAILS.md), `src/guardrails/` |
+| Which configuration drives it? | [Configuration guide](docs/CONFIGURATION.md) |
+| Which public API is reusable? | [Public API](docs/PUBLIC_API.md), `src/api.rs` |
+| Which snapshot or report must be reviewed? | [Snapshot guide](docs/SNAPSHOTS.md), [Reporting guide](docs/REPORTING.md) |
+| What changed in this package? | [Package changelog](CHANGELOG.md) |
 
 ## Owned Boundary
 
@@ -52,16 +52,16 @@ flowchart LR
 
 ## Documentation Map
 
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-- [docs/BOUNDARY.md](docs/BOUNDARY.md)
-- [docs/CHANGE_RULES.md](docs/CHANGE_RULES.md)
-- [docs/CONFIGURATION.md](docs/CONFIGURATION.md)
-- [docs/CONTRACTS.md](docs/CONTRACTS.md)
-- [docs/GUARDRAILS.md](docs/GUARDRAILS.md)
-- [docs/REPORTING.md](docs/REPORTING.md)
-- [docs/SNAPSHOTS.md](docs/SNAPSHOTS.md)
-- [docs/PUBLIC_API.md](docs/PUBLIC_API.md)
-- [docs/TESTS.md](docs/TESTS.md)
+- [Architecture guide](docs/ARCHITECTURE.md)
+- [Boundary guide](docs/BOUNDARY.md)
+- [Change rules](docs/CHANGE_RULES.md)
+- [Configuration guide](docs/CONFIGURATION.md)
+- [Contract guide](docs/CONTRACTS.md)
+- [Guardrail guide](docs/GUARDRAILS.md)
+- [Reporting guide](docs/REPORTING.md)
+- [Snapshot guide](docs/SNAPSHOTS.md)
+- [Public API](docs/PUBLIC_API.md)
+- [Test guide](docs/TESTS.md)
 
 ## Verification Focus
 
@@ -73,5 +73,5 @@ cargo test -p bijux-gnss-policies --test integration_workspace
 cargo test -p bijux-gnss-policies --test integration_policy_snapshot
 ```
 
-Repository-wide lanes and package routing are documented in
-[../../README.md](../../README.md).
+Repository-wide lanes and package routing are documented in the
+[workspace README](../../README.md).

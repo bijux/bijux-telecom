@@ -13,12 +13,12 @@ implementation, repository persistence rules, or one-off wrappers.
 
 | question | go next |
 | --- | --- |
-| Which fixture or reference dataset is shared? | [docs/FIXTURES.md](docs/FIXTURES.md), [docs/REFERENCE_DATA.md](docs/REFERENCE_DATA.md) |
-| Which independent model computes expected behavior? | [docs/TRUTH_MODELS.md](docs/TRUTH_MODELS.md), `src/reference_models/` |
-| Which antenna or signal truth helper is available? | [docs/ANTENNA.md](docs/ANTENNA.md), [docs/SIGNAL.md](docs/SIGNAL.md) |
-| Which Rust API is public? | [API.md](API.md), `src/lib.rs` |
-| How is independence protected? | [docs/INDEPENDENCE.md](docs/INDEPENDENCE.md), `tests/scientific_independence.rs` |
-| What changed in this package? | [CHANGELOG.md](CHANGELOG.md) |
+| Which fixture or reference dataset is shared? | [Fixture guide](docs/FIXTURES.md), [Reference data guide](docs/REFERENCE_DATA.md) |
+| Which independent model computes expected behavior? | [Truth model guide](docs/TRUTH_MODELS.md), `src/reference_models/` |
+| Which antenna or signal truth helper is available? | [Antenna guide](docs/ANTENNA.md), [Signal guide](docs/SIGNAL.md) |
+| Which Rust API is public? | [Package API](API.md), `src/lib.rs` |
+| How is independence protected? | [Independence guide](docs/INDEPENDENCE.md), `tests/scientific_independence.rs` |
+| What changed in this package? | [Package changelog](CHANGELOG.md) |
 
 ## Owned Boundary
 
@@ -53,18 +53,18 @@ flowchart TB
 
 ## Documentation Map
 
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-- [API.md](API.md)
-- [docs/ANTENNA.md](docs/ANTENNA.md)
-- [docs/BOUNDARY.md](docs/BOUNDARY.md)
-- [docs/CONTRACTS.md](docs/CONTRACTS.md)
-- [docs/FIXTURES.md](docs/FIXTURES.md)
-- [docs/SIGNAL.md](docs/SIGNAL.md)
-- [docs/PUBLIC_API.md](docs/PUBLIC_API.md)
-- [docs/REFERENCE_DATA.md](docs/REFERENCE_DATA.md)
-- [docs/TESTS.md](docs/TESTS.md)
-- [docs/TRUTH_MODELS.md](docs/TRUTH_MODELS.md)
-- [docs/INDEPENDENCE.md](docs/INDEPENDENCE.md)
+- [Architecture guide](docs/ARCHITECTURE.md)
+- [Package API](API.md)
+- [Antenna guide](docs/ANTENNA.md)
+- [Boundary guide](docs/BOUNDARY.md)
+- [Contract guide](docs/CONTRACTS.md)
+- [Fixture guide](docs/FIXTURES.md)
+- [Signal guide](docs/SIGNAL.md)
+- [Public API](docs/PUBLIC_API.md)
+- [Reference data guide](docs/REFERENCE_DATA.md)
+- [Test guide](docs/TESTS.md)
+- [Truth model guide](docs/TRUTH_MODELS.md)
+- [Independence guide](docs/INDEPENDENCE.md)
 
 ## Verification Focus
 
@@ -75,5 +75,5 @@ cargo test -p bijux-gnss-testkit --test scientific_independence
 cargo test -p bijux-gnss-testkit --test integration_guardrails
 ```
 
-Repository-wide lanes and package routing are documented in
-[../../README.md](../../README.md).
+Repository-wide lanes and package routing are documented in the
+[workspace README](../../README.md).
