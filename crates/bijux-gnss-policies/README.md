@@ -1,142 +1,122 @@
 # bijux-gnss-policies
 
-`bijux-gnss-policies` makes repository architecture executable. It checks crate
-source shape, curated API discipline, selected content rules, workspace
-dependency direction, and cross-package ownership boundaries. The crate is
-repository-only: it inspects product code but never participates in GNSS
-runtime.
+`bijux-gnss-policies` turns selected repository architecture rules into
+executable checks. It protects source-tree shape, curated API boundaries,
+content restrictions, dependency direction, and policy configuration. It is a
+repository-only crate and never participates in GNSS runtime.
 
-Start here after a policy test fails or before turning a recurring review
-decision into an enforced rule.
+Use it when a rule is objective enough that a maintainer should receive the
+same pass or failure every time. Keep judgment-heavy concerns in review until
+their accepted and rejected cases can be stated precisely.
 
-## Choose Enforcement Deliberately
+## Decide Whether A Concern Is Ready For Enforcement
 
 ```mermaid
 flowchart TD
-    concern["repository concern"]
-    stable{"is the boundary durable and objective?"}
-    local{"can one crate prove it?"}
-    guardrail["crate-local guardrail"]
-    workspace["workspace invariant test"]
-    report["read-only structural report"]
+    concern["recurring review concern"]
+    objective{"durable and<br/>objectively detectable?"}
+    scope{"one crate or<br/>whole workspace?"}
+    local["reusable crate-local<br/>guardrail"]
+    workspace["workspace<br/>invariant test"]
+    report["read-only report"]
     review["maintainer review"]
 
-    concern --> stable
-    stable -->|"no"| report --> review
-    stable -->|"yes"| local
-    local -->|"yes"| guardrail --> review
-    local -->|"no"| workspace --> review
+    concern --> objective
+    objective -->|"no"| report --> review
+    objective -->|"yes"| scope
+    scope -->|"one crate"| local --> review
+    scope -->|"workspace"| workspace --> review
 ```
 
-- Use a crate-local guardrail for source topology, API exposure, naming, or
-  content constraints that can be evaluated from one crate root.
-- Use a workspace invariant test for dependency edges, imports, package
-  coverage, or ownership spanning multiple crates.
-- Use a report while a concern still needs human interpretation. Promote it
-  only when the repository can state one durable pass/fail condition.
+A guardrail should name a stable boundary, point to the offending location,
+and leave the maintainer with a concrete action. A metric without a decision
+belongs in a report, not a failing policy.
 
-Product behavior, scientific accuracy, release automation, and command
-experience need their own owners and evidence.
+## The Reusable Engine Is Deliberately Small
 
-## Public Contract
+Downstream policy tests import four items from
+`bijux_gnss_policies::api`:
 
-Consumers use four items from the
-[curated policy API](src/api.rs):
-
-| item | responsibility |
+| Item | Contract |
 | --- | --- |
-| `check` | evaluate enabled crate-local rules against an explicit crate root |
-| `GuardrailConfig` | select limits, opt-in checks, purity zones, and narrow exceptions |
-| `GuardrailError` | distinguish inspection failures from actionable policy violations |
-| `Result` | keep callers independent from internal error wiring |
+| `check` | inspect one explicit crate root with one configuration and stop at the first failure |
+| `GuardrailConfig` | select limits, opt-in rules, purity zones, and narrow exceptions |
+| `GuardrailError` | distinguish filesystem or regex failures from policy violations |
+| `Result` | expose the crate’s error type without internal wiring |
 
-`check` is read-only and stops at the first failure. Fixing one violation can
-therefore expose another on the next run. The
-[architecture guide](docs/ARCHITECTURE.md) documents evaluation order and the
-boundary between reusable checks, workspace tests, and reporting.
-
-## Interpreting A Failure
-
-```mermaid
-flowchart TD
-    failure["failing output"]
-    family{"failure family"}
-    source["source-tree or API violation"]
-    dependency["workspace dependency or import violation"]
-    snapshot["default-policy snapshot difference"]
-    inspect["inspection or regex error"]
-    repair["repair the owned boundary"]
-    justify["justify a policy change"]
-
-    failure --> family
-    family --> source --> repair
-    family --> dependency --> repair
-    family --> snapshot --> justify
-    family --> inspect --> repair
-```
-
-1. Read the package, source, token, edge, or limit named in the failure.
-2. Treat the owned source as wrong before assuming the check is stale.
-3. For dependency failures, decide whether responsibility moved before editing
-   the allowlist.
-4. For snapshot differences, identify the changed default and explain why every
-   consumer should inherit it.
-5. Add an exception only when it can name one narrow, durable location.
-
-Never raise a global limit to accommodate one package. That converts a local
-design problem into weaker policy for the entire workspace.
-
-## What The Checks Can Prove
-
-The reusable engine inspects source text and filesystem structure. Workspace
-tests also use Cargo metadata where dependency structure matters. These checks
-can expose forbidden imports, misplaced exports, excessive topology, known
-tokens, and undeclared dependency edges.
-
-They do not replace:
-
-- Rust name resolution or compiler lints;
-- runtime and scientific tests;
-- semantic review of comments and architecture;
-- proof that a textual matcher recognizes every equivalent program.
+The engine walks source files and applies source-tree, API-surface, and textual
+rules. Workspace integration tests add checks that need Cargo metadata or
+knowledge of several packages. Calling the reusable engine alone does not prove
+the full workspace policy.
 
 The [guardrail reference](docs/GUARDRAILS.md) describes active rule families,
-and the [test evidence guide](docs/TESTS.md) states the workspace invariants
-currently exercised.
+and the [configuration contract](docs/CONFIGURATION.md) explains which checks
+are default, opt-in, or parameterized.
 
-## Changing Policy
+## Diagnose The Boundary Before Editing Policy
 
-A policy change is ready when:
+When a policy test fails:
 
-- the protected boundary is written in repository terms;
-- accepted and rejected cases prove the matcher;
-- failure output gives a maintainer enough context to act;
-- configuration defaults and exceptions remain narrow;
-- serialized default changes receive explicit
-  [snapshot review](docs/SNAPSHOTS.md);
-- report fields have a reader action rather than accumulating metrics without a
-  decision.
+1. Read the named package, file, token, dependency edge, or limit.
+2. Identify the responsibility the rule protects.
+3. Repair the owned source before assuming the matcher is obsolete.
+4. For a dependency failure, decide whether ownership moved before changing an
+   allowlist.
+5. For a default snapshot difference, explain why every consumer should receive
+   the new policy.
+6. Add an exception only when one narrow, durable location cannot satisfy the
+   general rule.
 
-Use the [configuration guide](docs/CONFIGURATION.md) for rule selection and the
-[reporting guide](docs/REPORTING.md) when deciding whether a concern is mature
-enough to enforce.
+Raising a global limit for one package weakens unrelated packages. A local
+exception is preferable only when the exception itself documents a durable
+architectural reason.
 
-## Verification
+```mermaid
+flowchart LR
+    failure["policy failure"]
+    source{"owned source<br/>violates boundary?"}
+    repair["repair source"]
+    policy{"rule or default<br/>intentionally changed?"}
+    prove["add accepted and<br/>rejected proof"]
+    snapshot["review serialized<br/>default change"]
 
-Run the focused invariant that changed:
-
-```sh
-cargo test -p bijux-gnss-policies --test integration_dep_rules
-cargo test -p bijux-gnss-policies --test integration_workspace
-cargo test -p bijux-gnss-policies --test integration_policy_snapshot
+    failure --> source
+    source -->|"yes"| repair
+    source -->|"no"| policy
+    policy -->|"yes"| prove --> snapshot
 ```
 
-Run the complete package suite after changing engine behavior, configuration,
-or workspace policy:
+## Know What Text Checks Cannot Prove
 
-```sh
-cargo test -p bijux-gnss-policies
-```
+The engine and several workspace tests use filesystem walks, regular
+expressions, token searches, and Cargo metadata. They can reliably catch the
+specific shapes and strings they recognize. They cannot prove:
 
-Reader-visible policy changes belong in the
-[package changelog](CHANGELOG.md).
+- Rust name resolution, type behavior, or compiler lint semantics;
+- equivalent code written in a form the matcher does not recognize;
+- scientific correctness or runtime behavior;
+- architectural meaning that exists only in a comment;
+- absence of every possible cross-layer dependency.
+
+These checks complement compilation, linting, runtime tests, scientific
+evidence, and review. Do not describe a green structural guardrail as proof of
+product correctness.
+
+## Policy Defaults Are A Reviewed Contract
+
+The default configuration has a checked-in serialized snapshot. A diff can mean
+a new rule, renamed field, changed limit, changed exception shape, or changed
+default behavior for every consumer. Do not refresh it simply because a test
+asks for new bytes.
+
+The [snapshot guide](docs/SNAPSHOTS.md) defines the review questions. Any policy
+change should also include matcher-focused accepted and rejected cases,
+actionable failure text, and aligned [test evidence](docs/TESTS.md).
+
+The crate also provides a read-only purity report for structural observation.
+Its counts do not mutate source and do not enforce policy. Promote a report
+concern only after the repository can defend a durable threshold.
+
+Reader-visible rule and default changes belong in the
+[package release history](CHANGELOG.md). The package is not published; its
+compatibility matters because every workspace crate consumes its checks.

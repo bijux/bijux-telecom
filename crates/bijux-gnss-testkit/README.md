@@ -1,134 +1,132 @@
 # bijux-gnss-testkit
 
-`bijux-gnss-testkit` supplies reusable GNSS test evidence: checked-in reference
-data, deterministic scenarios, typed fixture loading, and calculations designed
-to remain independent from production algorithms. It is a workspace support
-crate and is not published or linked into product runtime.
+`bijux-gnss-testkit` provides shared evidence for GNSS tests: typed fixture
+loading, checked-in reference records, independent geometry, deterministic
+position and signal truth, and controlled antenna effects. It is
+repository-only and is never linked into product runtime.
 
-Use it when a test needs an expected value that should be shared, reviewed, and
-traceable. Keep setup beside the test when it only shortens one test case or
-replays the implementation being tested.
+Use it when an expected value deserves a shared, reviewable source. Keep
+one-test setup beside that test, especially when extracting it would only hide
+the implementation being exercised.
 
-## Choose The Evidence First
+## Choose Evidence By The Claim
 
 ```mermaid
 flowchart TD
-    claim["claim to prove"]
-    source{"trusted external value available?"}
-    reference["checked-in reference data"]
-    formula{"independent formula or simpler model?"}
-    model["reference model"]
-    scenario{"shared deterministic scenario?"}
-    synthetic["synthetic truth"]
-    local["test-local setup"]
+    claim["behavior or scientific claim"]
+    external{"trusted external<br/>reference available?"}
+    reference["reference record<br/>with provenance"]
+    formula{"independent formula<br/>or simpler model?"}
+    model["independent model"]
+    synthetic{"controlled scenario<br/>is the claim?"}
+    truth["synthetic truth"]
+    regression["golden behavior record"]
     product["product result"]
-    compare["domain comparison"]
+    compare["comparison in domain units"]
 
-    claim --> source
-    source -->|"yes"| reference --> compare
-    source -->|"no"| formula
+    claim --> external
+    external -->|"yes"| reference --> compare
+    external -->|"no"| formula
     formula -->|"yes"| model --> compare
-    formula -->|"no"| scenario
-    scenario -->|"yes"| synthetic --> compare
-    scenario -->|"no"| local --> compare
+    formula -->|"no"| synthetic
+    synthetic -->|"yes"| truth --> compare
+    synthetic -->|"no"| regression --> compare
     product --> compare
 ```
 
-Prefer evidence in this order:
+Evidence strength is not determined by where a file lives:
 
-1. a public or curated reference with provenance, units, frame, and epoch;
-2. an independent formula or deliberately simpler algorithm;
-3. deterministic synthetic truth whose assumptions are explicit;
-4. a stable golden record when behavior, rather than scientific truth, is the
-   contract.
+- A public reference with source, epoch, frame, and units can challenge a
+  scientific result.
+- An independently derived formula can expose a production implementation
+  error.
+- Synthetic truth proves behavior under its declared assumptions.
+- A golden file produced by product code protects repeatability, not scientific
+  correctness.
 
-A golden file produced by the product implementation is regression evidence,
-not independent truth. Label it accordingly.
+Label the evidence honestly so a green test is not interpreted as a stronger
+claim than it supports.
 
-## What You Can Use
+## Public Evidence Families
 
-| need | supported surface | read before use |
-| --- | --- | --- |
-| load shared TOML, dataset-style, or JSON evidence | typed fixture loaders | [Fixture contracts](docs/FIXTURES.md) |
-| compare against trusted coordinates, stations, atmosphere, PPP, or RTK records | reference-data modules | [Reference-data provenance](docs/REFERENCE_DATA.md) |
-| build observations and position scenarios with known truth | position-truth helpers | [Truth-model boundary](docs/TRUTH_MODELS.md) |
-| generate deterministic acquisition or signal expectations | signal truth helpers | [Signal evidence](docs/SIGNAL.md) |
-| model controlled antenna effects | antenna truth helpers | [Antenna evidence](docs/ANTENNA.md) |
-| understand which modules are supported for test consumers | direct public module surface | [Public API](docs/PUBLIC_API.md) |
+The crate exposes six modules directly:
 
-The complete public module set is declared by the
-[crate entrypoint](src/lib.rs). Private reference models remain implementation
-detail; consumers use the evidence they produce rather than binding to their
-layout.
+| Module | Intended use |
+| --- | --- |
+| `fixtures` | load shared TOML, dataset-style, and JSON records deterministically |
+| `reference_data` | consume curated station, coordinate, troposphere, PPP, and RTK evidence |
+| `geometry` | compare coordinate and local-frame behavior through a separate implementation path |
+| `position_truth` | build observations, ephemerides, biases, and position scenarios with declared truth |
+| `signal` | derive expected acquisition phase and controlled sample streams |
+| `antenna` | apply deterministic antenna effects for PPP and RTK tests |
 
-## Independence Is A Design Property
+Private reference models are implementation details. Consumers should bind to
+the evidence and typed helpers they produce, not to the internal model layout.
+The [public API guide](docs/PUBLIC_API.md) records the supported module surface.
 
-```mermaid
-flowchart LR
-    source["standard, reference, or explicit formula"]
-    testkit["testkit evidence path"]
-    product["product implementation path"]
-    assertion["comparison in domain units"]
+## Independence Requires Review
 
-    source --> testkit --> assertion
-    product --> assertion
-    testkit -. "must not call the behavior under test" .-> product
-```
+The package depends on production-domain crates because its fixtures and
+expected records use their public types. That dependency does not make a truth
+calculation independent. Independence comes from a separate source, formula,
+algorithm, or deliberately controlled assumption.
 
-The [scientific-independence test](tests/scientific_independence.rs) rejects
-known production helper calls from truth-producing modules. It is useful but
-not exhaustive: a text check cannot prove that two algorithms do not share the
-same mistaken constant, assumption, or derivation. Review every new truth helper
-for:
+The executable independence backstop scans a fixed set of truth-producing
+source files for a fixed list of known production helper names. It can catch a
+direct reintroduction of those calls. It cannot detect:
 
-- the independent source of the expected value;
-- units, coordinate frame, signal identity, and time system;
-- deterministic ordering and reproducible failure;
-- the product operation it is intended to challenge;
-- a concrete consuming assertion.
+- a new production helper not listed by the test;
+- copied constants or formulas carrying the same mistake;
+- an equivalent call hidden behind another wrapper;
+- a wrong external reference, frame, unit, epoch, or assumption;
+- a helper outside the files currently scanned.
 
-If independence is incomplete, state exactly what the evidence can still prove.
+The [independence guide](docs/INDEPENDENCE.md) gives the review standard. A new
+truth helper should name its source, units, frame, time system, intended product
+claim, and concrete consuming assertion.
 
-## Where New Test Support Belongs
+## Put Shared Support In The Right Place
 
 ```mermaid
 flowchart TD
     helper["proposed helper"]
-    runtime{"needed outside tests?"}
-    shared{"reusable truth or fixture?"}
-    independent{"independent enough to challenge product code?"}
-    product["owning product crate"]
-    local["owning test"]
-    testkit["bijux-gnss-testkit"]
+    runtime{"needed by product<br/>runtime?"}
+    repeated{"shared by tests<br/>as durable evidence?"}
+    independent{"can it challenge<br/>product behavior?"}
+    owner["owning product crate"]
+    local["test-local support"]
+    testkit["testkit"]
 
     helper --> runtime
-    runtime -->|"yes"| product
-    runtime -->|"no"| shared
-    shared -->|"no"| local
-    shared -->|"yes"| independent
+    runtime -->|"yes"| owner
+    runtime -->|"no"| repeated
+    repeated -->|"no"| local
+    repeated -->|"yes"| independent
     independent -->|"yes"| testkit
     independent -->|"no"| local
 ```
 
-Do not move convenience wrappers here merely to reduce duplication. Shared
-support earns a public home when its scientific meaning, provenance, and
-cross-test value are durable.
+Reducing duplication is not enough reason to create shared test API. A helper
+belongs here when its scientific meaning, provenance, determinism, and value
+across tests are durable. Product configuration builders and wrappers around
+the implementation under test should remain with their stronger owner.
 
-## Verification
+## Keep Reference Records Reviewable
 
-Run the independence backstop after changing truth-producing code:
+Every shared reference or fixture should make these facts visible:
 
-```sh
-cargo test -p bijux-gnss-testkit --test scientific_independence
-```
+- source or explicit synthetic origin;
+- units, coordinate frame, signal identity, epoch, and time system;
+- deterministic parsing and ordering;
+- intended consumers and the claim they compare;
+- tolerances or budgets in domain units;
+- limitations that prevent a broader conclusion.
 
-Run the package suite when fixture parsing, public helpers, or reference records
-change:
+The [reference-data guide](docs/REFERENCE_DATA.md),
+[fixture contract](docs/FIXTURES.md), [position-truth guide](docs/TRUTH_MODELS.md),
+and [signal evidence guide](docs/SIGNAL.md) provide family-specific rules.
 
-```sh
-cargo test -p bijux-gnss-testkit
-```
-
-The [architecture guide](docs/ARCHITECTURE.md) explains dependency direction,
-the [test evidence guide](docs/TESTS.md) states what the package suite proves,
-and the [package changelog](CHANGELOG.md) records reader-visible changes.
+The [test evidence guide](docs/TESTS.md) explains what the package suite
+protects. Reader-visible helper, fixture, and truth changes belong in the
+[package release history](CHANGELOG.md), even though this support crate is not
+published.
