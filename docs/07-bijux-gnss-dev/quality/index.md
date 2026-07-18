@@ -51,18 +51,18 @@ governance surface is drifting.
 
 ## First Proof Surfaces
 
-- `crates/bijux-gnss-dev/tests/`
-- `crates/bijux-gnss-dev/docs/TESTS.md`
-- `crates/bijux-gnss-dev/docs/WORKFLOWS.md`
-- `crates/bijux-gnss-policies/`
+- the [maintainer test suite](../../../crates/bijux-gnss-dev/tests/)
+- the [maintainer test guide](../../../crates/bijux-gnss-dev/docs/TESTS.md)
+- the [workflow guide](../../../crates/bijux-gnss-dev/docs/WORKFLOWS.md)
+- the [policy crate](../../../crates/bijux-gnss-policies/)
 
 ## First Proof Check
 
-Inspect `crates/bijux-gnss-dev/docs/TESTS.md`,
-`crates/bijux-gnss-dev/docs/WORKFLOWS.md`,
-`crates/bijux-gnss-dev/docs/OUTPUTS.md`, and the proof surfaces above. That
-route shows whether quality claims are still backed by the right maintainer
-workflow tests instead of by broad repository confidence.
+Start with the [maintainer test guide](../../../crates/bijux-gnss-dev/docs/TESTS.md),
+[workflow guide](../../../crates/bijux-gnss-dev/docs/WORKFLOWS.md), and
+[output contract guide](../../../crates/bijux-gnss-dev/docs/OUTPUTS.md). Then
+inspect the proof surfaces above to confirm quality claims are backed by
+maintainer workflow tests rather than broad repository confidence.
 
 ## Leave This Section When
 

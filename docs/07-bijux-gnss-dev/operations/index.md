@@ -50,19 +50,19 @@ flowchart LR
 
 ## First Operational Surfaces
 
-- `crates/bijux-gnss-dev/tests/`
-- `crates/bijux-gnss-dev/docs/TESTS.md`
-- `crates/bijux-gnss-dev/docs/WORKFLOWS.md`
-- `crates/bijux-gnss-policies/`
+- the [maintainer test suite](../../../crates/bijux-gnss-dev/tests/)
+- the [maintainer test guide](../../../crates/bijux-gnss-dev/docs/TESTS.md)
+- the [workflow guide](../../../crates/bijux-gnss-dev/docs/WORKFLOWS.md)
+- the [policy crate](../../../crates/bijux-gnss-policies/)
 
 ## First Proof Check
 
-Inspect `crates/bijux-gnss-dev/docs/WORKFLOWS.md`,
-`crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md`,
-`crates/bijux-gnss-dev/docs/OUTPUTS.md`, and the operational surfaces above.
-That route shows whether a proposed maintainer change has been mapped to the
-right governed input, evidence path, and workflow owner before execution
-starts.
+Start with the [workflow guide](../../../crates/bijux-gnss-dev/docs/WORKFLOWS.md),
+[governed-file guide](../../../crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md),
+and [output contract guide](../../../crates/bijux-gnss-dev/docs/OUTPUTS.md).
+Then inspect the operational surfaces above to confirm a proposed maintainer
+change has been mapped to the right governed input, evidence path, and workflow
+owner before execution starts.
 
 ## Leave This Section When
 

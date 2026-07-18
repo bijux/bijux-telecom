@@ -50,18 +50,18 @@ amplified coupling elsewhere.
 
 ## First Proof Surfaces
 
-- `crates/bijux-gnss-signal/tests/`
-- `crates/bijux-gnss-signal/docs/TESTS.md`
-- `crates/bijux-gnss-signal/docs/VALIDATION.md`
-- `crates/bijux-gnss-testkit/`
+- the [signal test suite](../../../crates/bijux-gnss-signal/tests/)
+- the [signal test guide](../../../crates/bijux-gnss-signal/docs/TESTS.md)
+- the [validation guide](../../../crates/bijux-gnss-signal/docs/VALIDATION.md)
+- the [testkit crate](../../../crates/bijux-gnss-testkit/)
 
 ## First Proof Check
 
-Inspect `crates/bijux-gnss-signal/docs/TESTS.md`,
-`crates/bijux-gnss-signal/docs/VALIDATION.md`,
-`crates/bijux-gnss-signal/docs/PUBLIC_API.md`, and the proof surfaces above.
-That route shows whether quality claims are still backed by the right signal
-test layers instead of by broad crate confidence.
+Start with the [signal test guide](../../../crates/bijux-gnss-signal/docs/TESTS.md),
+[validation guide](../../../crates/bijux-gnss-signal/docs/VALIDATION.md), and
+[public API guide](../../../crates/bijux-gnss-signal/docs/PUBLIC_API.md). Then
+inspect the proof surfaces above to confirm quality claims are backed by the
+right signal test layers rather than broad crate confidence.
 
 ## Leave This Section When
 

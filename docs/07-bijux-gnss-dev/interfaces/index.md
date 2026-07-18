@@ -60,13 +60,13 @@ flowchart LR
 
 ## First Proof Check
 
-- `crates/bijux-gnss-dev/src/main.rs`
-- `crates/bijux-gnss-dev/docs/COMMANDS.md`
-- `crates/bijux-gnss-dev/docs/CONTRACTS.md`
-- `crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md`
-- `crates/bijux-gnss-dev/docs/OUTPUTS.md`
-- `crates/bijux-gnss-dev/docs/WORKFLOWS.md`
-- `crates/bijux-gnss-dev/docs/TESTS.md`
+- the [binary entrypoint](../../../crates/bijux-gnss-dev/src/main.rs)
+- the [command guide](../../../crates/bijux-gnss-dev/docs/COMMANDS.md)
+- the [contract guide](../../../crates/bijux-gnss-dev/docs/CONTRACTS.md)
+- the [governed-file guide](../../../crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md)
+- the [output contract guide](../../../crates/bijux-gnss-dev/docs/OUTPUTS.md)
+- the [workflow guide](../../../crates/bijux-gnss-dev/docs/WORKFLOWS.md)
+- the [maintainer test guide](../../../crates/bijux-gnss-dev/docs/TESTS.md)
 
 ## Leave This Section When
 
