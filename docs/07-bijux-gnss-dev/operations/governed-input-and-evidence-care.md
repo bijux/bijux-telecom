@@ -1,40 +1,53 @@
 ---
-title: Governed Input And Evidence Care
+title: Governed Input and Evidence Care
 audience: mixed
 type: operations
 status: canonical
 owner: bijux-gnss-dev-docs
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-18
 ---
 
-# Governed Input And Evidence Care
+# Governed Input and Evidence Care
 
 The reviewed files and evidence paths this crate touches are part of the
 maintainer contract, not incidental implementation detail.
 
+## Evidence Lifecycle
+
+```mermaid
+flowchart LR
+    input["governed input"]
+    command["maintainer command"]
+    output["generated evidence"]
+    review["review decision"]
+    docs["handbook contract"]
+
+    input --> command --> output --> review
+    review --> docs
+```
+
 ## Care Rules
 
-- change governed-input expectations only when the repository truly changed its
-  reviewed policy
-- keep evidence outputs in the documented governed locations
-- explain why a policy or benchmark-evidence change is credible, not just why
-  it makes a command pass
-- update the handbook when a workflow gains a new reviewed file or evidence
-  location
+| action | required care | failure mode |
+| --- | --- | --- |
+| change governed-input expectations | explain the repository policy that changed | command passes while policy meaning drifts |
+| update audit or deny exceptions | keep owner, reason, link, and expiry reviewable | exception becomes permanent folklore |
+| update benchmark evidence | separate current generated evidence from accepted baseline | transient performance data becomes a contract |
+| add a new evidence output | document purpose, location, and review cost | generated files appear without ownership |
+| add a new governed file | add command or test proof plus reader-facing docs | repository behavior depends on hidden config |
 
-## Boundary Rule
+## Boundary Decisions
 
-This crate may validate reviewed files and write maintenance evidence, but it
-should not quietly invent new repository control files or unmanaged output
-paths.
+- This crate may validate reviewed files and write maintenance evidence.
+- It should not quietly invent new repository control files or unmanaged output
+  paths.
+- Long-lived accepted evidence belongs in governed repository locations.
+- Current-run evidence belongs under generated artifact locations.
+- Product crates should not depend on maintainer-only evidence formats.
 
 ## First Proof Check
 
-- `crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md`
-- `crates/bijux-gnss-dev/docs/OUTPUTS.md`
-- `crates/bijux-gnss-dev/src/main.rs`
-
-Also inspect `crates/bijux-gnss-dev/docs/BENCHMARKS.md` when evidence files are
-in play. Governed inputs and outputs are trustworthy only when the workflow
-that reads or writes them stays explicit about purpose, location, and review
-cost.
+Inspect `crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md`,
+`crates/bijux-gnss-dev/docs/OUTPUTS.md`,
+`crates/bijux-gnss-dev/docs/BENCHMARKS.md`, and
+`crates/bijux-gnss-dev/src/main.rs`.
