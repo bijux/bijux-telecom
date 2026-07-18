@@ -34,12 +34,12 @@ flowchart LR
 
 | family | owns | first proof |
 | --- | --- | --- |
-| formats | GPS LNAV/CNAV, Galileo FNAV/INAV, BeiDou, GLONASS, RINEX navigation and observation, SP3, CLK, ANTEX, bias SINEX | `crates/bijux-gnss-nav/src/formats/`, `crates/bijux-gnss-nav/docs/FORMATS.md` |
-| orbits | broadcast and precise satellite state for supported constellations | `crates/bijux-gnss-nav/src/orbits/`, `crates/bijux-gnss-nav/docs/ORBITS.md` |
-| corrections | atmosphere, ionosphere, group delay, code and phase bias, combinations, phase windup, measured ionosphere | `crates/bijux-gnss-nav/src/corrections/`, `crates/bijux-gnss-nav/docs/CORRECTIONS.md` |
-| estimation | position, integrity, smoothing, EKF, PPP, RTK, ambiguity and baseline evidence | `crates/bijux-gnss-nav/src/estimation/`, `crates/bijux-gnss-nav/docs/ESTIMATION.md` |
-| models | antenna, atmosphere, celestial, NeQuick, ocean tide loading, solid earth tide support | `crates/bijux-gnss-nav/src/models/`, `crates/bijux-gnss-nav/docs/MODELS.md` |
-| navigation time | GNSS-specific time utilities and rollover interpretation above core time types | `crates/bijux-gnss-nav/src/time.rs`, `crates/bijux-gnss-nav/src/time/rollover.rs` |
+| formats | GPS LNAV/CNAV, Galileo FNAV/INAV, BeiDou, GLONASS, RINEX navigation and observation, SP3, CLK, ANTEX, bias SINEX | format source and [format guide](../../../crates/bijux-gnss-nav/docs/FORMATS.md) |
+| orbits | broadcast and precise satellite state for supported constellations | orbit source and [orbit guide](../../../crates/bijux-gnss-nav/docs/ORBITS.md) |
+| corrections | atmosphere, ionosphere, group delay, code and phase bias, combinations, phase windup, measured ionosphere | correction source and [correction guide](../../../crates/bijux-gnss-nav/docs/CORRECTIONS.md) |
+| estimation | position, integrity, smoothing, EKF, PPP, RTK, ambiguity and baseline evidence | estimation source and [estimation guide](../../../crates/bijux-gnss-nav/docs/ESTIMATION.md) |
+| models | antenna, atmosphere, celestial, NeQuick, ocean tide loading, solid earth tide support | model source and [model guide](../../../crates/bijux-gnss-nav/docs/MODELS.md) |
+| navigation time | GNSS-specific time utilities and rollover interpretation above core time types | navigation-time source |
 
 ## Reader Rules
 
@@ -65,9 +65,8 @@ owning their scientific validity.
 
 ## First Proof Check
 
-Inspect `crates/bijux-gnss-nav/README.md`,
-`crates/bijux-gnss-nav/docs/FORMATS.md`,
-`crates/bijux-gnss-nav/docs/CORRECTIONS.md`,
-`crates/bijux-gnss-nav/docs/ESTIMATION.md`,
-`crates/bijux-gnss-nav/src/api.rs`, and the integration tests named in the
-crate README.
+Inspect the [navigation crate README](../../../crates/bijux-gnss-nav/README.md),
+[format guide](../../../crates/bijux-gnss-nav/docs/FORMATS.md),
+[correction guide](../../../crates/bijux-gnss-nav/docs/CORRECTIONS.md),
+[estimation guide](../../../crates/bijux-gnss-nav/docs/ESTIMATION.md), curated
+public API source, and the integration tests named in the crate README.

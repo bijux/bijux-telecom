@@ -17,11 +17,11 @@ run: clocks, sample sources, diagnostics, traces, metrics, and artifact sinks.
 
 | surface | caller can rely on | proof |
 | --- | --- | --- |
-| `ReceiverConfig` and `ReceiverPipelineConfig` | runtime behavior is configured through receiver-owned types | `crates/bijux-gnss-receiver/src/engine/receiver_config.rs` |
-| `ReceiverRuntimeConfig` | run id, trace directory, run directory, diagnostics dump, and capture start time are runtime concerns | `crates/bijux-gnss-receiver/src/engine/runtime.rs` |
-| `Logger`, `TraceSink`, `MetricsSink` | effects are injected through explicit traits, not hidden globals | `crates/bijux-gnss-receiver/src/engine/runtime.rs` |
-| `Receiver` | configuration and runtime sinks are composed into one receiver boundary | `crates/bijux-gnss-receiver/src/engine/receiver.rs` |
-| support matrix | runtime reports can describe supported constellation and signal behavior | `crates/bijux-gnss-receiver/src/engine/support_matrix.rs` |
+| `ReceiverConfig` and `ReceiverPipelineConfig` | runtime behavior is configured through receiver-owned types | receiver configuration source |
+| `ReceiverRuntimeConfig` | run id, trace directory, run directory, diagnostics dump, and capture start time are runtime concerns | runtime source |
+| `Logger`, `TraceSink`, `MetricsSink` | effects are injected through explicit traits, not hidden globals | runtime effect source |
+| `Receiver` | configuration and runtime sinks are composed into one receiver boundary | receiver composition source |
+| support matrix | runtime reports can describe supported constellation and signal behavior | support-matrix source |
 
 ## Effect Boundary
 
@@ -61,8 +61,6 @@ flowchart LR
 
 ## First Proof Check
 
-Inspect `crates/bijux-gnss-receiver/docs/RUNTIME.md`,
-`crates/bijux-gnss-receiver/src/engine/runtime.rs`,
-`crates/bijux-gnss-receiver/src/engine/receiver.rs`,
-`crates/bijux-gnss-receiver/src/engine/receiver_config.rs`, and
-`crates/bijux-gnss-receiver/tests/integration_receiver_support_matrix_inventory.rs`.
+Inspect the [receiver runtime guide](../../../crates/bijux-gnss-receiver/docs/RUNTIME.md),
+runtime source, receiver composition source, receiver configuration source, and
+the support-matrix inventory integration test.

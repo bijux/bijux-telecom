@@ -37,12 +37,12 @@ flowchart LR
 
 | family | owns | first proof |
 | --- | --- | --- |
-| run context | run id, output root, dataset id, deterministic seed, and caller-provided context | `crates/bijux-gnss-infra/docs/RUN_LAYOUT.md`, `crates/bijux-gnss-infra/src/run_layout.rs` |
-| directory layout | deterministic run and artifact path resolution | `crates/bijux-gnss-infra/src/run_layout.rs` |
-| manifests | persisted run identity and artifact inventory | `crates/bijux-gnss-infra/src/run_layout/records.rs` |
-| reports | repository-readable run summaries | `crates/bijux-gnss-infra/src/run_layout/records.rs` |
-| history | append-only run history entries for later inspection | `crates/bijux-gnss-infra/src/run_layout/records.rs` |
-| artifact headers | infrastructure-side persistence metadata around core artifact meaning | `crates/bijux-gnss-infra/src/run_layout/` |
+| run context | run id, output root, dataset id, deterministic seed, and caller-provided context | [run layout guide](../../../crates/bijux-gnss-infra/docs/RUN_LAYOUT.md) and run-layout source |
+| directory layout | deterministic run and artifact path resolution | run-layout source |
+| manifests | persisted run identity and artifact inventory | run-layout record source |
+| reports | repository-readable run summaries | run-layout record source |
+| history | append-only run history entries for later inspection | run-layout record source |
+| artifact headers | infrastructure-side persistence metadata around core artifact meaning | run-layout source |
 
 ## Boundary Rules
 
@@ -66,9 +66,7 @@ Before changing this surface, answer:
 
 ## First Proof Check
 
-Inspect `crates/bijux-gnss-infra/docs/RUN_LAYOUT.md`,
-`crates/bijux-gnss-infra/docs/CONTRACTS.md`,
-`crates/bijux-gnss-infra/src/run_layout.rs`,
-`crates/bijux-gnss-infra/src/run_layout/records.rs`, and run-layout or
-artifact-inspection integration tests before changing persisted evidence
-claims.
+Inspect the [run layout guide](../../../crates/bijux-gnss-infra/docs/RUN_LAYOUT.md),
+[infra contract guide](../../../crates/bijux-gnss-infra/docs/CONTRACTS.md),
+run-layout source, run-layout record source, and run-layout or
+artifact-inspection integration tests before changing persisted evidence claims.
