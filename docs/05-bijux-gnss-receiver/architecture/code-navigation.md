@@ -4,46 +4,74 @@ audience: mixed
 type: architecture
 status: canonical
 owner: bijux-gnss-receiver-docs
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-18
 ---
 
 # Code Navigation
 
-Use this page when you know the runtime question but not the owning file.
+Use this page when you have a receiver symptom, public type, or failing test but
+do not yet know the owning runtime family.
 
-## Start From The Question
+## Start From A Public Type
 
-- "How is the receiver configured or launched?":
-  `src/engine/`, especially `receiver_config.rs`, `receiver_config_validation.rs`,
-  `runtime.rs`, and `engine.rs`
-- "How is a stage executed or handed off?":
-  `src/pipeline/` and the matching acquisition, tracking, observations, or
-  navigation family
-- "How do samples, clocks, or sinks enter the runtime?":
-  `src/ports/` and `src/io/`
-- "How are run artifacts or validation reports built?":
-  `src/artifacts.rs`, `src/reference_validation.rs`,
-  `src/validation_helpers.rs`, and `src/validation_report.rs`
-- "How does the synthetic runtime prove this behavior?":
-  `src/sim/synthetic/`
+```mermaid
+flowchart LR
+    symbol["public type or function"]
+    api["curated receiver API"]
+    owner["private owning subsystem"]
+    local["module-level proof"]
+    integration["public behavior proof"]
 
-## Start From A Public Export
+    symbol --> api --> owner
+    owner --> local
+    owner --> integration
+```
 
-- begin in `src/api.rs`
-- locate the re-exported family
-- move into the owning submodule only after confirming the export is public on
-  purpose
+1. Find the export in the [curated receiver API](../../../crates/bijux-gnss-receiver/src/api.rs).
+2. Follow the re-export to its private owner.
+3. Confirm whether the name is always available or gated by `nav`.
+4. Read the nearest module tests before selecting an integration target.
+5. Check downstream callers before changing public shape or semantics.
 
-## Start From A Test Failure
+Do not add a second public route to avoid this trace. One curated API keeps
+feature availability and ownership reviewable.
 
-- acquisition failures usually map to
-  `crates/bijux-gnss-receiver/tests/integration_acquisition_*` or
-  `src/pipeline/acquisition/tests/`
-- tracking failures usually map to
-  `crates/bijux-gnss-receiver/tests/integration_tracking_*` or
-  `src/pipeline/tracking/tests/`
-- observation failures usually map to
-  `crates/bijux-gnss-receiver/tests/integration_observations_*` or
-  `src/pipeline/observations/tests/`
-- validation or synthetic failures often map to
-  `src/validation_report/tests/` or `src/sim/synthetic/tests/`
+## Start From A Runtime Symptom
+
+| symptom or question | implementation route | first focused proof |
+| --- | --- | --- |
+| configuration is accepted, rejected, or defaulted unexpectedly | [Receiver configuration](../../../crates/bijux-gnss-receiver/src/engine/receiver_config/) | configuration module tests, then [basic runtime integration](../../../crates/bijux-gnss-receiver/tests/integration_basic.rs) |
+| a signal is missed, ambiguously selected, or poorly refined | [Acquisition stage](../../../crates/bijux-gnss-receiver/src/pipeline/acquisition/) | acquisition module tests, then [acquisition smoke proof](../../../crates/bijux-gnss-receiver/tests/integration_acquisition_smoke.rs) or the matching accuracy/refusal target |
+| carrier, code, lock, or reacquisition behavior drifts | [Tracking stage](../../../crates/bijux-gnss-receiver/src/pipeline/tracking/) | the narrow matching tracking target, such as [C/N0 tracking proof](../../../crates/bijux-gnss-receiver/tests/integration_tracking_cn0.rs) |
+| observations have wrong timing, smoothing, covariance, or status | [Observation stage](../../../crates/bijux-gnss-receiver/src/pipeline/observations/) | observation module tests, then [measurement-quality proof](../../../crates/bijux-gnss-receiver/tests/integration_observations_measurement_quality.rs) |
+| optional navigation handoff or report meaning changes | [Navigation adapter](../../../crates/bijux-gnss-receiver/src/pipeline/navigation.rs) and [validation reports](../../../crates/bijux-gnss-receiver/src/validation_report.rs) | [navigation accuracy budget](../../../crates/bijux-gnss-receiver/tests/integration_navigation_pvt_accuracy_budget.rs) plus the closest report or refusal target |
+| samples, clocks, or sinks do not behave as expected | [Sample adapters](../../../crates/bijux-gnss-receiver/src/io/) and [runtime ports](../../../crates/bijux-gnss-receiver/src/ports/) | source, streaming, clock, or sink integration proof |
+| a deterministic scenario no longer matches truth | [Synthetic runtime](../../../crates/bijux-gnss-receiver/src/sim/synthetic/) | [synthetic integration proof](../../../crates/bijux-gnss-receiver/tests/integration_synthetic.rs) plus the affected stage target |
+| supported-signal reporting disagrees across surfaces | [Engine support reporting](../../../crates/bijux-gnss-receiver/src/engine/support_matrix.rs) | [support inventory proof](../../../crates/bijux-gnss-receiver/tests/integration_receiver_support_matrix_inventory.rs) |
+
+## Start From A Failing Test
+
+Test names identify the observed contract, not necessarily the root cause:
+
+- Acquisition failures often require checking signal assumptions, front-end
+  rejection, threshold resolution, candidate selection, and uncertainty before
+  changing the assertion.
+- Tracking failures may originate in acquisition handoff, signal metadata,
+  channel lifecycle, loop initialization, or fade/reacquisition policy.
+- Observation failures can originate in tracking timing or lock evidence before
+  observation construction.
+- Navigation and RTK failures may belong to navigation science rather than the
+  receiver adapter.
+- Synthetic failures can expose either scenario truth drift or a real runtime
+  regression.
+
+Use the [receiver test directory](../../../crates/bijux-gnss-receiver/tests/)
+to find the exact target, then trace backward through the stage handoff instead
+of editing the first matching assertion.
+
+## Stop At The Right Boundary
+
+Leave receiver when the root cause becomes reusable signal math, navigation
+science, repository persistence, command policy, or shared record meaning. Use
+the [Module Map](module-map.md) and [Integration Seams](integration-seams.md)
+to identify that handoff before widening receiver internals.
