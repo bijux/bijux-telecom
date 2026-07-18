@@ -4,58 +4,59 @@ audience: mixed
 type: operations
 status: canonical
 owner: bijux-gnss-infra-docs
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-18
 ---
 
 # Change Sequence
 
-Use this sequence when a change affects repository state: dataset identity,
-run-directory layout, persisted manifests, artifact inspection, overrides,
-sweeps, hashes, or infrastructure-side validation adapters. Infra work should
-make repository evidence easier to trust, not make product behavior harder to
-find.
+A safe infra change starts with the repository contract, not the source file.
+Use this path for dataset identity, run placement, persisted records, artifact
+inspection, overrides, sweeps, provenance, or reference adapters.
 
-## Decision Flow
+## Before Editing
 
-```mermaid
-flowchart TD
-    change[proposed infra change] --> repo{is the changed meaning repository state?}
-    repo -- no --> owner[route to command, receiver, nav, signal, or core]
-    repo -- yes --> family{which infra contract moves?}
-    family --> datasets[datasets and capture provenance]
-    family --> layout[run layout, manifests, reports, history]
-    family --> artifacts[persisted artifact inspection]
-    family --> overrides[overrides, sweeps, experiments]
-    family --> validation[validation adapters and hashing]
-    datasets --> proof[contract docs plus focused tests]
-    layout --> proof
-    artifacts --> proof
-    overrides --> proof
-    validation --> proof
-```
+Write one sentence in this form:
 
-## Change Sequence
+> A `<reader or caller>` will observe `<changed repository behavior>` when
+> `<declared input or state>` occurs.
 
-1. Decide whether the changed meaning is repository state rather than product
-   behavior.
-2. Identify the contract family in `crates/bijux-gnss-infra/docs/CONTRACTS.md`.
-3. Read the owning crate-local page: `DATASETS.md`, `RUN_LAYOUT.md`,
-   `OVERRIDES.md`, `EXPERIMENTS.md`, `HASHING.md`, or `VALIDATION.md`.
-4. Update docs when path semantics, persisted shape, provenance, validation
-   meaning, or public imports move.
-5. Run the narrowest protecting infra test.
-6. Only then inspect command or receiver fallout.
+If the sentence describes command wording, receiver execution, signal behavior,
+or navigation science, route it through the
+[ownership decision](../foundation/ownership-boundary.md) before editing infra.
 
-## Proof Selection
+## Safe Change Path
 
-| changed family | first proof |
-| --- | --- |
-| overrides and profile mutation | `cargo test -p bijux-gnss-infra --test integration_overrides` |
-| workspace layering and public shape | `cargo test -p bijux-gnss-infra --test integration_guardrails` |
-| run layout or manifest meaning | `crates/bijux-gnss-infra/docs/RUN_LAYOUT.md` plus the changed source family and any available integration proof |
-| dataset registry or capture provenance | `crates/bijux-gnss-infra/docs/DATASETS.md` plus the changed source family and any available integration proof |
-| validation or hashing bridge | `crates/bijux-gnss-infra/docs/VALIDATION.md` or `HASHING.md` plus the changed source family |
+1. Identify every writer and reader of the changed state. Include older
+   persisted records and feature-disabled callers where relevant.
+2. Open the owning contract from the map below and state the invariant that
+   changes or remains fixed.
+3. Decide compatibility before changing fields, paths, schema versions, public
+   exports, precedence, or refusal behavior.
+4. Change the narrowest owner. Keep command policy and producer meaning in their
+   packages.
+5. Add or revise focused evidence for accepted, refused, and contradictory
+   inputs.
+6. Update the reader guide and operator-facing guidance in the same change when
+   observable behavior moves.
+7. Review the final diff from the caller's perspective: can someone understand
+   the new state without knowing the implementation layout?
+8. Record exact automated checks and any behavior supported only by source or
+   contract review.
 
-Skipping the ownership question leaves permanent infra debt. A repository
-contract should exist because multiple workflows must read the same state, not
-because a product crate needed a convenient helper.
+## Contract And Evidence Map
+
+| changed family | contract to read | evidence to select |
+| --- | --- | --- |
+| registry, sidecar, capture provenance | [Dataset guide](../../../crates/bijux-gnss-infra/docs/DATASETS.md) | dataset and raw-IQ module tests |
+| run identity, layout, manifest, report, history | [Run layout guide](../../../crates/bijux-gnss-infra/docs/RUN_LAYOUT.md) | named persistence review and focused tests added for changed behavior |
+| artifact explanation or validation | [Validation guide](../../../crates/bijux-gnss-infra/docs/VALIDATION.md) | artifact inspection module tests |
+| override or sweep behavior | [Override guide](../../../crates/bijux-gnss-infra/docs/OVERRIDES.md) and [experiment guide](../../../crates/bijux-gnss-infra/docs/EXPERIMENTS.md) | override integration and module tests |
+| configuration or repository provenance | [Hashing guide](../../../crates/bijux-gnss-infra/docs/HASHING.md) | focused hash or front-end provenance tests |
+| reference alignment or lower-owner validation bridge | [Validation guide](../../../crates/bijux-gnss-infra/docs/VALIDATION.md) | named adapter review plus producer-package proof |
+| public imports or feature gates | [Public API contract](../../../crates/bijux-gnss-infra/docs/PUBLIC_API.md) | curated export review and boundary guardrail |
+
+Use [Test Strategy](../quality/test-strategy.md) to calibrate the proof claim and
+[Definition of Done](../quality/definition-of-done.md) for the compatibility and
+handoff record. If no dedicated test protects the changed behavior, state that
+gap explicitly and add focused proof when the behavior is stable enough to
+assert.
