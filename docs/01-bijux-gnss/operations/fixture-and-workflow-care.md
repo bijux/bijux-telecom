@@ -1,32 +1,50 @@
 ---
-title: Fixture And Workflow Care
+title: Fixture and Workflow Care
 audience: mixed
 type: operations
 status: canonical
 owner: bijux-gnss-docs
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-18
 ---
 
-# Fixture And Workflow Care
+# Fixture and Workflow Care
 
 `bijux-gnss` relies on workflow-facing fixtures and integration expectations
 that carry command meaning, not only test convenience.
 
+## Fixture Proof Flow
+
+```mermaid
+flowchart LR
+    fixture["workflow fixture<br/>or validation bundle"]
+    command["bijux command"]
+    owner["lower-owner behavior"]
+    report["operator report"]
+    proof["integration proof"]
+
+    fixture --> command --> owner --> report --> proof
+```
+
 ## Care Rules
 
-- treat command examples, validation bundles, and workflow fixtures as public
-  boundary proof
-- when changing a fixture-backed behavior, explain whether the command wiring
-  or the expectation was wrong
-- avoid broadening output tolerances only to make a workflow test green
-- keep lower-owner fixtures lower unless the command boundary is what is
-  actually being proved
+| fixture type | proves | care requirement |
+| --- | --- | --- |
+| command examples | operator-facing command shape remains usable | update docs with command changes |
+| validation bundles | CLI routes validation through the right lower owner | keep truth and budget meaning explicit |
+| synthetic exports | generated captures and truth artifacts remain coherent | do not hide generator or report drift |
+| raw-IQ reporting fixtures | input metadata and front-end summaries render honestly | keep signal and infra ownership clear |
+| workflow integration fixtures | command wiring still assembles lower crates correctly | explain whether wiring or expectation changed |
 
-## Why This Matters
+## Change Discipline
 
-This crate proves that the public entrypoint still assembles workflows
-correctly. Loose fixture hygiene can make the command suite look broad while
-weakening what it actually proves.
+- Treat workflow fixtures as public boundary proof.
+- Avoid broadening output tolerances only to make a workflow test green.
+- Keep lower-owner fixtures lower unless the command boundary is what is being
+  proved.
+- When a fixture-backed behavior changes, explain whether command wiring,
+  lower-owner behavior, or fixture expectation changed.
+- Do not use command fixtures to redefine signal, receiver, nav, core, or infra
+  contracts.
 
 ## First Proof Check
 

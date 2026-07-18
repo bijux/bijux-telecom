@@ -4,7 +4,7 @@ audience: mixed
 type: architecture
 status: canonical
 owner: bijux-gnss-infra-docs
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-18
 ---
 
 # Execution Model
@@ -12,26 +12,49 @@ last_reviewed: 2026-07-17
 Infra execution is mostly about preparing, interpreting, and validating
 repository state around product runs.
 
-## Typical Flow
+## Repository Execution Flow
 
-1. resolve a dataset or raw-IQ metadata source
-2. prepare a run through typed identity, layout, and artifact-header helpers
-3. apply typed overrides or expand a sweep when needed
-4. persist manifests, reports, and history entries
-5. inspect or validate persisted artifacts later through infrastructure entry
-   points
+```mermaid
+flowchart LR
+    input["dataset metadata<br/>or profile"]
+    prepare["prepare run<br/>identity layout"]
+    variation["overrides<br/>or sweeps"]
+    persist["manifest report<br/>history artifacts"]
+    inspect["later inspection<br/>or validation"]
 
-## Why This Is Not A Product Pipeline
+    input --> prepare --> variation --> persist --> inspect
+```
+
+## Execution Responsibilities
+
+| responsibility | infra owns | not owned here |
+| --- | --- | --- |
+| dataset resolution | registry lookup, sidecar loading, recorded provenance | signal sample semantics |
+| run preparation | typed run identity, layout, artifact headers, and manifests | CLI command naming |
+| variation | typed overrides, experiment specs, and sweep expansion | receiver algorithm policy |
+| persistence | run reports, history entries, and artifact locations | core payload meaning |
+| inspection | persisted artifact explanation and validation adapters | rerunning receiver stages |
+
+## Execution Standard
 
 The work here surrounds product execution rather than performing signal or
-navigation computation itself. Infra’s execution model is orchestration of
+navigation computation itself. Infra's execution model is orchestration of
 repository state, not GNSS stage math.
+
+Review execution changes by asking:
+
+- Does this code make repository state more typed and inspectable?
+- Would command code otherwise duplicate this repository interpretation?
+- Does persisted evidence remain understandable after the original run?
+- Is lower-owner scientific meaning preserved rather than rephrased?
+- Are generated outputs written under governed or ignored artifact locations?
 
 ## First Proof Check
 
-- `crates/bijux-gnss-infra/src/commands.rs`
-- `crates/bijux-gnss-infra/src/datasets/`
-- `crates/bijux-gnss-infra/src/run_layout/`
-- `crates/bijux-gnss-infra/src/overrides/`
-- `crates/bijux-gnss-infra/src/sweep.rs`
-- `crates/bijux-gnss-infra/src/artifact_inspection/`
+Inspect `crates/bijux-gnss-infra/src/commands.rs`,
+`crates/bijux-gnss-infra/src/datasets/`,
+`crates/bijux-gnss-infra/src/run_layout/`,
+`crates/bijux-gnss-infra/src/overrides/`,
+`crates/bijux-gnss-infra/src/sweep.rs`,
+`crates/bijux-gnss-infra/src/artifact_inspection/`, and
+`crates/bijux-gnss-infra/docs/RUN_LAYOUT.md`.
