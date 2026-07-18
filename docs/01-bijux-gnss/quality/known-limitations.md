@@ -4,53 +4,83 @@ audience: mixed
 type: quality
 status: canonical
 owner: bijux-gnss-docs
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-18
 ---
 
 # Known Limitations
 
-The command crate is intentionally thin. That is a strength only when the
-handbook is honest about what the command can prove. A passing command test
-means the operator workflow is wired and reported correctly; it does not prove
-every lower-level scientific, runtime, or persistence claim.
+The CLI is an integration boundary, not an independent source of GNSS truth.
+Its tests can prove that an operator route accepts inputs, calls the intended
+owners, publishes evidence, and enforces command policy. They cannot turn a
+bounded receiver or navigation result into a broader scientific guarantee.
 
-## Limits Readers Should Know
+## Interpret A Command Result
 
-| limitation | consequence | honest reading |
+```mermaid
+flowchart TD
+    claim["claim you want to make"]
+    route{"about invocation or report routing?"}
+    command["command evidence"]
+    science{"about signal, receiver, or navigation behavior?"}
+    owner["owning crate evidence"]
+    persistence{"about durable artifacts or history?"}
+    infra["infrastructure evidence"]
+    combined["state the bounded combined claim"]
+
+    claim --> route
+    route -- yes --> command
+    route -- no --> science
+    science -- yes --> owner
+    science -- no --> persistence
+    persistence -- yes --> infra
+    command --> combined
+    owner --> combined
+    infra --> combined
+```
+
+## Current Constraints
+
+| constraint | what can go wrong | evidence required before a stronger claim |
 | --- | --- | --- |
-| Thin command boundary | Many important questions must leave this handbook after the command route is clear. | Use this handbook to find the route, then switch to receiver, signal, nav, core, or infra docs for behavior meaning. |
-| Integration-heavy tests | Command tests often exercise multiple crates, so a pass can hide which boundary was actually protected. | Name the command assertion and the lower-owner proof separately. |
-| Facade pressure | Convenience exports can make the top crate look like it owns lower behavior. | Treat facade exports as routing convenience unless `FACADE.md` and `PUBLIC_API.md` say otherwise. |
-| Reporting compression | Operator reports summarize lower-owned details and may omit internal evidence. | Follow the report to the artifact or lower crate before trusting a strong claim. |
-| Synthetic workflows | Synthetic command success is bounded by the selected scenario and lower-owner model assumptions. | Pair command proof with signal or receiver proof when claiming physical behavior. |
+| Command tests cross several crates. | A broad pass does not identify whether parsing, receiver behavior, navigation science, or persistence was actually protected. | Name the command assertion and add the focused owner test for the behavior under discussion. |
+| Report formats compress lower-layer evidence. | Counts and summaries can omit per-channel refusal, uncertainty, residual, or provenance details. | Follow the report to its typed artifact and confirm that the omitted evidence is available where the claim needs it. |
+| Process errors are display-oriented. | Error text and context chains are not a versioned machine protocol, and stable numeric exit categories are not defined. | Automate against documented JSON artifacts and schemas; use process success only as one signal. |
+| Output publication is not transactional. | A failure after an early write can leave plausible-looking partial output. | Require the expected manifest and validate the relevant artifacts before comparison or registration. |
+| Synthetic workflows are model-bounded. | Deterministic success can be mistaken for coverage of front-end, propagation, interference, or oscillator conditions absent from the scenario. | Pair command wiring proof with receiver and signal evidence that names the modeled envelope. |
+| Facade re-exports preserve convenience, not ownership. | A lower-layer type reachable from the top crate can be mistaken for a command-owned contract. | Read the [facade contract](../interfaces/facade-contracts.md) and review the original owner before changing meaning. |
 
-## Claim Boundary
+## Claims The CLI Can Defend
 
-This handbook can support claims such as:
+The command suite is the right evidence for statements such as:
 
-- "The CLI exposes the expected validation command and reports failures."
-- "The synthetic navigation workflow is wired to the documented lower owners."
-- "The command facade exports a deliberate public route."
+- the documented subcommand and arguments are accepted;
+- invalid configuration is rejected before a workflow proceeds;
+- the selected report format carries the documented command fields;
+- a strict validation policy turns qualifying diagnostics into command failure;
+- a command publishes the expected artifact route for a bounded fixture.
 
-This handbook cannot support claims such as:
+Start with the [command verification map](../operations/verification-commands.md).
+It links each kind of claim to a focused test instead of asking readers to
+search internal test directories.
 
-- "The receiver tracks every supported signal under field conditions."
-- "Navigation estimators are accurate outside the selected proof fixture."
-- "Persisted artifacts are durable unless infra contracts are also checked."
+## Claims That Need Another Owner
 
-## First Proof Route
+Do not cite a command test alone for these conclusions:
 
-Start with `crates/bijux-gnss/docs/TESTS.md`, then pick the narrow command
-proof by the claim:
+| claim | primary evidence owner |
+| --- | --- |
+| a spreading code, signal model, or DSP primitive is physically correct | [signal quality evidence](../../06-bijux-gnss-signal/quality/test-strategy.md) |
+| acquisition, tracking, observations, or runtime handoff remain correct | [receiver validation guidance](../../05-bijux-gnss-receiver/quality/change-validation.md) |
+| a model, correction, estimator, or integrity decision is scientifically justified | [navigation test strategy](../../04-bijux-gnss-nav/quality/test-strategy.md) |
+| run output is complete, discoverable, and historically durable | [infrastructure test strategy](../../03-bijux-gnss-infra/quality/test-strategy.md) |
 
-- guardrail and facade claims:
-  `crates/bijux-gnss/tests/integration_guardrails.rs`
-- configuration validation claims:
-  `crates/bijux-gnss/tests/integration_validate_config.rs`
-- navigation decode claims:
-  `crates/bijux-gnss/tests/integration_nav_decode.rs`
-- synthetic navigation claims:
-  `crates/bijux-gnss/tests/integration_validate_synthetic_navigation.rs`
+## Report Limitations Without Hiding Them
 
-If the sentence says more than the command proof can defend, narrow the sentence
-or route the reader to the owning lower crate.
+When command evidence is the best available proof but does not cover the full
+claim, record the exact fixture, feature set, report format, and lower-layer
+proof that was used. State the missing environment or owner-level evidence
+plainly. A narrower claim with traceable evidence is more useful than a broad
+claim inferred from one successful invocation.
+
+The [command error model](../architecture/error-model.md) explains why an
+unfavorable scientific report and a failed process are not interchangeable.
