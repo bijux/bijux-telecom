@@ -12,29 +12,35 @@
 acquisition, tracking, observation generation, optional navigation-stage
 execution, diagnostics, and receiver-owned artifacts.
 
-Start here when the question is about how a receiver run behaves at runtime.
-Do not start here for signal-code definitions, standalone navigation science,
-repository persistence policy, or operator-facing command wording.
+Use this crate when a change affects how samples become acquisition, tracking,
+observation, optional navigation, diagnostic, or artifact evidence. Signal
+definitions, standalone navigation science, persisted layout, and command
+wording remain with their owning crates.
 
-## Install
+## Availability
+
+The first registry release has not been published. In this workspace, build or
+test the package directly:
 
 ```sh
-cargo add bijux-gnss-receiver
+cargo test -p bijux-gnss-receiver
 ```
 
-The Cargo package name is `bijux-gnss-receiver`; its Rust import name is
+After publication, add it with `cargo add bijux-gnss-receiver`. The Cargo
+package name is `bijux-gnss-receiver`; its Rust import name is
 `bijux_gnss_receiver`. All public packages in this repository share one release
 version.
 
-## Reader Route
+## Choose the Runtime Contract
 
 | question | go next |
 | --- | --- |
-| How does a run move through stages? | [Pipeline guide](docs/PIPELINE.md), `src/pipeline/` |
-| Which runtime knobs and defaults are supported? | [Runtime guide](docs/RUNTIME.md), `src/engine/receiver_config.rs` |
-| Which ports isolate clock, source, and sink behavior? | [Port guide](docs/PORTS.md), `src/ports/`, `src/io/` |
-| Which reports or artifacts come from receiver execution? | [Artifact guide](docs/ARTIFACTS.md), `src/artifacts.rs`, `src/validation_report.rs` |
-| What changed in this package? | [Package changelog](CHANGELOG.md) |
+| How do samples move through acquisition, tracking, observations, and navigation? | [pipeline guide](docs/PIPELINE.md) |
+| Which configuration, defaults, side effects, and support rules apply? | [runtime guide](docs/RUNTIME.md) |
+| Which interfaces isolate clocks, sample sources, and artifact sinks? | [port guide](docs/PORTS.md) |
+| Which typed results and reports leave a run? | [artifact guide](docs/ARTIFACTS.md) |
+| How do synthetic and reference claims differ? | [simulation guide](docs/SIMULATION.md) and [reference-validation guide](docs/REFERENCE_VALIDATION.md) |
+| What compatibility changed? | [package release history](CHANGELOG.md) |
 
 ## Owned Boundary
 
@@ -65,30 +71,55 @@ flowchart LR
     nav --> artifacts
 ```
 
-## Source Map
+## Observable Runtime Contract
 
-- `src/engine/` owns runtime configuration, logging, metrics, signal selection,
-  support matrices, and receiver composition.
-- `src/pipeline/` owns staged acquisition, tracking, observations, and optional
-  navigation flows.
-- `src/io/` and `src/ports/` own source, sink, and clock abstractions.
-- `src/artifacts.rs`, `src/validation_report.rs`, and related modules own
-  runtime-side outputs.
-- `src/sim/` owns synthetic receiver execution helpers.
+- Configuration defaults and validation determine which work is attempted.
+- Acquisition acceptance and tracking transitions remain visible as typed
+  evidence, including degraded and refused states.
+- CN0, uncertainty, lock, residual, and support claims retain enough context
+  for downstream review.
+- Runtime side effects pass through explicit clocks, sources, sinks, metrics,
+  traces, and log boundaries.
+- Navigation remains feature-gated; disabling it must not change signal,
+  acquisition, tracking, or observation ownership.
+- Receiver artifacts describe what happened in memory. Infrastructure decides
+  where durable files, manifests, and histories live.
 
-## Documentation Map
+The [receiver release guide](../../docs/05-bijux-gnss-receiver/operations/release-and-versioning.md)
+defines compatibility evidence for defaults, stage behavior, ports, and
+artifacts.
 
-- [Architecture guide](docs/ARCHITECTURE.md)
-- [Artifact guide](docs/ARTIFACTS.md)
-- [Boundary guide](docs/BOUNDARY.md)
-- [Contract guide](docs/CONTRACTS.md)
-- [Pipeline guide](docs/PIPELINE.md)
-- [Port guide](docs/PORTS.md)
-- [Public API](docs/PUBLIC_API.md)
-- [Reference validation guide](docs/REFERENCE_VALIDATION.md)
-- [Runtime guide](docs/RUNTIME.md)
-- [Simulation guide](docs/SIMULATION.md)
-- [Test guide](docs/TESTS.md)
+## Features
+
+| feature | effect |
+| --- | --- |
+| `nav` | enables navigation execution, validation, and navigation re-exports |
+| `precise-products` | enables navigation with precise-product support |
+| `tracing` | enables receiver tracing integration |
+| `reference-checks` | enables additional observation-epoch sequence validation |
+| `trace-dump` and `trace-heavy` | enable detailed trace evidence |
+| `alloc-trace` and `alloc-audit` | enable allocation evidence |
+
+Navigation is enabled by default. Diagnostic features should support deliberate
+evidence collection, not become hidden runtime requirements.
+
+## Implementation Ownership
+
+- The [receiver engine](src/engine/mod.rs) owns configuration, defaults,
+  validation, runtime effects, diagnostics, metrics, support, and composition.
+- The [pipeline boundary](src/pipeline/mod.rs) owns acquisition, tracking,
+  observations, and optional navigation sequencing.
+- The [sample input boundary](src/io/mod.rs) and
+  [runtime ports](src/ports/mod.rs) own source, sink, and clock abstractions.
+- The [run artifact model](src/artifacts.rs) and
+  [validation reports](src/validation_report.rs) own receiver-side evidence.
+- The [simulation boundary](src/sim/mod.rs) owns synthetic receiver scenarios.
+- The [public API](src/api.rs) owns deliberate exports and receiver entrypoints.
+
+For package architecture and contracts, continue with the
+[architecture guide](docs/ARCHITECTURE.md), [boundary guide](docs/BOUNDARY.md),
+[contract guide](docs/CONTRACTS.md), and [public API guide](docs/PUBLIC_API.md).
+The [test guide](docs/TESTS.md) maps stages and artifacts to proof families.
 
 ## Verification Focus
 

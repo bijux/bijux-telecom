@@ -12,30 +12,34 @@
 run identity, persisted artifact layout, provenance hashing, receiver-profile
 overrides, and experiment sweep expansion.
 
-Start here when a reader needs to understand how an input becomes a governed
-repository object or how a command writes reviewable evidence to disk. Do not
-start here for acquisition science, signal-code math, navigation estimation, or
-operator report wording.
+Use this crate when an input must become a governed repository object or runtime
+evidence must remain interpretable after the producing command exits.
+Acquisition science, signal math, navigation estimation, and operator wording
+remain with their owning crates.
 
-## Install
+## Availability
+
+The first registry release has not been published. In this workspace, build or
+test the package directly:
 
 ```sh
-cargo add bijux-gnss-infra
+cargo test -p bijux-gnss-infra
 ```
 
-The Cargo package name is `bijux-gnss-infra`; its Rust import name is
-`bijux_gnss_infra`. All public packages in this repository share one release
-version.
+After publication, add it with `cargo add bijux-gnss-infra`. The Cargo package
+name is `bijux-gnss-infra`; its Rust import name is `bijux_gnss_infra`. All
+public packages in this repository share one release version.
 
-## Reader Route
+## Choose the Repository Contract
 
 | question | go next |
 | --- | --- |
-| Which dataset metadata is trusted? | [Dataset guide](docs/DATASETS.md), `src/datasets/` |
-| Where should a run write files? | [Run layout guide](docs/RUN_LAYOUT.md), `src/run_layout/` |
-| How is provenance or hashing computed? | [Hashing guide](docs/HASHING.md), `src/hash/` |
+| Which dataset facts and raw-IQ sidecars are trusted? | [dataset guide](docs/DATASETS.md) |
+| How are run identity, directories, manifests, reports, and history defined? | [run-layout guide](docs/RUN_LAYOUT.md) |
+| How are provenance and content identities computed? | [hashing guide](docs/HASHING.md) |
 | How do overrides and sweeps expand? | [Override guide](docs/OVERRIDES.md), [Experiment guide](docs/EXPERIMENTS.md) |
-| What changed in this package? | [Package changelog](CHANGELOG.md) |
+| How are artifacts inspected and reference results adapted? | [validation guide](docs/VALIDATION.md) |
+| What compatibility changed? | [package release history](CHANGELOG.md) |
 
 ## Owned Boundary
 
@@ -62,30 +66,53 @@ flowchart LR
     artifact --> review
 ```
 
-## Source Map
+## Durability Contract
 
-- `src/datasets/` owns dataset registry and raw-IQ sidecar metadata.
-- `src/run_layout/` owns run identity, directories, paths, persistence, and
-  records.
-- `src/artifact_inspection/` owns inspection summaries and validation adapters.
-- `src/overrides/` and `src/sweep.rs` own profile override and experiment sweep
-  behavior.
-- `src/hash/` owns provenance hashing helpers.
-- `src/validate_reference.rs` owns infrastructure-side validation adapters.
+- Dataset resolution preserves capture location, sample metadata, station
+  coordinates, and provenance without guessing missing scientific facts.
+- The same declared run identity resolves to the same repository footprint.
+- Manifests, reports, histories, and artifact summaries remain understandable
+  after the command version that wrote them has changed.
+- Hash inputs and algorithms are explicit enough to explain why two provenance
+  identities match or differ.
+- Overrides and experiment sweeps expand typed fields deterministically.
+- Inspection validates artifact meaning and schema policy without reimplementing
+  receiver or navigation science.
 
-## Documentation Map
+The [infrastructure release guide](../../docs/03-bijux-gnss-infra/operations/release-and-versioning.md)
+defines compatibility treatment for persisted fields, dataset interpretation,
+hashes, and run footprints.
 
-- [Architecture guide](docs/ARCHITECTURE.md)
-- [Boundary guide](docs/BOUNDARY.md)
-- [Contract guide](docs/CONTRACTS.md)
-- [Dataset guide](docs/DATASETS.md)
-- [Experiment guide](docs/EXPERIMENTS.md)
-- [Hashing guide](docs/HASHING.md)
-- [Override guide](docs/OVERRIDES.md)
-- [Public API](docs/PUBLIC_API.md)
-- [Run layout guide](docs/RUN_LAYOUT.md)
-- [Test guide](docs/TESTS.md)
-- [Validation guide](docs/VALIDATION.md)
+## Features
+
+| feature | effect |
+| --- | --- |
+| `nav` | enables navigation-aware receiver infrastructure |
+| `precise-products` | forwards precise-product support through the receiver boundary |
+| `tracing` | forwards receiver tracing support |
+
+Navigation-aware infrastructure is enabled by default.
+
+## Implementation Ownership
+
+- The [dataset boundary](src/datasets/mod.rs) owns registry entries, raw-IQ
+  sidecars, loading, validation, and path resolution.
+- The [run-layout boundary](src/run_layout.rs) owns run identity, directories,
+  paths, persistence, provenance, manifests, reports, and history.
+- The [artifact inspector](src/artifact_inspection/mod.rs) owns type-aware
+  summaries, schema policy, and validation adapters.
+- The [override boundary](src/overrides/mod.rs) and
+  [sweep expansion](src/sweep.rs) own typed experiment variation.
+- The [provenance hasher](src/hash/mod.rs) owns content identity.
+- The [reference adapter](src/validate_reference.rs) bridges persisted inputs to
+  validation without owning scientific truth.
+- The [public API](src/api.rs) owns deliberate downstream exports.
+
+For package architecture and contracts, continue with the
+[architecture guide](docs/ARCHITECTURE.md), [boundary guide](docs/BOUNDARY.md),
+[contract guide](docs/CONTRACTS.md), and [public API guide](docs/PUBLIC_API.md).
+The [test guide](docs/TESTS.md) maps persistence and inspection behavior to
+proof.
 
 ## Verification Focus
 
