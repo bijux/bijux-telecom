@@ -4,12 +4,29 @@ audience: mixed
 type: interfaces
 status: canonical
 owner: bijux-gnss-core-docs
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-18
 ---
 
 # Entrypoints and Examples
 
-The main entrypoint is the crate import surface itself.
+The main entrypoint is the curated import surface itself:
+`bijux_gnss_core::api`. Core examples should show stable exchange records and
+validation seams, not full receiver, navigation, or command workflows.
+
+## Reader Route
+
+```mermaid
+flowchart TD
+    reader["reader need"]
+    import["import from api.rs"]
+    record["construct or accept<br/>shared record"]
+    validate["validate artifact<br/>or invariant"]
+    owner["continue in owning<br/>higher crate"]
+
+    reader --> import --> record
+    record --> validate
+    record --> owner
+```
 
 ## Example: Foundational Types
 
@@ -41,10 +58,19 @@ fn accept_epoch(_epoch: &ObsEpoch) {
 }
 ```
 
-The examples are intentionally small. This crate is a contract surface, so the
-best examples are import and exchange examples, not full workflow programs.
+## Example Standards
 
-## Protecting Proof
+| example should show | because |
+| --- | --- |
+| import from `bijux_gnss_core::api` | private module paths are not the public contract |
+| small records with obvious units | core owns vocabulary, not workflows |
+| validation traits and reports | persisted meaning must be checkable |
+| handoff to receiver, nav, signal, or infra | behavior belongs outside core when it is not foundational |
+
+Avoid examples that run acquisition, solve navigation, inspect repository
+state, or render CLI output. Those examples belong in the owning package docs.
+
+## First Proof Check
 
 Inspect `crates/bijux-gnss-core/src/api.rs`,
 `crates/bijux-gnss-core/docs/PUBLIC_API.md`, and
