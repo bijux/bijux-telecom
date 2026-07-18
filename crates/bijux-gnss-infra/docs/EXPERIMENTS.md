@@ -46,7 +46,7 @@ flowchart LR
 ## Reader Guidance
 
 Use this doc when adding a new batch-run axis or changing how experiment inputs
-expand. Use [OVERRIDES.md](OVERRIDES.md) when the question is how a concrete
+expand. Use the [override guide](OVERRIDES.md) when the question is how a concrete
 variant mutates a receiver profile. Use run-layout docs when the question is
 where experiment artifacts are written.
 

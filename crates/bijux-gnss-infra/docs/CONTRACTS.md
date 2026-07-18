@@ -9,7 +9,7 @@ The dataset layer owns:
 - raw-IQ metadata resolution
 - coordinate parsing and recorded-capture provenance helpers
 
-The dataset-owned surface and its dependency boundary are described in [DATASETS.md](DATASETS.md).
+The dataset-owned surface and its dependency boundary are described in the [dataset guide](DATASETS.md).
 
 ## Run-layout contract
 
@@ -21,7 +21,7 @@ The run-layout layer owns:
 
 This is the repository’s durable execution footprint contract.
 
-The run-footprint details and change discipline are described in [RUN_LAYOUT.md](RUN_LAYOUT.md).
+The run-footprint details and change discipline are described in the [run layout guide](RUN_LAYOUT.md).
 
 ## Artifact inspection contract
 
@@ -38,11 +38,11 @@ The override layer owns typed profile mutation, while the experiment/sweep layer
 parameter expansion over experiment specs. These contracts let callers vary configurations without
 building ad hoc string manipulation.
 
-These two surfaces are detailed in [OVERRIDES.md](OVERRIDES.md) and [EXPERIMENTS.md](EXPERIMENTS.md).
+These two surfaces are detailed in the [override guide](OVERRIDES.md) and [experiment guide](EXPERIMENTS.md).
 
 ## Validation adapter contract
 
 `validate_reference` and related API re-exports own the infrastructure-facing bridge between
 persisted artifacts and validation/reference comparison flows.
 
-The repository-side validation boundary is detailed in [VALIDATION.md](VALIDATION.md).
+The repository-side validation boundary is detailed in the [validation guide](VALIDATION.md).

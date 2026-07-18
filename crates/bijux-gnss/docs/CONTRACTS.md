@@ -45,6 +45,6 @@ The facade is a package convenience, not a new mixed-ownership domain.
 
 - If a lower-crate contract changes, update the command docs only where operator
   behavior changes.
-- If a command changes output, update [REPORTING.md](REPORTING.md).
-- If facade imports change, update [FACADE.md](FACADE.md) and
-  [PUBLIC_API.md](PUBLIC_API.md).
+- If a command changes output, update the [reporting guide](REPORTING.md).
+- If facade imports change, update the [facade guide](FACADE.md) and
+  [public API](PUBLIC_API.md).

@@ -52,10 +52,10 @@ flowchart TB
 Start from `src/api.rs` when you need the complete public surface. Use the
 package docs for intent before editing:
 
-- [docs/CONTRACTS.md](docs/CONTRACTS.md) for shared semantic contracts.
-- [docs/CONTRACT_MAP.md](docs/CONTRACT_MAP.md) for artifact and record routing.
-- [docs/DIAGNOSTICS.md](docs/DIAGNOSTICS.md) for diagnostic taxonomy.
-- [docs/SERIALIZATION.md](docs/SERIALIZATION.md) for persisted schema rules.
+- [Contract guide](docs/CONTRACTS.md) for shared semantic contracts.
+- [Contract map](docs/CONTRACT_MAP.md) for artifact and record routing.
+- [Diagnostic guide](docs/DIAGNOSTICS.md) for diagnostic taxonomy.
+- [Serialization guide](docs/SERIALIZATION.md) for persisted schema rules.
 
 ## Review Checks
 

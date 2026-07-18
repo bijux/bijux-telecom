@@ -3,7 +3,7 @@
 `bijux-gnss-core` owns the stable records that higher-level crates exchange. Those records are not
 incidental data bags; they are the shared workspace contract layer.
 
-The module-to-contract ownership map is recorded in [CONTRACT_MAP.md](CONTRACT_MAP.md).
+The module-to-contract ownership map is recorded in the [contract map](CONTRACT_MAP.md).
 
 ## Artifact contracts
 
@@ -53,7 +53,7 @@ The foundational layer owns:
 These contracts are intentionally low-level and reusable.
 
 Their serialized representation must remain portable across crates and persisted artifacts. The
-crate-wide serialization rules are recorded in [SERIALIZATION.md](SERIALIZATION.md).
+crate-wide serialization rules are recorded in the [serialization guide](SERIALIZATION.md).
 
 ## Diagnostics and support contracts
 
@@ -62,8 +62,8 @@ The crate also owns:
 - stable diagnostic code metadata
 - support-matrix status and row contracts exchanged across runtime, infrastructure, and CLI layers
 
-These surfaces are detailed in [DIAGNOSTICS.md](DIAGNOSTICS.md) and
-[SUPPORT_MATRIX.md](SUPPORT_MATRIX.md).
+These surfaces are detailed in the [diagnostic guide](DIAGNOSTICS.md) and
+[support matrix](SUPPORT_MATRIX.md).
 
 ## Configuration contracts
 

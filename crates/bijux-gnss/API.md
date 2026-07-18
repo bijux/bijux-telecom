@@ -63,5 +63,5 @@ contracts, send them to the owning package reference:
   domain logic here.
 - Feature-gated surfaces must keep their feature requirement visible in
   documentation and Rust attributes.
-- Command-line behavior belongs in [docs/COMMANDS.md](docs/COMMANDS.md) and
-  [docs/EXECUTION.md](docs/EXECUTION.md), not in this API reference.
+- Command-line behavior belongs in the [command guide](docs/COMMANDS.md) and
+  [execution guide](docs/EXECUTION.md), not in this API reference.

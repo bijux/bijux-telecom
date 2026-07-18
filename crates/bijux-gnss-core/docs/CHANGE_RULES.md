@@ -37,10 +37,10 @@ does not belong here.
 ## Required Discipline
 
 1. Prefer additive evolution over silent semantic rewrites.
-2. When serialized meaning changes, update [SERIALIZATION.md](SERIALIZATION.md),
-   [CONTRACTS.md](CONTRACTS.md), and relevant validation tests in the same change set.
-3. When public exports change, update [PUBLIC_API.md](PUBLIC_API.md) and keep `api.rs` curated.
-4. When invariants change, document the new downstream assumption in [INVARIANTS.md](INVARIANTS.md)
+2. When serialized meaning changes, update the [serialization guide](SERIALIZATION.md),
+   [contract guide](CONTRACTS.md), and relevant validation tests in the same change set.
+3. When public exports change, update the [public API](PUBLIC_API.md) and keep `api.rs` curated.
+4. When invariants change, document the new downstream assumption in the [invariant guide](INVARIANTS.md)
    and keep the protecting tests aligned.
 
 ## Owner Decision Table
