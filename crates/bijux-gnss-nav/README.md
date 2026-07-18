@@ -8,112 +8,102 @@
 [![rust-docs](https://img.shields.io/badge/rust--docs-nav-DEA584?logo=rust&logoColor=white)](https://docs.rs/bijux-gnss-nav/latest/bijux_gnss_nav/)
 [![Navigation handbook](https://img.shields.io/badge/docs-navigation%20handbook-2563EB?logo=materialformkdocs&logoColor=white)](https://github.com/bijux/bijux-telecom/tree/main/docs/04-bijux-gnss-nav)
 
-`bijux-gnss-nav` owns navigation-domain science: navigation-product parsing,
-orbit propagation, clock products, atmospheric and antenna corrections,
-position estimation, RTK, PPP, RAIM, residuals, uncertainty, and time-system
-interpretation needed by navigation algorithms.
+`bijux-gnss-nav` interprets navigation products and observations to produce a
+positioning result, integrity evidence, or an explicit refusal. Its scope spans
+broadcast and precise products, orbit and clock propagation, correction
+models, SPP, filtering, RTK, PPP, RAIM, uncertainty, and navigation-specific
+time handling.
 
-Use this crate to turn observations or external navigation products into a
-typed navigation claim or a typed refusal. Raw-IQ ingest, receiver scheduling,
-signal-code generation, persistence, and CLI presentation belong elsewhere.
+The crate begins after samples have become observations or navigation-product
+bytes. It does not acquire signals, schedule receiver channels, discover files,
+persist runs, or choose operator-facing wording.
 
-## Availability
-
-The first registry release has not been published. In this workspace, build or
-test the package directly:
-
-```sh
-cargo test -p bijux-gnss-nav
-```
-
-After publication, add it with `cargo add bijux-gnss-nav`. The Cargo package
-name is `bijux-gnss-nav`; its Rust import name is `bijux_gnss_nav`. All public
-packages in this repository share one release version.
-
-## Choose the Scientific Surface
-
-| question | go next |
-| --- | --- |
-| Which external format or product is parsed? | [format guide](docs/FORMATS.md) |
-| Which correction or model owns the science? | [Correction guide](docs/CORRECTIONS.md), [Model guide](docs/MODELS.md) |
-| Which orbit, clock, uncertainty, or product-gap contract applies? | [orbit guide](docs/ORBITS.md) |
-| How is a position, RTK, PPP, or integrity claim estimated or refused? | [estimation guide](docs/ESTIMATION.md) |
-| Which time system or rollover context is required? | [time guide](docs/TIME.md) |
-| What compatibility changed? | [package release history](CHANGELOG.md) |
-
-## Owned Boundary
-
-- navigation-product formats and parsed product records
-- broadcast and precise orbit helpers
-- correction models for atmosphere, bias, combinations, tides, and carrier
-  effects
-- position estimation, uncertainty, residual, RTK, PPP, and RAIM behavior
-- navigation-specific time interpretation and rollover handling
-
-This crate does not own raw-IQ ingest, signal-code production, receiver
-tracking loops, persisted run layout, or operator command presentation.
+## A Coordinate Is Not The Whole Result
 
 ```mermaid
-flowchart TB
-    product["navigation products"]
-    obs["receiver observations"]
-    corrections["corrections and models"]
-    estimator["estimator"]
-    solution["solution or refusal evidence"]
+flowchart LR
+    products["navigation products"]
+    observations["observations"]
+    context["time, frame,<br/>provenance"]
+    models["orbit, clock,<br/>corrections"]
+    estimator["estimator and<br/>integrity checks"]
+    decision{"claim supported?"}
+    solution["solution, residuals,<br/>uncertainty"]
+    refusal["typed refusal and<br/>missing evidence"]
 
-    product --> corrections
-    obs --> estimator
-    corrections --> estimator
-    estimator --> solution
+    products --> models
+    observations --> estimator
+    context --> models
+    context --> estimator
+    models --> estimator --> decision
+    decision -->|"yes"| solution
+    decision -->|"no"| refusal
 ```
 
-## Scientific Result Contract
+A scientifically useful result preserves the input identity, time system,
+coordinate frame, correction assumptions, residuals, covariance or protection
+levels, and validity state needed to judge the claim. Returning coordinates
+without that context is not a successful navigation contract.
 
-Every public result must make these concerns reviewable:
+## Enter Through The Scientific Question
 
-- input product or observation provenance
-- constellation, signal, time system, coordinate frame, and units
-- correction and model assumptions
-- residual, covariance, uncertainty, or integrity evidence appropriate to the
-  claim
-- degraded and refused outcomes when prerequisites are missing
+| Question | Guide |
+| --- | --- |
+| Which broadcast or precise format can be parsed? | [Navigation product formats](docs/FORMATS.md) |
+| How is satellite position, velocity, clock, or product uncertainty obtained? | [Orbit and clock behavior](docs/ORBITS.md) |
+| Which atmospheric, bias, antenna, tide, or combination correction applies? | [Correction models](docs/CORRECTIONS.md) and [environmental models](docs/MODELS.md) |
+| How are SPP, filters, RTK, PPP, RAIM, and refusals represented? | [Estimation and integrity](docs/ESTIMATION.md) |
+| Which week context, rollover, or time conversion is required? | [Navigation time](docs/TIME.md) |
+| Which exports are supported for downstream users? | [Public API](docs/PUBLIC_API.md) |
 
-A successful-looking coordinate is not sufficient evidence. The
-[navigation extension guide](../../docs/04-bijux-gnss-nav/operations/navigation-extension-guide.md)
-defines the work required to add scientific behavior, and the
-[release guide](../../docs/04-bijux-gnss-nav/operations/release-and-versioning.md)
-defines compatibility evidence.
+The public `api` module is broad because it serves parsers, model users, and
+estimators. Prefer the smallest family that matches the application instead of
+building against unrelated exports. Shared identities, observations, units,
+and result records come from the
+[core package](../bijux-gnss-core/README.md).
 
-## Implementation Ownership
+## Refuse Missing Scientific Context
 
-- The [format boundary](src/formats.rs) owns broadcast navigation, RINEX, SP3,
-  CLK, ANTEX, and bias-product interpretation.
-- The [orbit boundary](src/orbits/mod.rs) owns ephemeris, satellite state,
-  clocks, uncertainty, and constellation-specific propagation.
-- The [correction boundary](src/corrections/mod.rs) owns atmosphere, bias,
-  combinations, phase windup, and observation-derived corrections.
-- The [model boundary](src/models/mod.rs) owns environmental, antenna, tide,
-  celestial, and NeQuick models.
-- The [estimation boundary](src/estimation.rs) owns positioning, EKF, PPP, RTK,
-  integrity, uncertainty, and solution claims.
-- The [navigation time boundary](src/time.rs) owns week context, rollover, and
-  navigation-specific time interpretation.
-- The [public API](src/api.rs) owns deliberate downstream exports.
+Navigation inputs are often structurally parseable but scientifically
+insufficient. Callers and new APIs should preserve refusal evidence when:
 
-For package architecture and contracts, continue with the
-[architecture guide](docs/ARCHITECTURE.md), [boundary guide](docs/BOUNDARY.md),
-[contract guide](docs/CONTRACTS.md), and [public API guide](docs/PUBLIC_API.md).
-The [test guide](docs/TESTS.md) maps scientific claims to proof families.
+- broadcast time lacks the reference context needed to resolve a week;
+- ephemeris, clock, antenna, bias, or correction products are absent or stale;
+- the observation geometry cannot support the requested state;
+- residual, covariance, integrity, or convergence criteria fail;
+- a requested advanced mode lacks its declared prerequisites;
+- units, signal identity, time scale, or coordinate frame are ambiguous.
 
-## Verification Focus
+Do not replace these cases with zero values, guessed epochs, or
+successful-looking coordinates. The [contract guide](docs/CONTRACTS.md)
+identifies the typed outcomes that cross the package boundary.
 
-Use navigation tests that match the scientific surface changed:
+## Feature Status
 
-```sh
-cargo test -p bijux-gnss-nav --test integration_sp3
-cargo test -p bijux-gnss-nav --test integration_position
-cargo test -p bijux-gnss-nav --test integration_rtk_double_difference
-```
+The package declares one feature, `precise-products`, and enables it by
+default. At present, no navigation source is conditionally compiled by this
+feature; it acts as a compatibility and dependency-forwarding marker for
+higher-level packages. Disabling it does not currently remove parsers or model
+code from `bijux-gnss-nav`.
 
-Repository-wide lanes and package routing are documented in the
-[workspace README](../../README.md).
+That distinction matters for consumers evaluating binary size or capability
+isolation: rely on actual compiled behavior, not the feature name alone. If
+source gating is introduced later, it is a compatibility change and needs
+explicit tests and release notes.
+
+The first registry release has not been published. The prepared Cargo package
+name is `bijux-gnss-nav`, and its Rust import name is `bijux_gnss_nav`.
+
+## Match Evidence To The Claim
+
+Parser tests prove format interpretation, not orbit accuracy. Model
+reference vectors prove selected formulas, not complete positioning.
+Synthetic positioning tests prove controlled scenarios, not field performance.
+RTK, PPP, and integrity claims need their own prerequisite, convergence,
+residual, uncertainty, and refusal evidence.
+
+Use the [test evidence guide](docs/TESTS.md) to select the relevant proof and
+the [architecture guide](docs/ARCHITECTURE.md) to preserve dependency
+direction. Scientific and compatibility changes belong in the
+[package release history](CHANGELOG.md) and follow the
+[navigation release guide](../../docs/04-bijux-gnss-nav/operations/release-and-versioning.md).

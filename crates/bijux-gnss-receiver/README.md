@@ -8,128 +8,117 @@
 [![rust-docs](https://img.shields.io/badge/rust--docs-receiver-DEA584?logo=rust&logoColor=white)](https://docs.rs/bijux-gnss-receiver/latest/bijux_gnss_receiver/)
 [![Receiver handbook](https://img.shields.io/badge/docs-receiver%20handbook-2563EB?logo=materialformkdocs&logoColor=white)](https://github.com/bijux/bijux-telecom/tree/main/docs/05-bijux-gnss-receiver)
 
-`bijux-gnss-receiver` owns receiver runtime behavior: configuration,
-acquisition, tracking, observation generation, optional navigation-stage
-execution, diagnostics, and receiver-owned artifacts.
+`bijux-gnss-receiver` turns complex samples into typed evidence about
+acquisition, tracking, observations, and optional navigation. It owns receiver
+configuration, stage orchestration, channel state, runtime diagnostics,
+uncertainty, and the artifacts returned by a receiver run.
 
-Use this crate when a change affects how samples become acquisition, tracking,
-observation, optional navigation, diagnostic, or artifact evidence. Signal
-definitions, standalone navigation science, persisted layout, and command
-wording remain with their owning crates.
+Choose this crate when you are embedding receiver behavior. Use the command
+package for complete operator workflows, signal for reusable codes and DSP,
+navigation for standalone estimation science, and infrastructure for durable
+run directories and manifests.
 
-## Availability
-
-The first registry release has not been published. In this workspace, build or
-test the package directly:
-
-```sh
-cargo test -p bijux-gnss-receiver
-```
-
-After publication, add it with `cargo add bijux-gnss-receiver`. The Cargo
-package name is `bijux-gnss-receiver`; its Rust import name is
-`bijux_gnss_receiver`. All public packages in this repository share one release
-version.
-
-## Choose the Runtime Contract
-
-| question | go next |
-| --- | --- |
-| How do samples move through acquisition, tracking, observations, and navigation? | [pipeline guide](docs/PIPELINE.md) |
-| Which configuration, defaults, side effects, and support rules apply? | [runtime guide](docs/RUNTIME.md) |
-| Which interfaces isolate clocks, sample sources, and artifact sinks? | [port guide](docs/PORTS.md) |
-| Which typed results and reports leave a run? | [artifact guide](docs/ARTIFACTS.md) |
-| How do synthetic and reference claims differ? | [simulation guide](docs/SIMULATION.md) and [reference-validation guide](docs/REFERENCE_VALIDATION.md) |
-| What compatibility changed? | [package release history](CHANGELOG.md) |
-
-## Owned Boundary
-
-- receiver configuration, defaults, validation, and runtime state
-- acquisition, tracking, observation, and optional navigation orchestration
-- channel state, lock state, diagnostics, CN0, uncertainty, and refusal evidence
-- clock, sample-source, and artifact-sink ports
-- receiver-boundary simulation and reference-validation helpers
-
-This crate does not own repository persistence, operator workflow policy,
-low-level signal-code generation, or standalone navigation science.
+## A Run Is A Sequence Of Decisions
 
 ```mermaid
 flowchart LR
-    source["sample source"]
-    acq["acquisition"]
-    track["tracking"]
-    obs["observations"]
-    nav["optional navigation"]
-    artifacts["receiver artifacts"]
+    samples["sample source"]
+    acquire{"acquisition<br/>accepted?"}
+    track{"tracking<br/>usable?"}
+    observe{"observation<br/>admitted?"}
+    navigate{"navigation<br/>enabled and ready?"}
+    result["stage evidence,<br/>diagnostics, artifacts"]
 
-    source --> acq
-    acq --> track
-    track --> obs
-    obs --> nav
-    track --> artifacts
-    obs --> artifacts
-    nav --> artifacts
+    samples --> acquire
+    acquire -->|"yes"| track
+    acquire -->|"no"| result
+    track -->|"yes"| observe
+    track -->|"degraded or refused"| result
+    observe -->|"yes"| navigate
+    observe -->|"rejected"| result
+    navigate --> result
 ```
 
-## Observable Runtime Contract
+Later stages are conditional. A completed call may contain acquisition evidence
+without tracking lock, observations without a navigation attempt, or a
+navigation refusal rather than a coordinate. Consumers should inspect stage
+status and diagnostics, not infer success from the existence of a return value.
 
-- Configuration defaults and validation determine which work is attempted.
-- Acquisition acceptance and tracking transitions remain visible as typed
-  evidence, including degraded and refused states.
-- CN0, uncertainty, lock, residual, and support claims retain enough context
-  for downstream review.
-- Runtime side effects pass through explicit clocks, sources, sinks, metrics,
-  traces, and log boundaries.
-- Navigation remains feature-gated; disabling it must not change signal,
-  acquisition, tracking, or observation ownership.
-- Receiver artifacts describe what happened in memory. Infrastructure decides
-  where durable files, manifests, and histories live.
+## Start From The Evidence You Need
 
-The [receiver release guide](../../docs/05-bijux-gnss-receiver/operations/release-and-versioning.md)
-defines compatibility evidence for defaults, stage behavior, ports, and
-artifacts.
+| You need to understand or change... | Read first |
+| --- | --- |
+| stage order, handoff, and early termination | [Receiver pipeline](docs/PIPELINE.md) |
+| configuration defaults, validation, runtime state, or support policy | [Runtime contract](docs/RUNTIME.md) |
+| sample sources, clocks, artifact sinks, metrics, or traces | [Runtime ports](docs/PORTS.md) |
+| acquisition, tracking, observation, and navigation output fields | [Receiver artifacts](docs/ARTIFACTS.md) |
+| deterministic synthetic scenarios and injected truth | [Simulation boundary](docs/SIMULATION.md) |
+| comparison with an external reference solution | [Reference validation](docs/REFERENCE_VALIDATION.md) |
+| the supported downstream import surface | [Public API](docs/PUBLIC_API.md) |
+
+The public API exports `ReceiverConfig`, `ReceiverPipelineConfig`,
+`ReceiverRuntime`, `Receiver`, and `RunArtifacts`, along with focused stage
+engines and evidence types. It also re-exports the core and signal APIs for
+receiver consumers. Navigation exports appear only when `nav` is enabled.
+
+## Runtime Evidence Is Not Persisted Evidence
+
+`RunArtifacts` reports what the receiver produced in memory: acquisition
+results and explanations, tracking transitions and channel reports,
+observation decisions and quality reports, the support matrix, and optional
+navigation epochs. Diagnostics, metrics, traces, validation reports, and
+pipeline step reports are separate receiver evidence surfaces. None of these
+defines a stable run directory, manifest history, or repository provenance
+record.
+
+Use the [infrastructure package](../bijux-gnss-infra/README.md) when evidence
+must survive as a governed run. That package decides locations and persistence;
+the receiver remains responsible for the scientific and runtime meaning of the
+payload.
+
+Ports keep side effects visible, but their guarantees differ. Sample sources
+and artifact sinks can return typed errors. Metrics and trace sinks are
+notification interfaces and do not return failures to the receiver. A caller
+that needs durable telemetry must provide and supervise that durability outside
+the receiver contract.
 
 ## Features
 
-| feature | effect |
+| Feature | Effect |
 | --- | --- |
 | `nav` | enables navigation execution, validation, and navigation re-exports |
-| `precise-products` | enables navigation with precise-product support |
-| `tracing` | enables receiver tracing integration |
-| `reference-checks` | enables additional observation-epoch sequence validation |
-| `trace-dump` and `trace-heavy` | enable detailed trace evidence |
-| `alloc-trace` and `alloc-audit` | enable allocation evidence |
+| `precise-products` | enables `nav` and forwards precise-product support to navigation |
+| `tracing` | enables tracing integration |
+| `reference-checks` | adds observation-epoch sequence checks |
+| `trace-dump`, `trace-heavy` | add detailed trace evidence |
+| `alloc-trace`, `alloc-audit` | add allocation evidence |
 
-Navigation is enabled by default. Diagnostic features should support deliberate
-evidence collection, not become hidden runtime requirements.
+Navigation is enabled by default. A receiver-only build can disable default
+features without changing ownership of acquisition, tracking, or observations:
 
-## Implementation Ownership
-
-- The [receiver engine](src/engine/mod.rs) owns configuration, defaults,
-  validation, runtime effects, diagnostics, metrics, support, and composition.
-- The [pipeline boundary](src/pipeline/mod.rs) owns acquisition, tracking,
-  observations, and optional navigation sequencing.
-- The [sample input boundary](src/io/mod.rs) and
-  [runtime ports](src/ports/mod.rs) own source, sink, and clock abstractions.
-- The [run artifact model](src/artifacts.rs) and
-  [validation reports](src/validation_report.rs) own receiver-side evidence.
-- The [simulation boundary](src/sim/mod.rs) owns synthetic receiver scenarios.
-- The [public API](src/api.rs) owns deliberate exports and receiver entrypoints.
-
-For package architecture and contracts, continue with the
-[architecture guide](docs/ARCHITECTURE.md), [boundary guide](docs/BOUNDARY.md),
-[contract guide](docs/CONTRACTS.md), and [public API guide](docs/PUBLIC_API.md).
-The [test guide](docs/TESTS.md) maps stages and artifacts to proof families.
-
-## Verification Focus
-
-Use receiver tests that match the changed stage before full-suite proof:
-
-```sh
-cargo test -p bijux-gnss-receiver --test integration_basic
-cargo test -p bijux-gnss-receiver --test integration_receiver_support_matrix_inventory
-cargo test -p bijux-gnss-receiver --test integration_navigation_pvt_accuracy_budget
+```toml
+[dependencies]
+bijux-gnss-receiver = { version = "0.1.0", default-features = false }
 ```
 
-Repository-wide lanes and package routing are documented in the
-[workspace README](../../README.md).
+The registry dependency describes the prepared `0.1.0` surface; the first
+release has not been published.
+
+## Make Claims At The Right Strength
+
+- A detected correlation peak is acquisition evidence, not tracking lock.
+- Tracking lock is not proof that observation timing and uncertainty are fit
+  for navigation.
+- A produced observation is not proof that a position was attempted or valid.
+- Synthetic truth demonstrates behavior under declared assumptions, not
+  live-sky performance.
+- Reference comparison is only as strong as alignment, provenance, and
+  tolerance policy.
+- Diagnostic and allocation features are evidence tools, not normal runtime
+  prerequisites.
+
+The [test evidence guide](docs/TESTS.md) maps each claim to focused integration,
+property, synthetic, reference, and guardrail tests. Compatibility changes to
+defaults, stage transitions, ports, or artifacts belong in the
+[package release history](CHANGELOG.md) and follow the
+[receiver release guide](../../docs/05-bijux-gnss-receiver/operations/release-and-versioning.md).
