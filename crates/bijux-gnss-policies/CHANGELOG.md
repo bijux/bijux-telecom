@@ -1,7 +1,7 @@
 # Changelog
 
 Changes to `bijux-gnss-policies` executable repository policy are recorded
-here. Workspace-wide release notes live in [../../CHANGELOG.md](../../CHANGELOG.md).
+here. Workspace-wide release notes live in the [workspace changelog](../../CHANGELOG.md).
 
 ## Unreleased
 

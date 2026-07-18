@@ -1,7 +1,7 @@
 # Changelog
 
 Changes to `bijux-gnss-receiver` runtime behavior are recorded here.
-Workspace-wide release notes live in [../../CHANGELOG.md](../../CHANGELOG.md).
+Workspace-wide release notes live in the [workspace changelog](../../CHANGELOG.md).
 
 ## Unreleased
 

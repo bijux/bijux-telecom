@@ -1,7 +1,7 @@
 # Changelog
 
 Changes to `bijux-gnss-dev` maintainer tooling are recorded here.
-Workspace-wide release notes live in [../../CHANGELOG.md](../../CHANGELOG.md).
+Workspace-wide release notes live in the [workspace changelog](../../CHANGELOG.md).
 
 ## Unreleased
 

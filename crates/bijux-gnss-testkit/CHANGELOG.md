@@ -1,7 +1,7 @@
 # Changelog
 
 Changes to `bijux-gnss-testkit` shared test evidence are recorded here.
-Workspace-wide release notes live in [../../CHANGELOG.md](../../CHANGELOG.md).
+Workspace-wide release notes live in the [workspace changelog](../../CHANGELOG.md).
 
 ## Unreleased
 

@@ -1,7 +1,7 @@
 # Changelog
 
 Changes to the `bijux-gnss` facade crate and `bijux` binary are recorded here.
-Workspace-wide release notes live in [../../CHANGELOG.md](../../CHANGELOG.md).
+Workspace-wide release notes live in the [workspace changelog](../../CHANGELOG.md).
 
 ## Unreleased
 
