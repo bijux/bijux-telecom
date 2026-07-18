@@ -1,20 +1,51 @@
 # Change Rules
 
-`bijux-gnss-policies` changes repository behavior even when no product code moves. That makes its
-documentation and change discipline unusually important.
+`bijux-gnss-policies` changes repository behavior even when no product code
+moves. A policy change can make a crate pass, fail, or report new structural
+risk. That makes documentation and review discipline part of the implementation,
+not an afterthought.
 
-## Required discipline
+## Change Flow
 
-1. If a new guardrail family is added, update [GUARDRAILS.md](GUARDRAILS.md).
-2. If configuration meaning changes, update [CONFIGURATION.md](CONFIGURATION.md) and any affected
-   snapshot references.
-3. If a reporting surface changes, update [REPORTING.md](REPORTING.md).
-4. If a snapshot changes, explain the policy reason in the same change set.
+```mermaid
+flowchart LR
+    rule["guardrail rule"]
+    config["configuration"]
+    snapshot["snapshot evidence"]
+    docs["policy docs"]
+    tests["policy tests"]
+    review["repository review"]
 
-## Smells that usually mean "wrong crate"
+    rule --> config
+    config --> snapshot
+    config --> docs
+    rule --> tests
+    snapshot --> review
+    docs --> review
+    tests --> review
+```
 
-- code that mutates product state
-- code that belongs to runtime behavior rather than repository policy
-- helpers added only because a test needed a convenient utility
+## Required Discipline
 
-This crate should remain policy-specific and review-friendly.
+| change | required companion work |
+| --- | --- |
+| new guardrail family | Update [GUARDRAILS.md](GUARDRAILS.md), configuration docs, tests, and public reporting when applicable. |
+| changed configuration meaning | Update [CONFIGURATION.md](CONFIGURATION.md), snapshots, and any affected failure-message expectations. |
+| changed reporting surface | Update [REPORTING.md](REPORTING.md) and verify report output remains read-only. |
+| changed snapshot | Explain the policy reason in the same change set and avoid accepting generated movement blindly. |
+| new public API | Update [PUBLIC_API.md](PUBLIC_API.md) and prove the export is reusable policy surface. |
+
+## Wrong-Crate Signals
+
+- The code mutates product state.
+- The logic belongs to receiver runtime behavior rather than repository policy.
+- A helper exists only to shorten one test and has no reusable guardrail role.
+- A rule encodes one crate's current shape instead of a workspace boundary.
+
+## Review Checks
+
+- Is the changed rule defending a durable repository standard?
+- Are exceptions narrow and named by the boundary they protect?
+- Will downstream crate maintainers understand the new failure without reading
+  this crate's internals?
+- Do docs and snapshots explain the same policy behavior?

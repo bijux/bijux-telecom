@@ -1,24 +1,56 @@
 # Reporting
 
-`bijux-gnss-policies` owns both failing guardrail checks and read-only structural reporting.
+`bijux-gnss-policies` owns failing guardrail output and read-only structural
+reports. Reporting is the visibility layer before a concern becomes a hard
+policy rule, and it is the explanation layer when an enforced rule fails.
 
-## Read-only reporting surface
+## Reporting Flow
+
+```mermaid
+flowchart LR
+    crate["crate source tree"]
+    inspect["policy inspection"]
+    report["read-only report"]
+    guardrail["guardrail failure"]
+    maintainer["maintainer decision"]
+
+    crate --> inspect
+    inspect --> report
+    inspect --> guardrail
+    report --> maintainer
+    guardrail --> maintainer
+```
+
+## Read-Only Reporting Surface
 
 `src/bin/purity_report.rs` currently reports:
 
 - crate names discovered under `crates/`
 - dependency counts
-- presence of selected heavy dependencies
+- selected heavy dependency presence
 - public-item distribution between `api.rs` and non-API files
 - feature inventory
 
-## Why this matters
+## Contract Rules
 
-Not every structural concern should immediately be a hard failure. Some things need to be visible
-first so maintainers can inspect drift, compare crates, and decide whether a new guardrail belongs
-in the enforced set.
+- Reports must not mutate files or rewrite crate structure.
+- Reports should expose trends and risks before every concern becomes a
+  hard-failing guardrail.
+- A report field needs a reader action: inspect, compare, decide, or propose a
+  rule.
+- Guardrail failures need enough file, rule, and boundary context to be fixed
+  from the output.
 
-## Boundary rule
+## Reader Guidance
 
-This reporting surface is descriptive, not mutating. If a future report wants to rewrite files or
-"fix" crates, it no longer belongs in this binary without a deliberate boundary change.
+Use reports when the repository needs visibility without immediate enforcement.
+Use guardrails when the boundary is durable enough that violating it should fail
+review. If a report repeatedly drives the same manual review decision, promote
+the decision into an explicit guardrail.
+
+## Review Checks
+
+- Does each new report field have an obvious maintainer use?
+- Does output ordering stay deterministic for review and artifacts?
+- Does a proposed report belong to policy, or is it really product runtime,
+  release automation, or documentation analysis?
