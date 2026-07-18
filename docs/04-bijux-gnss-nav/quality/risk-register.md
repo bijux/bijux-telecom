@@ -4,33 +4,52 @@ audience: mixed
 type: quality
 status: canonical
 owner: bijux-gnss-nav-docs
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-18
 ---
 
 # Risk Register
 
 This page records the main trust risks in `bijux-gnss-nav`.
 
-## Risks
+## Risk Flow
 
-- a public export may become durable by accident because a downstream crate
-  started using it
-- reference-backed tests may stay green while a nearby scientific family
-  quietly drifts if the wrong slice is exercised
-- runtime-neutral helpers may invite runtime policy into the crate
-- estimator evidence semantics may change more easily than users realize
-- parser and precise-product families may absorb repository assumptions under
-  validation pressure
+```mermaid
+flowchart LR
+    input["external product<br/>or observation"]
+    nav["nav parser model<br/>correction estimator"]
+    evidence["solution or refusal<br/>evidence"]
+    downstream["receiver infra<br/>command consumers"]
 
-## Mitigations
+    input --> nav --> evidence --> downstream
+```
 
-- review `api.rs` changes as public contract changes
-- choose validation by scientific family, not by convenience
-- keep refusal and evidence types documented and explicit
-- maintain the refusal ledger in [This Package Does Not Own](../this-package-does-not-own.md)
+## Risks and Controls
 
-## Protecting Proof
+| risk | reader-visible consequence | control |
+| --- | --- | --- |
+| accidental public export | downstream crates depend on an internal solver detail | review `api.rs` changes as contract changes |
+| narrow reference proof | tests stay green while an adjacent scientific family drifts | choose validation by scientific family |
+| runtime policy creep | nav starts deciding scheduling, sample flow, or run layout | keep runtime-neutral APIs explicit |
+| weak refusal evidence | solver cannot explain why it did not claim a solution | keep refusal and evidence records documented |
+| parser repository leakage | file discovery or command assumptions enter format parsers | keep repository paths in infra or CLI |
+| tolerance drift | fixture tests pass by accepting weaker science | require rationale for tolerance changes |
+| precise-product ambiguity | SP3, CLK, ANTEX, or bias SINEX claims lose source context | preserve product provenance and parser family ownership |
 
-- `crates/bijux-gnss-nav/docs/PUBLIC_API.md`
-- `crates/bijux-gnss-nav/docs/TESTS.md`
-- `crates/bijux-gnss-nav/tests/integration_guardrails.rs`
+## Review Checks
+
+- Does the change alter a public scientific contract?
+- Is the proof close to the parser, model, correction, or estimator family that
+  changed?
+- Does a refusal still explain unsupported geometry, missing products,
+  degraded integrity, or invalid inputs?
+- Does the change keep repository file discovery outside nav?
+- Is the refusal ledger in [This Package Does Not Own](../this-package-does-not-own.md)
+  still accurate?
+
+## First Proof Check
+
+Inspect `crates/bijux-gnss-nav/docs/PUBLIC_API.md`,
+`crates/bijux-gnss-nav/docs/TESTS.md`,
+`crates/bijux-gnss-nav/docs/BOUNDARY.md`,
+`crates/bijux-gnss-nav/src/api.rs`, and
+`crates/bijux-gnss-nav/tests/integration_guardrails.rs`.
