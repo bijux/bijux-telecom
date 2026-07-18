@@ -1,57 +1,104 @@
 # Architecture
 
-`bijux-gnss-core` is the shared contract foundation for the GNSS workspace. It does not run a
-pipeline. It defines the language the rest of the workspace uses when they talk about samples,
-signals, observations, diagnostics, navigation solutions, artifact payloads, time systems, and
-physical units.
+`bijux-gnss-core` defines GNSS meaning that several packages must exchange
+without reinterpretation. It has no receiver pipeline, navigation solver,
+repository layout, or command workflow. Its architecture is a set of durable,
+mostly pure contract families exposed through one curated API.
 
-## Source map
+## Contract Flow
 
-- `src/api.rs` is the only curated downstream entrypoint.
-- `src/artifact/` owns versioned artifact envelopes and payload validation rules.
-- `src/config.rs` owns configuration schema versions and validation reporting primitives.
-- `src/conventions.rs` owns scientific sanity helpers used to check observation and solution
-  consistency.
-- `src/diagnostic/` owns diagnostic codes, severity levels, and aggregation helpers.
-- `src/error.rs` owns canonical error categories shared across downstream crates.
-- `src/geo.rs` owns WGS-84 coordinate transforms and geometry helpers.
-- `src/ids.rs` owns constellation, satellite, signal, and registry identity types.
-- `src/nav_solution.rs` owns navigation-solution records, residuals, and inter-system bias payloads.
-- `src/observation/` owns acquisition, tracking, navigation-observation, and differencing records.
-- `src/observation_quality.rs` owns lock, covariance, and cycle-slip quality metadata.
-- `src/stats.rs` owns simple statistical summaries shared across higher layers.
-- `src/support_matrix.rs` owns supported-signal inventory contracts.
-- `src/time.rs` owns GPS, UTC, TAI, receiver-sample time, and leap-second contracts.
-- `src/units.rs` owns strong physical units and conversion helpers.
+```mermaid
+flowchart LR
+    meaning["identity, time, units,<br/>records, diagnostics"]
+    family["private contract family"]
+    api["bijux_gnss_core::api"]
+    consumers["signal, navigation,<br/>receiver, infra, command"]
+    persistence["versioned artifacts"]
 
-## Dependency direction
+    meaning --> family --> api --> consumers
+    family --> persistence --> consumers
+```
 
-This crate sits near the bottom of the workspace:
-- higher-level crates may depend on `bijux-gnss-core`
-- `bijux-gnss-core` must not depend on `signal`, `nav`, `receiver`, `infra`, CLI, or testkit crates
+## Contract Families
 
-That rule keeps the foundational types usable everywhere without importing pipeline behavior.
+| family | responsibility | code route |
+| --- | --- | --- |
+| identity | constellation, satellite, signal, component, and registry identity | [Identity contracts](../src/ids.rs) |
+| time and units | GPS, UTC, TAI, sample clocks, leap seconds, and strong physical quantities | [Time contracts](../src/time.rs) and [unit contracts](../src/units.rs) |
+| geometry and conventions | WGS-84 transforms plus shared sanity and conversion law | [Geometry helpers](../src/geo.rs) and [scientific conventions](../src/conventions.rs) |
+| observations | acquisition, tracking, observation, differencing, timing, and decision records | [Observation contracts](../src/observation/) |
+| measurement quality | lock, covariance, cycle-slip, and measurement error evidence | [Observation quality](../src/observation_quality.rs) |
+| navigation results | solution epochs, residuals, lifecycle, refusal, and inter-system bias records | [Navigation solution contracts](../src/nav_solution.rs) |
+| artifacts | headers, kind policy, versioned payloads, conversion, and payload validation | [Artifact namespace](../src/artifact.rs) and [versioned payloads](../src/artifact/) |
+| diagnostics and errors | stable codes, severities, events, aggregation, and canonical error categories | [Diagnostic contracts](../src/diagnostic/) and [error taxonomy](../src/error.rs) |
+| configuration and support | schema-aware validation, support inventory, and shared statistical summaries | [Configuration contracts](../src/config.rs), [support matrix](../src/support_matrix.rs), and [statistics](../src/stats.rs) |
 
-## Public surface discipline
+## Dependency Direction
 
-`src/lib.rs` keeps implementation modules private and exposes one public module, `api`. The public
-API guardrail test enforces that newly public structs and free functions are deliberately re-exported
-through `api.rs` instead of leaking by accident from implementation modules.
+Core's production dependency graph contains only general-purpose libraries for
+serialization, errors, and numeric representation. It does not depend on
+another GNSS workspace package.
 
-## Test map
+```mermaid
+flowchart TD
+    core["bijux-gnss-core"]
+    signal["signal"]
+    nav["navigation"]
+    receiver["receiver"]
+    infra["infra"]
+    command["command"]
 
-- `tests/public_api_guardrail.rs` locks curated API exposure.
-- `tests/nav_artifact_validation.rs` validates navigation artifact payload rules.
-- `tests/tracking_artifact_validation.rs` validates tracking artifact payload rules.
-- `tests/prop_timekeeping.rs` and `tests/prop_timekeeping.proptest-regressions` lock timekeeping
-  behavior with property tests.
-- `tests/integration_guardrails.rs` carries workspace guardrail coverage for this crate.
-- `tests/data/obs_fixture.jsonl` is a stable artifact validation fixture used by downstream checks.
+    signal --> core
+    nav --> core
+    receiver --> core
+    infra --> core
+    command --> core
+```
 
-## Design constraints
+The arrows show allowed dependency direction: higher packages consume core.
+Reversing an arrow would import runtime, solver, persistence, or operator
+assumptions into the shared language.
 
-- Foundational contracts must remain serializable and stable enough for downstream crates to store,
-  compare, and validate them.
-- Scientific helpers here should stay pure and reusable. Runtime state, filesystem state, and
-  command policy belong elsewhere.
-- If a type or helper is only useful to one higher-level crate, it probably does not belong here.
+## Public Surface
+
+Implementation families remain private. The
+[curated API](../src/api.rs) re-exports contracts that are deliberately shared;
+the [crate boundary](../src/lib.rs) exposes only that API module.
+
+A type belongs in the public API when:
+
+1. More than one package needs the same semantics.
+2. Units, time systems, coordinate frames, validity, and serialization are
+   explicit.
+3. The type remains useful without one caller's runtime or storage policy.
+4. Its validation travels with the contract where practical.
+
+If a caller needs an internal type directly, review ownership before widening
+the API. Convenience alone is not a cross-package contract.
+
+## Persistence Boundary
+
+Core owns artifact envelope and payload meaning. Infra owns filenames,
+directories, run manifests, history, and repository discovery. A serialized
+core record should remain interpretable without the process that produced it,
+but core does not decide where that record is stored.
+
+Schema changes must define reader behavior. Current validation tests protect
+navigation and tracking payload rules, while older or unsupported schema policy
+must remain explicit rather than being silently reinterpreted.
+
+## Verification Routes
+
+- [Public API guardrail](../tests/public_api_guardrail.rs) protects deliberate
+  re-exports.
+- [Navigation artifact validation](../tests/nav_artifact_validation.rs) and
+  [tracking artifact validation](../tests/tracking_artifact_validation.rs)
+  protect selected serialized payload rules.
+- [Timekeeping properties](../tests/prop_timekeeping.rs) protect time
+  conversion invariants.
+- [Package guardrail](../tests/integration_guardrails.rs) protects the crate
+  boundary.
+
+Continue with the [contract map](CONTRACT_MAP.md) for placement rules, the
+[serialization guide](SERIALIZATION.md) for persisted meaning, and the
+[invariant guide](INVARIANTS.md) before changing a shared contract.
