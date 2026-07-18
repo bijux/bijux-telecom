@@ -1,0 +1,21 @@
+/* Bijux shell design tokens: shared color, spacing, motion, and shell width variables. */
+:root {
+  --bijux-ink: #142033;
+  --bijux-muted: #5d6c7e;
+  --bijux-border: rgba(20, 32, 51, 0.12);
+  --bijux-panel: rgba(13, 148, 136, 0.06);
+  --bijux-panel-strong: rgba(8, 145, 178, 0.08);
+  --bijux-card-shadow: 0 18px 42px rgba(15, 23, 42, 0.08);
+  --bijux-map-shadow: 0 22px 54px rgba(15, 23, 42, 0.13);
+  --bijux-card-shadow-hover: 0 26px 56px rgba(15, 23, 42, 0.14);
+  --bijux-surface-gradient: linear-gradient(180deg, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0));
+  --bijux-shell-width: 84rem;
+  --bijux-shell-width-wide: 92rem;
+  --bijux-shell-width-ultra: 102rem;
+  --bijux-ribbon-bg: #10213b;
+  --bijux-ribbon-bg-strong: #124e66;
+  --bijux-ribbon-fade: rgba(16, 33, 59, 0);
+  --bijux-nav-indicator: linear-gradient(90deg, rgba(245, 158, 11, 0.95), rgba(45, 212, 191, 0.95));
+  --bijux-nav-active-shadow: 0 14px 28px rgba(15, 23, 42, 0.18);
+  --bijux-focus-ring: rgba(15, 118, 110, 0.22);
+}

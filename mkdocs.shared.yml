@@ -1,0 +1,117 @@
+strict: true
+use_directory_urls: true
+dev_addr: 127.0.0.1:8000
+
+validation:
+  omitted_files: ignore
+
+theme:
+  name: material
+  language: en
+  custom_dir: docs/overrides
+  logo: assets/bijux_logo_hq.png
+  favicon: assets/site-icons/favicon.ico
+  font: false
+  icon:
+    repo: fontawesome/brands/github
+  features:
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.indexes
+    - navigation.path
+    - navigation.tracking
+    - navigation.instant
+    - navigation.top
+    - navigation.footer
+    - toc.follow
+    - search.suggest
+    - search.highlight
+    - content.tabs.link
+    - content.code.annotate
+    - content.code.copy
+    - content.code.select
+    - content.action.edit
+    - content.action.view
+  palette:
+    - media: "(prefers-color-scheme)"
+      primary: teal
+      accent: cyan
+      toggle:
+        icon: material/theme-light-dark
+        name: Switch to light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: teal
+      accent: cyan
+      toggle:
+        icon: material/moon-waning-crescent
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: teal
+      accent: cyan
+      toggle:
+        icon: material/white-balance-sunny
+        name: Switch to system mode
+
+plugins:
+  - search
+  - autorefs
+  - git-revision-date-localized:
+      enable_creation_date: false
+      fallback_to_build_date: true
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+
+extra:
+  homepage: https://bijux.io/
+  bijux:
+    repository: bijux-gnss
+    nav_mode: default
+    theme_key: bijux:theme
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/bijux
+
+extra_css:
+  - assets/styles/extra.css
+
+extra_javascript:
+  - assets/javascripts/vendor/mermaid-11.6.0.min.js
+  - assets/javascripts/mermaid-init.js
+  - assets/javascripts/shell/theme-persistence.js
+  - assets/javascripts/shell/viewport-profile.js
+  - assets/javascripts/shell/nav-state.js
+  - assets/javascripts/shell/detail-tabs.js
+  - assets/javascripts/shell/nav-reveal.js
+  - assets/javascripts/shell/bootstrap.js
+  - assets/javascripts/navigation-sync.js
+  - assets/javascripts/external-links.js
+
+copyright: "© 2026 Bijan Mousavi <bijan@bijux.io>"

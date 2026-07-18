@@ -1,0 +1,27 @@
+/* Global layout: typography base and page-level background rhythm. */
+body,
+input,
+button {
+  font-family: "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+}
+
+html {
+  scroll-padding-top: 8.2rem;
+}
+
+.md-main {
+  background:
+    radial-gradient(circle at top left, rgba(13, 148, 136, 0.07), transparent 22%),
+    radial-gradient(circle at 82% 10%, rgba(245, 158, 11, 0.06), transparent 18%),
+    radial-gradient(circle at top right, rgba(8, 145, 178, 0.05), transparent 20%),
+    radial-gradient(circle at 24% 58%, rgba(20, 184, 166, 0.04), transparent 22%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.28), rgba(255, 255, 255, 0));
+}
+
+[data-md-color-scheme="slate"] .md-main {
+  background:
+    radial-gradient(circle at top left, rgba(45, 212, 191, 0.08), transparent 24%),
+    radial-gradient(circle at 80% 8%, rgba(251, 191, 36, 0.05), transparent 16%),
+    radial-gradient(circle at 28% 56%, rgba(103, 232, 249, 0.05), transparent 24%),
+    linear-gradient(180deg, rgba(15, 23, 42, 0.36), rgba(15, 23, 42, 0));
+}

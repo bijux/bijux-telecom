@@ -1,0 +1,6 @@
+* text=auto eol=lf
+
+*.ico binary
+*.png binary
+
+docs/assets/javascripts/vendor/*.min.js -diff -whitespace linguist-vendored

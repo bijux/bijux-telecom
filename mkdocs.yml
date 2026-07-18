@@ -1,0 +1,445 @@
+INHERIT: mkdocs.shared.yml
+
+site_name: Bijux GNSS
+site_description: GNSS command, signal, receiver, navigation, and reproducibility documentation.
+site_url: !ENV [SITE_URL, https://bijux.io/bijux-gnss/]
+site_author: Bijan Mousavi <bijan@bijux.io>
+repo_url: https://github.com/bijux/bijux-gnss
+repo_name: bijux/bijux-gnss
+edit_uri: edit/main/docs/
+
+docs_dir: docs
+site_dir: artifacts/docs/site
+watch:
+  - docs
+  - docs/assets
+  - docs/overrides
+  - .bijux/shared/bijux-docs
+  - mkdocs.yml
+  - mkdocs.shared.yml
+
+extra:
+  bijux:
+    repository: bijux-gnss
+    nav_mode: default
+    theme_key: bijux:theme
+    hub_links:
+      - key: bijux
+        label: Bijux
+        url: https://bijux.io/
+      - key: bijux-core
+        label: Core
+        url: https://bijux.io/bijux-core/
+      - key: bijux-proteomics
+        label: Proteomics
+        url: https://bijux.io/bijux-proteomics/
+      - key: bijux-pollenomics
+        label: Pollenomics
+        url: https://bijux.io/bijux-pollenomics/
+      - key: bijux-phylogenetics
+        label: Phylogenetics
+        url: https://bijux.io/bijux-phylogenetics/
+      - key: bijux-canon
+        label: Canon
+        url: https://bijux.io/bijux-canon/
+      - key: bijux-atlas
+        label: Atlas
+        url: https://bijux.io/bijux-atlas/
+      - key: bijux-gnss
+        label: GNSS
+        url: https://bijux.io/bijux-gnss/
+      - key: bijux-masterclass
+        label: Masterclass
+        url: https://bijux.io/bijux-masterclass/
+
+nav:
+  - "Home": index.md
+  - "GNSS Handbook":
+      - "Overview": bijux-gnss/index.md
+      - "Command Ownership Boundaries": bijux-gnss/ownership-boundaries.md
+      - "Foundation":
+          - "Command Foundations": bijux-gnss/foundation/index.md
+          - "Change Principles": bijux-gnss/foundation/change-principles.md
+          - "Dependencies And Adjacencies": bijux-gnss/foundation/dependencies-and-adjacencies.md
+          - "Domain Language": bijux-gnss/foundation/domain-language.md
+          - "Operator Questions": bijux-gnss/foundation/operator-faq.md
+          - "Ownership Boundary": bijux-gnss/foundation/ownership-boundary.md
+          - "Package Overview": bijux-gnss/foundation/package-overview.md
+          - "Repository Fit": bijux-gnss/foundation/repository-fit.md
+          - "Scope And Non-Goals": bijux-gnss/foundation/scope-and-non-goals.md
+      - "Architecture":
+          - "Command Architecture Guide": bijux-gnss/architecture/index.md
+          - "Architecture Risks": bijux-gnss/architecture/architecture-risks.md
+          - "Code Navigation": bijux-gnss/architecture/code-navigation.md
+          - "Dependency Direction": bijux-gnss/architecture/dependency-direction.md
+          - "Error Model": bijux-gnss/architecture/error-model.md
+          - "Execution Model": bijux-gnss/architecture/execution-model.md
+          - "Extensibility Model": bijux-gnss/architecture/extensibility-model.md
+          - "Integration Seams": bijux-gnss/architecture/integration-seams.md
+          - "Module Map": bijux-gnss/architecture/module-map.md
+          - "State And Persistence": bijux-gnss/architecture/state-and-persistence.md
+      - "Interfaces":
+          - "Command Interface Guide": bijux-gnss/interfaces/index.md
+          - "Command and Rust API Boundaries": bijux-gnss/interfaces/api-surface.md
+          - "CLI Reference": bijux-gnss/interfaces/cli-reference.md
+          - "Command Contracts": bijux-gnss/interfaces/command-contracts.md
+          - "Compatibility Commitments": bijux-gnss/interfaces/compatibility-commitments.md
+          - "Configuration Contracts": bijux-gnss/interfaces/configuration-contracts.md
+          - "Getting Started with Bijux GNSS": bijux-gnss/interfaces/entrypoints-and-examples.md
+          - "Facade Contracts": bijux-gnss/interfaces/facade-contracts.md
+          - "Public Imports": bijux-gnss/interfaces/public-imports.md
+          - "Reporting Contracts": bijux-gnss/interfaces/reporting-contracts.md
+          - "Validation Contracts": bijux-gnss/interfaces/validation-contracts.md
+          - "Workflow Contracts": bijux-gnss/interfaces/workflow-contracts.md
+      - "Operations":
+          - "Command Change Guide": bijux-gnss/operations/index.md
+          - "Change Sequence": bijux-gnss/operations/change-sequence.md
+          - "Common Workflows": bijux-gnss/operations/common-workflows.md
+          - "Fixture and Workflow Care": bijux-gnss/operations/fixture-and-workflow-care.md
+          - "Local Development": bijux-gnss/operations/local-development.md
+          - "Operator Journeys": bijux-gnss/operations/operator-journeys.md
+          - "Releasing the Command Facade": bijux-gnss/operations/release-and-versioning.md
+          - "Review Scope": bijux-gnss/operations/review-scope.md
+          - "Verifying Command Workflows": bijux-gnss/operations/verification-commands.md
+      - "Quality":
+          - "Command Evidence Guide": bijux-gnss/quality/index.md
+          - "Change Validation": bijux-gnss/quality/change-validation.md
+          - "Definition Of Done": bijux-gnss/quality/definition-of-done.md
+          - "Invariants": bijux-gnss/quality/invariants.md
+          - "Known Limitations": bijux-gnss/quality/known-limitations.md
+          - "Review Checklist": bijux-gnss/quality/review-checklist.md
+          - "Risk Register": bijux-gnss/quality/risk-register.md
+          - "Test Strategy": bijux-gnss/quality/test-strategy.md
+  - "Core Handbook":
+      - "Overview": bijux-gnss-core/index.md
+      - "Shared Contract Ownership Boundaries": bijux-gnss-core/ownership-boundaries.md
+      - "Foundation":
+          - "Shared Contract Foundations": bijux-gnss-core/foundation/index.md
+          - "Evolving Shared GNSS Contracts": bijux-gnss-core/foundation/change-principles.md
+          - "Core Dependencies and Package Adjacencies": bijux-gnss-core/foundation/dependencies-and-adjacencies.md
+          - "Domain Language": bijux-gnss-core/foundation/domain-language.md
+          - "Shared GNSS Vocabulary": bijux-gnss-core/foundation/glossary-routes.md
+          - "Core Ownership Boundary": bijux-gnss-core/foundation/ownership-boundary.md
+          - "Package Overview": bijux-gnss-core/foundation/package-overview.md
+          - "Portability Decision": bijux-gnss-core/foundation/portability-decision.md
+          - "Core Placement in the Package Graph": bijux-gnss-core/foundation/repository-fit.md
+          - "Core Scope and Non-Goals": bijux-gnss-core/foundation/scope-and-non-goals.md
+          - "Shared Concepts": bijux-gnss-core/foundation/shared-concepts.md
+      - "Architecture":
+          - "Core Contract Architecture": bijux-gnss-core/architecture/index.md
+          - "Core Architecture Risks": bijux-gnss-core/architecture/architecture-risks.md
+          - "Code Navigation": bijux-gnss-core/architecture/code-navigation.md
+          - "Dependency Direction": bijux-gnss-core/architecture/dependency-direction.md
+          - "Failures, Diagnostics, and Validation": bijux-gnss-core/architecture/error-model.md
+          - "Extensibility Model": bijux-gnss-core/architecture/extensibility-model.md
+          - "Integration Seams": bijux-gnss-core/architecture/integration-seams.md
+          - "Module Map": bijux-gnss-core/architecture/module-map.md
+          - "State and Serialization": bijux-gnss-core/architecture/state-and-serialization.md
+      - "Interfaces":
+          - "Core Interface Guide": bijux-gnss-core/interfaces/index.md
+          - "API Surface": bijux-gnss-core/interfaces/api-surface.md
+          - "Artifact Contracts": bijux-gnss-core/interfaces/artifact-contracts.md
+          - "Compatibility Commitments": bijux-gnss-core/interfaces/compatibility-commitments.md
+          - "Configuration and Diagnostics": bijux-gnss-core/interfaces/configuration-and-diagnostics.md
+          - "Engineering Conventions": bijux-gnss-core/interfaces/engineering-conventions.md
+          - "Entrypoints and Examples": bijux-gnss-core/interfaces/entrypoints-and-examples.md
+          - "Measurement And Engine Contracts": bijux-gnss-core/interfaces/measurement-and-engine-contracts.md
+          - "Navigation Solution Contracts": bijux-gnss-core/interfaces/navigation-solution-contracts.md
+          - "Observation and Tracking Contracts": bijux-gnss-core/interfaces/observation-and-tracking-contracts.md
+          - "Public Imports": bijux-gnss-core/interfaces/public-imports.md
+      - "Operations":
+          - "Core Contract Change Guide": bijux-gnss-core/operations/index.md
+          - "Change Sequence": bijux-gnss-core/operations/change-sequence.md
+          - "Common Workflows": bijux-gnss-core/operations/common-workflows.md
+          - "Fixture and Regression Evidence": bijux-gnss-core/operations/fixture-and-regression-care.md
+          - "Developing Shared GNSS Contracts": bijux-gnss-core/operations/local-development.md
+          - "Release and Versioning": bijux-gnss-core/operations/release-and-versioning.md
+          - "Review Scope": bijux-gnss-core/operations/review-scope.md
+          - "Core Verification Guide": bijux-gnss-core/operations/verification-commands.md
+      - "Quality":
+          - "Core Evidence Guide": bijux-gnss-core/quality/index.md
+          - "Validating Core Contract Changes": bijux-gnss-core/quality/change-validation.md
+          - "Definition of Done": bijux-gnss-core/quality/definition-of-done.md
+          - "Invariants": bijux-gnss-core/quality/invariants.md
+          - "Known Limitations": bijux-gnss-core/quality/known-limitations.md
+          - "Numerical Evidence": bijux-gnss-core/quality/numerical-budgets.md
+          - "Review Checklist": bijux-gnss-core/quality/review-checklist.md
+          - "Core Evidence Risks": bijux-gnss-core/quality/risk-register.md
+          - "Core Contract Test Strategy": bijux-gnss-core/quality/test-strategy.md
+  - "Infrastructure Handbook":
+      - "Overview": bijux-gnss-infra/index.md
+      - "Infrastructure Ownership Boundaries": bijux-gnss-infra/ownership-boundaries.md
+      - "Foundation":
+          - "Repository Evidence Foundations": bijux-gnss-infra/foundation/index.md
+          - "Evolving Repository Evidence Contracts": bijux-gnss-infra/foundation/change-principles.md
+          - "Infrastructure Dependencies and Adjacencies": bijux-gnss-infra/foundation/dependencies-and-adjacencies.md
+          - "Infrastructure Domain Language": bijux-gnss-infra/foundation/domain-language.md
+          - "Ownership Boundary": bijux-gnss-infra/foundation/ownership-boundary.md
+          - "Package Overview": bijux-gnss-infra/foundation/package-overview.md
+          - "Repository Fit": bijux-gnss-infra/foundation/repository-fit.md
+          - "Scope and Non-Goals": bijux-gnss-infra/foundation/scope-and-non-goals.md
+      - "Architecture":
+          - "Infrastructure Architecture Guide": bijux-gnss-infra/architecture/index.md
+          - "Architecture Risks": bijux-gnss-infra/architecture/architecture-risks.md
+          - "Code Navigation": bijux-gnss-infra/architecture/code-navigation.md
+          - "Infrastructure Dependency Direction": bijux-gnss-infra/architecture/dependency-direction.md
+          - "Error Model": bijux-gnss-infra/architecture/error-model.md
+          - "Execution Model": bijux-gnss-infra/architecture/execution-model.md
+          - "Extensibility Model": bijux-gnss-infra/architecture/extensibility-model.md
+          - "Integration Seams": bijux-gnss-infra/architecture/integration-seams.md
+          - "Module Map": bijux-gnss-infra/architecture/module-map.md
+          - "State and Persistence": bijux-gnss-infra/architecture/state-and-persistence.md
+      - "Interfaces":
+          - "Infrastructure Interface Guide": bijux-gnss-infra/interfaces/index.md
+          - "API Surface": bijux-gnss-infra/interfaces/api-surface.md
+          - "Artifact Inspection Contracts": bijux-gnss-infra/interfaces/artifact-inspection-contracts.md
+          - "Infrastructure Compatibility": bijux-gnss-infra/interfaces/compatibility-commitments.md
+          - "Dataset Contracts": bijux-gnss-infra/interfaces/dataset-contracts.md
+          - "Entrypoints and Examples": bijux-gnss-infra/interfaces/entrypoints-and-examples.md
+          - "Override and Sweep Contracts": bijux-gnss-infra/interfaces/override-and-sweep-contracts.md
+          - "Persisted Artifact Contracts": bijux-gnss-infra/interfaces/persisted-artifact-contracts.md
+          - "Provenance and Hashing": bijux-gnss-infra/interfaces/provenance-and-hashing.md
+          - "Public Imports": bijux-gnss-infra/interfaces/public-imports.md
+          - "Run Footprint Contracts": bijux-gnss-infra/interfaces/run-footprint-contracts.md
+          - "Validation Adapters": bijux-gnss-infra/interfaces/validation-adapters.md
+      - "Operations":
+          - "Infrastructure Change Guide": bijux-gnss-infra/operations/index.md
+          - "Change Sequence": bijux-gnss-infra/operations/change-sequence.md
+          - "Common Workflows": bijux-gnss-infra/operations/common-workflows.md
+          - "Dataset Registration": bijux-gnss-infra/operations/dataset-registration.md
+          - "Fixture and Artifact Care": bijux-gnss-infra/operations/fixture-and-artifact-care.md
+          - "Infrastructure Development Workflow": bijux-gnss-infra/operations/local-development.md
+          - "Release and Versioning": bijux-gnss-infra/operations/release-and-versioning.md
+          - "Infrastructure Review Scope": bijux-gnss-infra/operations/review-scope.md
+          - "Infrastructure Verification Guide": bijux-gnss-infra/operations/verification-commands.md
+      - "Quality":
+          - "Infrastructure Evidence Guide": bijux-gnss-infra/quality/index.md
+          - "Validating Infrastructure Changes": bijux-gnss-infra/quality/change-validation.md
+          - "Definition of Done": bijux-gnss-infra/quality/definition-of-done.md
+          - "Invariants": bijux-gnss-infra/quality/invariants.md
+          - "Known Limitations": bijux-gnss-infra/quality/known-limitations.md
+          - "Review Checklist": bijux-gnss-infra/quality/review-checklist.md
+          - "Infrastructure Evidence Risk Register": bijux-gnss-infra/quality/risk-register.md
+          - "Test Strategy": bijux-gnss-infra/quality/test-strategy.md
+  - "Navigation Handbook":
+      - "Overview": bijux-gnss-nav/index.md
+      - "Navigation Ownership Boundaries": bijux-gnss-nav/ownership-boundaries.md
+      - "Foundation":
+          - "Navigation Science Foundations": bijux-gnss-nav/foundation/index.md
+          - "Change Principles": bijux-gnss-nav/foundation/change-principles.md
+          - "Dependencies And Adjacencies": bijux-gnss-nav/foundation/dependencies-and-adjacencies.md
+          - "Domain Language": bijux-gnss-nav/foundation/domain-language.md
+          - "Ownership Boundary": bijux-gnss-nav/foundation/ownership-boundary.md
+          - "Package Overview": bijux-gnss-nav/foundation/package-overview.md
+          - "Repository Fit": bijux-gnss-nav/foundation/repository-fit.md
+          - "Scope And Non-Goals": bijux-gnss-nav/foundation/scope-and-non-goals.md
+      - "Architecture":
+          - "Navigation Architecture Guide": bijux-gnss-nav/architecture/index.md
+          - "Architecture Risks": bijux-gnss-nav/architecture/architecture-risks.md
+          - "Code Navigation": bijux-gnss-nav/architecture/code-navigation.md
+          - "Dependency Direction": bijux-gnss-nav/architecture/dependency-direction.md
+          - "Error Model": bijux-gnss-nav/architecture/error-model.md
+          - "Execution Model": bijux-gnss-nav/architecture/execution-model.md
+          - "Extensibility Model": bijux-gnss-nav/architecture/extensibility-model.md
+          - "Integration Seams": bijux-gnss-nav/architecture/integration-seams.md
+          - "Module Map": bijux-gnss-nav/architecture/module-map.md
+          - "Navigation State and Persistence Boundaries": bijux-gnss-nav/architecture/state-and-persistence.md
+      - "Interfaces":
+          - "Navigation Interface Guide": bijux-gnss-nav/interfaces/index.md
+          - "API Surface": bijux-gnss-nav/interfaces/api-surface.md
+          - "Compatibility Commitments": bijux-gnss-nav/interfaces/compatibility-commitments.md
+          - "Correction Contracts": bijux-gnss-nav/interfaces/correction-contracts.md
+          - "Entrypoints And Examples": bijux-gnss-nav/interfaces/entrypoints-and-examples.md
+          - "Estimation Contracts": bijux-gnss-nav/interfaces/estimation-contracts.md
+          - "Navigation Product Trust Boundary": bijux-gnss-nav/interfaces/format-and-product-contracts.md
+          - "Orbit Contracts": bijux-gnss-nav/interfaces/orbit-contracts.md
+          - "Public Imports": bijux-gnss-nav/interfaces/public-imports.md
+          - "Time and Model Contracts": bijux-gnss-nav/interfaces/time-and-model-contracts.md
+      - "Operations":
+          - "Navigation Change Guide": bijux-gnss-nav/operations/index.md
+          - "Change Sequence": bijux-gnss-nav/operations/change-sequence.md
+          - "Common Workflows": bijux-gnss-nav/operations/common-workflows.md
+          - "Local Development": bijux-gnss-nav/operations/local-development.md
+          - "Navigation Extension Guide": bijux-gnss-nav/operations/navigation-extension-guide.md
+          - "Precise Product and Fixture Care": bijux-gnss-nav/operations/precise-product-and-fixture-care.md
+          - "Release And Versioning": bijux-gnss-nav/operations/release-and-versioning.md
+          - "Reviewing Navigation Changes": bijux-gnss-nav/operations/review-scope.md
+          - "Navigation Verification Guide": bijux-gnss-nav/operations/verification-commands.md
+      - "Quality":
+          - "Navigation Evidence Guide": bijux-gnss-nav/quality/index.md
+          - "Change Validation": bijux-gnss-nav/quality/change-validation.md
+          - "Definition Of Done": bijux-gnss-nav/quality/definition-of-done.md
+          - "Navigation Science Invariants": bijux-gnss-nav/quality/invariants.md
+          - "Known Limitations": bijux-gnss-nav/quality/known-limitations.md
+          - "Review Checklist": bijux-gnss-nav/quality/review-checklist.md
+          - "Risk Register": bijux-gnss-nav/quality/risk-register.md
+          - "Navigation Test Evidence": bijux-gnss-nav/quality/test-strategy.md
+  - "Receiver Handbook":
+      - "Overview": bijux-gnss-receiver/index.md
+      - "Receiver Ownership Boundaries": bijux-gnss-receiver/ownership-boundaries.md
+      - "Foundation":
+          - "Receiver Runtime Foundations": bijux-gnss-receiver/foundation/index.md
+          - "Change Principles": bijux-gnss-receiver/foundation/change-principles.md
+          - "Dependencies And Adjacencies": bijux-gnss-receiver/foundation/dependencies-and-adjacencies.md
+          - "Domain Language": bijux-gnss-receiver/foundation/domain-language.md
+          - "Ownership Boundary": bijux-gnss-receiver/foundation/ownership-boundary.md
+          - "Package Overview": bijux-gnss-receiver/foundation/package-overview.md
+          - "Repository Fit": bijux-gnss-receiver/foundation/repository-fit.md
+          - "Scope And Non-Goals": bijux-gnss-receiver/foundation/scope-and-non-goals.md
+      - "Architecture":
+          - "Receiver Architecture Guide": bijux-gnss-receiver/architecture/index.md
+          - "Architecture Risks": bijux-gnss-receiver/architecture/architecture-risks.md
+          - "Code Navigation": bijux-gnss-receiver/architecture/code-navigation.md
+          - "Dependency Direction": bijux-gnss-receiver/architecture/dependency-direction.md
+          - "Receiver Failure and Outcome Model": bijux-gnss-receiver/architecture/error-model.md
+          - "Execution Model": bijux-gnss-receiver/architecture/execution-model.md
+          - "Extensibility Model": bijux-gnss-receiver/architecture/extensibility-model.md
+          - "Integration Seams": bijux-gnss-receiver/architecture/integration-seams.md
+          - "Module Map": bijux-gnss-receiver/architecture/module-map.md
+          - "State And Persistence": bijux-gnss-receiver/architecture/state-and-persistence.md
+      - "Interfaces":
+          - "Receiver Interface Guide": bijux-gnss-receiver/interfaces/index.md
+          - "API Surface": bijux-gnss-receiver/interfaces/api-surface.md
+          - "Receiver Run Artifact Contracts": bijux-gnss-receiver/interfaces/artifact-contracts.md
+          - "Compatibility Commitments": bijux-gnss-receiver/interfaces/compatibility-commitments.md
+          - "Diagnostic Contracts": bijux-gnss-receiver/interfaces/diagnostic-contracts.md
+          - "Entrypoints and Examples": bijux-gnss-receiver/interfaces/entrypoints-and-examples.md
+          - "Port Contracts": bijux-gnss-receiver/interfaces/port-contracts.md
+          - "Public Imports": bijux-gnss-receiver/interfaces/public-imports.md
+          - "Runtime Contracts": bijux-gnss-receiver/interfaces/runtime-contracts.md
+          - "Receiver Stage Handoffs": bijux-gnss-receiver/interfaces/stage-contracts.md
+          - "Validation And Simulation Contracts": bijux-gnss-receiver/interfaces/validation-and-simulation-contracts.md
+      - "Operations":
+          - "Operating the Receiver": bijux-gnss-receiver/operations/index.md
+          - "Change Sequence": bijux-gnss-receiver/operations/change-sequence.md
+          - "Common Workflows": bijux-gnss-receiver/operations/common-workflows.md
+          - "Fixture And Simulation Care": bijux-gnss-receiver/operations/fixture-and-simulation-care.md
+          - "Local Development": bijux-gnss-receiver/operations/local-development.md
+          - "Receiver Performance Evidence": bijux-gnss-receiver/operations/performance-and-profiling.md
+          - "Receiver Extension Guide": bijux-gnss-receiver/operations/receiver-extension-guide.md
+          - "Releasing the Receiver Runtime": bijux-gnss-receiver/operations/release-and-versioning.md
+          - "Receiver Change Review": bijux-gnss-receiver/operations/review-scope.md
+          - "Receiver Verification Guide": bijux-gnss-receiver/operations/verification-commands.md
+      - "Quality":
+          - "Receiver Evidence": bijux-gnss-receiver/quality/index.md
+          - "Validating Receiver Changes": bijux-gnss-receiver/quality/change-validation.md
+          - "Definition Of Done": bijux-gnss-receiver/quality/definition-of-done.md
+          - "Determinism And Purity": bijux-gnss-receiver/quality/determinism-and-purity.md
+          - "Receiver Runtime Invariants": bijux-gnss-receiver/quality/invariants.md
+          - "Known Limitations": bijux-gnss-receiver/quality/known-limitations.md
+          - "Review Checklist": bijux-gnss-receiver/quality/review-checklist.md
+          - "Risk Register": bijux-gnss-receiver/quality/risk-register.md
+          - "Test Strategy": bijux-gnss-receiver/quality/test-strategy.md
+          - "Validation Budgets": bijux-gnss-receiver/quality/validation-budgets.md
+  - "Signal Handbook":
+      - "Overview": bijux-gnss-signal/index.md
+      - "Signal Ownership Boundaries": bijux-gnss-signal/ownership-boundaries.md
+      - "Foundation":
+          - "Signal Computation Foundations": bijux-gnss-signal/foundation/index.md
+          - "Signal Change Principles": bijux-gnss-signal/foundation/change-principles.md
+          - "Signal Dependencies and Adjacencies": bijux-gnss-signal/foundation/dependencies-and-adjacencies.md
+          - "Domain Language": bijux-gnss-signal/foundation/domain-language.md
+          - "GPS L1 C/A Reference": bijux-gnss-signal/foundation/gps-l1-ca-reference.md
+          - "Ownership Boundary": bijux-gnss-signal/foundation/ownership-boundary.md
+          - "Package Overview": bijux-gnss-signal/foundation/package-overview.md
+          - "Signal Package Placement": bijux-gnss-signal/foundation/repository-fit.md
+          - "Scope And Non-Goals": bijux-gnss-signal/foundation/scope-and-non-goals.md
+      - "Architecture":
+          - "Signal Architecture": bijux-gnss-signal/architecture/index.md
+          - "Architecture Risks": bijux-gnss-signal/architecture/architecture-risks.md
+          - "Finding Signal Behavior": bijux-gnss-signal/architecture/code-navigation.md
+          - "Signal Dependency Direction": bijux-gnss-signal/architecture/dependency-direction.md
+          - "Signal Failure Semantics": bijux-gnss-signal/architecture/error-model.md
+          - "Signal Execution Model": bijux-gnss-signal/architecture/execution-model.md
+          - "Extensibility Model": bijux-gnss-signal/architecture/extensibility-model.md
+          - "Integration Seams": bijux-gnss-signal/architecture/integration-seams.md
+          - "Module Map": bijux-gnss-signal/architecture/module-map.md
+          - "State And Persistence": bijux-gnss-signal/architecture/state-and-persistence.md
+      - "Interfaces":
+          - "Signal Interface Guide": bijux-gnss-signal/interfaces/index.md
+          - "API Surface": bijux-gnss-signal/interfaces/api-surface.md
+          - "Code Contracts": bijux-gnss-signal/interfaces/code-contracts.md
+          - "Compatibility Commitments": bijux-gnss-signal/interfaces/compatibility-commitments.md
+          - "DSP Contracts": bijux-gnss-signal/interfaces/dsp-contracts.md
+          - "Entrypoints And Examples": bijux-gnss-signal/interfaces/entrypoints-and-examples.md
+          - "Public Imports": bijux-gnss-signal/interfaces/public-imports.md
+          - "Raw IQ and Sample Contracts": bijux-gnss-signal/interfaces/raw-iq-and-sample-contracts.md
+          - "Signal Model Assumptions": bijux-gnss-signal/interfaces/signal-model-assumptions.md
+          - "Trait Contracts": bijux-gnss-signal/interfaces/trait-contracts.md
+          - "Validation Contracts": bijux-gnss-signal/interfaces/validation-contracts.md
+      - "Operations":
+          - "Changing Signal Behavior": bijux-gnss-signal/operations/index.md
+          - "Change Sequence": bijux-gnss-signal/operations/change-sequence.md
+          - "Common Workflows": bijux-gnss-signal/operations/common-workflows.md
+          - "Signal Reference and Fixture Care": bijux-gnss-signal/operations/fixture-and-reference-care.md
+          - "Developing Signal Behavior Locally": bijux-gnss-signal/operations/local-development.md
+          - "Release And Versioning": bijux-gnss-signal/operations/release-and-versioning.md
+          - "Signal Change Review": bijux-gnss-signal/operations/review-scope.md
+          - "Signal Extension Guide": bijux-gnss-signal/operations/signal-extension-guide.md
+          - "Verifying Signal Changes": bijux-gnss-signal/operations/verification-commands.md
+      - "Quality":
+          - "Signal Evidence": bijux-gnss-signal/quality/index.md
+          - "Validating Signal Changes": bijux-gnss-signal/quality/change-validation.md
+          - "Definition Of Done": bijux-gnss-signal/quality/definition-of-done.md
+          - "Invariants": bijux-gnss-signal/quality/invariants.md
+          - "Known Limitations": bijux-gnss-signal/quality/known-limitations.md
+          - "Review Checklist": bijux-gnss-signal/quality/review-checklist.md
+          - "Signal Evidence Risks": bijux-gnss-signal/quality/risk-register.md
+          - "Test Strategy": bijux-gnss-signal/quality/test-strategy.md
+  - "Maintainer Handbook":
+      - "Overview": bijux-gnss-dev/index.md
+      - "Maintainer Workflow Ownership Boundaries": bijux-gnss-dev/ownership-boundaries.md
+      - "Foundation":
+          - "Maintainer Workflow Foundations": bijux-gnss-dev/foundation/index.md
+          - "Maintainer Workflow Design": bijux-gnss-dev/foundation/change-principles.md
+          - "Dependencies And Adjacencies": bijux-gnss-dev/foundation/dependencies-and-adjacencies.md
+          - "Maintainer Tooling Vocabulary": bijux-gnss-dev/foundation/domain-language.md
+          - "Durable Naming": bijux-gnss-dev/foundation/durable-naming.md
+          - "Maintainer Tooling Ownership": bijux-gnss-dev/foundation/ownership-boundary.md
+          - "Maintainer Tooling Overview": bijux-gnss-dev/foundation/package-overview.md
+          - "Developer Tooling in the Workspace": bijux-gnss-dev/foundation/repository-fit.md
+          - "Maintainer Tooling Scope": bijux-gnss-dev/foundation/scope-and-non-goals.md
+      - "Architecture":
+          - "Maintainer Tooling Architecture": bijux-gnss-dev/architecture/index.md
+          - "Architecture Risks": bijux-gnss-dev/architecture/architecture-risks.md
+          - "Tracing Maintainer Command Behavior": bijux-gnss-dev/architecture/code-navigation.md
+          - "Maintainer Tool Dependency Direction": bijux-gnss-dev/architecture/dependency-direction.md
+          - "Error Model": bijux-gnss-dev/architecture/error-model.md
+          - "Maintainer Command Execution": bijux-gnss-dev/architecture/execution-model.md
+          - "Extending Maintainer Tooling": bijux-gnss-dev/architecture/extensibility-model.md
+          - "Maintainer Integration Seams": bijux-gnss-dev/architecture/integration-seams.md
+          - "Maintainer Command Ownership": bijux-gnss-dev/architecture/module-map.md
+          - "Repository Boundary Rules": bijux-gnss-dev/architecture/repository-boundary-rules.md
+          - "Maintainer State And Evidence": bijux-gnss-dev/architecture/state-and-persistence.md
+      - "Interfaces":
+          - "Maintainer Interface Contracts": bijux-gnss-dev/interfaces/index.md
+          - "Binary Boundary": bijux-gnss-dev/interfaces/binary-boundary.md
+          - "Command Entry Contracts": bijux-gnss-dev/interfaces/command-entry-contracts.md
+          - "Command Surface": bijux-gnss-dev/interfaces/command-surface.md
+          - "Compatibility Commitments": bijux-gnss-dev/interfaces/compatibility-commitments.md
+          - "Entrypoints and Examples": bijux-gnss-dev/interfaces/entrypoints-and-examples.md
+          - "Governed Input Contracts": bijux-gnss-dev/interfaces/governed-input-contracts.md
+          - "Output Contracts": bijux-gnss-dev/interfaces/output-contracts.md
+          - "Stability Commitments": bijux-gnss-dev/interfaces/stability-commitments.md
+          - "Workflow Contracts": bijux-gnss-dev/interfaces/workflow-contracts.md
+      - "Operations":
+          - "Changing Maintainer Tooling": bijux-gnss-dev/operations/index.md
+          - "Change Sequence": bijux-gnss-dev/operations/change-sequence.md
+          - "Common Workflows": bijux-gnss-dev/operations/common-workflows.md
+          - "Contributing Maintainer Workflows": bijux-gnss-dev/operations/contribution-guide.md
+          - "Governed Input and Evidence Care": bijux-gnss-dev/operations/governed-input-and-evidence-care.md
+          - "Local Development": bijux-gnss-dev/operations/local-development.md
+          - "Release And Versioning": bijux-gnss-dev/operations/release-and-versioning.md
+          - "Review Scope": bijux-gnss-dev/operations/review-scope.md
+          - "Maintainer Tooling Verification Guide": bijux-gnss-dev/operations/verification-commands.md
+      - "Quality":
+          - "Trusting Maintainer Evidence": bijux-gnss-dev/quality/index.md
+          - "Validating Maintainer Tooling": bijux-gnss-dev/quality/change-validation.md
+          - "Definition Of Done": bijux-gnss-dev/quality/definition-of-done.md
+          - "Invariants": bijux-gnss-dev/quality/invariants.md
+          - "Maintainer Tooling Limitations": bijux-gnss-dev/quality/known-limitations.md
+          - "Repository Test Policy": bijux-gnss-dev/quality/repository-test-policy.md
+          - "Review Checklist": bijux-gnss-dev/quality/review-checklist.md
+          - "Risk Register": bijux-gnss-dev/quality/risk-register.md
+          - "Test Strategy": bijux-gnss-dev/quality/test-strategy.md
+  - "Badge Catalog": badges.md
