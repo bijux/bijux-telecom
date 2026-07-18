@@ -4,53 +4,66 @@ audience: mixed
 type: interfaces
 status: canonical
 owner: bijux-gnss-nav-docs
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-18
 ---
 
 # Estimation Contracts
 
-Estimation contracts are the broadest public family in `bijux-gnss-nav`, and
-they need the strongest review discipline.
+Estimation contracts are the most sensitive public surface in
+`bijux-gnss-nav`. They describe what a position, integrity, PPP, RTK, or filter
+claim means, not just the Rust shape of solver structs.
 
-## Major Public Families
+## Estimation Flow
 
-- EKF state and measurement-model primitives in `src/estimation/ekf/`
-- position solution, refusal, DOP, weighting, smoothing, and integrity
-  surfaces in `src/estimation/position/`
-- RAIM detection, exclusion, and solution-separation evidence in
-  `src/estimation/position/raim.rs` and the surrounding integrity family
-- runtime-neutral navigation engine and filter configuration in
-  `src/estimation/position/navigation.rs` and `navigation_filter.rs`
-- PPP configuration, lifecycle, product policy, and solution epochs in
-  `src/estimation/ppp/`
-- RTK differencing, ambiguity fixing, baseline solving, and quality evidence
-  in `src/estimation/rtk/`
-- advanced solution-claim and downgrade reporting
+```mermaid
+flowchart LR
+    obs["observations"]
+    states["satellite states and corrections"]
+    solver["solver or filter"]
+    quality["integrity and quality evidence"]
+    claim["solution claim or refusal"]
 
-## What Makes These Contracts Sensitive
+    obs --> solver
+    states --> solver
+    solver --> quality --> claim
+```
 
-- higher-level crates genuinely depend on them
-- many of these types encode scientific policy, not only data shape
-- widening or narrowing one export can silently change what downstream owners
-  are allowed to assume about navigation behavior
+## Contract Families
 
-## Review Rule
+| family | owns | first proof |
+| --- | --- | --- |
+| position | PVT, DOP, weighting, smoothing, refusal, and runtime-neutral navigation engine behavior | `crates/bijux-gnss-nav/src/estimation/position/` |
+| integrity | RAIM detection, exclusion, solution separation, and downgrade evidence | `crates/bijux-gnss-nav/src/estimation/position/raim.rs` |
+| EKF | reusable state, models, statistics, traits, and filter mechanics | `crates/bijux-gnss-nav/src/estimation/ekf/` |
+| PPP | precise point positioning config, measurements, state, lifecycle, models, quality, and filter behavior | `crates/bijux-gnss-nav/src/estimation/ppp/` |
+| RTK | differencing, ambiguity, baseline, antenna, execution, and quality evidence | `crates/bijux-gnss-nav/src/estimation/rtk/` |
+| solution claims | public support, downgrade, refusal, and advanced-claim reporting | `crates/bijux-gnss-nav/src/estimation/solution_claims.rs` |
 
-Before changing a public estimation type, ask whether the change affects only
-implementation freedom or the meaning of a public scientific claim.
+## Review Rules
 
-## Closest Proof
+- A public estimation type is a scientific promise when downstream crates use
+  it to decide quality, support, refusal, or operator reporting.
+- Solver-local helpers should stay private unless another owner needs the same
+  scientific meaning.
+- A successful solution and an honest refusal are both public outcomes; docs
+  must describe both.
+- PPP and RTK changes need quality and downgrade evidence, not only numeric
+  convergence output.
 
-- `crates/bijux-gnss-nav/src/estimation/`
-- `crates/bijux-gnss-nav/tests/integration_position.rs`
-- `crates/bijux-gnss-nav/tests/integration_public_ppp_convergence.rs`
-- `crates/bijux-gnss-nav/tests/integration_rtk_ambiguity_fixing.rs`
-- `crates/bijux-gnss-nav/docs/ESTIMATION.md`
-- `crates/bijux-gnss-nav/docs/PUBLIC_API.md`
+## Reader Checks
 
-## Protecting Proof
+- Did the change alter a solution claim or only an implementation detail?
+- Which tests prove position, integrity, PPP, RTK, or filter behavior?
+- Can receiver and command layers render the result without reinterpreting nav
+  science?
+- Does core still own the shared observation and navigation-epoch record
+  meaning?
 
-Inspect the estimation source family above together with position, PPP, RTK,
-and integrity-focused tests before changing any public estimation type. Those
-proofs show whether a change preserves implementation freedom or alters the
-meaning of a public scientific claim.
+## First Proof Check
+
+Inspect `crates/bijux-gnss-nav/docs/ESTIMATION.md`,
+`crates/bijux-gnss-nav/docs/PUBLIC_API.md`,
+`crates/bijux-gnss-nav/src/estimation/`,
+`crates/bijux-gnss-nav/tests/integration_position.rs`,
+`crates/bijux-gnss-nav/tests/integration_public_ppp_convergence.rs`, and
+`crates/bijux-gnss-nav/tests/integration_rtk_ambiguity_fixing.rs`.
