@@ -13,30 +13,33 @@ When you need to inspect the crate quickly, use this route order.
 
 ## Fast Reading Path
 
-1. start at `src/lib.rs` to confirm the crate exports one deliberate module:
-   `api`
-2. read `src/api.rs` to see what the crate claims publicly
+1. start at the [crate root](../../../crates/bijux-gnss-core/src/lib.rs) to
+   confirm the crate exports one deliberate public facade
+2. read the [public API facade](../../../crates/bijux-gnss-core/src/api.rs) to
+   see what the crate claims publicly
 3. jump to the owning family:
-   `artifact.rs` and `artifact/`, `observation.rs` and `observation/`,
-   `nav_solution.rs`, `ids.rs`, `time.rs`, `units.rs`, `geo.rs`,
-   `diagnostic/codes.rs`, `support_matrix.rs`, or `config.rs`
-4. read the corresponding crate-local docs under `crates/bijux-gnss-core/docs/`,
-   especially `PUBLIC_API.md`, `CONTRACTS.md`, `CONTRACT_MAP.md`,
-   `INVARIANTS.md`, and `SERIALIZATION.md`
+   artifacts, observations, navigation solutions, identifiers, time, units,
+   geodesy, diagnostics, support inventory, or configuration
+4. read the corresponding crate-local guides, especially the
+   [public API guide](../../../crates/bijux-gnss-core/docs/PUBLIC_API.md),
+   [contract guide](../../../crates/bijux-gnss-core/docs/CONTRACTS.md),
+   [contract map](../../../crates/bijux-gnss-core/docs/CONTRACT_MAP.md),
+   [invariants guide](../../../crates/bijux-gnss-core/docs/INVARIANTS.md), and
+   [serialization guide](../../../crates/bijux-gnss-core/docs/SERIALIZATION.md)
 5. confirm with the narrow integration or property test that protects the
    contract
 
 ## Review Shortcut
 
-If a change touches `src/api.rs`, `src/artifact/`, `src/observation/`,
-`src/nav_solution.rs`, or `src/time.rs`, treat it as a cross-crate contract
+If a change touches the public facade, artifact records, observation records,
+navigation-solution records, or time model, treat it as a cross-crate contract
 review first and an implementation review second.
 
 ## First Proof Check
 
-- `crates/bijux-gnss-core/src/lib.rs`
-- `crates/bijux-gnss-core/src/api.rs`
-- `crates/bijux-gnss-core/tests/nav_artifact_validation.rs`
-- `crates/bijux-gnss-core/tests/tracking_artifact_validation.rs`
-- `crates/bijux-gnss-core/tests/prop_timekeeping.rs`
-- `crates/bijux-gnss-core/tests/public_api_guardrail.rs`
+- the [crate root](../../../crates/bijux-gnss-core/src/lib.rs)
+- the [public API facade](../../../crates/bijux-gnss-core/src/api.rs)
+- the [navigation artifact validation](../../../crates/bijux-gnss-core/tests/nav_artifact_validation.rs)
+- the [tracking artifact validation](../../../crates/bijux-gnss-core/tests/tracking_artifact_validation.rs)
+- the [timekeeping property tests](../../../crates/bijux-gnss-core/tests/prop_timekeeping.rs)
+- the [public API guardrail](../../../crates/bijux-gnss-core/tests/public_api_guardrail.rs)

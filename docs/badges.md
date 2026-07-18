@@ -9,14 +9,14 @@ last_reviewed: 2026-07-17
 
 # Badge Catalog
 
-`docs/badges.md` is the shared badge contract for `bijux-telecom` public entry
+This page is the shared badge contract for `bijux-telecom` public entry
 surfaces. It is the single source of truth for the generated badge block used
 by the repository entry pages.
 
 Keep the generated block below identical in:
 
 - the root `README.md`
-- the repository handbook landing page at `docs/index.md`
+- the repository [handbook landing page](index.md)
 
 This repository does not yet publish the richer templated badge system used in
 some other Bijux repositories. Until that automation exists here, treat this
@@ -28,7 +28,7 @@ package-family badges, `bijux-telecom` currently needs only one repository
 summary line and one documentation badge line. If a future release adds
 published docs badges, package badges, or generated templating, extend this
 file first and regenerate the entry surfaces from here instead of inventing a
-second badge policy in `README.md` or `docs/index.md`.
+second badge policy in the root README or [handbook landing page](index.md).
 
 Badge order is part of the contract:
 
@@ -42,8 +42,8 @@ Link policy is also fixed here:
   summarize
 - the GHCR summary badge must link to
   `https://github.com/bijux?tab=packages&repo_name=bijux-telecom`
-- the documentation badge must link to the checked-in `docs/` tree until a
-  published docs site becomes canonical
+- the documentation badge must link to the checked-in handbook tree until a
+  published documentation site becomes canonical
 
 Review rule:
 
@@ -55,9 +55,10 @@ Review rule:
 
 ## First Proof Check
 
-Inspect `README.md`, `docs/index.md`, and the generated badge block below
-together. The proof for this page is not just the Markdown here; it is that the
-repository's public entry surfaces still expose one identical badge contract.
+Inspect the root README, the [handbook landing page](index.md), and the
+generated badge block below together. The proof for this page is not just the
+Markdown here; it is that the repository's public entry surfaces still expose
+one identical badge contract.
 
 ## Reader-Facing Rule
 
@@ -67,8 +68,8 @@ badge should change or disappear instead of training readers to distrust the
 entry surfaces.
 
 If this repository later adopts templated badge automation, migrate that
-automation from this file rather than letting `README.md` and `docs/index.md`
-grow separate badge policies.
+automation from this file rather than letting the root README and handbook
+landing page grow separate badge policies.
 
 ## Generated Badge Block
 
