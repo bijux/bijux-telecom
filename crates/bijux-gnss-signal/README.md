@@ -8,109 +8,110 @@
 [![rust-docs](https://img.shields.io/badge/rust--docs-signal-DEA584?logo=rust&logoColor=white)](https://docs.rs/bijux-gnss-signal/latest/bijux_gnss_signal/)
 [![Signal handbook](https://img.shields.io/badge/docs-signal%20handbook-2563EB?logo=materialformkdocs&logoColor=white)](https://github.com/bijux/bijux-telecom/tree/main/docs/06-bijux-gnss-signal)
 
-`bijux-gnss-signal` owns reusable GNSS signal definitions and DSP primitives:
-signal catalogs, spreading codes, secondary codes, raw-IQ metadata,
-sample conversion, NCOs, replicas, spectra, front-end helpers, and tracking-loop
-building blocks.
+`bijux-gnss-signal` turns a GNSS signal identity into reusable physical and
+digital behavior. It provides the catalog, primary and secondary codes, raw-IQ
+vocabulary, sample conversion, replicas, spectra, NCOs, tracking primitives,
+and source/sink/correlator traits used by receiver implementations.
 
-Use this crate for reusable signal meaning that remains valid outside one
-receiver run. Receiver scheduling, persisted run layout, navigation estimation,
-and operator command behavior belong to higher crates.
+This crate answers questions that remain true outside one receiver run. Search
+windows, channel state, lock policy, persisted datasets, and position
+estimation have stronger owners elsewhere.
 
-## Availability
+## Begin With A Signal Definition
 
-The first registry release has not been published. In this workspace, build or
-test the package directly:
+```rust
+use bijux_gnss_signal::api::{
+    signal_spec_gps_l1_ca, signal_wavelength_m,
+};
 
-```sh
-cargo test -p bijux-gnss-signal
+let gps_l1_ca = signal_spec_gps_l1_ca();
+let wavelength = signal_wavelength_m(gps_l1_ca);
 ```
 
-After publication, add it with `cargo add bijux-gnss-signal`. The Cargo package
-name is `bijux-gnss-signal`; its Rust import name is `bijux_gnss_signal`. All
-public packages in this repository share one release version.
+The catalog is the common source for carrier frequency, code rate, code length,
+component roles, secondary-code metadata, and wavelength conversion. A
+receiver configuration should reference that meaning rather than copy it.
 
-## Choose the Signal Contract
+All supported downstream imports are exposed through
+`bijux_gnss_signal::api`. The crate currently has no optional Cargo features;
+its package surface is selected through the API rather than compile-time
+feature combinations. The first registry release is still being prepared.
 
-| question | go next |
+## Choose The Layer That Owns Your Question
+
+| Question | Read next |
 | --- | --- |
-| Which signal identity, component, carrier, code rate, or wavelength is registered? | [signal catalog](docs/CATALOG.md) |
-| Which primary or secondary code behavior is implemented? | [code-family guide](docs/CODE_FAMILIES.md) |
-| Which DSP primitive owns timing, NCO, replica, spectrum, or tracking math? | [DSP guide](docs/DSP.md) |
-| Which raw sample or metadata contract applies? | [Raw IQ guide](docs/RAW_IQ.md), [Sample guide](docs/SAMPLES.md) |
-| Which source, sink, or correlator interface is public? | [trait guide](docs/TRAITS.md) |
-| What compatibility changed? | [package release history](CHANGELOG.md) |
-
-## Owned Boundary
-
-- signal catalogs and physical wavelength helpers
-- spreading-code and secondary-code generation across supported constellations
-- front-end, replica, spectrum, timing, NCO, and tracking-loop primitives
-- raw-IQ metadata and sample-conversion contracts
-- signal-layer observation compatibility validation
-
-This crate does not own receiver orchestration, persisted run layout, navigation
-estimation, or operator command behavior.
+| What does this signal identity mean physically? | [Signal catalog](docs/CATALOG.md) |
+| How is its primary, secondary, pilot, or data code generated? | [Code-family behavior](docs/CODE_FAMILIES.md) |
+| How are sample index, phase, replica, NCO, spectrum, or loop math defined? | [DSP conventions](docs/DSP.md) |
+| What does an encoded IQ sample or quantization profile mean? | [Raw-IQ contract](docs/RAW_IQ.md) and [sample conversion](docs/SAMPLES.md) |
+| Which source, sink, and correlator interfaces may implementations provide? | [Public trait contract](docs/TRAITS.md) |
+| Can two observations participate in a signal-layer combination? | [Compatibility validation](docs/VALIDATION.md) |
 
 ```mermaid
-flowchart TB
-    catalog["signal catalog"]
-    codes["code families"]
-    samples["sample contracts"]
-    dsp["DSP primitives"]
-    receiver["receiver consumers"]
+flowchart LR
+    identity["signal identity"]
+    catalog["physical catalog"]
+    code["code and component<br/>generation"]
+    samples["sample format<br/>and timing"]
+    dsp["replica and<br/>DSP primitives"]
+    consumer["receiver or<br/>validation consumer"]
 
-    catalog --> codes
+    identity --> catalog
+    catalog --> code
     catalog --> dsp
+    code --> dsp
     samples --> dsp
-    codes --> receiver
-    dsp --> receiver
+    dsp --> consumer
 ```
 
-## Behavioral Invariants
+The arrows describe reusable meaning, not receiver support. A registered signal
+definition proves that catalog data exists. It does not by itself prove that
+acquisition, tracking, observation generation, or navigation is supported for
+that signal. Consult the receiver support evidence before making an end-to-end
+claim.
 
-- Signal identity determines physical metadata; receiver configuration must not
-  redefine carrier, code-rate, wavelength, or component roles.
-- Code generation and replica sampling remain deterministic across chunk
-  boundaries and long-running sample indices.
-- Raw-IQ formats preserve explicit sample rate, intermediate frequency,
-  quantization, offset, and timestamp meaning.
-- DSP outputs state units, normalization, phase origin, and wrapping behavior.
-- Observation compatibility reports refusal or misalignment instead of silently
-  accepting an unsupported signal pair.
+## Preserve The Physical Contract
 
-The [signal release guide](../../docs/06-bijux-gnss-signal/operations/release-and-versioning.md)
-defines the evidence required when one of these behaviors changes.
+A signal-layer change must keep these facts explicit:
 
-## Implementation Ownership
+- constellation, band, code, data/pilot role, and default component;
+- carrier frequency, code rate, code length, and secondary-code period;
+- sample rate, intermediate frequency, byte offset, quantization, and capture
+  time for raw IQ;
+- phase origin, wrapping, units, and normalization for DSP output;
+- behavior at chunk boundaries and large absolute sample indices;
+- unsupported or misaligned combinations as typed refusals.
 
-- The [signal catalog](src/catalog.rs) owns physical metadata, lookup, default
-  acquisition selection, and wavelength helpers.
-- The [code families](src/codes/mod.rs) own constellation-specific primary,
-  secondary, and multiplexed code behavior.
-- The [DSP boundary](src/dsp/mod.rs) owns runtime-neutral processing
-  primitives.
-- The [observation compatibility layer](src/obs_validation.rs) owns
-  dual-frequency and inter-frequency checks.
-- The [raw-IQ metadata](src/raw_iq.rs) and
-  [sample conversion](src/samples.rs) implementations own capture vocabulary
-  and numeric conversion.
-- The [public API](src/api.rs) owns deliberate exports and source, sink, and
-  correlator traits.
+Raw-IQ metadata deliberately does not own dataset identity or provenance.
+Infrastructure resolves sidecars and locations; signal defines what the sample
+fields mean. Likewise, DSP primitives do not decide channel scheduling or lock
+thresholds. The receiver composes them into runtime behavior.
 
-For package boundaries and proof, continue with the
-[architecture guide](docs/ARCHITECTURE.md), [contract guide](docs/CONTRACTS.md),
-[validation guide](docs/VALIDATION.md), and [test guide](docs/TESTS.md).
+## Use The Public Traits Deliberately
 
-## Verification Focus
+The API exports four integration traits:
 
-Use signal tests that prove the changed primitive or catalog entry:
+- `SignalSource` produces typed signal blocks;
+- `SampleSource` reads complex samples;
+- `Correlator` maps samples and replicas to correlation results;
+- `SampleSink` receives sample blocks.
 
-```sh
-cargo test -p bijux-gnss-signal --test integration_signal_component_registry
-cargo test -p bijux-gnss-signal --test integration_signal_spectrum_cboc
-cargo test -p bijux-gnss-signal --test prop_obs_epoch_validation
-```
+These interfaces isolate reusable signal mechanics. They are not an invitation
+to move run layout, device lifecycle, telemetry policy, or receiver state into
+this package. See the [public API guide](docs/PUBLIC_API.md) for admitted
+exports and the [architecture guide](docs/ARCHITECTURE.md) for dependency
+direction.
 
-Repository-wide lanes and package routing are documented in the
-[workspace README](../../README.md).
+## Evaluate A Change By Its Claim
+
+Reference-vector tests protect code families, property tests protect indexing
+and conversion invariants, and integration tests protect catalog and spectrum
+behavior. No single test family proves complete receiver support. Use the
+[test evidence guide](docs/TESTS.md) to select the proof that matches the
+changed physical claim.
+
+Compatibility and support changes belong in the
+[package release history](CHANGELOG.md). The
+[signal release guide](../../docs/06-bijux-gnss-signal/operations/release-and-versioning.md)
+defines the evidence expected before publication.
