@@ -158,6 +158,7 @@ fn vector_tracking_application_bounds_weak_channel_aid() {
     let mut loop_state = tracking.initial_loop_state(super::TrackingLoopInitialization {
         signal_model: &signal_model,
         carrier_hz: 1500.0,
+        carrier_rate_hz_per_s: 0.0,
         code_phase_samples: 0.0,
         acquisition_cn0_proxy_dbhz: 31.0,
         signal_delay_alignment: None,
@@ -217,6 +218,7 @@ fn vector_tracking_application_preserves_stable_frequency_support_channels() {
     let mut loop_state = tracking.initial_loop_state(super::TrackingLoopInitialization {
         signal_model: &signal_model,
         carrier_hz: 1500.0,
+        carrier_rate_hz_per_s: 0.0,
         code_phase_samples: 0.0,
         acquisition_cn0_proxy_dbhz: 45.0,
         signal_delay_alignment: None,
@@ -256,6 +258,7 @@ fn vector_tracking_application_reduces_common_frequency_prediction_error() {
     let mut loop_state = tracking.initial_loop_state(super::TrackingLoopInitialization {
         signal_model: &signal_model,
         carrier_hz: 43.0,
+        carrier_rate_hz_per_s: 0.0,
         code_phase_samples: 0.0,
         acquisition_cn0_proxy_dbhz: 31.0,
         signal_delay_alignment: None,
