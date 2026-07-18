@@ -70,19 +70,19 @@ prove those routes stay coherent.
 ## Strongest Proof Surfaces
 
 - crate README:
-  [`crates/bijux-gnss/README.md`](../../crates/bijux-gnss/README.md)
+  [Command crate README](../../crates/bijux-gnss/README.md)
 - crate architecture docs:
-  [`crates/bijux-gnss/docs/ARCHITECTURE.md`](../../crates/bijux-gnss/docs/ARCHITECTURE.md)
+  [Command architecture](../../crates/bijux-gnss/docs/ARCHITECTURE.md)
 - command boundary docs:
-  [`crates/bijux-gnss/docs/COMMANDS.md`](../../crates/bijux-gnss/docs/COMMANDS.md)
+  [Command contract guide](../../crates/bijux-gnss/docs/COMMANDS.md)
 - execution and workflow docs:
-  [`crates/bijux-gnss/docs/EXECUTION.md`](../../crates/bijux-gnss/docs/EXECUTION.md),
-  [`crates/bijux-gnss/docs/WORKFLOWS.md`](../../crates/bijux-gnss/docs/WORKFLOWS.md)
+  [Execution guide](../../crates/bijux-gnss/docs/EXECUTION.md),
+  [Workflow guide](../../crates/bijux-gnss/docs/WORKFLOWS.md)
 - source entrypoints:
-  [`crates/bijux-gnss/src/main.rs`](../../crates/bijux-gnss/src/main.rs),
-  [`crates/bijux-gnss/src/cli`](../../crates/bijux-gnss/src/cli)
+  [binary entrypoint](../../crates/bijux-gnss/src/main.rs),
+  [CLI source tree](../../crates/bijux-gnss/src/cli)
 - command-facing regression surfaces:
-  [`crates/bijux-gnss/tests`](../../crates/bijux-gnss/tests)
+  [command integration tests](../../crates/bijux-gnss/tests)
 
 ## Support Crates That Matter Here
 
@@ -119,16 +119,16 @@ prove those routes stay coherent.
 ## Leave This Handbook When
 
 - the question becomes about dataset resolution or run persistence:
-  [03-bijux-gnss-infra](../03-bijux-gnss-infra/)
+  [Infra handbook](../03-bijux-gnss-infra/)
 - the question becomes about receiver stage execution or validation artifacts:
-  [05-bijux-gnss-receiver](../05-bijux-gnss-receiver/)
+  [Receiver handbook](../05-bijux-gnss-receiver/)
 - the question becomes about navigation models or orbit products:
-  [04-bijux-gnss-nav](../04-bijux-gnss-nav/)
+  [Navigation handbook](../04-bijux-gnss-nav/)
 - the question becomes about signal codes or DSP primitives:
-  [06-bijux-gnss-signal](../06-bijux-gnss-signal/)
+  [Signal handbook](../06-bijux-gnss-signal/)
 - the question becomes about shared identifiers, time systems, or artifact
   schema contracts:
-  [02-bijux-gnss-core](../02-bijux-gnss-core/)
+  [Core handbook](../02-bijux-gnss-core/)
 
 ## Reader Questions This Package Can Answer
 
@@ -139,13 +139,13 @@ prove those routes stay coherent.
 
 ## First Proof Check
 
-- `crates/bijux-gnss/src/main.rs`
-- `crates/bijux-gnss/src/cli/command_catalog/mod.rs`
-- `crates/bijux-gnss/src/cli/command_line.rs`
-- `crates/bijux-gnss/src/cli/command_runtime.rs`
-- `crates/bijux-gnss/src/cli/report.rs`
-- `crates/bijux-gnss/docs/COMMANDS.md`
-- `crates/bijux-gnss/docs/WORKFLOWS.md`
+- [binary entrypoint](../../crates/bijux-gnss/src/main.rs)
+- [command catalog source](../../crates/bijux-gnss/src/cli/command_catalog/mod.rs)
+- [command-line parser](../../crates/bijux-gnss/src/cli/command_line.rs)
+- [command runtime source](../../crates/bijux-gnss/src/cli/command_runtime.rs)
+- [operator report renderer](../../crates/bijux-gnss/src/cli/report.rs)
+- [command contract guide](../../crates/bijux-gnss/docs/COMMANDS.md)
+- [workflow guide](../../crates/bijux-gnss/docs/WORKFLOWS.md)
 
 ## Design Pressure
 

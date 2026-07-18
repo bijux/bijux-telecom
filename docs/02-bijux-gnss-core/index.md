@@ -79,19 +79,19 @@ flowchart LR
 ## Strongest Proof Surfaces
 
 - crate README:
-  [`crates/bijux-gnss-core/README.md`](../../crates/bijux-gnss-core/README.md)
+  [Core crate README](../../crates/bijux-gnss-core/README.md)
 - public contract docs:
-  [`crates/bijux-gnss-core/docs/PUBLIC_API.md`](../../crates/bijux-gnss-core/docs/PUBLIC_API.md),
-  [`crates/bijux-gnss-core/docs/CONTRACTS.md`](../../crates/bijux-gnss-core/docs/CONTRACTS.md)
+  [Core public API](../../crates/bijux-gnss-core/docs/PUBLIC_API.md),
+  [Core contracts](../../crates/bijux-gnss-core/docs/CONTRACTS.md)
 - invariant and serialization docs:
-  [`crates/bijux-gnss-core/docs/INVARIANTS.md`](../../crates/bijux-gnss-core/docs/INVARIANTS.md),
-  [`crates/bijux-gnss-core/docs/SERIALIZATION.md`](../../crates/bijux-gnss-core/docs/SERIALIZATION.md)
+  [Core invariants](../../crates/bijux-gnss-core/docs/INVARIANTS.md),
+  [Serialization contracts](../../crates/bijux-gnss-core/docs/SERIALIZATION.md)
 - source roots:
-  [`crates/bijux-gnss-core/src/api.rs`](../../crates/bijux-gnss-core/src/api.rs),
-  [`crates/bijux-gnss-core/src/artifact`](../../crates/bijux-gnss-core/src/artifact),
-  [`crates/bijux-gnss-core/src/observation`](../../crates/bijux-gnss-core/src/observation)
+  [curated core API source](../../crates/bijux-gnss-core/src/api.rs),
+  [artifact contract source](../../crates/bijux-gnss-core/src/artifact),
+  [observation contract source](../../crates/bijux-gnss-core/src/observation)
 - proof tests:
-  [`crates/bijux-gnss-core/tests`](../../crates/bijux-gnss-core/tests)
+  [core contract tests](../../crates/bijux-gnss-core/tests)
 
 ## Support Crates That Matter Here
 
@@ -138,23 +138,23 @@ flowchart LR
 ## Leave This Handbook When
 
 - the question becomes about persisted dataset or run layout behavior:
-  [03-bijux-gnss-infra](../03-bijux-gnss-infra/)
+  [Infra handbook](../03-bijux-gnss-infra/)
 - the question becomes about signal codes, raw-IQ contracts, or DSP:
-  [06-bijux-gnss-signal](../06-bijux-gnss-signal/)
+  [Signal handbook](../06-bijux-gnss-signal/)
 - the question becomes about navigation estimation or orbit products:
-  [04-bijux-gnss-nav](../04-bijux-gnss-nav/)
+  [Navigation handbook](../04-bijux-gnss-nav/)
 - the question becomes about runtime composition or stage execution:
-  [05-bijux-gnss-receiver](../05-bijux-gnss-receiver/)
+  [Receiver handbook](../05-bijux-gnss-receiver/)
 
 ## First Proof Check
 
-- `crates/bijux-gnss-core/src/api.rs`
-- `crates/bijux-gnss-core/src/ids.rs`
-- `crates/bijux-gnss-core/src/time.rs`
-- `crates/bijux-gnss-core/src/units.rs`
-- `crates/bijux-gnss-core/src/observation/`
-- `crates/bijux-gnss-core/src/artifact/`
-- `crates/bijux-gnss-core/docs/CONTRACT_MAP.md`
+- [curated core API source](../../crates/bijux-gnss-core/src/api.rs)
+- [identity contracts](../../crates/bijux-gnss-core/src/ids.rs)
+- [time contracts](../../crates/bijux-gnss-core/src/time.rs)
+- [unit contracts](../../crates/bijux-gnss-core/src/units.rs)
+- [observation contract source](../../crates/bijux-gnss-core/src/observation/)
+- [artifact contract source](../../crates/bijux-gnss-core/src/artifact/)
+- [core contract map](../../crates/bijux-gnss-core/docs/CONTRACT_MAP.md)
 
 ## Design Pressure
 
