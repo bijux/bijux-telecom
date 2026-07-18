@@ -9,21 +9,53 @@ last_reviewed: 2026-07-17
 
 # Change Sequence
 
-Use this sequence for any substantive `bijux-gnss-infra` change.
+Use this sequence when a change affects repository state: dataset identity,
+run-directory layout, persisted manifests, artifact inspection, overrides,
+sweeps, hashes, or infrastructure-side validation adapters. Infra work should
+make repository evidence easier to trust, not make product behavior harder to
+find.
 
-1. decide whether the work truly belongs in infra
-2. identify the repository contract family being changed
-3. update the owning crate-local docs if the repository meaning changes
-4. update the root handbook pages here if package-level reader guidance changes
-5. run the narrowest protecting tests
-6. only then inspect higher-level command or runtime fallout
+## Decision Flow
 
-Skipping the first step is the most expensive mistake. A stronger owner is
-often a cleaner fix than a permanent new infra contract.
+```mermaid
+flowchart TD
+    change[proposed infra change] --> repo{is the changed meaning repository state?}
+    repo -- no --> owner[route to command, receiver, nav, signal, or core]
+    repo -- yes --> family{which infra contract moves?}
+    family --> datasets[datasets and capture provenance]
+    family --> layout[run layout, manifests, reports, history]
+    family --> artifacts[persisted artifact inspection]
+    family --> overrides[overrides, sweeps, experiments]
+    family --> validation[validation adapters and hashing]
+    datasets --> proof[contract docs plus focused tests]
+    layout --> proof
+    artifacts --> proof
+    overrides --> proof
+    validation --> proof
+```
 
-## First Proof Check
+## Change Sequence
 
-- `crates/bijux-gnss-infra/docs/DATASETS.md`
-- `crates/bijux-gnss-infra/docs/RUN_LAYOUT.md`
-- `crates/bijux-gnss-infra/docs/TESTS.md`
-- `docs/03-bijux-gnss-infra/operations/verification-commands.md`
+1. Decide whether the changed meaning is repository state rather than product
+   behavior.
+2. Identify the contract family in `crates/bijux-gnss-infra/docs/CONTRACTS.md`.
+3. Read the owning crate-local page: `DATASETS.md`, `RUN_LAYOUT.md`,
+   `OVERRIDES.md`, `EXPERIMENTS.md`, `HASHING.md`, or `VALIDATION.md`.
+4. Update docs when path semantics, persisted shape, provenance, validation
+   meaning, or public imports move.
+5. Run the narrowest protecting infra test.
+6. Only then inspect command or receiver fallout.
+
+## Proof Selection
+
+| changed family | first proof |
+| --- | --- |
+| overrides and profile mutation | `cargo test -p bijux-gnss-infra --test integration_overrides` |
+| workspace layering and public shape | `cargo test -p bijux-gnss-infra --test integration_guardrails` |
+| run layout or manifest meaning | `crates/bijux-gnss-infra/docs/RUN_LAYOUT.md` plus the changed source family and any available integration proof |
+| dataset registry or capture provenance | `crates/bijux-gnss-infra/docs/DATASETS.md` plus the changed source family and any available integration proof |
+| validation or hashing bridge | `crates/bijux-gnss-infra/docs/VALIDATION.md` or `HASHING.md` plus the changed source family |
+
+Skipping the ownership question leaves permanent infra debt. A repository
+contract should exist because multiple workflows must read the same state, not
+because a product crate needed a convenient helper.
