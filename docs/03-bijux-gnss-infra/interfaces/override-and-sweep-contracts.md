@@ -33,11 +33,11 @@ flowchart TD
 
 | family | owns | first proof |
 | --- | --- | --- |
-| common overrides | typed mutation of shared receiver-profile fields | `crates/bijux-gnss-infra/src/overrides/receiver_profile.rs` |
-| direct override application | applying reviewed override values to a profile | `crates/bijux-gnss-infra/src/overrides/receiver_profile.rs` |
-| sweep parsing | converting `PARAM=VALS` input into typed sweep parameters | `crates/bijux-gnss-infra/src/sweep.rs`, `crates/bijux-gnss-infra/src/overrides/sweep_parameters.rs` |
-| sweep expansion | Cartesian expansion into reproducible run variants | `crates/bijux-gnss-infra/src/experiments.rs` |
-| experiment specs | repository-facing batch-run descriptions | `crates/bijux-gnss-infra/src/experiments.rs` |
+| common overrides | typed mutation of shared receiver-profile fields | receiver-profile override source |
+| direct override application | applying reviewed override values to a profile | override application source |
+| sweep parsing | converting `PARAM=VALS` input into typed sweep parameters | sweep parser and sweep-parameter source |
+| sweep expansion | Cartesian expansion into reproducible run variants | experiment expansion source |
+| experiment specs | repository-facing batch-run descriptions | experiment spec source |
 
 ## Boundary Rules
 
@@ -58,10 +58,7 @@ flowchart TD
 
 ## First Proof Check
 
-Inspect `crates/bijux-gnss-infra/docs/OVERRIDES.md`,
-`crates/bijux-gnss-infra/docs/EXPERIMENTS.md`,
-`crates/bijux-gnss-infra/src/overrides/receiver_profile.rs`,
-`crates/bijux-gnss-infra/src/overrides/sweep_parameters.rs`,
-`crates/bijux-gnss-infra/src/experiments.rs`,
-`crates/bijux-gnss-infra/src/sweep.rs`, and
-`crates/bijux-gnss-infra/tests/integration_overrides.rs`.
+Inspect the [override guide](../../../crates/bijux-gnss-infra/docs/OVERRIDES.md),
+[experiment guide](../../../crates/bijux-gnss-infra/docs/EXPERIMENTS.md),
+override source, sweep source, experiment source, and the override integration
+test.

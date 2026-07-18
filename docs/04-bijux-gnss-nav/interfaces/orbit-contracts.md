@@ -32,14 +32,14 @@ flowchart LR
 
 ## Owned Surfaces
 
-| surface | owner path | reader promise |
+| surface | owner | reader promise |
 | --- | --- | --- |
-| GPS broadcast orbit | `crates/bijux-gnss-nav/src/orbits/gps.rs` | GPS ephemeris becomes typed satellite state |
-| Galileo broadcast orbit | `crates/bijux-gnss-nav/src/orbits/galileo.rs` | Galileo ephemeris follows navigation-domain rules |
-| BeiDou broadcast orbit | `crates/bijux-gnss-nav/src/orbits/beidou.rs` | BeiDou ephemeris uses its own constellation law |
-| GLONASS orbit state | `crates/bijux-gnss-nav/src/orbits/glonass.rs` | FDMA and GLONASS-specific state stay explicit |
-| shared broadcast helpers | `crates/bijux-gnss-nav/src/orbits/broadcast_orbit.rs` | common broadcast-orbit behavior is reused deliberately |
-| uncertainty | `crates/bijux-gnss-nav/src/orbits/satellite_uncertainty.rs` | orbit quality reaches downstream estimators as typed evidence |
+| GPS broadcast orbit | GPS orbit source | GPS ephemeris becomes typed satellite state |
+| Galileo broadcast orbit | Galileo orbit source | Galileo ephemeris follows navigation-domain rules |
+| BeiDou broadcast orbit | BeiDou orbit source | BeiDou ephemeris uses its own constellation law |
+| GLONASS orbit state | GLONASS orbit source | FDMA and GLONASS-specific state stay explicit |
+| shared broadcast helpers | broadcast-orbit helper source | common broadcast-orbit behavior is reused deliberately |
+| uncertainty | satellite-uncertainty source | orbit quality reaches downstream estimators as typed evidence |
 
 ## Boundary Decisions
 
@@ -54,9 +54,6 @@ flowchart LR
 
 ## First Proof Check
 
-Inspect `crates/bijux-gnss-nav/src/orbits/`,
-`crates/bijux-gnss-nav/docs/ORBITS.md`,
-`crates/bijux-gnss-nav/tests/integration_broadcast_orbit_reference.rs`,
-`crates/bijux-gnss-nav/tests/integration_broadcast_orbit_accuracy.rs`,
-`crates/bijux-gnss-nav/tests/integration_glonass_broadcast_orbit_reference.rs`,
-and `crates/bijux-gnss-nav/tests/integration_sp3_reference_accuracy.rs`.
+Inspect orbit source, the [orbit guide](../../../crates/bijux-gnss-nav/docs/ORBITS.md),
+and focused orbit tests for broadcast reference behavior, broadcast accuracy,
+GLONASS broadcast reference behavior, and SP3 reference accuracy.

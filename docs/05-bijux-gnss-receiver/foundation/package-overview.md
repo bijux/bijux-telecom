@@ -37,14 +37,14 @@ flowchart LR
 
 | family | owns | first proof |
 | --- | --- | --- |
-| engine | runtime config, validation, defaults, logging, metrics, support matrix, receiver composition | `crates/bijux-gnss-receiver/src/engine/` |
-| ports and I/O | sample sources, artifact sinks, clocks, runtime effect seams | `crates/bijux-gnss-receiver/src/ports/`, `crates/bijux-gnss-receiver/src/io/` |
-| acquisition | request planning, search windows, candidates, ranking, explainability, handoff evidence | `crates/bijux-gnss-receiver/src/pipeline/acquisition.rs`, `crates/bijux-gnss-receiver/src/pipeline/acquisition/` |
-| tracking | channel lifecycle, lock evidence, loop state, reacquisition, sample-rate diagnostics | `crates/bijux-gnss-receiver/src/pipeline/tracking.rs`, `crates/bijux-gnss-receiver/src/pipeline/tracking/` |
-| observations | pseudorange, carrier phase, smoothing, residuals, quality, epoch manifests | `crates/bijux-gnss-receiver/src/pipeline/observations.rs`, `crates/bijux-gnss-receiver/src/pipeline/observations/` |
-| navigation handoff | receiver-owned calls into navigation solving and filtering when enabled | `crates/bijux-gnss-receiver/src/pipeline/navigation.rs`, `crates/bijux-gnss-receiver/src/pipeline/navigation_filter.rs` |
-| simulation | synthetic sources, truth, stage accuracy, scenario validation | `crates/bijux-gnss-receiver/src/sim/` |
-| validation reports | receiver-side accuracy, consistency, covariance, and reference checks | `crates/bijux-gnss-receiver/src/validation_report.rs`, `crates/bijux-gnss-receiver/src/reference_validation.rs` |
+| engine | runtime config, validation, defaults, logging, metrics, support matrix, receiver composition | engine source |
+| ports and I/O | sample sources, artifact sinks, clocks, runtime effect seams | port and I/O source |
+| acquisition | request planning, search windows, candidates, ranking, explainability, handoff evidence | acquisition stage source |
+| tracking | channel lifecycle, lock evidence, loop state, reacquisition, sample-rate diagnostics | tracking stage source |
+| observations | pseudorange, carrier phase, smoothing, residuals, quality, epoch manifests | observation stage source |
+| navigation handoff | receiver-owned calls into navigation solving and filtering when enabled | navigation handoff source |
+| simulation | synthetic sources, truth, stage accuracy, scenario validation | simulation source |
+| validation reports | receiver-side accuracy, consistency, covariance, and reference checks | validation-report source |
 
 ## Reader Rules
 
@@ -76,8 +76,9 @@ evidence. Do not flatten every receiver failure into “pipeline”:
 
 ## First Proof Check
 
-Inspect `crates/bijux-gnss-receiver/README.md`,
-`crates/bijux-gnss-receiver/docs/PIPELINE.md`,
-`crates/bijux-gnss-receiver/docs/RUNTIME.md`,
-`crates/bijux-gnss-receiver/docs/ARTIFACTS.md`, the relevant `src/pipeline/`
-stage, and the integration tests named in the crate README.
+Inspect the [receiver crate README](../../../crates/bijux-gnss-receiver/README.md),
+[pipeline guide](../../../crates/bijux-gnss-receiver/docs/PIPELINE.md),
+[runtime guide](../../../crates/bijux-gnss-receiver/docs/RUNTIME.md), and
+[artifact guide](../../../crates/bijux-gnss-receiver/docs/ARTIFACTS.md). Then
+inspect the relevant pipeline stage and the integration tests named in the
+crate README.

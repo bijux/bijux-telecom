@@ -32,12 +32,12 @@ flowchart LR
 
 | family | owns | first proof |
 | --- | --- | --- |
-| position | PVT, DOP, weighting, smoothing, refusal, and runtime-neutral navigation engine behavior | `crates/bijux-gnss-nav/src/estimation/position/` |
-| integrity | RAIM detection, exclusion, solution separation, and downgrade evidence | `crates/bijux-gnss-nav/src/estimation/position/raim.rs` |
-| EKF | reusable state, models, statistics, traits, and filter mechanics | `crates/bijux-gnss-nav/src/estimation/ekf/` |
-| PPP | precise point positioning config, measurements, state, lifecycle, models, quality, and filter behavior | `crates/bijux-gnss-nav/src/estimation/ppp/` |
-| RTK | differencing, ambiguity, baseline, antenna, execution, and quality evidence | `crates/bijux-gnss-nav/src/estimation/rtk/` |
-| solution claims | public support, downgrade, refusal, and advanced-claim reporting | `crates/bijux-gnss-nav/src/estimation/solution_claims.rs` |
+| position | PVT, DOP, weighting, smoothing, refusal, and runtime-neutral navigation engine behavior | position-estimation source |
+| integrity | RAIM detection, exclusion, solution separation, and downgrade evidence | RAIM source |
+| EKF | reusable state, models, statistics, traits, and filter mechanics | EKF source |
+| PPP | precise point positioning config, measurements, state, lifecycle, models, quality, and filter behavior | PPP source |
+| RTK | differencing, ambiguity, baseline, antenna, execution, and quality evidence | RTK source |
+| solution claims | public support, downgrade, refusal, and advanced-claim reporting | solution-claim source |
 
 ## Review Rules
 
@@ -61,9 +61,7 @@ flowchart LR
 
 ## First Proof Check
 
-Inspect `crates/bijux-gnss-nav/docs/ESTIMATION.md`,
-`crates/bijux-gnss-nav/docs/PUBLIC_API.md`,
-`crates/bijux-gnss-nav/src/estimation/`,
-`crates/bijux-gnss-nav/tests/integration_position.rs`,
-`crates/bijux-gnss-nav/tests/integration_public_ppp_convergence.rs`, and
-`crates/bijux-gnss-nav/tests/integration_rtk_ambiguity_fixing.rs`.
+Inspect the [estimation guide](../../../crates/bijux-gnss-nav/docs/ESTIMATION.md),
+[public API](../../../crates/bijux-gnss-nav/docs/PUBLIC_API.md), estimation
+source, and focused integration tests for position, public PPP convergence, and
+RTK ambiguity fixing.
