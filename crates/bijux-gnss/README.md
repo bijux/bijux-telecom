@@ -8,46 +8,47 @@
 [![rust-docs](https://img.shields.io/badge/rust--docs-bijux--gnss-DEA584?logo=rust&logoColor=white)](https://docs.rs/bijux-gnss/latest/bijux_gnss/)
 [![GNSS handbook](https://img.shields.io/badge/docs-GNSS%20handbook-2563EB?logo=materialformkdocs&logoColor=white)](https://github.com/bijux/bijux-telecom/tree/main/docs/01-bijux-gnss)
 
-`bijux-gnss` owns the public package facade and the `bijux` binary. Start here
-when the question is about an operator workflow, command arguments, report
-format, or the thin Rust facade that downstream users see first.
+`bijux-gnss` is the operator and integration entrypoint for the GNSS workspace.
+It provides the `bijux` command and a thin Rust facade over the public core,
+signal, receiver, and optional navigation APIs.
 
-The crate composes the lower-level GNSS packages without absorbing their
-signal science, navigation algorithms, persistence rules, or receiver runtime
-internals.
+Use the command for complete workflows and machine-readable reports. Depend on
+the facade when an application needs several GNSS crates through one package.
+Choose a lower crate directly when only one domain API is required.
 
-## Install
+## Use From This Checkout
 
-Install the `bijux` command:
+The first release has not been published. Run the command from the workspace:
+
+```sh
+cargo run -q -p bijux-gnss -- gnss --help
+```
+
+After publication, the registry package will support:
 
 ```sh
 cargo install bijux-gnss
-```
-
-Add the facade library to a Rust package:
-
-```sh
 cargo add bijux-gnss
 ```
 
 The Cargo package name is `bijux-gnss`; its Rust import name is `bijux_gnss`.
 
-## Reader Route
+## Choose the Surface
 
-| question | go next |
+| need | use |
 | --- | --- |
-| Which command or argument exists? | [Command guide](docs/COMMANDS.md), `src/cli/command_line.rs` |
-| How does a command assemble work? | [Execution guide](docs/EXECUTION.md), `src/cli/command_runtime.rs` |
-| What does a report promise to operators? | [Reporting guide](docs/REPORTING.md), `src/cli/report.rs` |
-| What does the Rust facade expose? | [Facade guide](docs/FACADE.md), [Public API](docs/PUBLIC_API.md), `src/lib.rs` |
-| What changed in this package? | [Package changelog](CHANGELOG.md) |
+| invoke acquisition, validation, synthetic, or navigation workflows | `bijux gnss ...` and the [command guide](docs/COMMANDS.md) |
+| understand command execution and lower-crate handoff | [execution guide](docs/EXECUTION.md) |
+| consume stable command reports | [reporting guide](docs/REPORTING.md) |
+| import the combined Rust surface | [facade guide](docs/FACADE.md) and [public API guide](docs/PUBLIC_API.md) |
+| assess compatibility or release impact | [package release history](CHANGELOG.md) |
 
 ## Owned Boundary
 
 - command names, arguments, and top-level workflow composition
 - runtime setup before handing work to lower-level crates
 - operator-facing report rendering and command result presentation
-- the narrow `src/lib.rs` facade over lower-level GNSS crates
+- the narrow [facade export surface](src/lib.rs) over lower-level GNSS crates
 
 This crate does not own low-level signal implementations, standalone navigation
 science, receiver-stage internals, or repository persistence contracts.
@@ -65,28 +66,36 @@ flowchart LR
     runtime --> report
 ```
 
-## Source Map
+## Features
 
-- `src/main.rs` assembles the binary command surface.
-- `src/cli/command_line.rs` owns command parsing and stable argument shape.
-- `src/cli/command_runtime.rs` and `src/cli/execution_support.rs` own runtime
-  setup and workflow support.
-- `src/cli/report.rs` owns operator-facing output rendering.
-- `src/lib.rs` owns the package facade over lower-level crates.
+| feature | effect |
+| --- | --- |
+| `cli` | builds command parsing, workflow execution, and reports |
+| `nav` | exposes navigation APIs and enables receiver navigation |
+| `precise-products` | enables CLI and navigation support for precise products |
+| `tracing` | enables command-side tracing setup |
+| `schema-validate` | enables JSON Schema generation and validation |
+| `plots` | enables bitmap plot output |
 
-## Documentation Map
+Default features are `cli` and `precise-products`; precise-product support also
+enables navigation. Applications that only need the facade can disable defaults
+and select features explicitly.
 
-- [Architecture guide](docs/ARCHITECTURE.md)
-- [Boundary guide](docs/BOUNDARY.md)
-- [Command guide](docs/COMMANDS.md)
-- [Contract guide](docs/CONTRACTS.md)
-- [Execution guide](docs/EXECUTION.md)
-- [Facade guide](docs/FACADE.md)
-- [Public API](docs/PUBLIC_API.md)
-- [Reporting guide](docs/REPORTING.md)
-- [Test guide](docs/TESTS.md)
-- [Validation guide](docs/VALIDATION.md)
-- [Workflow guide](docs/WORKFLOWS.md)
+## Implementation Ownership
+
+- The [binary entrypoint](src/main.rs) assembles the command surface.
+- The [argument parser](src/cli/command_line.rs) owns command names, options,
+  and defaults.
+- The [command runtime](src/cli/command_runtime.rs) and
+  [execution support](src/cli/execution_support.rs) assemble workflows and
+  lower-crate handoffs.
+- The [report renderer](src/cli/report.rs) owns operator-facing output.
+- The [facade export surface](src/lib.rs) owns public re-exports.
+
+For design boundaries, continue with the [architecture guide](docs/ARCHITECTURE.md)
+and [contract guide](docs/CONTRACTS.md). For operating behavior, use the
+[workflow guide](docs/WORKFLOWS.md), [validation guide](docs/VALIDATION.md), and
+[test guide](docs/TESTS.md).
 
 ## Verification Focus
 

@@ -5,9 +5,9 @@ execution, observations, navigation, and reproducible evidence. It prepares
 six public Rust crates under one version and keeps repository policy, test
 support, and maintainer automation out of public registries.
 
-The `bijux-gnss` package owns the installable `bijux` command. The other five
-public packages expose focused Rust libraries for shared contracts, signals,
-navigation, receiver processing, and repository-facing GNSS infrastructure.
+The `bijux-gnss` package owns the `bijux` command and the public facade. The
+other five public packages expose focused libraries for shared contracts,
+signals, navigation, receiver processing, and reproducible repository evidence.
 
 <!-- bijux-telecom-badges:generated:start -->
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-0F766E)](https://github.com/bijux/bijux-telecom/blob/main/LICENSE)
@@ -34,6 +34,13 @@ navigation, receiver processing, and repository-facing GNSS infrastructure.
 [![Repository docs](https://img.shields.io/badge/docs-repository-2563EB?logo=materialformkdocs&logoColor=white)](https://github.com/bijux/bijux-telecom/tree/main/docs)
 [![bijux-gnss rust-docs](https://img.shields.io/badge/rust--docs-bijux--gnss-DEA584?logo=rust&logoColor=white)](https://docs.rs/bijux-gnss/latest/bijux_gnss/)
 <!-- bijux-telecom-badges:generated:end -->
+
+## Current Status
+
+The workspace is preparing its first `0.1.0` release. The crates.io, docs.rs,
+GHCR, and GitHub links describe the intended public release surface; they do not
+mean that a release has already been published. Until the first release, run
+commands and depend on crates from this checkout.
 
 ## Release Surface
 
@@ -89,13 +96,18 @@ flowchart LR
     receiver --> evidence
 ```
 
-## Build
+## Use the Checkout
 
 ```bash
 cargo build --workspace
+cargo run -q -p bijux-gnss -- gnss --help
 ```
 
 Minimum supported Rust version: `1.86.0`.
+
+The examples below use the future installed command form, `bijux gnss ...`.
+From this checkout, replace `bijux` with
+`cargo run -q -p bijux-gnss --`.
 
 ## First Useful Commands
 
@@ -172,8 +184,8 @@ bijux gnss acquire \
   --output artifacts/live_sky_acquire
 ```
 
-The live-sky dataset provenance and redistribution details live in
-`datasets/recorded/gps_l1_2022_03_27_excerpt.provenance.md`.
+Review the live-sky capture's source and redistribution terms in the
+[GPS L1 dataset provenance](datasets/recorded/gps_l1_2022_03_27_excerpt.provenance.md).
 
 ## Package Map
 
@@ -219,15 +231,17 @@ the full lanes. Repository test policy lives in
 
 ## Documentation
 
-- [Repository handbook](docs/index.md) routes readers to the owning package.
-- [Badge catalog](docs/badges.md) owns the generated badge block copied into
+- [GNSS workspace handbook](docs/index.md) routes readers to the owning package.
+- [Badge reference](docs/badges.md) owns the generated badge block copied into
   public entry pages.
-- [Workspace changelog](CHANGELOG.md) summarizes unreleased workspace-level
-  documentation and release-history changes.
-- Package changelogs live beside each [package README](crates/).
+- [Workspace release history](CHANGELOG.md) records unpublished workspace-level
+  behavior and release preparation.
+- The [package directory](crates/) contains each crate's README and release
+  history.
 
 ## Maturity
 
-The workspace is in active `0.1.0` development. Interfaces and artifacts are
-being stabilized through checked-in docs, tests, schemas, and reproducible
-artifacts rather than through a published compatibility guarantee.
+The workspace is in active `0.1.0` development. Tests, schemas, references, and
+reproducible artifacts support current claims, but no published compatibility
+guarantee exists yet. Release status and compatibility decisions belong in the
+[workspace release history](CHANGELOG.md).
