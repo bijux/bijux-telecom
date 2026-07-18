@@ -4,34 +4,66 @@ audience: mixed
 type: foundation
 status: canonical
 owner: bijux-gnss-nav-docs
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-18
 ---
 
 # Repository Fit
 
-`bijux-gnss-nav` is the repository's scientific middle layer. It is not the
-lowest shared contract crate and not the highest operator-facing surface.
+`bijux-gnss-nav` is the scientific middle layer of `bijux-telecom`. It turns
+shared records, decoded navigation products, correction models, and estimator
+state into navigation-domain evidence. It does not own command UX, receiver
+scheduling, repository persistence, or reusable signal substrate.
 
-## Why The Repository Needs This Layer
+## Repository Role
 
-- GNSS science should be reusable across commands, runtime flows, and
-  persisted-reference validation
-- higher-level crates need one place where orbit, correction, and estimator
-  meaning is already settled
-- lower-level crates should not be forced to absorb constellation-specific
-  navigation law that would make them less reusable
+```mermaid
+flowchart LR
+    core["core<br/>ids time units records"]
+    signal["signal<br/>signal facts and DSP substrate"]
+    nav["nav<br/>orbits corrections estimation"]
+    receiver["receiver<br/>runtime stages"]
+    infra["infra<br/>datasets and persisted evidence"]
+    command["command<br/>operator routes"]
 
-## How It Fits With Neighboring Handbooks
+    core --> nav
+    signal --> nav
+    nav --> receiver
+    nav --> infra
+    receiver --> command
+    infra --> command
+```
 
-- [02-bijux-gnss-core](../../02-bijux-gnss-core/) explains shared contracts that
-  this crate builds on
-- [03-bijux-gnss-infra](../../03-bijux-gnss-infra/) explains repository-facing
-  ownership that may consume navigation evidence but should not redefine it
-- [05-bijux-gnss-receiver](../../05-bijux-gnss-receiver/) explains runtime
-  orchestration that may call navigation solvers but should not own them
+Nav is reusable science. Receiver code may call it during runtime, infra may
+store evidence that came from it, and command code may present its results. None
+of those consumers redefine the scientific meaning that nav owns.
 
-## The Fit To Defend
+## Fit To Defend
 
-This crate should remain the place where scientific claims are explainable
-without opening command code, repository persistence code, or live sample-loop
-orchestration.
+| neighbor | nav consumes | nav refuses |
+| --- | --- | --- |
+| core | shared identity, units, time, coordinate, observation, and artifact records | changing shared record semantics locally |
+| signal | signal identity and reusable signal facts when navigation models need them | spreading-code generation or receiver search policy |
+| receiver | observation and runtime evidence as inputs to estimation | stage scheduling, lock transitions, channel lifecycle |
+| infra | precise-product bytes and persisted evidence after repository resolution | dataset registry, run directory layout, artifact indexing |
+| command | operator-visible results after lower owners finish | command syntax, report routing, CLI validation flow |
+
+## Reader Questions
+
+- Is the question about broadcast orbit, precise orbit, clock, correction,
+  estimator, PPP, RTK, or navigation product decoding? Stay in nav.
+- Is the question about field meaning shared across all crates? Start in core.
+- Is the question about sample loops, acquisition, tracking, or observation
+  production? Leave for receiver.
+- Is the question about where a product file lives or how a run is persisted?
+  Leave for infra.
+- Is the question about what an operator invokes or sees? Leave for command
+  docs.
+
+## First Proof Check
+
+Inspect `crates/bijux-gnss-nav/docs/BOUNDARY.md`,
+`crates/bijux-gnss-nav/docs/CONTRACTS.md`,
+`crates/bijux-gnss-nav/docs/FORMATS.md`,
+`crates/bijux-gnss-nav/docs/CORRECTIONS.md`,
+`crates/bijux-gnss-nav/docs/ESTIMATION.md`, and
+`crates/bijux-gnss-nav/docs/ORBITS.md`.
