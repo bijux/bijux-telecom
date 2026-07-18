@@ -135,8 +135,18 @@ fn galileo_e1_strategy_candidates_prefer_pilot_cboc_acquisition() {
 #[test]
 fn competing_candidate_ratio_ignores_strategy_variants_of_same_hypothesis() {
     let sat = SatId { constellation: Constellation::Galileo, prn: 11 };
-    let best = candidate_for_search_window_test(sat, 0.0, 12.0);
-    let same_hypothesis_variant = candidate_for_search_window_test(sat, 0.0, 10.0);
+    let mut best = candidate_for_search_window_test(sat, 0.0, 12.0);
+    best.evidence = vec![component_strategy_evidence(
+        1,
+        AcqComponentCombinationMode::SingleComponent,
+        vec![SignalComponentRole::Pilot],
+    )];
+    let mut same_hypothesis_variant = candidate_for_search_window_test(sat, 0.0, 10.0);
+    same_hypothesis_variant.evidence = vec![component_strategy_evidence(
+        2,
+        AcqComponentCombinationMode::NoncoherentComponentSum,
+        vec![SignalComponentRole::Data, SignalComponentRole::Pilot],
+    )];
     let competing = candidate_for_search_window_test(sat, 500.0, 4.0);
 
     assert!(
@@ -215,4 +225,37 @@ fn galileo_e1_signal_only_streaming_frame_returns_explicit_ambiguity() {
         vec![SignalComponentRole::Pilot]
     );
     assert!(selected.uncertainty.is_none(), "{run:?}");
+}
+
+fn component_strategy_evidence(
+    rank: u8,
+    combination_mode: AcqComponentCombinationMode,
+    roles: Vec<SignalComponentRole>,
+) -> AcqEvidence {
+    AcqEvidence {
+        rank,
+        code_phase_samples: 0,
+        doppler_hz: 0.0,
+        doppler_rate_hz_per_s: 0.0,
+        peak: 1.0,
+        second_peak: 1.0,
+        peak_mean_ratio: 1.0,
+        peak_second_ratio: 1.0,
+        mean: 1.0,
+        component_provenance: Some(AcqComponentProvenance {
+            combination_mode,
+            components: roles
+                .into_iter()
+                .map(|role| AcqComponentStatistic {
+                    role,
+                    peak: 1.0,
+                    second_peak: 1.0,
+                    mean: 1.0,
+                    peak_mean_ratio: 1.0,
+                    peak_second_ratio: 1.0,
+                    secondary_code_phase_periods: None,
+                })
+                .collect(),
+        }),
+    }
 }
