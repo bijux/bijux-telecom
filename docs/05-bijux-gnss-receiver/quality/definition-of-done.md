@@ -4,46 +4,109 @@ audience: mixed
 type: quality
 status: canonical
 owner: bijux-gnss-receiver-docs
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-18
 ---
 
 # Definition Of Done
 
-A receiver change is done when a reviewer can name the runtime contract that
-moved, inspect the evidence that protects it, and see that neighboring crate
-ownership was not blurred to make the change easier.
+A receiver change is complete when its runtime claim, failure behavior, and
+evidence boundary agree. Compilation and one broad scenario are insufficient:
+reviewers must be able to identify what would regress, where that regression
+would become observable, and which crate owns the meaning.
 
-## Completion Gate
+## Close The Evidence Loop
 
-| changed area | done means | minimum reader evidence |
-| --- | --- | --- |
-| acquisition | candidate selection, uncertainty, assistance, and explainability remain coherent before tracking consumes them | targeted acquisition test plus any affected integration scenario |
-| tracking | lock state, carrier/code continuity, uncertainty, and handoff remain explainable per epoch | tracking integration proof and channel-state report proof when state meaning moves |
-| observations | pseudorange, carrier phase, residual, smoothing, and rejection metadata remain traceable to tracking input | observation unit or integration proof with metadata assertions |
-| navigation handoff | receiver-side handoff does not redefine nav science or hide solver assumptions | receiver navigation test plus nav-owner proof when scientific model meaning changes |
-| artifacts and diagnostics | emitted run products explain runtime behavior without taking over infra persistence | artifact or diagnostic test plus handbook update when public meaning changes |
+```mermaid
+flowchart LR
+    change["changed receiver behavior"]
+    contract["name observable contract"]
+    failure["name refusal or failure path"]
+    narrow["focused proof"]
+    boundary["handoff proof when state crosses stages"]
+    public["public API and docs review"]
+    complete["reviewable completion"]
 
-## Required Review Questions
+    change --> contract
+    contract --> failure
+    failure --> narrow
+    narrow --> boundary
+    boundary --> public
+    public --> complete
+```
 
-- Which receiver family owns the change: `engine`, `pipeline`, `ports`,
-  `artifacts`, `reference_validation`, or `sim`?
-- Which lower owner supplies meaning: `bijux-gnss-core`,
-  `bijux-gnss-signal`, or `bijux-gnss-nav`?
-- Which higher owner consumes the result: `bijux-gnss` command UX or
-  `bijux-gnss-infra` persistence?
-- What exact test or artifact would fail if this contract regressed?
+If a step is not relevant, record why. Do not silently omit failure-path proof
+for a change that can reject a candidate, degrade a channel, discard an
+observation, or refuse a navigation claim.
 
-## Proof Anchors
+## Completion By Runtime Contract
 
-- `crates/bijux-gnss-receiver/docs/TESTS.md` for the receiver test family map.
-- `crates/bijux-gnss-receiver/docs/RUNTIME.md` for engine and runtime
-  composition.
-- `crates/bijux-gnss-receiver/docs/PIPELINE.md` for stage ordering and
-  handoff.
-- `crates/bijux-gnss-receiver/docs/ARTIFACTS.md` for emitted runtime output.
-- `crates/bijux-gnss-receiver/docs/REFERENCE_VALIDATION.md` for bounded truth
-  comparison.
+| changed contract | observable evidence | required negative case | boundary review |
+| --- | --- | --- | --- |
+| configuration or derived defaults | accepted configuration and exact derived behavior | invalid, contradictory, or unsupported value is rejected with the documented error | command configuration and schema consumers |
+| acquisition | ranked candidates, hypothesis, uncertainty, assistance, and explanation agree | absent, ambiguous, unsupported, or below-threshold signal remains distinguishable | acquisition-to-tracking handoff |
+| tracking | lock state, phase/code continuity, uncertainty, transitions, and processed counts agree | fade, loss of lock, unstable discriminator, or refused channel is represented honestly | observation construction and telemetry |
+| observations | measurements, residuals, quality, decisions, smoothing, and timing stay traceable | rejected or degraded measurement retains reason and does not silently enter a stronger solution | core record meaning and navigation input |
+| navigation handoff | attempted solutions preserve nav-owned status, validity, integrity, and refusal | insufficient or inconsistent evidence remains a refusal rather than a plausible position | navigation scientific owner and command report |
+| artifacts or diagnostics | returned evidence explains the affected stage | empty, partial, or unavailable evidence cannot be mistaken for success | command publication and infrastructure persistence |
+| public API or feature | downstream use compiles through `api` with the intended feature set | disabled-feature behavior and unavailable exports are explicit | direct callers and lower-owner facades |
 
-Do not call a receiver change done because a broad test happened to pass. Call
-it done when the narrowest meaningful proof and the handbook agree on the same
-runtime claim.
+## Choose Proof From The Claim
+
+```mermaid
+flowchart TD
+    claim["receiver claim"]
+    stage{"single stage?"}
+    focused["focused unit or integration test"]
+    cross{"crosses a stage boundary?"}
+    handoff["boundary integration test"]
+    physical{"asserts physical accuracy or robustness?"}
+    truth["synthetic truth or independent reference"]
+    durable{"asserts persistence or replay?"}
+    infra["infrastructure artifact validation"]
+
+    claim --> stage
+    stage -- yes --> focused
+    stage -- no --> cross
+    focused --> cross
+    cross -- yes --> handoff
+    cross -- no --> physical
+    handoff --> physical
+    physical -- yes --> truth
+    physical -- no --> durable
+    truth --> durable
+    durable -- yes --> infra
+```
+
+Use the [receiver test map](../../../crates/bijux-gnss-receiver/docs/TESTS.md)
+to locate executable families and the
+[change validation guide](change-validation.md) to select scope. Slow scenarios
+belong in the governed slow lane; moving them out of a fast lane does not remove
+their requirement from a claim that depends on long duration or difficult
+conditions.
+
+## Ownership Review
+
+Before commit, answer these in the change description:
+
+- Is the changed meaning receiver execution, or does it belong to a
+  [core contract](../../02-bijux-gnss-core/foundation/ownership-boundary.md),
+  [signal primitive](../../06-bijux-gnss-signal/foundation/ownership-boundary.md),
+  or [navigation model](../../04-bijux-gnss-nav/foundation/ownership-boundary.md)?
+- If command output changed, does the
+  [command reporting contract](../../01-bijux-gnss/interfaces/reporting-contracts.md)
+  still preserve receiver refusal and uncertainty?
+- If files or run identity changed, was the
+  [infrastructure artifact contract](../../03-bijux-gnss-infra/interfaces/persisted-artifact-contracts.md)
+  reviewed instead of adding persistence policy here?
+- If a public export changed, were defaults, feature availability, units, and
+  semantic ownership reviewed through the [API surface](../interfaces/api-surface.md)?
+
+## Completion Record
+
+Record the exact claim, focused proof, necessary boundary proof, feature set,
+fixture or capture provenance, and any relevant slow evidence. If independent
+field or reference evidence was not run, say so and keep the claim within the
+tested envelope.
+
+A broad green lane is useful repository evidence. It is not a substitute for
+showing which receiver contract the change protects.
