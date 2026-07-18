@@ -9,22 +9,53 @@ last_reviewed: 2026-07-17
 
 # Review Checklist
 
-Use this checklist when reviewing a receiver change.
+Review `bijux-gnss-receiver` as the runtime owner for staged receiver
+execution. The crate may orchestrate acquisition, tracking, observation
+assembly, in-memory artifacts, diagnostics, validation hooks, and simulation
+support. It should not own command presentation, repository persistence,
+signal truth, or navigation science.
 
-## Checklist
+```mermaid
+flowchart LR
+    change["runtime change"]
+    stage["name stage family"]
+    artifact["confirm emitted artifact meaning"]
+    validation["inspect validation and synthetic proof"]
+    boundary["route lower-owner science back out"]
 
-- is the owning runtime family named clearly
-- does the change preserve the crate boundary against command, repository, or
-  science creep
-- if `api.rs` changed, is the public promise durable
-- do artifacts, reports, or validation outputs still mean the same thing
-- did the author run the narrowest honest validation commands
-- if a fixture or synthetic expectation changed, is the reason explicit and
-  technically credible
-- do the handbook pages still match the changed behavior
+    change --> stage --> artifact --> validation --> boundary
+```
 
-## Protecting Proof
+## Review Gates
 
-- `crates/bijux-gnss-receiver/docs/TESTS.md`
-- `crates/bijux-gnss-receiver/docs/PUBLIC_API.md`
-- `docs/05-bijux-gnss-receiver/this-package-does-not-own.md`
+| changed surface | accept only when | inspect before accepting |
+| --- | --- | --- |
+| acquisition, tracking, or observation stage | The stage contract and lock/error evidence remain understandable outside one test fixture. | [Stage Contracts](../interfaces/stage-contracts.md), `crates/bijux-gnss-receiver/docs/PIPELINE.md` |
+| runtime artifact or diagnostic output | The record describes receiver runtime meaning before infra persists it. | [Artifact Contracts](../interfaces/artifact-contracts.md), [Diagnostic Contracts](../interfaces/diagnostic-contracts.md) |
+| validation or simulation helper | Synthetic proof is bounded to receiver behavior and does not become a substitute truth system. | [Validation And Simulation Contracts](../interfaces/validation-and-simulation-contracts.md), `crates/bijux-gnss-receiver/docs/REFERENCE_VALIDATION.md` |
+| public export | The export is a durable receiver boundary, not a shortcut to signal, nav, or infra internals. | [API Surface](../interfaces/api-surface.md), `crates/bijux-gnss-receiver/docs/PUBLIC_API.md`, `crates/bijux-gnss-receiver/tests/integration_guardrails.rs` |
+| deterministic or performance-sensitive path | The proof covers reproducibility, runtime budget, and artifact stability together. | [Determinism And Purity](determinism-and-purity.md), [Validation Budgets](validation-budgets.md), `crates/bijux-gnss-receiver/tests/integration_pipeline_determinism.rs` |
+
+## Blocking Signs
+
+- A runtime change passes because a fixture was softened rather than because
+  receiver behavior is now better explained.
+- A receiver artifact carries repository-storage meaning that belongs to
+  `bijux-gnss-infra`.
+- A tracking or acquisition helper redefines signal facts that should come from
+  `bijux-gnss-signal`.
+- A validation test asserts a final navigation conclusion without checking the
+  receiver evidence that made the conclusion possible.
+
+## Evidence To Require
+
+- Read `crates/bijux-gnss-receiver/docs/TESTS.md`,
+  `crates/bijux-gnss-receiver/docs/PIPELINE.md`, and
+  `crates/bijux-gnss-receiver/docs/PUBLIC_API.md` before accepting broad
+  runtime changes.
+- Require the narrow stage test family for the changed behavior before relying
+  on a full pipeline test.
+- Update the matching stage, runtime, artifact, diagnostic, or validation
+  handbook page when public receiver meaning changes.
+- Route command, infra, signal, and nav concerns to their owners even when the
+  receiver happens to be the caller.
