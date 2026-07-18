@@ -16,17 +16,20 @@ Use this crate when two packages must agree on what data means. Use the signal,
 navigation, receiver, infrastructure, or command package when the concern is an
 algorithm, runtime policy, repository effect, or operator workflow.
 
-## Install
+## Availability
+
+The first registry release has not been published. In this workspace, build or
+test the package directly:
 
 ```sh
-cargo add bijux-gnss-core
+cargo test -p bijux-gnss-core
 ```
 
-The Cargo package name is `bijux-gnss-core`; its Rust import name is
-`bijux_gnss_core`. All public packages in this repository share one release
-version.
+After publication, add it with `cargo add bijux-gnss-core`. The Cargo package
+name is `bijux-gnss-core`; its Rust import name is `bijux_gnss_core`. All public
+packages in this repository share one release version.
 
-## Start With The Need
+## Start with the Contract
 
 | need | first guide |
 | --- | --- |
@@ -63,6 +66,7 @@ rendering type should remain with its stronger owner.
 | observations and quality | epochs, decisions, differencing, lock, covariance, cycle-slip evidence | measurement production or navigation estimation |
 | navigation results | solution epochs, residuals, lifecycle, validity, refusal, inter-system bias | solvers, corrections, PPP, RTK |
 | diagnostics and configuration | stable codes, severities, summaries, canonical errors, validation reports | operator wording or local defaults |
+| conventions and summaries | sanity checks, Doppler and phase conventions, coordinate-derived statistical summaries | receiver thresholds or estimator policy |
 | artifacts and support | headers, kinds, versioned payloads, validation traits, support inventory | filenames, run directories, manifests, history |
 
 ## Dependency And Ownership
@@ -102,6 +106,9 @@ public contract:
 
 Do not change old serialized meaning in place. Use an explicit version boundary
 when readers need to distinguish old and new payloads.
+
+The [core release guide](../../docs/02-bijux-gnss-core/operations/release-and-versioning.md)
+maps each compatibility claim to the evidence required before publication.
 
 ## Documentation
 
