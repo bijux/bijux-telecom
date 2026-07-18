@@ -4,7 +4,7 @@ audience: mixed
 type: quality
 status: canonical
 owner: bijux-gnss-core-docs
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-18
 ---
 
 # Invariants
@@ -12,35 +12,49 @@ last_reviewed: 2026-07-17
 The most important `bijux-gnss-core` invariants are the ones downstream crates
 quietly depend on every day.
 
-## Public-Surface Invariants
+## Invariant Map
 
-- public structs and free functions remain deliberately re-exported through
-  `src/api.rs`
-- callers should not need private module paths to use stable core meaning
+```mermaid
+flowchart LR
+    public["public API"]
+    artifacts["artifacts"]
+    time["time and units"]
+    boundary["dependency boundary"]
+    trust["downstream trust"]
 
-## Artifact Invariants
+    public --> trust
+    artifacts --> trust
+    time --> trust
+    boundary --> trust
+```
 
-- artifact payload validators enforce semantic coherence, not just parse shape
-- non-finite or internally inconsistent persisted values are rejected rather
-  than normalized silently
-- support-matrix and navigation payloads remain versioned records rather than
-  ad hoc downstream serialization
+## Invariant Families
 
-## Time Invariants
+| family | invariant | proof |
+| --- | --- | --- |
+| public surface | stable core meaning is deliberately re-exported through `src/api.rs` | public API guardrail |
+| private layout | callers do not need private module paths for stable contracts | public API guardrail |
+| artifacts | payload validators enforce semantic coherence, not just parse shape | artifact validation tests |
+| numeric evidence | non-finite or internally inconsistent persisted values are rejected rather than normalized silently | artifact validation tests |
+| support inventory | support-matrix and navigation payloads remain versioned records | artifact and serialization tests |
+| timekeeping | GPS, UTC, TAI, leap-second, and sample-trace conversions remain deterministic | property tests and regression corpus |
+| dependency boundary | core stays free of higher-level workspace crate dependencies | integration guardrails |
+| ownership boundary | core remains a foundation rather than runtime or repository policy | contract map and review-scope docs |
 
-- GPS, UTC, TAI, and sample-trace conversions remain deterministic under the
-  protecting property tests and regression corpus
+## Failure Signals
 
-## Boundary Invariants
+- A downstream crate imports a private core module for stable meaning.
+- A serialized artifact accepts non-finite or contradictory values.
+- A new core type duplicates a receiver, nav, signal, infra, or command concept.
+- A time conversion passes examples but fails property-test edge cases.
+- A core dependency points upward into a product or workflow crate.
 
-- `bijux-gnss-core` stays free of higher-level workspace crate dependencies
-- the crate remains a contract foundation instead of drifting into runtime or
-  repository policy
+## First Proof Check
 
-## Protecting Proof
-
-- `crates/bijux-gnss-core/docs/INVARIANTS.md`
-- `crates/bijux-gnss-core/tests/public_api_guardrail.rs`
-- `crates/bijux-gnss-core/tests/nav_artifact_validation.rs`
-- `crates/bijux-gnss-core/tests/tracking_artifact_validation.rs`
-- `crates/bijux-gnss-core/tests/prop_timekeeping.rs`
+Inspect `crates/bijux-gnss-core/docs/INVARIANTS.md`,
+`crates/bijux-gnss-core/docs/CONTRACT_MAP.md`,
+`crates/bijux-gnss-core/tests/public_api_guardrail.rs`,
+`crates/bijux-gnss-core/tests/nav_artifact_validation.rs`,
+`crates/bijux-gnss-core/tests/tracking_artifact_validation.rs`,
+`crates/bijux-gnss-core/tests/prop_timekeeping.rs`, and
+`crates/bijux-gnss-core/tests/integration_guardrails.rs`.
