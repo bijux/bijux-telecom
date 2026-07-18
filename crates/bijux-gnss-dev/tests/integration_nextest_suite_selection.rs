@@ -1,6 +1,7 @@
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 #[test]
 fn slow_roster_is_sorted_unique_and_resolves_to_test_functions() -> anyhow::Result<()> {
@@ -39,6 +40,38 @@ fn slow_roster_is_sorted_unique_and_resolves_to_test_functions() -> anyhow::Resu
     Ok(())
 }
 
+#[test]
+fn slow_roster_feeds_nextest_lane_expressions() -> anyhow::Result<()> {
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let roster_path = repo_root.join("configs/rust/nextest-slow-roster.txt");
+    let roster = load_slow_roster(&roster_path)?;
+    let fast_expr = nextest_expr(&repo_root, "fast")?;
+    let slow_expr = nextest_expr(&repo_root, "slow")?;
+
+    assert!(
+        fast_expr.starts_with("not ("),
+        "fast nextest expression must negate the governed slow lane: {fast_expr}"
+    );
+    assert!(
+        slow_expr.contains("test(/::slow__/)"),
+        "slow nextest expression must preserve legacy slow__ namespace selection: {slow_expr}"
+    );
+
+    for entry in roster {
+        let escaped = regex::escape(&entry);
+        assert!(
+            slow_expr.contains(&escaped),
+            "slow nextest expression must include roster entry: {entry}"
+        );
+        assert!(
+            fast_expr.contains(&escaped),
+            "fast nextest expression must exclude roster entry through the negated slow lane: {entry}"
+        );
+    }
+
+    Ok(())
+}
+
 fn load_slow_roster(path: &Path) -> anyhow::Result<Vec<String>> {
     let content = fs::read_to_string(path)?;
     Ok(content
@@ -47,6 +80,16 @@ fn load_slow_roster(path: &Path) -> anyhow::Result<Vec<String>> {
         .filter(|line| !line.is_empty() && !line.starts_with('#'))
         .map(ToOwned::to_owned)
         .collect())
+}
+
+fn nextest_expr(repo_root: &Path, mode: &str) -> anyhow::Result<String> {
+    let output = Command::new(repo_root.join("makes/bin/nextest_expr.sh")).arg(mode).output()?;
+    assert!(
+        output.status.success(),
+        "nextest expression generator failed for mode {mode}: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    Ok(String::from_utf8(output.stdout)?.trim().to_string())
 }
 
 fn collect_test_function_names(root: &Path) -> anyhow::Result<BTreeSet<String>> {
