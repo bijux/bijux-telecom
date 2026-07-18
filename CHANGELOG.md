@@ -1,84 +1,49 @@
 # Changelog
+<a id="top"></a>
 
-This file records changes that affect the `bijux-gnss` workspace as a whole.
-Package changelogs record API, command, signal, navigation, receiver, and
-infrastructure changes owned by one crate.
+All notable changes to **Bijux GNSS** are documented in this file.
+This project adheres to [Semantic Versioning](https://semver.org) and the
+[Keep a Changelog](https://keepachangelog.com/en/1.0.0/) format.
 
-The repository is in `0.1.0` development. Entries under `Unreleased` describe
-release preparation and behavior that have not been published.
+---
 
-## Unreleased
-
-No crate, container artifact, or GitHub release described below has been
-published. Publication will run through the managed release workflows after a
-version and tag are approved.
+## 0.1.0 - Unreleased
 
 ### Added
 
-- A machine-readable [crate publication contract](configs/release/crates.toml)
-  identifies the six public crates, their dependency order, and the three
-  repository-only support crates.
-- Local release validation checks package metadata, license inclusion,
-  dependency versions, publication eligibility, and packaged crate contents
-  without uploading to a registry.
-- The release builder produces per-crate source bundles and checksums for GHCR
-  and GitHub Releases. GHCR receives source artifacts, not runnable images.
-- Every public crate carries an Apache-2.0 license and direct routes to its
-  crates.io package, API documentation, source bundle, and handbook.
-
-### Changed
-
-- The six public crates share workspace version `0.1.0` and complete crates.io
-  metadata. Public dependencies declare both a workspace path and the release
-  version.
-- `bijux-gnss-dev`, `bijux-gnss-policies`, and `bijux-gnss-testkit` are
-  explicitly repository-only. Public crates use them only as path-based
-  development dependencies, so they are absent from published manifests.
-- Release automation now separates proof from publication: local commands
-  validate and package the release, while managed GitHub workflows own
-  crates.io, GHCR, and GitHub publication.
-- Workspace and package documentation now state which crate owns each public
-  contract and which evidence supports a release decision.
-
-## Release Route
-
-```mermaid
-flowchart LR
-    source["approved source and version"]
-    proof["local release proof"]
-    tag["reviewed release tag"]
-    crates["crates.io and docs.rs"]
-    ghcr["GHCR source bundles"]
-    github["GitHub release"]
-
-    source --> proof
-    proof --> tag
-    tag --> crates
-    tag --> ghcr
-    tag --> github
-```
-
-The [release handbook](docs/bijux-gnss-dev/operations/release-and-versioning.md)
-defines the publication boundary, commands, channels, version rules, and
-failure policy. The [facade changelog](crates/bijux-gnss/CHANGELOG.md) records
-changes to the `bijux` command and the top-level Rust API.
-
-## Package Histories
-
-| changed responsibility | release history |
-| --- | --- |
-| commands and public facade | [Facade and command history](crates/bijux-gnss/CHANGELOG.md) |
-| shared identities, units, time, and artifacts | [Core contract history](crates/bijux-gnss-core/CHANGELOG.md) |
-| signal definitions, codes, samples, and DSP | [Signal behavior history](crates/bijux-gnss-signal/CHANGELOG.md) |
-| products, corrections, positioning, and integrity | [Navigation science history](crates/bijux-gnss-nav/CHANGELOG.md) |
-| acquisition, tracking, observations, and runtime evidence | [Receiver runtime history](crates/bijux-gnss-receiver/CHANGELOG.md) |
-| datasets, provenance, run layout, and inspection | [Infrastructure history](crates/bijux-gnss-infra/CHANGELOG.md) |
-
-## Entry Rules
-
-- Record a change here when it alters the publication boundary, shared version,
-  cross-crate behavior, or repository-wide validation.
-- Record package-owned behavior in that package's changelog instead of
-  duplicating implementation detail here.
-- Describe what changes for users or maintainers, the compatibility impact, and
-  the evidence required before release.
+- Established a Rust workspace with durable ownership boundaries for shared
+  contracts, signals and DSP, receiver execution, navigation science, dataset
+  infrastructure, operator workflows, scientific test support, repository
+  policy, and maintainer automation.
+- Implemented multi-constellation GNSS processing across GPS, Galileo,
+  GLONASS, and BeiDou, including signal definitions, spreading codes,
+  acquisition, tracking, observation production, navigation-message handling,
+  and constellation-specific timing and orbit behavior.
+- Delivered positioning and integrity capabilities spanning broadcast and
+  precise products, atmospheric and antenna corrections, weighted and filtered
+  solutions, RAIM, RTK ambiguity resolution, PPP state estimation, uncertainty,
+  and explicit refusal evidence.
+- Added the `bijux gnss` command and `bijux-gnss` Rust facade for inspecting,
+  ingesting, acquiring, tracking, running, replaying, diagnosing, exporting,
+  and validating GNSS workflows through typed reports and artifacts.
+- Made experiments reproducible through registered datasets, raw-IQ sidecars,
+  provenance hashing, typed receiver-profile overrides, deterministic sweep
+  expansion, stable run identities, manifests, reports, histories, and artifact
+  inspection.
+- Built scientific validation around checked-in references, independent truth
+  models, deterministic synthetic signals and observations, property tests,
+  reference comparisons, performance benchmarks, and evidence-strength
+  boundaries that prevent unsupported claims.
+- Defined curated public APIs, typed units and identities, versioned artifact
+  envelopes, diagnostics, support matrices, feature-gated capabilities, and
+  dependency-direction guardrails across the workspace.
+- Added repository-wide formatting, linting, audit, test, benchmark, Rustdoc,
+  strict MkDocs, artifact-hygiene, standards, packaging, and release-readiness
+  lanes with generated outputs contained under `artifacts/`.
+- Prepared six Apache-2.0 public crates for crates.io and docs.rs, kept three
+  support crates repository-only, and added managed publication workflows for
+  crate packages, source bundles, checksums, GHCR, and GitHub Releases.
+- Renamed the repository and every maintained product-facing reference from
+  `bijux-telecom` to `bijux-gnss`, then established the canonical
+  `bijux.io/bijux-gnss/` handbook with package-owned navigation and synchronized
+  Bijux governance.
