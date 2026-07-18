@@ -76,18 +76,18 @@ flowchart LR
 ## Strongest Proof Surfaces
 
 - crate README:
-  [`crates/bijux-gnss-dev/README.md`](../../crates/bijux-gnss-dev/README.md)
+  [Maintainer crate README](../../crates/bijux-gnss-dev/README.md)
 - crate-local docs:
-  [`crates/bijux-gnss-dev/docs/COMMANDS.md`](../../crates/bijux-gnss-dev/docs/COMMANDS.md),
-  [`crates/bijux-gnss-dev/docs/AUDIT_POLICY.md`](../../crates/bijux-gnss-dev/docs/AUDIT_POLICY.md),
-  [`crates/bijux-gnss-dev/docs/BENCHMARKS.md`](../../crates/bijux-gnss-dev/docs/BENCHMARKS.md),
-  [`crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md`](../../crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md),
-  [`crates/bijux-gnss-dev/docs/WORKFLOWS.md`](../../crates/bijux-gnss-dev/docs/WORKFLOWS.md)
+  [Maintainer command guide](../../crates/bijux-gnss-dev/docs/COMMANDS.md),
+  [Audit policy guide](../../crates/bijux-gnss-dev/docs/AUDIT_POLICY.md),
+  [Benchmark governance guide](../../crates/bijux-gnss-dev/docs/BENCHMARKS.md),
+  [Governed file guide](../../crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md),
+  [Maintainer workflow guide](../../crates/bijux-gnss-dev/docs/WORKFLOWS.md)
 - source root:
-  [`crates/bijux-gnss-dev/src/main.rs`](../../crates/bijux-gnss-dev/src/main.rs)
+  [maintainer command source](../../crates/bijux-gnss-dev/src/main.rs)
 - proof tests:
-  [`crates/bijux-gnss-dev/tests/integration_guardrails.rs`](../../crates/bijux-gnss-dev/tests/integration_guardrails.rs),
-  [`crates/bijux-gnss-dev/tests/integration_nextest_suite_selection.rs`](../../crates/bijux-gnss-dev/tests/integration_nextest_suite_selection.rs)
+  [maintainer guardrail tests](../../crates/bijux-gnss-dev/tests/integration_guardrails.rs),
+  [suite-selection tests](../../crates/bijux-gnss-dev/tests/integration_nextest_suite_selection.rs)
 
 ## Support Crates That Matter Here
 
@@ -133,22 +133,22 @@ flowchart LR
 ## Leave This Handbook When
 
 - the question becomes about operator-facing GNSS commands:
-  [01-bijux-gnss](../01-bijux-gnss/)
+  [Command handbook](../01-bijux-gnss/)
 - the question becomes about runtime execution or receiver artifacts:
-  [05-bijux-gnss-receiver](../05-bijux-gnss-receiver/)
+  [Receiver handbook](../05-bijux-gnss-receiver/)
 - the question becomes about persisted datasets, run layouts, or experiment
   evidence:
-  [03-bijux-gnss-infra](../03-bijux-gnss-infra/)
+  [Infra handbook](../03-bijux-gnss-infra/)
 
 ## First Proof Check
 
-- `crates/bijux-gnss-dev/src/main.rs`
-- `crates/bijux-gnss-dev/docs/COMMANDS.md`
-- `crates/bijux-gnss-dev/docs/AUDIT_POLICY.md`
-- `crates/bijux-gnss-dev/docs/BENCHMARKS.md`
-- `crates/bijux-gnss-dev/docs/OUTPUTS.md`
-- `crates/bijux-gnss-dev/tests/integration_guardrails.rs`
-- `crates/bijux-gnss-dev/tests/integration_nextest_suite_selection.rs`
+- [maintainer command source](../../crates/bijux-gnss-dev/src/main.rs)
+- [maintainer command guide](../../crates/bijux-gnss-dev/docs/COMMANDS.md)
+- [audit policy guide](../../crates/bijux-gnss-dev/docs/AUDIT_POLICY.md)
+- [benchmark governance guide](../../crates/bijux-gnss-dev/docs/BENCHMARKS.md)
+- [output contract guide](../../crates/bijux-gnss-dev/docs/OUTPUTS.md)
+- [maintainer guardrail tests](../../crates/bijux-gnss-dev/tests/integration_guardrails.rs)
+- [suite-selection tests](../../crates/bijux-gnss-dev/tests/integration_nextest_suite_selection.rs)
 
 ## Design Pressure
 

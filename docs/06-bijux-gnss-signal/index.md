@@ -82,24 +82,24 @@ flowchart LR
 ## Strongest Proof Surfaces
 
 - crate README:
-  [`crates/bijux-gnss-signal/README.md`](../../crates/bijux-gnss-signal/README.md)
+  [Signal crate README](../../crates/bijux-gnss-signal/README.md)
 - crate-local docs:
-  [`crates/bijux-gnss-signal/docs/CATALOG.md`](../../crates/bijux-gnss-signal/docs/CATALOG.md),
-  [`crates/bijux-gnss-signal/docs/CODE_FAMILIES.md`](../../crates/bijux-gnss-signal/docs/CODE_FAMILIES.md),
-  [`crates/bijux-gnss-signal/docs/DSP.md`](../../crates/bijux-gnss-signal/docs/DSP.md),
-  [`crates/bijux-gnss-signal/docs/RAW_IQ.md`](../../crates/bijux-gnss-signal/docs/RAW_IQ.md),
-  [`crates/bijux-gnss-signal/docs/VALIDATION.md`](../../crates/bijux-gnss-signal/docs/VALIDATION.md)
+  [Signal catalog guide](../../crates/bijux-gnss-signal/docs/CATALOG.md),
+  [Code-family guide](../../crates/bijux-gnss-signal/docs/CODE_FAMILIES.md),
+  [DSP guide](../../crates/bijux-gnss-signal/docs/DSP.md),
+  [Raw-IQ guide](../../crates/bijux-gnss-signal/docs/RAW_IQ.md),
+  [Signal validation guide](../../crates/bijux-gnss-signal/docs/VALIDATION.md)
 - source roots:
-  [`crates/bijux-gnss-signal/src/catalog.rs`](../../crates/bijux-gnss-signal/src/catalog.rs),
-  [`crates/bijux-gnss-signal/src/codes/`](../../crates/bijux-gnss-signal/src/codes),
-  [`crates/bijux-gnss-signal/src/dsp/`](../../crates/bijux-gnss-signal/src/dsp),
-  [`crates/bijux-gnss-signal/src/raw_iq.rs`](../../crates/bijux-gnss-signal/src/raw_iq.rs),
-  [`crates/bijux-gnss-signal/src/obs_validation.rs`](../../crates/bijux-gnss-signal/src/obs_validation.rs)
+  [catalog source](../../crates/bijux-gnss-signal/src/catalog.rs),
+  [code-family source](../../crates/bijux-gnss-signal/src/codes),
+  [DSP source](../../crates/bijux-gnss-signal/src/dsp),
+  [raw-IQ source](../../crates/bijux-gnss-signal/src/raw_iq.rs),
+  [observation validation source](../../crates/bijux-gnss-signal/src/obs_validation.rs)
 - proof tests:
-  [`crates/bijux-gnss-signal/tests/integration_signal_component_registry.rs`](../../crates/bijux-gnss-signal/tests/integration_signal_component_registry.rs),
-  [`crates/bijux-gnss-signal/tests/integration_nco_long_duration_phase.rs`](../../crates/bijux-gnss-signal/tests/integration_nco_long_duration_phase.rs),
-  [`crates/bijux-gnss-signal/tests/integration_raw_iq_metadata.rs`](../../crates/bijux-gnss-signal/tests/integration_raw_iq_metadata.rs),
-  [`crates/bijux-gnss-signal/tests/prop_obs_epoch_validation.rs`](../../crates/bijux-gnss-signal/tests/prop_obs_epoch_validation.rs)
+  [signal registry proof](../../crates/bijux-gnss-signal/tests/integration_signal_component_registry.rs),
+  [long-duration NCO proof](../../crates/bijux-gnss-signal/tests/integration_nco_long_duration_phase.rs),
+  [raw-IQ metadata proof](../../crates/bijux-gnss-signal/tests/integration_raw_iq_metadata.rs),
+  [observation epoch property proof](../../crates/bijux-gnss-signal/tests/prop_obs_epoch_validation.rs)
 
 ## Support Crates That Matter Here
 
@@ -147,27 +147,27 @@ flowchart LR
 
 - the question becomes about runtime scheduling, channel behavior, or emitted
   receiver artifacts:
-  [05-bijux-gnss-receiver](../05-bijux-gnss-receiver/)
+  [Receiver handbook](../05-bijux-gnss-receiver/)
 - the question becomes about navigation estimators, orbit products, or
   solution science:
-  [04-bijux-gnss-nav](../04-bijux-gnss-nav/)
+  [Navigation handbook](../04-bijux-gnss-nav/)
 - the question becomes about dataset layout, sidecars, or persisted run
   metadata:
-  [03-bijux-gnss-infra](../03-bijux-gnss-infra/)
+  [Infra handbook](../03-bijux-gnss-infra/)
 - the question becomes about operator commands or report wording:
-  [01-bijux-gnss](../01-bijux-gnss/)
+  [Command handbook](../01-bijux-gnss/)
 - the question becomes about shared satellite identity, time, or observation
   record meaning:
-  [02-bijux-gnss-core](../02-bijux-gnss-core/)
+  [Core handbook](../02-bijux-gnss-core/)
 
 ## First Proof Check
 
-- `crates/bijux-gnss-signal/src/catalog.rs`
-- `crates/bijux-gnss-signal/src/codes/ca_code.rs`
-- `crates/bijux-gnss-signal/src/codes/galileo_e5.rs`
-- `crates/bijux-gnss-signal/src/dsp/nco.rs`
-- `crates/bijux-gnss-signal/src/dsp/replica.rs`
-- `crates/bijux-gnss-signal/src/raw_iq.rs`
+- [catalog source](../../crates/bijux-gnss-signal/src/catalog.rs)
+- [GPS L1 C-A code source](../../crates/bijux-gnss-signal/src/codes/ca_code.rs)
+- [Galileo E5 code source](../../crates/bijux-gnss-signal/src/codes/galileo_e5.rs)
+- [NCO source](../../crates/bijux-gnss-signal/src/dsp/nco.rs)
+- [replica source](../../crates/bijux-gnss-signal/src/dsp/replica.rs)
+- [raw-IQ source](../../crates/bijux-gnss-signal/src/raw_iq.rs)
 - `crates/bijux-gnss-signal/src/samples.rs`
 - `crates/bijux-gnss-signal/src/obs_validation.rs`
 - `crates/bijux-gnss-signal/docs/DSP.md`

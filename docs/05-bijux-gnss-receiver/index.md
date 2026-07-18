@@ -84,21 +84,21 @@ undifferentiated execution block.
 ## Strongest Proof Surfaces
 
 - crate README:
-  [`crates/bijux-gnss-receiver/README.md`](../../crates/bijux-gnss-receiver/README.md)
+  [Receiver crate README](../../crates/bijux-gnss-receiver/README.md)
 - crate-local docs:
-  [`crates/bijux-gnss-receiver/docs/ARCHITECTURE.md`](../../crates/bijux-gnss-receiver/docs/ARCHITECTURE.md),
-  [`crates/bijux-gnss-receiver/docs/PIPELINE.md`](../../crates/bijux-gnss-receiver/docs/PIPELINE.md),
-  [`crates/bijux-gnss-receiver/docs/RUNTIME.md`](../../crates/bijux-gnss-receiver/docs/RUNTIME.md),
-  [`crates/bijux-gnss-receiver/docs/ARTIFACTS.md`](../../crates/bijux-gnss-receiver/docs/ARTIFACTS.md),
-  [`crates/bijux-gnss-receiver/docs/PORTS.md`](../../crates/bijux-gnss-receiver/docs/PORTS.md),
-  [`crates/bijux-gnss-receiver/docs/SIMULATION.md`](../../crates/bijux-gnss-receiver/docs/SIMULATION.md)
+  [Receiver architecture](../../crates/bijux-gnss-receiver/docs/ARCHITECTURE.md),
+  [Pipeline guide](../../crates/bijux-gnss-receiver/docs/PIPELINE.md),
+  [Runtime guide](../../crates/bijux-gnss-receiver/docs/RUNTIME.md),
+  [Artifact guide](../../crates/bijux-gnss-receiver/docs/ARTIFACTS.md),
+  [Port guide](../../crates/bijux-gnss-receiver/docs/PORTS.md),
+  [Simulation guide](../../crates/bijux-gnss-receiver/docs/SIMULATION.md)
 - source roots:
-  [`crates/bijux-gnss-receiver/src/engine`](../../crates/bijux-gnss-receiver/src/engine),
-  [`crates/bijux-gnss-receiver/src/pipeline`](../../crates/bijux-gnss-receiver/src/pipeline),
-  [`crates/bijux-gnss-receiver/src/ports`](../../crates/bijux-gnss-receiver/src/ports),
-  [`crates/bijux-gnss-receiver/src/sim`](../../crates/bijux-gnss-receiver/src/sim)
+  [engine source](../../crates/bijux-gnss-receiver/src/engine),
+  [pipeline source](../../crates/bijux-gnss-receiver/src/pipeline),
+  [port source](../../crates/bijux-gnss-receiver/src/ports),
+  [simulation source](../../crates/bijux-gnss-receiver/src/sim)
 - proof tests:
-  [`crates/bijux-gnss-receiver/tests`](../../crates/bijux-gnss-receiver/tests)
+  [receiver integration tests](../../crates/bijux-gnss-receiver/tests)
 
 ## Support Crates That Matter Here
 
@@ -148,26 +148,26 @@ undifferentiated execution block.
 ## Leave This Handbook When
 
 - the question becomes about signal primitives or code families:
-  [06-bijux-gnss-signal](../06-bijux-gnss-signal/)
+  [Signal handbook](../06-bijux-gnss-signal/)
 - the question becomes about navigation estimators or precise products:
-  [04-bijux-gnss-nav](../04-bijux-gnss-nav/)
+  [Navigation handbook](../04-bijux-gnss-nav/)
 - the question becomes about persisted run directories or dataset registries:
-  [03-bijux-gnss-infra](../03-bijux-gnss-infra/)
+  [Infra handbook](../03-bijux-gnss-infra/)
 - the question becomes about public commands or report wording:
-  [01-bijux-gnss](../01-bijux-gnss/)
+  [Command handbook](../01-bijux-gnss/)
 - the question becomes about shared observation or artifact contracts:
-  [02-bijux-gnss-core](../02-bijux-gnss-core/)
+  [Core handbook](../02-bijux-gnss-core/)
 
 ## First Proof Check
 
-- `crates/bijux-gnss-receiver/src/engine/`
-- `crates/bijux-gnss-receiver/src/pipeline/`
-- `crates/bijux-gnss-receiver/src/ports/`
-- `crates/bijux-gnss-receiver/src/artifacts.rs`
-- `crates/bijux-gnss-receiver/src/reference_validation.rs`
-- `crates/bijux-gnss-receiver/src/validation_report/`
-- `crates/bijux-gnss-receiver/src/sim/`
-- `crates/bijux-gnss-receiver/docs/PIPELINE.md`
+- [engine source](../../crates/bijux-gnss-receiver/src/engine/)
+- [pipeline source](../../crates/bijux-gnss-receiver/src/pipeline/)
+- [port source](../../crates/bijux-gnss-receiver/src/ports/)
+- [artifact source](../../crates/bijux-gnss-receiver/src/artifacts.rs)
+- [reference validation source](../../crates/bijux-gnss-receiver/src/reference_validation.rs)
+- [validation report source](../../crates/bijux-gnss-receiver/src/validation_report/)
+- [simulation source](../../crates/bijux-gnss-receiver/src/sim/)
+- [pipeline guide](../../crates/bijux-gnss-receiver/docs/PIPELINE.md)
 
 ## Design Pressure
 
