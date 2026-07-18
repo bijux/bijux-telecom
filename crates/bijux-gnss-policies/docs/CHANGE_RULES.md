@@ -29,11 +29,11 @@ flowchart LR
 
 | change | required companion work |
 | --- | --- |
-| new guardrail family | Update [GUARDRAILS.md](GUARDRAILS.md), configuration docs, tests, and public reporting when applicable. |
-| changed configuration meaning | Update [CONFIGURATION.md](CONFIGURATION.md), snapshots, and any affected failure-message expectations. |
-| changed reporting surface | Update [REPORTING.md](REPORTING.md) and verify report output remains read-only. |
+| new guardrail family | Update the [guardrail guide](GUARDRAILS.md), configuration docs, tests, and public reporting when applicable. |
+| changed configuration meaning | Update the [configuration guide](CONFIGURATION.md), snapshots, and any affected failure-message expectations. |
+| changed reporting surface | Update the [reporting guide](REPORTING.md) and verify report output remains read-only. |
 | changed snapshot | Explain the policy reason in the same change set and avoid accepting generated movement blindly. |
-| new public API | Update [PUBLIC_API.md](PUBLIC_API.md) and prove the export is reusable policy surface. |
+| new public API | Update the [public API](PUBLIC_API.md) and prove the export is reusable policy surface. |
 
 ## Wrong-Crate Signals
 

@@ -49,9 +49,9 @@ flowchart TB
 
 ## Reader Guidance
 
-Use [docs/CATALOG.md](docs/CATALOG.md) before adding a signal, then follow
-[docs/CODE_FAMILIES.md](docs/CODE_FAMILIES.md), [docs/DSP.md](docs/DSP.md),
-[docs/RAW_IQ.md](docs/RAW_IQ.md), and [docs/SAMPLES.md](docs/SAMPLES.md) for
+Use the [signal catalog guide](docs/CATALOG.md) before adding a signal, then
+follow the [code family guide](docs/CODE_FAMILIES.md), [DSP guide](docs/DSP.md),
+[raw IQ guide](docs/RAW_IQ.md), and [sample guide](docs/SAMPLES.md) for
 the owned contract being changed.
 
 ## Review Checks

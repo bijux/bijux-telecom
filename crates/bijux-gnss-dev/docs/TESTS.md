@@ -41,6 +41,6 @@ flowchart LR
 - If a new maintainer command is added, add a test or documented manual command
   that proves its contract.
 - If a new governed file is introduced, list it in
-  [GOVERNANCE_FILES.md](GOVERNANCE_FILES.md).
+  [governance file guide](GOVERNANCE_FILES.md).
 - If test-lane policy changes, prove both inclusion in the slow lane and
   exclusion from the fast lane.

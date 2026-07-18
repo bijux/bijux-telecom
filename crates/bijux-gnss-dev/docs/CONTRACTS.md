@@ -11,8 +11,8 @@ The crate owns the quality gate for `audit-allowlist.toml`:
 
 This contract keeps security exceptions governed instead of becoming invisible CI folklore.
 
-The owned governance files are enumerated in [GOVERNANCE_FILES.md](GOVERNANCE_FILES.md).
-The exception-policy boundary is detailed in [AUDIT_POLICY.md](AUDIT_POLICY.md).
+The owned governance files are enumerated in the [governance file guide](GOVERNANCE_FILES.md).
+The exception-policy boundary is detailed in the [audit policy](AUDIT_POLICY.md).
 
 ## Deny deviation contract
 
@@ -32,5 +32,5 @@ The crate owns:
 It does not own benchmark definitions inside product crates; it owns maintainer evaluation of their
 output.
 
-The benchmark-governance boundary is detailed in [BENCHMARKS.md](BENCHMARKS.md).
-The output locations that carry benchmark evidence are detailed in [OUTPUTS.md](OUTPUTS.md).
+The benchmark-governance boundary is detailed in the [benchmark guide](BENCHMARKS.md).
+The output locations that carry benchmark evidence are detailed in the [output guide](OUTPUTS.md).

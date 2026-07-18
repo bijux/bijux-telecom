@@ -7,7 +7,7 @@
 The crate owns canonical signal definitions, wavelength conversions, and registry access used across
 acquisition, tracking, and synthetic generation.
 
-That registry surface is described in [CATALOG.md](CATALOG.md).
+That registry surface is described in the [signal catalog guide](CATALOG.md).
 
 ## Code-generation contract
 
@@ -19,7 +19,7 @@ The code families own:
 These functions define the workspace’s canonical signal-code behavior.
 
 The supported code families and their boundary rules are detailed in
-[CODE_FAMILIES.md](CODE_FAMILIES.md).
+[code family guide](CODE_FAMILIES.md).
 
 ## DSP contract
 
@@ -31,7 +31,7 @@ The DSP layer owns:
 
 These contracts stay below receiver orchestration so they can be tested independently.
 
-The DSP families and their runtime boundary are detailed in [DSP.md](DSP.md).
+The DSP families and their runtime boundary are detailed in the [DSP guide](DSP.md).
 
 ## Validation contract
 
@@ -44,4 +44,4 @@ decisions.
 `RawIqMetadata`, quantization enums, and sample-conversion helpers define the stable raw-sample
 metadata layer shared by CLI, infrastructure, receiver, and tests.
 
-Those two surfaces are described in [RAW_IQ.md](RAW_IQ.md) and [SAMPLES.md](SAMPLES.md).
+Those two surfaces are described in the [raw IQ guide](RAW_IQ.md) and [sample guide](SAMPLES.md).

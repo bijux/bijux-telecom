@@ -46,6 +46,6 @@ flowchart LR
 ## Proof Surfaces
 
 - `src/main.rs`
-- [BENCHMARKS.md](BENCHMARKS.md)
-- [COMMANDS.md](COMMANDS.md)
+- [Benchmark guide](BENCHMARKS.md)
+- [Command guide](COMMANDS.md)
 - repository Make targets that call `bijux-gnss-dev`

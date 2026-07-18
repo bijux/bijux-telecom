@@ -7,7 +7,7 @@
 `GuardrailConfig` defines the per-crate policy knobs used by the rule engine. It is the stable way
 to declare what a crate is allowed to look like without hard-coding every rule in every test.
 
-That configuration surface is detailed in [CONFIGURATION.md](CONFIGURATION.md).
+That configuration surface is detailed in the [configuration guide](CONFIGURATION.md).
 
 ## Guardrail execution contract
 
@@ -28,12 +28,12 @@ The test suite and guardrail modules together own contracts for:
 - requirements for crate-local guardrail tests and workspace structure
 
 The active guardrail families and their responsibilities are enumerated in
-[GUARDRAILS.md](GUARDRAILS.md).
+[guardrail guide](GUARDRAILS.md).
 
 ## Reporting contract
 
 `src/bin/purity_report.rs` owns a read-only reporting workflow over workspace crate purity
 characteristics. It is a maintainer report, not a product feature.
 
-That reporting surface is detailed in [REPORTING.md](REPORTING.md), and the serialized policy
-snapshot surface is detailed in [SNAPSHOTS.md](SNAPSHOTS.md).
+That reporting surface is detailed in the [reporting guide](REPORTING.md), and the serialized policy
+snapshot surface is detailed in the [snapshot guide](SNAPSHOTS.md).

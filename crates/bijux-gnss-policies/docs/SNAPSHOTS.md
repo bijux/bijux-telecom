@@ -34,7 +34,7 @@ a harder-to-debug guardrail failure.
 ## Change Discipline
 
 - Explain the policy reason in the same change set.
-- Keep [GUARDRAILS.md](GUARDRAILS.md) and [CONTRACTS.md](CONTRACTS.md) aligned
+- Keep the [guardrail guide](GUARDRAILS.md) and [contract guide](CONTRACTS.md) aligned
   when rule families or configuration meaning changes.
 - Treat the snapshot as evidence of policy evolution, not generated clutter.
 - Do not accept a snapshot diff only because a test told you to update it.

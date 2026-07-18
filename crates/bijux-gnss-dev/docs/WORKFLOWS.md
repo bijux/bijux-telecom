@@ -33,7 +33,7 @@ reviewed source instead of from duplicated CI configuration.
 When `--strict` is enabled, regression findings become a failing maintenance gate.
 
 The governed benchmark evidence files and change discipline are documented in
-[BENCHMARKS.md](BENCHMARKS.md).
+[benchmark guide](BENCHMARKS.md).
 
 ## Output discipline
 

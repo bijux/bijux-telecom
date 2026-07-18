@@ -35,4 +35,5 @@ Flags:
 - `--threshold <ratio>` sets the regression threshold
 - `--workspace-root <path>` overrides the repository root
 
-The workflow-level contract and output locations are documented in [WORKFLOWS.md](WORKFLOWS.md).
+The workflow-level contract and output locations are documented in the
+[workflow guide](WORKFLOWS.md).

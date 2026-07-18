@@ -7,7 +7,7 @@
 The format layer owns stable decoding and parsing behavior for navigation messages, RINEX products,
 and precise-reference products. It defines how external navigation data enters the workspace.
 
-The format families and their boundary rules are detailed in [FORMATS.md](FORMATS.md).
+The format families and their boundary rules are detailed in the [format guide](FORMATS.md).
 
 ## Correction contracts
 
@@ -19,7 +19,7 @@ The correction layer owns:
 
 These are reusable domain computations, not receiver orchestration steps.
 
-The correction families and their boundary are detailed in [CORRECTIONS.md](CORRECTIONS.md).
+The correction families and their boundary are detailed in the [correction guide](CORRECTIONS.md).
 
 ## Estimation contracts
 
@@ -32,7 +32,8 @@ The estimation layer owns:
 These contracts describe navigation-domain estimation behavior independent of CLI and repository
 workflows.
 
-The estimation-owned families and their boundary are detailed in [ESTIMATION.md](ESTIMATION.md).
+The estimation-owned families and their boundary are detailed in the
+[estimation guide](ESTIMATION.md).
 
 ## Orbit and model contracts
 
@@ -41,6 +42,6 @@ The orbit/model layer owns:
 - physical supporting models needed by correction and estimation flows
 - time-system rollover handling specific to navigation formats
 
-The orbit-specific ownership surface is detailed in [ORBITS.md](ORBITS.md).
-The supporting model and time-interpretation surfaces are detailed in [MODELS.md](MODELS.md) and
-[TIME.md](TIME.md).
+The orbit-specific ownership surface is detailed in the [orbit guide](ORBITS.md).
+The supporting model and time-interpretation surfaces are detailed in the
+[model guide](MODELS.md) and [time guide](TIME.md).

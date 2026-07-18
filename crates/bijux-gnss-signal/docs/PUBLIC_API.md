@@ -48,4 +48,4 @@ The intentionally public traits are:
 These traits are the reusable integration seam. Receiver orchestration still belongs in
 `bijux-gnss-receiver`.
 
-Their role and boundary are documented in [TRAITS.md](TRAITS.md).
+Their role and boundary are documented in the [trait guide](TRAITS.md).

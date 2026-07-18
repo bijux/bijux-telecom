@@ -18,7 +18,7 @@
 - `tests/snapshots/guardrail_default.json` is the stable serialized policy snapshot used by the
   default-policy test.
 
-Snapshot intent and change discipline are documented in [SNAPSHOTS.md](SNAPSHOTS.md).
+Snapshot intent and change discipline are documented in the [snapshot guide](SNAPSHOTS.md).
 
 ## What these tests are protecting
 
