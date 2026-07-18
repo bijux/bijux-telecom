@@ -1,50 +1,158 @@
 ---
-title: Dependency Direction
+title: Maintainer Tool Dependency Direction
 audience: mixed
 type: architecture
 status: canonical
 owner: bijux-gnss-dev-docs
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-18
 ---
 
-# Dependency Direction
+# Maintainer Tool Dependency Direction
 
-The dependency rule is narrow: general-purpose CLI and parsing tools enter from
-below, reviewed repository files are consumed at the edge, and product crates
-stay out.
+The maintainer package is repository tooling, not a product integration layer.
+Its compiled binary depends only on general-purpose libraries. Product packages
+remain outside its Rust dependency graph even when a maintenance command
+launches their benchmarks as child processes.
 
-## Inbound Direction
+## Separate Compile-Time And Process Dependencies
 
-- `clap` supplies the command-line contract
-- `anyhow` supplies command-oriented error propagation
-- `regex` supports benchmark-line extraction
-- `toml` supports governed-file parsing
+The [package manifest](../../../crates/bijux-gnss-dev/Cargo.toml) defines four
+production dependencies:
 
-## Internal Direction
+| Dependency | Owned use |
+| --- | --- |
+| `clap` | maintainer command and argument parsing |
+| `anyhow` | command-boundary errors with repository context |
+| `toml` | reviewed governance-file parsing |
+| `regex` | benchmark output extraction |
 
-- the command enum selects one owned workflow at a time
-- helper functions are shaped around maintainer workflows, not around reusable
-  library abstractions
-- benchmark comparison depends on parsed benchmark output and governed file
-  locations, not on product-crate internals
+The policy package is development-only and supports the package guardrail.
+There are no production dependencies on core, signal, navigation, receiver,
+infrastructure, or the operator command package.
 
-## Outbound Direction
+```mermaid
+flowchart LR
+    clap["clap"]
+    anyhow["anyhow"]
+    toml["toml"]
+    regex["regex"]
+    dev["maintainer binary"]
+    policy["repository policy"]
+    tests["maintainer tests"]
+    products["GNSS product packages"]
 
-- the crate reads reviewed files from the repository root
-- the crate may execute `cargo bench` and `date`
-- the crate writes governed maintenance evidence under repository-owned
-  locations
+    clap --> dev
+    anyhow --> dev
+    toml --> dev
+    regex --> dev
+    policy -. "development only" .-> tests
+    tests --> dev
+    products -. "no Rust dependency" .- dev
+```
 
-## Prohibited Direction
+Do not add a product dependency to reuse one parser, constant, or runtime
+helper. Move genuinely reusable product behavior to its owning public API, or
+keep repository-specific interpretation in the maintainer command.
 
-This binary must not pull in product crates just to reach behavior indirectly.
-If reusable product logic is needed, the owning product crate should expose it
-first.
+## Child Processes Are Explicit Effects
 
-## First Proof Check
+No product package is linked into the binary, but the
+[benchmark command](../../../crates/bijux-gnss-dev/src/main.rs) invokes Cargo
+benchmarks owned by receiver and navigation. Audit validation also invokes the
+system `date` command to compare expiry fields.
 
-Inspect `crates/bijux-gnss-dev/Cargo.toml`,
-`crates/bijux-gnss-dev/docs/BOUNDARY.md`, and
-`crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md`. Then inspect
-`crates/bijux-gnss-dev/src/main.rs` to confirm the binary still reads reviewed
-files and emits governed evidence without depending on product crates.
+```mermaid
+flowchart TD
+    root["explicit workspace root<br/>or current directory"]
+    tool["maintainer command"]
+    files["reviewed governance files"]
+    date["system date"]
+    cargo["Cargo benchmark process"]
+    stdout["maintainer diagnostics"]
+    log["benchmark raw output"]
+    snapshot["current benchmark snapshot"]
+    baseline["reviewed baseline"]
+
+    root --> tool
+    files --> tool
+    date --> tool
+    tool --> stdout
+    tool --> cargo
+    cargo --> log
+    cargo --> snapshot
+    baseline --> tool
+    snapshot --> tool
+```
+
+These process edges do not transfer receiver or navigation ownership. The
+product packages own benchmark implementation and scientific meaning;
+maintainer tooling owns orchestration, extraction, comparison, and repository
+evidence.
+
+The root is taken from `--workspace-root` when provided and otherwise from the
+current directory. The binary does not search parent directories. Callers must
+therefore set their working directory or root argument deliberately.
+
+## Read And Write Boundaries
+
+The four binary commands have different effects:
+
+| Command family | Reads | Writes or emits |
+| --- | --- | --- |
+| audit allowlist validation | reviewed advisory exceptions | pass/failure diagnostics |
+| deny-policy deviation validation | reviewed standards deviations | pass/failure diagnostics |
+| audit ignore argument generation | current and legacy advisory entries | sorted command arguments on standard output |
+| benchmark comparison | benchmark output and an optional baseline | raw benchmark log, current snapshot, comparison diagnostics |
+
+Missing input is not handled uniformly. Validation commands reject absent
+governance files, while ignore-argument generation returns successfully when
+the allowlist is absent. Benchmark comparison creates its output directories
+and skips regression comparison when no baseline exists. Callers must not infer
+one command’s absence policy from another.
+
+The [governance-file guide](../../../crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md)
+describes reviewed inputs. The
+[workflow guide](../../../crates/bijux-gnss-dev/docs/WORKFLOWS.md) describes
+command effects and output ownership.
+
+## Test-Only Repository Dependencies
+
+Slow-test roster governance is not a subcommand. The
+[lane-selection integration test](../../../crates/bijux-gnss-dev/tests/integration_nextest_suite_selection.rs)
+reads the roster, scans Rust test functions, and executes the
+[nextest expression generator](../../../makes/bin/nextest_expr.sh). This is a
+test-time repository edge, separate from the binary’s command inventory.
+
+The source scan is heuristic: it recognizes test attributes followed by named
+functions. It does not parse Rust syntax or prove that every selected test is
+slow. Its contract is roster integrity and lane-expression agreement.
+
+## Review A New Dependency
+
+Before adding a library, file, or process edge:
+
+1. name the maintainer workflow that owns it
+2. state whether the edge exists at compile time, test time, or process time
+3. identify reviewed inputs and all outputs
+4. define missing, malformed, and partial-output behavior
+5. keep product semantics with the product owner
+6. add a narrow command or integration test for the new effect
+
+Use the [package boundary](../../../crates/bijux-gnss-dev/docs/BOUNDARY.md) to
+reject generic scripting and product behavior. The
+[Make integration](../../../makes/rust.mk) shows current audit and benchmark
+callers; it should remain a caller rather than a second implementation.
+
+## Warning Signs
+
+- a product package enters production dependencies
+- a child process is described as an in-process API
+- a command searches or writes outside its declared workspace root
+- a governed file is read without malformed and missing-input behavior
+- a test-only source scanner is presented as a binary capability
+- a benchmark parser begins deciding scientific performance policy
+- a Make target duplicates validation instead of invoking the typed command
+
+The direction is sound when repository effects remain explicit, product
+packages retain product meaning, and every compile-time, test-time, and process
+edge has one named maintainer purpose.
