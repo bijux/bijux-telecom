@@ -1,69 +1,156 @@
 ---
-title: Dependencies And Adjacencies
+title: Signal Dependencies and Adjacencies
 audience: mixed
 type: foundation
 status: canonical
 owner: bijux-gnss-signal-docs
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-18
 ---
 
-# Dependencies And Adjacencies
+# Signal Dependencies and Adjacencies
 
-This page explains which crates `bijux-gnss-signal` may depend on directly and
-which adjacent owners create more important review pressure than the cargo
-graph alone would show.
+The dependency graph protects the signal boundary only when each edge has a
+clear reason. `bijux-gnss-signal` depends downward on shared contracts and
+general-purpose numerical libraries. Receiver, navigation, infrastructure, and
+test-support packages depend on signal; signal must not import their policy
+back into reusable math.
 
-## Direct Dependencies
+## Current Production Dependencies
 
-- `bijux-gnss-core` for shared physical units, signal IDs, observation records,
-  and sample container types
-- `num-complex` for complex sample math
-- `rustfft` for spectral analysis support
-- `serde` and `schemars` for data-bearing contracts such as raw-IQ metadata and
-  validation reports
-- `thiserror` for signal-layer error reporting
+| Dependency | Owned use in signal | Boundary to preserve |
+| --- | --- | --- |
+| `bijux-gnss-core` | satellite and signal identity, physical units, samples, observations, tracking uncertainty | core records remain domain-neutral; signal must not duplicate them |
+| `num-complex` | complex I/Q, replicas, wipeoff, spectra, filtering, and correlation | complex arithmetic only; no runtime ownership |
+| `rustfft` | FFT planning for power-spectral-density estimation | spectrum computation, not acquisition scheduling |
+| `serde` | raw-IQ metadata, front-end metrics/specification, and observation-validation reports | serialized meaning requires compatibility review |
+| `schemars` | JSON Schema for the front-end filter specification | schema exposure is limited to configuration-bearing contracts |
+| `thiserror` | structured `SignalError` variants | errors describe signal input and model failures, not command policy |
 
-## Adjacencies That Matter More Than The Cargo Graph
+Development-only dependencies have different roles:
 
-- `bijux-gnss-receiver` is the main runtime consumer whose orchestration needs
-  can tempt stage policy into reusable signal code
-- `bijux-gnss-nav` consumes signal semantics and validation helpers, but should
-  not pull navigation judgment back into the signal layer
-- `bijux-gnss-infra` handles capture metadata and persisted dataset state, but
-  should not make repository file layout a signal concern
-- `bijux-gnss-testkit` supplies deterministic signal truth and fixtures, but
-  should remain a proof consumer rather than an API-design owner
-- `bijux-gnss-policies` guards crate-shape and surface expectations, but does
-  not own signal behavior itself
+| Dependency | Test responsibility |
+| --- | --- |
+| `proptest` | generated property coverage for code, NCO, and observation behavior |
+| `bijux-gnss-policies` | crate-shape and public-surface guardrails |
+| `toml` | metadata serialization proof |
+| `sha2` | fixture or reference identity checks |
 
-## Dependency Rules
+Do not move a test dependency into production merely to reuse a test helper.
+Production code must not acquire its expected values from the package that
+tests it.
 
-- new dependencies are acceptable when they support reusable signal math,
-  stable sample contracts, or durable serialization at the signal boundary
-- new dependencies are suspect when they introduce filesystem I/O, operator
-  policy, repository persistence, or receiver-runtime coupling
-- higher-level crates may depend on `bijux-gnss-signal`; this crate must not
-  depend on them just because a helper would be convenient
+## Direction and Pressure
 
-## Review Question
+```mermaid
+flowchart BT
+    core["bijux-gnss-core"]
+    signal["bijux-gnss-signal"]
+    receiver["bijux-gnss-receiver"]
+    nav["bijux-gnss-nav"]
+    infra["bijux-gnss-infra"]
+    testkit["bijux-gnss-testkit"]
+    policies["bijux-gnss-policies<br/>development only"]
 
-For every proposed dependency or export, ask whether it strengthens reusable
-signal ownership or whether it is an attempt to sneak a higher-level concern
-into the signal boundary.
+    signal --> core
+    receiver --> signal
+    nav --> signal
+    infra --> signal
+    testkit --> signal
+    signal -. test .-> policies
+```
 
-## First Proof Check
+The arrows show compile-time direction, but review pressure travels both ways.
+A higher-level consumer may reveal a missing reusable primitive without becoming
+the owner of that primitive.
 
-Inspect `crates/bijux-gnss-signal/Cargo.toml`,
-`crates/bijux-gnss-signal/docs/ARCHITECTURE.md`, and
-`crates/bijux-gnss-signal/docs/BOUNDARY.md`. Then inspect
-`crates/bijux-gnss-signal/src/api.rs`,
-`crates/bijux-gnss-signal/src/obs_validation.rs`, and
-`crates/bijux-gnss-signal/tests/integration_guardrails.rs` to confirm the
-crate still depends downward while exporting a curated signal boundary upward.
+| Adjacent package | Legitimate request to signal | Request that belongs elsewhere |
+| --- | --- | --- |
+| receiver | reusable code, replica, timing, spectrum, loop, or sample operation | channel scheduling, lock lifecycle, acquisition policy, retries, runtime artifacts |
+| navigation | signal identity, wavelength, dual-frequency compatibility, shared-path scaling | orbit, atmosphere, correction acceptance, PPP, RTK, solution integrity |
+| infrastructure | typed raw-IQ meaning and serializable signal records | file discovery, sidecar precedence, dataset registry, run layout |
+| testkit | deterministic public operations needed to build independent expected values | production dependency on test fixtures or copied implementation |
+| policies | structural checks against declared package rules | ownership of scientific behavior |
 
-## First Neighbor Proof Check
+## Dependency Decision
 
-When a dependency question is really about runtime ownership, leave this page
-for the [receiver dependency guide](../../05-bijux-gnss-receiver/foundation/dependencies-and-adjacencies.md).
-When the pressure is navigation-science coupling, inspect
-the [navigation dependency guide](../../04-bijux-gnss-nav/foundation/dependencies-and-adjacencies.md).
+```mermaid
+flowchart TD
+    need["proposed dependency"]
+    purpose{"what durable capability<br/>does it provide?"}
+    general["general numeric,<br/>serialization, or error support"]
+    lower["lower shared GNSS contract"]
+    higher["receiver, navigation,<br/>infrastructure, command"]
+    test["proof-only capability"]
+    accept["consider production dependency"]
+    dev["keep development-only"]
+    reject["reject or move behavior<br/>to the higher owner"]
+
+    need --> purpose
+    purpose --> general --> accept
+    purpose --> lower --> accept
+    purpose --> higher --> reject
+    purpose --> test --> dev
+```
+
+Before adding a production dependency, answer:
+
+1. Which public or private signal capability requires it?
+2. Why can the capability not be expressed with existing core and numerical
+   contracts?
+3. Does the dependency introduce filesystem, network, async-runtime, logging,
+   command, or repository effects?
+4. Does it enlarge serialized, feature, licensing, binary-size, unsafe-code, or
+   platform obligations?
+5. Can it remain optional without fragmenting signal semantics?
+6. Which focused proof fails without it and proves its intended use?
+
+A dependency justified only by “the receiver already uses it” is not a signal
+justification.
+
+## New Export Pressure
+
+Dependency direction can remain technically correct while ownership still
+drifts through public exports. Review a proposed export for:
+
+- a complete physical contract: units, identity, range, phase/time origin, and
+  error behavior
+- usefulness to more than one receiver workflow
+- independence from one command, profile, dataset, or run
+- deterministic and chunk-stable behavior where time evolves
+- proof against an independent source or invariant
+- consumer evidence showing why the public surface is needed
+
+If a helper accepts receiver channel state, repository locations, navigation
+products, or command options, moving its code into signal does not make it a
+signal primitive.
+
+## Serialized Dependency Impact
+
+`serde` and `schemars` make dependency changes visible beyond Rust callers.
+Changing an enum spelling, field requiredness, default, numeric unit, or schema
+shape can break sidecars, configurations, artifacts, and external tooling.
+Review serialized contracts separately from internal implementation.
+
+The [raw-IQ and sample contract](../interfaces/raw-iq-and-sample-contracts.md)
+defines current sample metadata behavior. The
+[public import guide](../interfaces/public-imports.md) defines the supported
+Rust entrypoint.
+
+## Review Evidence
+
+- [Package manifest](../../../crates/bijux-gnss-signal/Cargo.toml) is the
+  authority for current dependency classes and features.
+- [Signal architecture](../../../crates/bijux-gnss-signal/docs/ARCHITECTURE.md)
+  defines the computational boundary.
+- [Signal boundary](../../../crates/bijux-gnss-signal/docs/BOUNDARY.md) defines
+  allowed and excluded ownership.
+- [Curated public API](../../../crates/bijux-gnss-signal/src/api.rs) shows which
+  dependency-backed types reach consumers.
+- [Signal guardrail](../../../crates/bijux-gnss-signal/tests/integration_guardrails.rs)
+  checks package structure; it does not prove scientific correctness or
+  dependency necessity.
+
+When the disputed behavior is receiver scheduling, use the
+[receiver dependency boundary](../../05-bijux-gnss-receiver/foundation/dependencies-and-adjacencies.md).
+When it is estimation or correction science, use the
+[navigation dependency boundary](../../04-bijux-gnss-nav/foundation/dependencies-and-adjacencies.md).
