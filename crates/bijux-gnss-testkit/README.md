@@ -16,6 +16,7 @@ implementation, repository persistence rules, or one-off wrappers.
 | Which fixture or reference dataset is shared? | [docs/FIXTURES.md](docs/FIXTURES.md), [docs/REFERENCE_DATA.md](docs/REFERENCE_DATA.md) |
 | Which independent model computes expected behavior? | [docs/TRUTH_MODELS.md](docs/TRUTH_MODELS.md), `src/reference_models/` |
 | Which antenna or signal truth helper is available? | [docs/ANTENNA.md](docs/ANTENNA.md), [docs/SIGNAL.md](docs/SIGNAL.md) |
+| Which Rust API is public? | [API.md](API.md), `src/lib.rs` |
 | How is independence protected? | [docs/INDEPENDENCE.md](docs/INDEPENDENCE.md), `tests/scientific_independence.rs` |
 | What changed in this package? | [CHANGELOG.md](CHANGELOG.md) |
 
@@ -53,6 +54,7 @@ flowchart TB
 ## Documentation Map
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+- [API.md](API.md)
 - [docs/ANTENNA.md](docs/ANTENNA.md)
 - [docs/BOUNDARY.md](docs/BOUNDARY.md)
 - [docs/CONTRACTS.md](docs/CONTRACTS.md)
