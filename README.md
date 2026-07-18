@@ -162,6 +162,7 @@ Use the maintained lanes from the repository root:
 make test
 make test-slow
 make test-all
+make docs-check
 ```
 
 `make test` excludes the governed slow roster. `make test-slow` runs that
@@ -169,6 +170,16 @@ roster, and `make test-all` runs both lanes. The
 [repository test policy](docs/bijux-gnss-dev/quality/repository-test-policy.md)
 defines the selection contract and the evidence each lane is intended to
 provide.
+
+Build the published handbook under `artifacts/docs/site` or serve it locally:
+
+```bash
+make docs
+make docs-serve
+```
+
+Use `make rustdoc-check` for workspace Rust API documentation. The `ci-docs`
+lane validates both the published handbook and Rust API docs.
 
 Release preparation and compatibility decisions are recorded in the
 [workspace release history](CHANGELOG.md). Package-specific history belongs

@@ -40,7 +40,7 @@ define rs_nextest_summary
 	printf '\033[1;36m%s\033[0m %s\n' "nextest-summary:" "$${summary_line:-unavailable}"
 endef
 
-.PHONY: fmt-rs lint-rs test-rs test-slow-rs test-all-rs test-all-frozen lint-frozen audit-frozen coverage-rs audit-rs bench-compare docs-check ci-docs
+.PHONY: fmt-rs lint-rs test-rs test-slow-rs test-all-rs test-all-frozen lint-frozen audit-frozen coverage-rs audit-rs bench-compare rustdoc-check
 
 fmt-rs: ## Run Rust formatting checks
 	@mkdir -p "$(dir $(RS_FMT_REPORT))"
@@ -197,7 +197,5 @@ audit-rs: ## Run cargo-deny and cargo-audit
 bench-compare: ## Run benchmark comparison through bijux-gnss-dev
 	@CARGO_TARGET_DIR="$(RS_TARGET_DIR)" cargo run --locked -q -p bijux-gnss-dev -- bench-compare $(if $(filter 1 true yes,$(BENCH_STRICT)),--strict,)
 
-docs-check: ## Build rustdoc as docs lane baseline
+rustdoc-check: ## Build workspace Rust API documentation
 	@CARGO_TARGET_DIR="$(RS_TARGET_DIR)" cargo doc --workspace --no-deps
-
-ci-docs: docs-check ## Alias for docs-check

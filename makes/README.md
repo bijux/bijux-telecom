@@ -15,6 +15,10 @@ refactors; helper targets remain internal.
 - `lint-frozen`
 - `audit-frozen`
 - `coverage`
+- `docs`
+- `docs-check`
+- `docs-serve`
+- `rustdoc-check`
 - `ci`
 
 All other targets are implementation details.
@@ -64,6 +68,10 @@ the code, reports, and cargo state aligned to the same immutable source tree.
 - `test-all-frozen` -> pinned `test-all`
 - `lint-frozen` -> pinned `lint`
 - `audit-frozen` -> pinned `audit`
+- `docs` -> strict MkDocs build under `artifacts/docs/site`
+- `docs-check` -> shared shell, Markdown table, strict build, and rendered-site validation
+- `docs-serve` -> local MkDocs development server with automatic reloads
+- `rustdoc-check` -> workspace Rust API documentation build
 
 ## Boundary
 
