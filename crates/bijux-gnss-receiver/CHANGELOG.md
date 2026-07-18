@@ -1,63 +1,45 @@
 # Changelog
+<a id="top"></a>
 
-Changes to `bijux-gnss-receiver` runtime behavior are recorded here.
-Workspace-wide release notes live in the [workspace changelog](../../CHANGELOG.md).
+All notable changes to **bijux-gnss-receiver** are documented in this file.
+Workspace-wide release notes live in the
+[Bijux GNSS changelog](../../CHANGELOG.md).
+This package adheres to [Semantic Versioning](https://semver.org) and the
+[Keep a Changelog](https://keepachangelog.com/en/1.0.0/) format.
 
-## Unreleased
+---
+
+## 0.1.0 - Unreleased
 
 ### Added
 
-- The crate is prepared for crates.io publication with complete package
-  metadata, an Apache-2.0 license, API documentation, and release-channel links.
-- The [pipeline guide](docs/PIPELINE.md), [runtime guide](docs/RUNTIME.md), and
-  [artifact guide](docs/ARTIFACTS.md) now trace a receiver run from validated
-  configuration through acquisition, tracking, observations, optional
-  navigation, diagnostics, and typed evidence.
-- The [reference-validation guide](docs/REFERENCE_VALIDATION.md) distinguishes
-  receiver claims from signal references, navigation truth, and
-  infrastructure persistence.
-
-### Changed
-
-- The [port guide](docs/PORTS.md) makes clock, sample-source, and artifact-sink
-  side effects explicit instead of hiding them inside stage logic.
-- Runtime documentation now states defaults, validation, degraded and refused
-  states, support evidence, and feature-gated navigation handoff.
-- Repository policy and scientific test support remain path-based development
-  dependencies and are excluded from the registry package.
-
-## Compatibility Notes
-
-- A configuration default or validation change alters receiver behavior even
-  when an existing configuration still parses.
-- Acquisition acceptance, tracking thresholds, channel transitions, CN0,
-  uncertainty, and refusal rules are observable runtime contracts.
-- A receiver artifact change must identify whether only in-memory evidence
-  changes or persisted core and infrastructure contracts also change.
-- Default features include navigation. A feature-default or navigation-handoff
-  change must describe behavior with and without navigation enabled.
-
-The [receiver release guide](../../docs/bijux-gnss-receiver/operations/release-and-versioning.md)
-defines the proof route for runtime, artifact, port, and validation changes.
-
-## What Belongs Here
-
-- Receiver runtime configuration, defaults, diagnostics, and reports.
-- Acquisition, tracking, observation, and navigation-stage orchestration.
-- Channel state, lock lifecycle, CN0, uncertainty, and refusal evidence.
-- Synthetic receiver runs and runtime-side reference validation.
-
-## What Belongs Elsewhere
-
-- Canonical signal definitions belong to `bijux-gnss-signal`.
-- Repository persistence belongs to `bijux-gnss-infra`.
-- Standalone navigation science belongs to `bijux-gnss-nav`.
-- CLI report wording belongs to `bijux-gnss`.
-
-## Entry Rules
-
-- Record runtime behavior changes in terms of observable receiver evidence.
-- Mention feature gates when navigation behavior is affected.
-- State the old and new default, threshold, transition, report, or refusal
-  behavior and name the affected signal or stage.
-- Do not hide changed defaults inside vague implementation wording.
+- Added validated receiver and pipeline configuration with explicit defaults,
+  per-signal capability selection, navigation settings, diagnostic controls,
+  and typed rejection of unsupported combinations.
+- Implemented composable receiver execution around sample sources, clocks,
+  artifact sinks, metrics, traces, allocation evidence, and deterministic
+  runtime state rather than hidden process-global side effects.
+- Added acquisition across signal catalogs with FFT and search strategies,
+  calibrated thresholds, Doppler-rate search, uncertainty estimates,
+  component hypotheses, and accepted-or-refused evidence.
+- Added assisted and related-signal acquisition with bounded search windows,
+  oscillator-bias estimation, secondary-code and data-symbol hypotheses,
+  cross-band follow-up, and safe fallback to full search.
+- Implemented channel tracking with adaptive DLL and PLL behavior, vector and
+  common-frequency aiding, secondary-code and navigation-symbol synchronization,
+  reacquisition, calibrated lock decisions, and numerical-stability reports.
+- Added observation production with transmit-time and code-period ambiguity
+  resolution, receiver-clock handling, carrier-phase arcs, cycle-slip fusion,
+  covariance, code-carrier divergence, Hatch smoothing, and quality validation.
+- Integrated optional navigation execution and filtering, including SPP, RTK,
+  PPP, precise-product policy, integrity thresholds, stage handoff, and
+  preservation of degraded or refused navigation outcomes.
+- Defined `RunArtifacts`, stage reports, diagnostics, support matrices,
+  validation reports, tracking transitions, acquisition explanations, metrics,
+  traces, and optional navigation epochs as inspectable receiver evidence.
+- Added deterministic synthetic signal and navigation scenarios, truth-aware
+  acquisition and tracking reports, covariance-realism checks, and external
+  reference comparison with explicit alignment and tolerance policy.
+- Published receiver, engine, pipeline, port, simulation, and evidence
+  contracts through a curated `api` module with feature gates for navigation,
+  precise products, tracing, reference checks, and allocation audits.

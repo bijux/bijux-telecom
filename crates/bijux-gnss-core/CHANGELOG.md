@@ -1,61 +1,40 @@
 # Changelog
+<a id="top"></a>
 
-Changes to `bijux-gnss-core` shared contracts are recorded here. Workspace-wide
-release notes live in the [workspace changelog](../../CHANGELOG.md).
+All notable changes to **bijux-gnss-core** are documented in this file.
+Workspace-wide release notes live in the
+[Bijux GNSS changelog](../../CHANGELOG.md).
+This package adheres to [Semantic Versioning](https://semver.org) and the
+[Keep a Changelog](https://keepachangelog.com/en/1.0.0/) format.
 
-## Unreleased
+---
+
+## 0.1.0 - Unreleased
 
 ### Added
 
-- The crate is prepared for crates.io publication with complete package
-  metadata, an Apache-2.0 license, API documentation, and release-channel links.
-- The [contract guide](docs/CONTRACTS.md) and
-  [serialization guide](docs/SERIALIZATION.md) identify the shared records and
-  persisted meanings that downstream crates may rely on.
-- The [release guide](../../docs/bijux-gnss-core/operations/release-and-versioning.md)
-  maps public exports, validation changes, serialized data, units, time
-  systems, and diagnostics to explicit compatibility decisions.
-
-### Changed
-
-- The [public API guide](docs/PUBLIC_API.md) now presents the crate as the
-  curated shared-vocabulary boundary rather than an inventory of exported
-  symbols.
-- The [invariant guide](docs/INVARIANTS.md) connects public exports, artifact
-  coherence, timekeeping, and dependency direction to their enforcing tests.
-- Repository policy remains a path-based development dependency and is
-  excluded from the registry package.
-
-## Compatibility Notes
-
-- Adding a Rust export can be source-compatible while still changing serialized
-  data, exhaustive matches, or downstream validation behavior.
-- A changed unit, coordinate frame, time-system interpretation, or artifact
-  field meaning is a breaking contract change even when the Rust type is
-  unchanged.
-- New diagnostics may be additive; changing an existing code's condition or
-  severity changes machine-readable behavior.
-- Tightened validation must identify which previously accepted state is now
-  rejected and why that state was invalid.
-
-## What Belongs Here
-
-- Public shared types exchanged across GNSS crates.
-- Unit, time, coordinate, identity, observation, and solution semantics.
-- Versioned artifact envelopes and validation rules.
-- Diagnostic code and severity taxonomy changes.
-
-## What Belongs Elsewhere
-
-- Runtime orchestration belongs to `bijux-gnss-receiver`.
-- DSP implementations belong to `bijux-gnss-signal`.
-- Navigation estimators belong to `bijux-gnss-nav`.
-- Filesystem layout and run persistence belong to `bijux-gnss-infra`.
-
-## Entry Rules
-
-- Treat public type and serialized-shape changes as compatibility-sensitive.
-- Record unit, time-system, and schema implications explicitly.
-- Name the affected artifact version, diagnostic code, or invariant when one is
-  involved.
-- Do not describe downstream convenience imports as core ownership.
+- Defined canonical constellation, satellite, signal, channel, dataset, run,
+  and artifact identities for values exchanged across GNSS package boundaries.
+- Added strongly typed units, coordinate representations, geodetic conversion,
+  physical conventions, time scales, epochs, durations, and week-rollover
+  context.
+- Introduced validated workspace configuration contracts with schema versions,
+  structured validation reports, typed failures, and stable error categories.
+- Modeled acquisition candidates, tracking epochs and transitions, observation
+  epochs, navigation inputs, differencing records, and stage-specific evidence
+  as shared data contracts.
+- Added observation-quality, uncertainty, covariance, code-carrier divergence,
+  receiver-clock, cycle-slip, carrier-arc, and rejection evidence used by
+  receiver and navigation consumers.
+- Established machine-readable diagnostics with stable codes, severities,
+  events, summaries, refusal reasons, and deterministic reporting semantics.
+- Defined navigation solution, RTK, PPP, residual, integrity, quality, and
+  degraded-or-refused outcome records without owning estimation algorithms.
+- Added version-one artifact envelopes and payloads for acquisition, tracking,
+  observations, navigation, and support matrices with explicit validation and
+  serialization behavior.
+- Introduced support-matrix and capability records that distinguish catalog
+  availability from acquisition, tracking, observation, and navigation support.
+- Published a curated `api` module for the shared contract families, backed by
+  statistics and geodesy helpers while preserving a dependency direction that
+  keeps runtime, signal, navigation, and persistence policy out of core.
