@@ -159,7 +159,7 @@ them into one generic "nav logic" bucket.
   orchestration:
   [Receiver handbook](../05-bijux-gnss-receiver/)
 
-## First Proof Check
+## Evidence Routes
 
 - [curated navigation API source](../../crates/bijux-gnss-nav/src/api.rs)
 - [format source](../../crates/bijux-gnss-nav/src/formats/)
@@ -168,7 +168,7 @@ them into one generic "nav logic" bucket.
 - [estimation source](../../crates/bijux-gnss-nav/src/estimation/)
 - [model source](../../crates/bijux-gnss-nav/src/models/)
 - [rollover handling source](../../crates/bijux-gnss-nav/src/time/rollover.rs)
-- `crates/bijux-gnss-nav/docs/PUBLIC_API.md`
+- [public API guide](../../crates/bijux-gnss-nav/docs/PUBLIC_API.md)
 
 ## Design Pressure
 

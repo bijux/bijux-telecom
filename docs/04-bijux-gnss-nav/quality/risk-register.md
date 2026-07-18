@@ -46,10 +46,10 @@ flowchart LR
 - Do the [navigation ownership boundaries](../ownership-boundaries.md) remain
   accurate?
 
-## First Proof Check
+## Evidence To Inspect
 
-Inspect `crates/bijux-gnss-nav/docs/PUBLIC_API.md`,
-`crates/bijux-gnss-nav/docs/TESTS.md`,
-`crates/bijux-gnss-nav/docs/BOUNDARY.md`,
-`crates/bijux-gnss-nav/src/api.rs`, and
-`crates/bijux-gnss-nav/tests/integration_guardrails.rs`.
+Inspect the [public API guide](../../../crates/bijux-gnss-nav/docs/PUBLIC_API.md),
+[navigation test guide](../../../crates/bijux-gnss-nav/docs/TESTS.md),
+[package boundary](../../../crates/bijux-gnss-nav/docs/BOUNDARY.md),
+[public facade](../../../crates/bijux-gnss-nav/src/api.rs), and
+[dependency guardrail](../../../crates/bijux-gnss-nav/tests/integration_guardrails.rs).

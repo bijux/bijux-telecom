@@ -57,8 +57,9 @@ flowchart LR
 
 ## What It Owns
 
-- validation for `audit-allowlist.toml`
-- validation for `configs/rust/deny.deviations.toml`
+- validation for the [audit exception register](../../audit-allowlist.toml)
+- validation for the
+  [dependency-policy deviation register](../../configs/rust/deny.deviations.toml)
 - derived `cargo audit --ignore ...` arguments from the reviewed allowlist
 - benchmark execution, snapshot normalization, and baseline comparison for the
   curated maintainer benchmark set

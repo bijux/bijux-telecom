@@ -31,10 +31,11 @@ This page records the main trust risks in `bijux-gnss-receiver`.
 - maintain placement decisions in the
   [receiver ownership boundaries](../ownership-boundaries.md)
 
-## First Proof Check
+## Evidence To Inspect
 
-Inspect `crates/bijux-gnss-receiver/docs/PUBLIC_API.md`,
-`crates/bijux-gnss-receiver/docs/TESTS.md`,
-`crates/bijux-gnss-receiver/tests/integration_basic.rs`, and the most relevant
-artifact, validation, or stage-focused integration tests to confirm the main
-runtime risk routes documented here still have active proof.
+Inspect the [public API guide](../../../crates/bijux-gnss-receiver/docs/PUBLIC_API.md),
+[receiver test guide](../../../crates/bijux-gnss-receiver/docs/TESTS.md),
+[basic integration proof](../../../crates/bijux-gnss-receiver/tests/integration_basic.rs),
+and the most relevant artifact, validation, or stage-focused integration tests
+to confirm the main runtime risk routes documented here still have active
+proof.

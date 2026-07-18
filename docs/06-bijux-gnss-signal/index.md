@@ -160,7 +160,7 @@ flowchart LR
   record meaning:
   [Core handbook](../02-bijux-gnss-core/)
 
-## First Proof Check
+## Evidence Routes
 
 - [catalog source](../../crates/bijux-gnss-signal/src/catalog.rs)
 - [GPS L1 C-A code source](../../crates/bijux-gnss-signal/src/codes/ca_code.rs)
@@ -168,9 +168,9 @@ flowchart LR
 - [NCO source](../../crates/bijux-gnss-signal/src/dsp/nco.rs)
 - [replica source](../../crates/bijux-gnss-signal/src/dsp/replica.rs)
 - [raw-IQ source](../../crates/bijux-gnss-signal/src/raw_iq.rs)
-- `crates/bijux-gnss-signal/src/samples.rs`
-- `crates/bijux-gnss-signal/src/obs_validation.rs`
-- `crates/bijux-gnss-signal/docs/DSP.md`
+- [sample conversion source](../../crates/bijux-gnss-signal/src/samples.rs)
+- [observation compatibility source](../../crates/bijux-gnss-signal/src/obs_validation.rs)
+- [DSP guide](../../crates/bijux-gnss-signal/docs/DSP.md)
 
 ## Design Pressure
 
