@@ -12,7 +12,7 @@
     "intermediate_freq_hz": { "type": "number" },
     "capture_start_utc": { "type": "string", "minLength": 1 },
     "offset_bytes": { "type": "integer", "minimum": 0 },
-    "quantization_bits": { "type": "integer", "minimum": 1 },
-    "notes": { "type": "string" }
+    "quantization_bits": { "type": ["integer", "null"], "minimum": 1 },
+    "notes": { "type": ["string", "null"] }
   }
 }

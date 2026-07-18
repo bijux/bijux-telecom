@@ -74,9 +74,24 @@
         "is_primary_candidate": { "type": "boolean" },
         "doppler_hz": { "type": "number" },
         "carrier_hz": { "type": "number" },
-        "doppler_refinement": { "$ref": "#/definitions/AcqDopplerRefinement" },
-        "code_phase_refinement": { "$ref": "#/definitions/AcqCodePhaseRefinement" },
-        "uncertainty": { "$ref": "#/definitions/AcqUncertainty" },
+        "doppler_refinement": {
+          "anyOf": [
+            { "$ref": "#/definitions/AcqDopplerRefinement" },
+            { "type": "null" }
+          ]
+        },
+        "code_phase_refinement": {
+          "anyOf": [
+            { "$ref": "#/definitions/AcqCodePhaseRefinement" },
+            { "type": "null" }
+          ]
+        },
+        "uncertainty": {
+          "anyOf": [
+            { "$ref": "#/definitions/AcqUncertainty" },
+            { "type": "null" }
+          ]
+        },
         "code_phase_samples": { "type": "integer", "minimum": 0 },
         "peak": { "type": "number" },
         "peak_second_ratio": { "type": "number" },

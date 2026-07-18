@@ -219,3 +219,87 @@ pub(crate) fn validate_sidecar_schema(sidecar: &RawIqMetadata) -> Result<()> {
         Ok(())
     }
 }
+
+#[cfg(all(test, feature = "schema-validate"))]
+mod tests {
+    use super::*;
+
+    fn artifact_header_fixture() -> serde_json::Value {
+        serde_json::json!({
+            "schema_version": 1,
+            "producer": "bijux-gnss",
+            "producer_version": "0.1.0",
+            "created_at_unix_ms": 0,
+            "git_sha": "test",
+            "config_hash": "test",
+            "dataset_id": null,
+            "toolchain": "test",
+            "features": [],
+            "deterministic": true,
+            "git_dirty": false
+        })
+    }
+
+    fn assert_schema_accepts(schema_name: &str, value: &serde_json::Value) {
+        let schema_data =
+            fs::read_to_string(schema_path(schema_name)).expect("schema should be readable");
+        let schema: serde_json::Value =
+            serde_json::from_str(&schema_data).expect("schema should contain valid JSON");
+        let validator = validator_for(&schema).expect("schema should compile");
+        let errors =
+            validator.iter_errors(value).map(|error| error.to_string()).collect::<Vec<_>>();
+        assert!(errors.is_empty(), "{schema_name} rejected fixture: {}", errors.join(", "));
+    }
+
+    #[test]
+    fn acquisition_schema_accepts_absent_refinement_evidence() {
+        let value = serde_json::json!({
+            "header": artifact_header_fixture(),
+            "payload": {
+                "sat": {"constellation": "gps", "prn": 1},
+                "signal_band": "l1",
+                "source_time": {
+                    "sample_index": 0,
+                    "sample_rate_hz": 4_092_000.0,
+                    "receiver_time_s": 0.0
+                },
+                "doppler_hz": 0.0,
+                "carrier_hz": 0.0,
+                "doppler_refinement": null,
+                "code_phase_refinement": null,
+                "uncertainty": null,
+                "code_phase_samples": 0,
+                "peak": 1.0,
+                "peak_second_ratio": 1.0,
+                "hypothesis": "accepted"
+            }
+        });
+
+        assert_schema_accepts("acq_result_v1.schema.json", &value);
+    }
+
+    #[test]
+    fn ephemeris_schema_accepts_generic_artifact_payload() {
+        let value = serde_json::json!({
+            "header": artifact_header_fixture(),
+            "payload": []
+        });
+
+        assert_schema_accepts("gps_ephemeris_v1.schema.json", &value);
+    }
+
+    #[test]
+    fn sidecar_schema_accepts_serialized_optional_metadata() {
+        let value = serde_json::json!({
+            "format": "iq8",
+            "sample_rate_hz": 4_092_000.0,
+            "intermediate_freq_hz": 0.0,
+            "capture_start_utc": "2026-01-01T00:00:00Z",
+            "offset_bytes": 0,
+            "quantization_bits": null,
+            "notes": null
+        });
+
+        assert_schema_accepts("sidecar.schema.json", &value);
+    }
+}
