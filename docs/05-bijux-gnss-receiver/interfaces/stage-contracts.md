@@ -4,45 +4,53 @@ audience: mixed
 type: interfaces
 status: canonical
 owner: bijux-gnss-receiver-docs
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-18
 ---
 
 # Stage Contracts
 
-Stage contracts define how the runtime exposes acquisition, tracking,
-observation, and optional navigation behavior.
+Stage contracts describe how receiver runtime work moves from acquisition into
+tracking, observations, and optional navigation adapters. They are contracts
+because their outputs become diagnostics, artifacts, validation evidence, and
+operator reports through higher layers.
+
+## Stage Handoff Flow
+
+```mermaid
+flowchart LR
+    request["run request<br/>config and samples"]
+    acquisition["acquisition<br/>candidates evidence"]
+    tracking["tracking<br/>epochs channel state"]
+    observations["observations<br/>measurements quality"]
+    navigation["optional navigation adapter"]
+    artifacts["receiver artifacts<br/>step reports stats"]
+
+    request --> acquisition --> tracking --> observations --> navigation --> artifacts
+    observations --> artifacts
+```
 
 ## Owned Stage Families
 
-- acquisition engine and acquisition-assistance helpers in
-  `src/pipeline/acquisition/`, `acquisition_assistance.rs`, and the related
-  planning or refinement helpers
-- tracking engine and channel-state or tracking-artifact types in
-  `src/pipeline/tracking/`
-- observation builders, residual reports, and measurement-quality reports in
-  `src/pipeline/observations/`
-- optional `Navigation` and `NavigationFilter` receiver-owned adapters over
-  nav-owned science in `src/pipeline/navigation.rs` and
-  `src/pipeline/navigation_filter.rs`
-- `StepReport` and `StepStats` as handoff and report helpers
+| stage | owner paths | contract evidence |
+| --- | --- | --- |
+| acquisition | `src/pipeline/acquisition/`, `acquisition_assistance.rs` | candidates, ambiguity, refinement, explainability, false-alarm evidence |
+| tracking | `src/pipeline/tracking/` | epochs, lock state, channel lifecycle, reacquisition, carrier and code evidence |
+| observations | `src/pipeline/observations/` | measurement quality, residuals, rejection status, observation artifacts |
+| navigation adapters | `src/pipeline/navigation.rs`, `src/pipeline/navigation_filter.rs` | receiver-owned handoff into nav science when enabled |
+| reports | `StepReport`, `StepStats`, receiver artifacts | stage timing, counts, diagnostics, and evidence summaries |
 
-## Boundary Rule
+## Boundary Decisions
 
-These contracts are about runtime composition and handoff. The reusable signal
-or navigation science used inside them still belongs to lower crates.
+- Keep stage ordering, handoff, state transitions, and runtime diagnostics here.
+- Leave spreading codes, replicas, and reusable DSP primitives in signal.
+- Leave orbit, correction, PPP, RTK, and estimator science in nav.
+- Leave manifests, persisted directories, and artifact indexing in infra.
+- Leave command syntax and report routing in `bijux-gnss`.
 
-## Closest Proof
+## First Proof Check
 
-- `crates/bijux-gnss-receiver/src/pipeline/`
-- `crates/bijux-gnss-receiver/tests/integration_acquisition_*.rs`
-- `crates/bijux-gnss-receiver/tests/integration_tracking_*.rs`
-- `crates/bijux-gnss-receiver/tests/integration_observations_*.rs`
-- `crates/bijux-gnss-receiver/tests/integration_navigation_*.rs`
-- `crates/bijux-gnss-receiver/docs/PIPELINE.md`
-
-## Protecting Proof
-
-Inspect the stage source family above together with `PIPELINE.md` and the
-matching acquisition, tracking, observation, or navigation integration tests
-before changing any stage contract. Those proofs show whether a change remains
-stage-local or moves public runtime meaning.
+Inspect `crates/bijux-gnss-receiver/docs/PIPELINE.md`,
+`crates/bijux-gnss-receiver/src/pipeline/`, and the closest
+`crates/bijux-gnss-receiver/tests/integration_acquisition_*.rs`,
+`integration_tracking_*.rs`, `integration_observations_*.rs`, or
+`integration_navigation_*.rs` test family for the changed stage.

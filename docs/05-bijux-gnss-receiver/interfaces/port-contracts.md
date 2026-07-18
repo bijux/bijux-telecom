@@ -4,36 +4,53 @@ audience: mixed
 type: interfaces
 status: canonical
 owner: bijux-gnss-receiver-docs
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-18
 ---
 
 # Port Contracts
 
-Port contracts define how the runtime touches the outside world without owning
-repository or command policy.
+Ports are the receiver runtime seams for samples, clocks, and artifact sinks.
+They let the engine touch external inputs and outputs without letting stage
+logic read files, inspect environment, choose command flags, or define
+repository persistence policy.
+
+## Port Flow
+
+```mermaid
+flowchart LR
+    outside["outside world<br/>samples time sinks"]
+    ports["receiver ports"]
+    engine["receiver engine"]
+    stages["pure stage logic"]
+    artifacts["runtime artifacts"]
+
+    outside --> ports --> engine --> stages --> artifacts
+    artifacts --> ports
+```
 
 ## Owned Port Surfaces
 
-- `SampleSource` and its adapters
-- `ArtifactSink`
-- `Clock` and `SystemClock`
-- `FileSamples`, `MemorySamples`, and `SampleSourceError`
+| surface | purpose | ownership limit |
+| --- | --- | --- |
+| `SampleSource` | feed samples into receiver execution | no dataset registry or command discovery logic |
+| `FileSamples` | adapt file-backed samples into the runtime seam | no persisted run-layout policy |
+| `MemorySamples` | support deterministic in-memory runs and tests | no synthetic truth ownership |
+| `ArtifactSink` | receive runtime artifacts during execution | no infra artifact indexing or manifest policy |
+| `Clock` and `SystemClock` | isolate time access from pure stage logic | no command scheduling or report semantics |
+| `SampleSourceError` | report runtime input failure at the port boundary | no broad repository failure taxonomy |
 
-## Contract Rule
+## Review Questions
 
-Ports are execution-oriented seams. They may carry runtime inputs and outputs,
-but they should not become repositories for persisted naming policy or command
-workflow assumptions.
+- Does the port carry runtime input, output, or time access?
+- Does the proposed field force repository naming, command UX, or manifest
+  layout into receiver code?
+- Can stage logic remain testable without filesystem, environment, or wall-clock
+  access?
+- Does infra still own persisted evidence after the receiver emits artifacts?
 
-## Closest Proof
+## First Proof Check
 
-- `crates/bijux-gnss-receiver/src/ports/`
-- `crates/bijux-gnss-receiver/src/io/data.rs`
-- `crates/bijux-gnss-receiver/docs/PORTS.md`
-
-## Protecting Proof
-
-Inspect the port source families above together with
-`crates/bijux-gnss-receiver/docs/PORTS.md` and the most relevant port or file
-sample integration tests to confirm these seams still carry runtime inputs and
-outputs without absorbing repository or command policy.
+Inspect `crates/bijux-gnss-receiver/docs/PORTS.md`,
+`crates/bijux-gnss-receiver/src/ports/`,
+`crates/bijux-gnss-receiver/src/io/data.rs`, and the nearest port, file sample,
+runtime, or artifact-sink integration test.
