@@ -1,64 +1,111 @@
 ---
-title: Operations
-audience: mixed
+title: Core Contract Change Guide
+audience: maintainers
 type: index
 status: canonical
 owner: bijux-gnss-core-docs
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-18
 ---
 
-# Operations
+# Core Contract Change Guide
 
-Open this section when the question is how to change `bijux-gnss-core`
-without destabilizing the rest of the repository. Operational guidance here is
-about safe maintenance, verification sequence, fixture care, and contract-aware
-change practice rather than about runtime deployment.
+Change `bijux-gnss-core` only when several packages need one stable meaning.
+Every public type, invariant, diagnostic, conversion, or serialized record can
+affect signal, navigation, receiver, infrastructure, and command consumers.
+Start with ownership and compatibility before editing code.
 
-## Operational Model
+## Trace The Blast Radius
+
+```mermaid
+flowchart TD
+    proposal["proposed shared change"]
+    shared{"same meaning required by<br/>multiple packages?"}
+    family["identify contract family"]
+    public["public API impact"]
+    serialized["serialized meaning"]
+    validation["invariants and diagnostics"]
+    consumers["downstream readers<br/>and writers"]
+    evidence["focused and consumer proof"]
+
+    proposal --> shared
+    shared -- no --> owner["keep with stronger owner"]
+    shared -- yes --> family
+    family --> public
+    family --> serialized
+    family --> validation
+    public --> consumers
+    serialized --> consumers
+    validation --> consumers
+    consumers --> evidence
+```
+
+The cheapest safe outcome is often leaving a local concept with its existing
+owner. Shared convenience is not enough to justify a core contract.
+
+## Choose The Maintenance Route
+
+| change | operational route | required decision |
+| --- | --- | --- |
+| New or changed shared type, identifier, unit, time, coordinate, or diagnostic | [Change sequence](change-sequence.md) | prove identical cross-package meaning and invalid states |
+| Public export | [Common workflows](common-workflows.md) | name consumers, feature exposure, and compatibility burden |
+| Artifact envelope, payload, validator, or conversion | [Fixture and regression care](fixture-and-regression-care.md) | define version, reader policy, semantic validation, and fixture provenance |
+| Numerical or timekeeping behavior | [Verification commands](verification-commands.md) | use independent references, properties, edge cases, and derived tolerances |
+| Change spanning several contract families | [Review scope](review-scope.md) | separate shared meaning from downstream runtime or scientific behavior |
+| Published compatibility | [Release and versioning](release-and-versioning.md) | explain source, data, validation, and downstream impact |
+| Focused local work | [Local development](local-development.md) | run the narrowest proof that can fail for the moved invariant |
+
+## Evolve Persisted Meaning Explicitly
 
 ```mermaid
 flowchart LR
-    change["proposed core change"]
-    scope["scope and owner check"]
-    docs["contract docs update"]
-    tests["narrow verification"]
-    review["cross-crate review"]
-    release["merge-ready change"]
+    old["existing payload meaning"]
+    change{"can old and new readers<br/>assign the same meaning?"}
+    additive["compatible additive change"]
+    version["new payload version<br/>or reader policy"]
+    validator["semantic validation"]
+    fixture["independent fixture"]
+    consumer["old and new consumers"]
 
-    change --> scope --> docs --> tests --> review --> release
+    old --> change
+    change -- yes --> additive --> validator
+    change -- no --> version --> validator
+    validator --> fixture --> consumer
 ```
 
-The operational burden is heavier here than in most crates because a small core
-change can fan out into every higher-level package.
+Do not change old serialized meaning in place. Parsing old bytes with a new
+struct is not compatibility if units, defaults, status, or validity semantics
+changed.
 
-## Read These First
+## Treat Fixtures As Evidence, Not Output
 
-- open [Change Sequence](change-sequence.md) first when you are about to edit a
-  public type, invariant, or serialized record
-- open [Verification Commands](verification-commands.md) when you need the
-  minimum executable proof for a core change
-- open [Fixture and Regression Care](fixture-and-regression-care.md) when the
-  work touches serialized artifacts or timekeeping regressions
+The retained timekeeping regression corpus is active property-test evidence.
+The checked-in observation record is currently not referenced by tests or
+source. It is dormant data, not an active serialization guarantee. Do not cite
+it as round-trip or backward-compatibility proof until a reader test
+deserializes and validates it.
 
-## First Proof Check
+When an active fixture changes:
 
-- `crates/bijux-gnss-core/README.md`
-- `crates/bijux-gnss-core/docs/TESTS.md`
-- `crates/bijux-gnss-core/tests/`
+- state which contract meaning made the old bytes wrong;
+- preserve the old record when compatibility still matters;
+- generate expectations independently of the writer under test;
+- update validator, reader, and consumer evidence in the same coherent change.
 
-## Pages In This Section
+## Commit And Review Boundary
 
-- [Common Workflows](common-workflows.md)
-- [Local Development](local-development.md)
-- [Change Sequence](change-sequence.md)
-- [Verification Commands](verification-commands.md)
-- [Fixture and Regression Care](fixture-and-regression-care.md)
-- [Review Scope](review-scope.md)
-- [Release and Versioning](release-and-versioning.md)
+A core commit is coherent when one contract family, its public and serialized
+meaning, validators, documentation, focused proof, and necessary downstream
+adaptations agree. Do not combine unrelated contract families merely because
+they share a release version.
 
-## Leave This Section When
+Before completion, confirm that no higher-package algorithm, runtime state,
+repository layout, or command presentation leaked into core.
 
-- leave for [Interfaces](../interfaces/) when the question is what the crate
-  promises rather than how to change it safely
-- leave for [Quality](../quality/) when the operational sequence is clear and
-  the question becomes proof sufficiency
+## Sources Of Truth
+
+The [change rules](../../../crates/bijux-gnss-core/docs/CHANGE_RULES.md) define
+ownership and evolution discipline. The
+[serialization guide](../../../crates/bijux-gnss-core/docs/SERIALIZATION.md),
+[contract map](../../../crates/bijux-gnss-core/docs/CONTRACT_MAP.md), and
+[test guide](../../../crates/bijux-gnss-core/docs/TESTS.md) provide the
+compatibility and evidence routes.
