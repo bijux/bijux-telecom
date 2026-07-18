@@ -4,52 +4,80 @@ audience: mixed
 type: foundation
 status: canonical
 owner: bijux-gnss-receiver-docs
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-18
 ---
 
 # Package Overview
 
-`bijux-gnss-receiver` is the runtime owner for GNSS receiver execution in
-`bijux-telecom`.
+`bijux-gnss-receiver` owns receiver runtime execution: configuration becomes a
+running receiver, sample frames enter through ports, stages produce evidence,
+and runtime artifacts leave the crate before repository persistence takes over.
 
-## One-Sentence Role
+This crate is large because the receiver boundary is large. Acquisition,
+tracking, observations, optional navigation handoff, runtime sinks, simulation,
+and receiver-side validation must agree on one execution story.
 
-This crate turns configured inputs, runtime sinks, and stage engines into a
-concrete receiver run that emits in-memory artifacts and runtime-side
-validation evidence.
+## Runtime Chain
 
-## What Readers Should Remember
+```mermaid
+flowchart LR
+    config["receiver config"]
+    ports["source, clock,<br/>logger, trace, metrics"]
+    acquisition["acquisition"]
+    tracking["tracking"]
+    observations["observations"]
+    navigation["optional navigation"]
+    artifacts["run artifacts<br/>validation reports"]
 
-- this crate composes lower-level scientific owners instead of replacing them
-- stage ordering, runtime state, and side-effect seams belong here
-- persisted naming, manifests, and repository history do not belong here
+    config --> ports --> acquisition --> tracking --> observations --> navigation --> artifacts
+    observations --> artifacts
+```
 
-## Major Runtime Families
+## Owned Families
 
-- `src/engine/` owns configuration, validation, runtime state, logging,
-  metrics, support-matrix handling, and top-level receiver composition
-- `src/pipeline/` owns acquisition, tracking, observations, optional
-  navigation, and handoff reporting between stages
-- `src/ports/` and `src/io/` own the runtime-facing source, sink, and clock
-  seams
-- `src/artifacts.rs`, `src/reference_validation.rs`,
-  `src/covariance_realism.rs`, `src/validation_helpers.rs`, and
-  `src/validation_report.rs` own receiver-boundary outputs and runtime-side
-  validation helpers
-- `src/sim/` owns synthetic signal generation and receiver-boundary execution
-  used for tests and validation
+| family | owns | first proof |
+| --- | --- | --- |
+| engine | runtime config, validation, defaults, logging, metrics, support matrix, receiver composition | `crates/bijux-gnss-receiver/src/engine/` |
+| ports and I/O | sample sources, artifact sinks, clocks, runtime effect seams | `crates/bijux-gnss-receiver/src/ports/`, `crates/bijux-gnss-receiver/src/io/` |
+| acquisition | request planning, search windows, candidates, ranking, explainability, handoff evidence | `crates/bijux-gnss-receiver/src/pipeline/acquisition.rs`, `crates/bijux-gnss-receiver/src/pipeline/acquisition/` |
+| tracking | channel lifecycle, lock evidence, loop state, reacquisition, sample-rate diagnostics | `crates/bijux-gnss-receiver/src/pipeline/tracking.rs`, `crates/bijux-gnss-receiver/src/pipeline/tracking/` |
+| observations | pseudorange, carrier phase, smoothing, residuals, quality, epoch manifests | `crates/bijux-gnss-receiver/src/pipeline/observations.rs`, `crates/bijux-gnss-receiver/src/pipeline/observations/` |
+| navigation handoff | receiver-owned calls into navigation solving and filtering when enabled | `crates/bijux-gnss-receiver/src/pipeline/navigation.rs`, `crates/bijux-gnss-receiver/src/pipeline/navigation_filter.rs` |
+| simulation | synthetic sources, truth, stage accuracy, scenario validation | `crates/bijux-gnss-receiver/src/sim/` |
+| validation reports | receiver-side accuracy, consistency, covariance, and reference checks | `crates/bijux-gnss-receiver/src/validation_report.rs`, `crates/bijux-gnss-receiver/src/reference_validation.rs` |
 
-## Why This Package Is Heavy
+## Reader Rules
 
-The receiver boundary is large because orchestration is not a thin wrapper. It
-has to bind configuration, stage budgets, diagnostics, ports, stage outputs,
-and optional navigation behavior into one runtime that other crates can trust.
+- Use this handbook for execution order, state handoff, runtime diagnostics,
+  and in-memory receiver artifacts.
+- Leave for `bijux-gnss-signal` when the question is reusable code generation,
+  signal catalog truth, sample math, front-end filtering, NCO behavior, or DSP
+  discriminators outside one receiver run.
+- Leave for `bijux-gnss-nav` when the question is navigation science rather
+  than receiver-side invocation of that science.
+- Leave for `bijux-gnss-infra` when runtime artifacts are named, persisted,
+  indexed, compared across run directories, or tied to dataset registry state.
+- Leave for `bijux-gnss-core` when the question is shared record meaning,
+  observation fields, diagnostic codes, units, or artifact envelopes.
 
-## Closest Code Proof
+## Failure Reading
 
-- `crates/bijux-gnss-receiver/src/api.rs`
-- `crates/bijux-gnss-receiver/src/engine/receiver_config.rs`
-- `crates/bijux-gnss-receiver/src/engine/engine.rs`
-- `crates/bijux-gnss-receiver/src/pipeline/mod.rs`
-- `crates/bijux-gnss-receiver/src/validation_report.rs`
-- `crates/bijux-gnss-receiver/src/sim/synthetic.rs`
+When a receiver test fails, first identify which stage emitted the wrong
+evidence. Do not flatten every receiver failure into “pipeline”:
+
+- acquisition failures usually involve signal model selection, code phase,
+  Doppler search, candidate ranking, ambiguity, or explainability artifacts
+- tracking failures usually involve lock state, loop bandwidth, Doppler ramp,
+  reacquisition, fade handling, or channel diagnostics
+- observation failures usually involve timestamping, pseudorange, carrier
+  phase, smoothing, residuals, or quality classification
+- navigation failures at this boundary usually involve receiver-to-nav handoff
+  or filter configuration, not standalone navigation model law
+
+## First Proof Check
+
+Inspect `crates/bijux-gnss-receiver/README.md`,
+`crates/bijux-gnss-receiver/docs/PIPELINE.md`,
+`crates/bijux-gnss-receiver/docs/RUNTIME.md`,
+`crates/bijux-gnss-receiver/docs/ARTIFACTS.md`, the relevant `src/pipeline/`
+stage, and the integration tests named in the crate README.

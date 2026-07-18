@@ -4,37 +4,64 @@ audience: mixed
 type: architecture
 status: canonical
 owner: bijux-gnss-receiver-docs
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-18
 ---
 
 # Execution Model
 
-`bijux-gnss-receiver` is the package where configured components become one
-runtime.
+The receiver execution model is a staged evidence pipeline. Each stage consumes
+typed state from the previous stage and emits enough diagnostics for the next
+stage, reports, and validation tests to explain what happened.
 
-## Normal Flow
+## Stage Flow
 
-1. runtime configuration, sinks, and ports are assembled into a `Receiver`
-2. sample frames are pulled from a source through the port boundary
-3. acquisition produces candidate evidence and explainability artifacts
-4. tracking turns accepted candidates into channel-state and tracking results
-5. observations convert tracking results into observation artifacts and quality
-   evidence
-6. optional navigation and filtering produce navigation epochs when enabled
-7. runtime artifacts, traces, and validation helpers summarize the run
+```mermaid
+sequenceDiagram
+    participant Source as Sample source
+    participant Runtime as Receiver runtime
+    participant Acq as Acquisition
+    participant Track as Tracking
+    participant Obs as Observations
+    participant Nav as Navigation handoff
+    participant Art as Artifacts
 
-## Important Architectural Distinction
+    Source->>Runtime: sample frames and capture timing
+    Runtime->>Acq: acquisition requests and signal profile
+    Acq->>Track: accepted or degraded candidates with reasons
+    Track->>Obs: channel states, code phase, carrier, CN0
+    Obs->>Nav: observation epochs when navigation is enabled
+    Nav->>Art: navigation epochs and filter evidence
+    Obs->>Art: observations, residuals, quality reports
+    Track->>Art: tracking reports and channel diagnostics
+    Acq->>Art: candidate lists and explainability
+```
 
-The receiver crate owns execution ordering and runtime state, not the reusable
-signal or navigation science used inside that order.
+## Execution Ownership
 
-## Families With Separate Execution Logic
+| stage | receiver-owned decision | not owned here |
+| --- | --- | --- |
+| runtime setup | assemble config, ports, sinks, support inventory, capture timing | command UX and persisted run layout |
+| acquisition | choose requests, search windows, ranking, ambiguity state, candidate reports | signal-code definitions and reusable DSP primitives |
+| tracking | maintain channel lifecycle, lock evidence, loop state, reacquisition, fade handling | generic loop math outside receiver context |
+| observations | turn tracking state into observation epochs with residual and quality evidence | cross-crate field meaning owned by core |
+| navigation handoff | call navigation solvers or filters from receiver config and observations | standalone orbit, correction, PPP, RTK, or estimator science |
+| validation | compare receiver outputs to reference truth at receiver boundary | repository artifact inspection and persisted manifest policy |
 
-- acquisition has its own request planning, search-window, ranking, and
-  refinement lifecycle
-- tracking has its own channel lifecycle, reacquisition, and loop-state
-  evolution
-- observations have their own timing, smoothing, residual, and quality
-  lifecycle
-- synthetic execution can drive the same receiver boundary with scenario-backed
-  sources and truth
+## State Handoff Rules
+
+- A stage may enrich evidence; it must not silently reinterpret the previous
+  stage's status.
+- Degraded acquisition or tracking state must stay visible long enough for
+  downstream artifacts and reports to explain it.
+- Runtime sinks record events, traces, and metrics; they do not own the
+  scientific meaning of the values they observe.
+- Optional navigation is a receiver execution branch, not a transfer of
+  navigation-domain ownership into the receiver crate.
+
+## First Proof Check
+
+Use `crates/bijux-gnss-receiver/src/pipeline/mod.rs` to find the stage owner,
+then inspect the specific stage module and its integration tests. For runtime
+composition, start with `crates/bijux-gnss-receiver/src/engine/receiver.rs`,
+`crates/bijux-gnss-receiver/src/engine/engine.rs`, and
+`crates/bijux-gnss-receiver/src/engine/runtime.rs`.
