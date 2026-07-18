@@ -111,6 +111,26 @@ cat >"${launcher_file}" <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
 cd "${pinned_repo_dir}"
+
+unset \
+  PROJECT_ROOT \
+  ARTIFACT_ROOT \
+  RUN_ID \
+  RS_ARTIFACT_ROOT \
+  RS_RUN_ID \
+  RS_TARGET_DIR \
+  RS_CARGO_HOME \
+  RS_TMP_DIR \
+  RS_NEXTEST_CACHE_DIR \
+  RS_NEXTEST_CONFIG_HOME \
+  NEXTEST_CONFIG_FILE \
+  NEXTEST_SLOW_ROSTER \
+  NEXTEST_EXPR_BIN \
+  RUST_DENY_CONFIG \
+  RUSTFMT_CONFIG \
+  RUST_CLIPPY_CONFIG_DIR
+
+export PROJECT_ROOT="${pinned_repo_dir}"
 export ARTIFACT_ROOT="${artifact_root}"
 export RUN_ID="${short_sha}"
 status=0

@@ -28,13 +28,19 @@ workspace_root="${PROJECT_ROOT:-$(git rev-parse --show-toplevel)}"
 workspace_root="$(cd "${workspace_root}" && pwd -P)"
 cd "${workspace_root}"
 
-artifact_input="${RS_ARTIFACT_ROOT:-${ARTIFACT_ROOT:-artifacts}/rust}"
+artifact_root_input="${ARTIFACT_ROOT:-${workspace_root}/artifacts}"
+if [[ "${artifact_root_input}" != /* ]]; then
+  artifact_root_input="${workspace_root}/${artifact_root_input}"
+fi
+mkdir -p "${artifact_root_input}"
+artifact_boundary="$(cd "${artifact_root_input}" && pwd -P)"
+
+artifact_input="${RS_ARTIFACT_ROOT:-${artifact_boundary}/rust}"
 if [[ "${artifact_input}" != /* ]]; then
   artifact_input="${workspace_root}/${artifact_input}"
 fi
 mkdir -p "${artifact_input}"
 rs_artifact_root="$(cd "${artifact_input}" && pwd -P)"
-artifact_boundary="${workspace_root}/artifacts"
 case "${rs_artifact_root}" in
   "${artifact_boundary}" | "${artifact_boundary}"/*) ;;
   *)
@@ -182,15 +188,23 @@ run_nextest() {
   fi
 
   printf 'run: %s\n' "${args[*]}"
-  run_logged "${report_path}" env \
+  local status=0
+  if run_logged "${report_path}" env \
     CARGO_TARGET_DIR="${target_dir}" \
     NEXTEST_CACHE_DIR="${rs_nextest_cache_dir}" \
     XDG_CONFIG_HOME="${rs_nextest_config_home}" \
     LLVM_PROFILE_FILE="${rs_profraw_dir}/default_%m_%p.profraw" \
-    "${args[@]}"
+    "${args[@]}"; then
+    status=0
+  else
+    status=$?
+  fi
+
+  local summary
   summary="$(perl -pe 's/\e\[[0-9;]*[[:alpha:]]//g' "${report_path}" | grep 'Summary \[' | tail -n 1 || true)"
-  printf 'nextest-summary: %s\n' "${summary:-unavailable}"
+  printf '\033[1;36m%s\033[0m %s\n' "nextest-summary:" "${summary:-unavailable}"
   printf 'nextest-mode: %s\n' "${mode}"
+  return "${status}"
 }
 
 case "${command_name}" in
