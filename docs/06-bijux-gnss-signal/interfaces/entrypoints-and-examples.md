@@ -37,11 +37,10 @@ the durable path is:
 
 ## Protecting Proof
 
-Inspect `crates/bijux-gnss-signal/docs/PUBLIC_API.md`,
-`crates/bijux-gnss-signal/docs/RAW_IQ.md`,
-`crates/bijux-gnss-signal/docs/VALIDATION.md`, and
-`crates/bijux-gnss-signal/src/api.rs`. Then inspect
-`crates/bijux-gnss-signal/tests/integration_iq_sample_conversion.rs`,
-`crates/bijux-gnss-signal/tests/integration_raw_iq_metadata.rs`, and
-`crates/bijux-gnss-signal/tests/prop_obs_epoch_validation.rs` to confirm the
-reader path still matches real entrypoints and validation proof.
+Start with the signal [public API guide](../../../crates/bijux-gnss-signal/docs/PUBLIC_API.md),
+[raw-IQ guide](../../../crates/bijux-gnss-signal/docs/RAW_IQ.md),
+[validation guide](../../../crates/bijux-gnss-signal/docs/VALIDATION.md), and
+[public API facade](../../../crates/bijux-gnss-signal/src/api.rs). Then confirm
+the reader path through the [sample-conversion test](../../../crates/bijux-gnss-signal/tests/integration_iq_sample_conversion.rs),
+[raw-IQ metadata test](../../../crates/bijux-gnss-signal/tests/integration_raw_iq_metadata.rs),
+and [observation validation property test](../../../crates/bijux-gnss-signal/tests/prop_obs_epoch_validation.rs).
