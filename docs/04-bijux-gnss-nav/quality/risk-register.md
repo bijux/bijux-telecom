@@ -43,8 +43,8 @@ flowchart LR
 - Does a refusal still explain unsupported geometry, missing products,
   degraded integrity, or invalid inputs?
 - Does the change keep repository file discovery outside nav?
-- Is the refusal ledger in [This Package Does Not Own](../this-package-does-not-own.md)
-  still accurate?
+- Do the [navigation ownership boundaries](../ownership-boundaries.md) remain
+  accurate?
 
 ## First Proof Check
 

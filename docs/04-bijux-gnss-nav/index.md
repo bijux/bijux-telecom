@@ -123,8 +123,8 @@ them into one generic "nav logic" bucket.
   scope, and benchmark-aware maintenance
 - [Quality](quality/) for invariants, proof strategy, limitations, risk, and
   change validation
-- [This Package Does Not Own](this-package-does-not-own.md) for the explicit
-  refusal ledger
+- [Navigation ownership boundaries](ownership-boundaries.md) for deciding
+  whether behavior is navigation science or a neighboring concern
 
 ## Start Here When
 

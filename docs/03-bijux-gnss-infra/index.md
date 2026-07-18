@@ -109,8 +109,8 @@ flowchart LR
   care, and review scope
 - [Quality](quality/) for trust boundaries, invariants, limitations, risk, and
   change validation
-- [This Package Does Not Own](this-package-does-not-own.md) for the explicit
-  refusal ledger
+- [Infrastructure ownership boundaries](ownership-boundaries.md) for deciding
+  whether a capability owns repository state or product behavior
 
 ## Start Here When
 
