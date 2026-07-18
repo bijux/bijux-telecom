@@ -60,6 +60,6 @@ repository inputs.
 ## First Neighbor Proof Check
 
 When a dependency question turns into reusable repository policy, inspect the
-support-crate route in [../index.md](../index.md) and then the
+support-crate route in the [Maintainer handbook](../index.md) and then the
 `bijux-gnss-policies` crate surfaces. When it turns into product-command
-ownership, inspect [01-bijux-gnss/foundation/dependencies-and-adjacencies](../../01-bijux-gnss/foundation/dependencies-and-adjacencies.md).
+ownership, inspect the [command dependency guide](../../01-bijux-gnss/foundation/dependencies-and-adjacencies.md).

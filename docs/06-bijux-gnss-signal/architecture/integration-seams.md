@@ -50,6 +50,6 @@ typed signal boundaries rather than hidden runtime adapters.
 ## First Neighbor Proof Check
 
 When a seam starts carrying stage sequencing or channel orchestration, leave
-this page for [05-bijux-gnss-receiver/architecture/integration-seams](../../05-bijux-gnss-receiver/architecture/integration-seams.md).
+this page for the [receiver integration-seams guide](../../05-bijux-gnss-receiver/architecture/integration-seams.md).
 When it starts carrying estimator meaning, inspect
-[04-bijux-gnss-nav/architecture/integration-seams](../../04-bijux-gnss-nav/architecture/integration-seams.md).
+the [navigation integration-seams guide](../../04-bijux-gnss-nav/architecture/integration-seams.md).

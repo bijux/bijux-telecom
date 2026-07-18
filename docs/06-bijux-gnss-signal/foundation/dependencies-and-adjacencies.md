@@ -64,6 +64,6 @@ crate still depends downward while exporting a curated signal boundary upward.
 ## First Neighbor Proof Check
 
 When a dependency question is really about runtime ownership, leave this page
-for [05-bijux-gnss-receiver/foundation/dependencies-and-adjacencies](../../05-bijux-gnss-receiver/foundation/dependencies-and-adjacencies.md).
+for the [receiver dependency guide](../../05-bijux-gnss-receiver/foundation/dependencies-and-adjacencies.md).
 When the pressure is navigation-science coupling, inspect
-[04-bijux-gnss-nav/foundation/dependencies-and-adjacencies](../../04-bijux-gnss-nav/foundation/dependencies-and-adjacencies.md).
+the [navigation dependency guide](../../04-bijux-gnss-nav/foundation/dependencies-and-adjacencies.md).

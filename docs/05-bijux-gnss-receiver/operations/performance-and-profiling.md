@@ -15,7 +15,7 @@ navigation handoff, synthetic execution, or receiver-side validation.
 
 Do not use this page for repository benchmark governance. Once the question is
 baseline policy, published benchmark evidence, or maintainer workflow output,
-route to [07-bijux-gnss-dev](../../07-bijux-gnss-dev/).
+route to the [Maintainer handbook](../../07-bijux-gnss-dev/).
 
 ## Triage Map
 

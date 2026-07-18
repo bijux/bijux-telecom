@@ -22,12 +22,12 @@ runtime center and not the persistence layer.
 
 ## How It Fits With Neighboring Handbooks
 
-- [03-bijux-gnss-infra](../../03-bijux-gnss-infra/) explains persisted
+- [Infra handbook](../../03-bijux-gnss-infra/) explains persisted
   repository ownership below command workflows
-- [05-bijux-gnss-receiver](../../05-bijux-gnss-receiver/) explains runtime
+- [Receiver handbook](../../05-bijux-gnss-receiver/) explains runtime
   execution below command workflows
-- [04-bijux-gnss-nav](../../04-bijux-gnss-nav/) and
-  [06-bijux-gnss-signal](../../06-bijux-gnss-signal/) explain the deeper
+- [Navigation handbook](../../04-bijux-gnss-nav/) and
+  [Signal handbook](../../06-bijux-gnss-signal/) explain the deeper
   science and signal owners this crate calls into
 
 ## The Fit To Defend
