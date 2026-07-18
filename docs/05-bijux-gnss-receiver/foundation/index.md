@@ -1,75 +1,123 @@
 ---
-title: Foundation
+title: Receiver Runtime Foundations
 audience: mixed
 type: index
 status: canonical
 owner: bijux-gnss-receiver-docs
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-18
 ---
 
-# Foundation
+# Receiver Runtime Foundations
 
-Open this section when the question is why `bijux-gnss-receiver` owns runtime
-orchestration before command, repository, signal, or navigation layers start
-pulling the answer toward convenience.
+`bijux-gnss-receiver` owns the in-memory process that turns sample frames into
+acquisition, tracking, observation, optional navigation, diagnostic, and
+artifact evidence. It composes signal and navigation contracts, but it does not
+redefine their science or decide where a repository stores the resulting
+records.
 
-## Boundary Model
+## Follow A Receiver Session
 
 ```mermaid
 flowchart LR
-    runtime["runtime execution"]
-    receiver["bijux-gnss-receiver"]
-    contracts["engine pipeline ports artifacts simulation"]
-    downstream["commands infra tests"]
-    drift["science or repository creep"]
+    config["validated configuration"]
+    source["sample source"]
+    acquisition["acquisition candidates"]
+    tracking["channel lifecycle"]
+    observations["measurement decisions"]
+    navigation["optional navigation"]
+    evidence["artifacts and diagnostics"]
 
-    runtime --> receiver --> contracts --> downstream
-    receiver --> drift
+    config --> acquisition
+    source --> acquisition --> tracking --> observations --> navigation
+    acquisition --> evidence
+    tracking --> evidence
+    observations --> evidence
+    navigation --> evidence
 ```
 
-The receiver boundary is only trustworthy when readers can see where stage
-composition stops and where lower scientific owners or higher repository owners
-must take over.
+Each stage consumes explicit inputs and emits evidence for the next stage. A
+later stage must not erase ambiguity, refusal, uncertainty, or degraded state
+reported earlier.
 
-## Read These First
+## Start From The Runtime Question
 
-- open [Ownership Boundary](ownership-boundary.md) first when a feature feels
-  adjacent to `signal`, `nav`, `infra`, or `gnss`
-- open [Package Overview](package-overview.md) when you need the shortest
-  durable description of the crate role
-- open [Scope And Non-Goals](scope-and-non-goals.md) when the question is what
-  receiver runtime should explicitly refuse
+| question | contract |
+| --- | --- |
+| How are stages ordered and what crosses each handoff? | [Stage contracts](../interfaces/stage-contracts.md) |
+| Which defaults, validation rules, and lifecycle behavior apply? | [Runtime contracts](../interfaces/runtime-contracts.md) |
+| How do samples, clocks, and artifact effects enter or leave the runtime? | [Port contracts](../interfaces/port-contracts.md) |
+| Which in-memory evidence does a run return? | [Artifact contracts](../interfaces/artifact-contracts.md) |
+| How should a diagnostic or refused stage be interpreted? | [Diagnostic contracts](../interfaces/diagnostic-contracts.md) |
+| What may simulation or reference comparison establish? | [Validation and simulation contracts](../interfaces/validation-and-simulation-contracts.md) |
+| Is this behavior really receiver-owned? | [Ownership boundary](ownership-boundary.md) |
 
-## The Mistake This Section Prevents
+## Read Stage Evidence In Order
 
-The most common mistake here is assuming that the runtime crate should own any
-logic that happens to run during a receiver session. This section keeps runtime
-composition, signal science, navigation science, and repository persistence
-from collapsing into one owner.
+```mermaid
+flowchart TD
+    samples{"samples and metadata valid?"}
+    acquisition{"trackable candidate?"}
+    tracking{"channel state supports<br/>measurement production?"}
+    observations{"observation accepted?"}
+    navigation{"navigation enabled and<br/>prerequisites satisfied?"}
+    outcome["runtime outcome"]
+    refused["typed refusal or<br/>degraded evidence"]
 
-## Pages In This Section
+    samples -- yes --> acquisition
+    samples -- no --> refused
+    acquisition -- yes --> tracking
+    acquisition -- no --> refused
+    tracking -- yes --> observations
+    tracking -- no --> refused
+    observations -- yes --> navigation
+    observations -- no --> refused
+    navigation -- yes --> outcome
+    navigation -- no --> refused
+```
 
-- [Package Overview](package-overview.md)
-- [Scope And Non-Goals](scope-and-non-goals.md)
-- [Ownership Boundary](ownership-boundary.md)
-- [Repository Fit](repository-fit.md)
-- [Domain Language](domain-language.md)
-- [Dependencies And Adjacencies](dependencies-and-adjacencies.md)
-- [Change Principles](change-principles.md)
+When a session does not produce the expected result, inspect the earliest stage
+whose evidence diverges from its contract:
 
-## First Proof Check
+- Capture or metadata failures belong at the source boundary.
+- Rejected or ambiguous search results belong to acquisition evidence.
+- Pull-in, lock, continuity, uncertainty, and cycle-slip behavior belong to
+  tracking evidence.
+- Timing, covariance, residual, support, and measurement rejection belong to
+  observation evidence.
+- Geometry, products, estimation, integrity, and solution refusal belong to
+  optional navigation evidence.
 
-- `crates/bijux-gnss-receiver/README.md`
-- `crates/bijux-gnss-receiver/docs/BOUNDARY.md`
-- `crates/bijux-gnss-receiver/src/engine/`
-- `crates/bijux-gnss-receiver/src/pipeline/`
-- `crates/bijux-gnss-receiver/src/ports/`
+Do not diagnose an upstream failure from the absence of a final position alone.
 
-## Leave This Section When
+## Runtime Effects Are Explicit
 
-- leave for [Interfaces](../interfaces/) when the dispute is already about a
-  public runtime, stage, or port contract
-- leave for [Architecture](../architecture/) when the ownership question is
-  settled and the next question is where the code lives
-- leave for [Quality](../quality/) when the boundary is clear and the question
-  becomes whether the trust story is honest enough
+The runtime receives samples and time through ports and publishes artifacts,
+metrics, traces, and logs through owned effect boundaries. Stage algorithms
+must not choose repository paths, write command output, or read wall-clock time
+implicitly. This keeps deterministic evidence possible and lets tests replace
+effects without changing stage behavior.
+
+Receiver artifacts describe what happened during execution. Infrastructure
+adds run identity, layout, manifests, and history when those records are
+persisted.
+
+## Completion Is Not Scientific Success
+
+A receiver call may complete correctly while reporting no accepted acquisition,
+a refused channel, lost lock, rejected observations, or an unsuccessful
+navigation attempt. Completion proves that runtime control returned according
+to its contract. The stage records determine whether a scientific claim is
+supported.
+
+Use the [package overview](package-overview.md) for the concise role,
+[scope and non-goals](scope-and-non-goals.md) for explicit refusals,
+[dependencies and adjacencies](dependencies-and-adjacencies.md) for the signal,
+navigation, infrastructure, and command handoffs, and
+[change principles](change-principles.md) before altering stage behavior.
+
+Implementation evidence begins with the
+[receiver architecture](../../../crates/bijux-gnss-receiver/docs/ARCHITECTURE.md),
+[pipeline guide](../../../crates/bijux-gnss-receiver/docs/PIPELINE.md),
+[runtime guide](../../../crates/bijux-gnss-receiver/docs/RUNTIME.md),
+[port guide](../../../crates/bijux-gnss-receiver/docs/PORTS.md), and
+[artifact guide](../../../crates/bijux-gnss-receiver/docs/ARTIFACTS.md).
