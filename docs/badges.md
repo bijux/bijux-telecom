@@ -18,32 +18,21 @@ Keep the generated block below identical in:
 - the root `README.md`
 - the repository [handbook landing page](index.md)
 
-This repository does not yet publish the richer templated badge system used in
-some other Bijux repositories. Until that automation exists here, treat this
-file as the single source of truth and keep the generated block in sync across
-both entry surfaces instead of hand-editing badge lines independently.
-
-This simpler contract is still intentional. Unlike repositories with published
-package-family badges, `bijux-telecom` currently needs only one repository
-summary line and one documentation badge line. If a future release adds
-published docs badges, package badges, or generated templating, extend this
-file first and regenerate the entry surfaces from here instead of inventing a
-second badge policy in the root README or [handbook landing page](index.md).
-
 Badge order is part of the contract:
 
 1. repository summary and workflow badges
-2. release and publication posture badges
-3. repository documentation badge
+2. crates.io package badges in release-contract order
+3. GHCR package badges in the same order
+4. repository and Rust API documentation badges
 
 Link policy is also fixed here:
 
 - workflow badges must link to the exact workflow file or release surface they
   summarize
-- the GHCR summary badge must link to
-  `https://github.com/bijux?tab=packages&repo_name=bijux-telecom`
-- the documentation badge must link to the checked-in handbook tree until a
-  published documentation site becomes canonical
+- every crates.io badge must link to that exact crate page
+- every GHCR badge must link to the corresponding repository package
+- documentation badges must link to the checked-in handbook or docs.rs API
+  surface they name
 
 Review rule:
 
@@ -67,23 +56,34 @@ surfaces. If a badge would need a paragraph of caveats to stay honest, the
 badge should change or disappear instead of training readers to distrust the
 entry surfaces.
 
-If this repository later adopts templated badge automation, migrate that
-automation from this file rather than letting the root README and handbook
-landing page grow separate badge policies.
+The badge count must agree with the six-package allowlist in the
+[crate release contract](../configs/release/crates.toml). Repository-only
+crates do not receive crates.io or GHCR badges.
 
 ## Generated Badge Block
 
 <!-- bijux-telecom-badges:generated:start -->
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-0F766E)](https://github.com/bijux/bijux-telecom/blob/main/LICENSE)
-[![CI](https://github.com/bijux/bijux-telecom/actions/workflows/ci.yml/badge.svg)](https://github.com/bijux/bijux-telecom/actions/workflows/ci.yml)
-[![deploy-docs](https://img.shields.io/badge/deploy--docs-no%20status-9CA3AF)](https://github.com/bijux/bijux-telecom/actions/workflows/deploy-docs.yml)
-[![release-crates](https://img.shields.io/badge/release--crates-no%20status-9CA3AF)](https://github.com/bijux/bijux-telecom/actions/workflows/release-crates.yml)
-[![release-pypi](https://img.shields.io/badge/release--pypi-no%20status-9CA3AF)](https://github.com/bijux/bijux-telecom/actions/workflows/release-pypi.yml)
-[![release-ghcr](https://img.shields.io/badge/release--ghcr-no%20status-9CA3AF)](https://github.com/bijux/bijux-telecom/actions/workflows/release-ghcr.yml)
-[![release-github](https://img.shields.io/badge/release--github-no%20status-9CA3AF)](https://github.com/bijux/bijux-telecom/actions/workflows/release-github.yml)
-[![release](https://img.shields.io/badge/release-no%20status-9CA3AF)](https://github.com/bijux/bijux-telecom/releases)
-[![ghcr](https://img.shields.io/badge/ghcr-no%20status-9CA3AF)](https://github.com/bijux?tab=packages&repo_name=bijux-telecom)
-[![published packages](https://img.shields.io/badge/published%20packages-no%20status-9CA3AF)](https://github.com/bijux/bijux-telecom)
+[![CI](https://github.com/bijux/bijux-telecom/workflows/repo%20/%20ci/badge.svg)](https://github.com/bijux/bijux-telecom/actions/workflows/ci.yml?query=branch%3Amain)
+[![Docs](https://github.com/bijux/bijux-telecom/workflows/deploy-docs/badge.svg)](https://github.com/bijux/bijux-telecom/actions/workflows/deploy-docs.yml)
+[![Release](https://img.shields.io/github/v/release/bijux/bijux-telecom?display_name=tag&label=release)](https://github.com/bijux/bijux-telecom/releases)
+[![GHCR targets](https://img.shields.io/badge/ghcr%20targets-6%20packages-181717?logo=github)](https://github.com/bijux?tab=packages&repo_name=bijux-telecom)
+[![Public crates](https://img.shields.io/badge/public%20crates-6-2563EB)](https://github.com/bijux/bijux-telecom/tree/main/crates)
 
-[![Repository docs](https://img.shields.io/badge/docs-no%20status-9CA3AF?logo=materialformkdocs&logoColor=white)](https://github.com/bijux/bijux-telecom/tree/main/docs)
+[![bijux-gnss](https://img.shields.io/crates/v/bijux-gnss?label=bijux--gnss&logo=rust)](https://crates.io/crates/bijux-gnss)
+[![bijux-gnss-core](https://img.shields.io/crates/v/bijux-gnss-core?label=core&logo=rust)](https://crates.io/crates/bijux-gnss-core)
+[![bijux-gnss-infra](https://img.shields.io/crates/v/bijux-gnss-infra?label=infra&logo=rust)](https://crates.io/crates/bijux-gnss-infra)
+[![bijux-gnss-nav](https://img.shields.io/crates/v/bijux-gnss-nav?label=nav&logo=rust)](https://crates.io/crates/bijux-gnss-nav)
+[![bijux-gnss-receiver](https://img.shields.io/crates/v/bijux-gnss-receiver?label=receiver&logo=rust)](https://crates.io/crates/bijux-gnss-receiver)
+[![bijux-gnss-signal](https://img.shields.io/crates/v/bijux-gnss-signal?label=signal&logo=rust)](https://crates.io/crates/bijux-gnss-signal)
+
+[![ghcr-bijux--gnss](https://img.shields.io/badge/ghcr-bijux--gnss-181717?logo=github)](https://github.com/bijux/bijux-telecom/pkgs/container/bijux-telecom%2Fbijux-gnss)
+[![ghcr-core](https://img.shields.io/badge/ghcr-core-181717?logo=github)](https://github.com/bijux/bijux-telecom/pkgs/container/bijux-telecom%2Fbijux-gnss-core)
+[![ghcr-infra](https://img.shields.io/badge/ghcr-infra-181717?logo=github)](https://github.com/bijux/bijux-telecom/pkgs/container/bijux-telecom%2Fbijux-gnss-infra)
+[![ghcr-nav](https://img.shields.io/badge/ghcr-nav-181717?logo=github)](https://github.com/bijux/bijux-telecom/pkgs/container/bijux-telecom%2Fbijux-gnss-nav)
+[![ghcr-receiver](https://img.shields.io/badge/ghcr-receiver-181717?logo=github)](https://github.com/bijux/bijux-telecom/pkgs/container/bijux-telecom%2Fbijux-gnss-receiver)
+[![ghcr-signal](https://img.shields.io/badge/ghcr-signal-181717?logo=github)](https://github.com/bijux/bijux-telecom/pkgs/container/bijux-telecom%2Fbijux-gnss-signal)
+
+[![Repository docs](https://img.shields.io/badge/docs-repository-2563EB?logo=materialformkdocs&logoColor=white)](https://github.com/bijux/bijux-telecom/tree/main/docs)
+[![bijux-gnss rust-docs](https://img.shields.io/badge/rust--docs-bijux--gnss-DEA584?logo=rust&logoColor=white)](https://docs.rs/bijux-gnss/latest/bijux_gnss/)
 <!-- bijux-telecom-badges:generated:end -->
