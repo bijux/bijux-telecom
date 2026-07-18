@@ -7,16 +7,30 @@ release notes live in [../../CHANGELOG.md](../../CHANGELOG.md).
 
 ### Added
 
-- Changelog entry point for core identifiers, units, records, diagnostics, and
-  artifact contracts.
+- Package changelog entrypoint for identifiers, units, time systems,
+  observation records, diagnostics, support matrices, and artifact envelopes.
 
-### Owned Change Types
+### Changed
+
+- API documentation now explains core as the shared vocabulary boundary instead
+  of listing exported symbols without reader guidance.
+
+## What Belongs Here
 
 - Public shared types exchanged across GNSS crates.
 - Unit, time, coordinate, identity, observation, and solution semantics.
 - Versioned artifact envelopes and validation rules.
+- Diagnostic code and severity taxonomy changes.
 
-### Not Owned Here
+## What Belongs Elsewhere
 
-- Runtime orchestration, DSP implementations, navigation estimators, filesystem
-  layout, and operator workflow policy belong outside core.
+- Runtime orchestration belongs to `bijux-gnss-receiver`.
+- DSP implementations belong to `bijux-gnss-signal`.
+- Navigation estimators belong to `bijux-gnss-nav`.
+- Filesystem layout and run persistence belong to `bijux-gnss-infra`.
+
+## Entry Rules
+
+- Treat public type and serialized-shape changes as compatibility-sensitive.
+- Record unit, time-system, and schema implications explicitly.
+- Do not describe downstream convenience imports as core ownership.

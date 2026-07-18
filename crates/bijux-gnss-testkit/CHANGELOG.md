@@ -7,18 +7,32 @@ Workspace-wide release notes live in [../../CHANGELOG.md](../../CHANGELOG.md).
 
 ### Added
 
-- Changelog entry point for fixtures, reference data, independent reference
-  models, and deterministic test-truth generation.
+- Package changelog entrypoint for fixtures, reference data, independent
+  reference models, public testkit API, and deterministic truth generation.
 
-### Owned Change Types
+### Changed
+
+- API, independence, and reference-data documentation now describe provenance,
+  shared consumers, and independence expectations.
+
+## What Belongs Here
 
 - Shared fixtures and checked-in reference datasets used by multiple crates.
 - Independent antenna, atmosphere, coordinate, broadcast, RTK, and signal truth
-  models used for tests.
+  models used by tests.
 - Synthetic observation and signal inputs that must remain independent from the
   production code being tested.
+- Public helper modules exported by `src/lib.rs`.
 
-### Not Owned Here
+## What Belongs Elsewhere
 
-- Production receiver execution, navigation solver implementation, canonical
-  signal DSP, and repository persistence policy belong to other crates.
+- Production receiver execution belongs to `bijux-gnss-receiver`.
+- Navigation solver implementation belongs to `bijux-gnss-nav`.
+- Canonical signal DSP belongs to `bijux-gnss-signal`.
+- Repository persistence policy belongs to `bijux-gnss-infra`.
+
+## Entry Rules
+
+- Record provenance, unit, fixture, and consumer impact.
+- Explain independence implications when a helper changes.
+- Do not use this changelog for one-off test setup that is not shared evidence.

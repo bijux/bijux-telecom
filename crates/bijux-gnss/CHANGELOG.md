@@ -7,15 +7,31 @@ Workspace-wide release notes live in [../../CHANGELOG.md](../../CHANGELOG.md).
 
 ### Added
 
-- Changelog entry point for command, facade, reporting, and workflow changes.
+- Package changelog entrypoint for command, facade, reporting, validation, and
+  workflow changes.
 
-### Owned Change Types
+### Changed
 
-- CLI command names, arguments, reports, and operator workflows.
+- CLI documentation now separates operator invocation, lower-crate execution,
+  report contracts, and artifact handoff.
+
+## What Belongs Here
+
+- CLI command names, arguments, reports, and operator workflow behavior.
 - Facade exports from `src/lib.rs`.
-- Command-level validation and artifact handoff behavior.
+- Command-level validation, routing, and artifact handoff behavior.
+- Breaking changes in command output or public facade imports.
 
-### Not Owned Here
+## What Belongs Elsewhere
 
-- Receiver-stage internals, signal math, navigation science, and repository
-  persistence contracts belong to their owning crates.
+- Receiver-stage internals belong to `bijux-gnss-receiver`.
+- Signal math and raw-IQ contracts belong to `bijux-gnss-signal`.
+- Navigation science belongs to `bijux-gnss-nav`.
+- Repository persistence contracts belong to `bijux-gnss-infra`.
+
+## Entry Rules
+
+- Explain the operator or downstream Rust-user impact.
+- Name the owning lower crate when this package only routes the change.
+- Do not record private implementation reshuffles unless they change a command,
+  report, facade import, or workflow contract.
