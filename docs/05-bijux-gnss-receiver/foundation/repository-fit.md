@@ -52,7 +52,7 @@ infra persists them.
 
 - Is the issue acquisition, tracking, observation construction, runtime ports,
   diagnostics, synthetic runtime proof, or receiver artifacts? Stay here.
-- Is the issue command syntax or report routing? Leave for `bijux-gnss`.
+- Is the issue command syntax or report routing? Leave for the [command guide](../../01-bijux-gnss/foundation/package-overview.md).
 - Is the issue persisted run layout or dataset registry state? Leave for infra.
 - Is the issue reusable code generation, signal identity, or DSP substrate?
   Leave for signal.
@@ -61,10 +61,10 @@ infra persists them.
 
 ## First Proof Check
 
-Inspect `crates/bijux-gnss-receiver/docs/BOUNDARY.md`,
-`crates/bijux-gnss-receiver/docs/RUNTIME.md`,
-`crates/bijux-gnss-receiver/docs/PIPELINE.md`,
-`crates/bijux-gnss-receiver/docs/ARTIFACTS.md`,
-`crates/bijux-gnss-receiver/src/engine/`,
-`crates/bijux-gnss-receiver/src/pipeline/`, and
-`crates/bijux-gnss-receiver/src/ports/`.
+Start with the receiver [ownership boundary](../../../crates/bijux-gnss-receiver/docs/BOUNDARY.md),
+[runtime model](../../../crates/bijux-gnss-receiver/docs/RUNTIME.md),
+[pipeline guide](../../../crates/bijux-gnss-receiver/docs/PIPELINE.md), and
+[artifact contract](../../../crates/bijux-gnss-receiver/docs/ARTIFACTS.md). Then
+confirm the code path through the [engine source](../../../crates/bijux-gnss-receiver/src/engine/),
+[pipeline source](../../../crates/bijux-gnss-receiver/src/pipeline/), and
+[port source](../../../crates/bijux-gnss-receiver/src/ports/).

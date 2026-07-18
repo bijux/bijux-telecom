@@ -37,10 +37,10 @@ flowchart LR
 
 | family | owns | first proof |
 | --- | --- | --- |
-| configuration hash | stable hash of run-preparation configuration | `crates/bijux-gnss-infra/src/hash/provenance.rs` |
-| repository state | git commit hash and dirty-state capture | `crates/bijux-gnss-infra/src/hash/provenance.rs` |
-| machine context | CPU feature capture for run explainability | `crates/bijux-gnss-infra/src/hash/provenance.rs` |
-| front-end provenance | persisted front-end capture context beside run footprints | `crates/bijux-gnss-infra/src/run_layout/provenance/front_end.rs` |
+| configuration hash | stable hash of run-preparation configuration | the [provenance hash source](../../../crates/bijux-gnss-infra/src/hash/provenance.rs) |
+| repository state | git commit hash and dirty-state capture | the [provenance hash source](../../../crates/bijux-gnss-infra/src/hash/provenance.rs) |
+| machine context | CPU feature capture for run explainability | the [provenance hash source](../../../crates/bijux-gnss-infra/src/hash/provenance.rs) |
+| front-end provenance | persisted front-end capture context beside run footprints | the [front-end provenance source](../../../crates/bijux-gnss-infra/src/run_layout/provenance/front_end.rs) |
 
 ## Boundary Rules
 
@@ -61,7 +61,8 @@ flowchart LR
 
 ## First Proof Check
 
-Inspect `crates/bijux-gnss-infra/docs/HASHING.md`,
-`crates/bijux-gnss-infra/src/hash/provenance.rs`,
-`crates/bijux-gnss-infra/src/run_layout/provenance/front_end.rs`, and
-provenance-related run-layout tests before changing this contract.
+Start with the infra [hashing guide](../../../crates/bijux-gnss-infra/docs/HASHING.md),
+the [provenance hash source](../../../crates/bijux-gnss-infra/src/hash/provenance.rs),
+and the [front-end provenance source](../../../crates/bijux-gnss-infra/src/run_layout/provenance/front_end.rs).
+Then inspect the provenance-related run-layout tests before changing this
+contract.

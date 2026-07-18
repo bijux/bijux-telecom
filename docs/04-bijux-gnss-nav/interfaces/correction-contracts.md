@@ -36,11 +36,11 @@ flowchart LR
 
 | family | owns | first proof |
 | --- | --- | --- |
-| atmosphere and ionosphere | atmospheric context, broadcast ionosphere, measured ionosphere, residual summaries | `crates/bijux-gnss-nav/src/corrections/atmosphere.rs`, `crates/bijux-gnss-nav/src/corrections/broadcast_ionosphere_residuals.rs`, `crates/bijux-gnss-nav/src/corrections/measured_ionosphere.rs` |
-| biases and group delay | code bias, phase bias, broadcast group-delay conversions | `crates/bijux-gnss-nav/src/corrections/biases.rs`, `crates/bijux-gnss-nav/src/corrections/broadcast_group_delay.rs` |
-| combinations | ionosphere-free, geometry-free, narrow-lane, Melbourne-Wubbena, and related combinations | `crates/bijux-gnss-nav/src/corrections/combinations.rs`, `crates/bijux-gnss-nav/src/corrections/iono_free_code.rs`, `crates/bijux-gnss-nav/src/corrections/iono_free_phase.rs`, `crates/bijux-gnss-nav/src/corrections/melbourne_wubbena.rs` |
-| carrier effects | phase windup and carrier-aware correction helpers | `crates/bijux-gnss-nav/src/corrections/phase_windup.rs` |
-| dual-frequency support | dual-frequency correction and diagnostic surfaces | `crates/bijux-gnss-nav/src/corrections/dual_frequency.rs` |
+| atmosphere and ionosphere | atmospheric context, broadcast ionosphere, measured ionosphere, residual summaries | the [atmosphere model](../../../crates/bijux-gnss-nav/src/corrections/atmosphere.rs), [broadcast residual model](../../../crates/bijux-gnss-nav/src/corrections/broadcast_ionosphere_residuals.rs), and [measured ionosphere model](../../../crates/bijux-gnss-nav/src/corrections/measured_ionosphere.rs) |
+| biases and group delay | code bias, phase bias, broadcast group-delay conversions | the [bias model](../../../crates/bijux-gnss-nav/src/corrections/biases.rs) and [broadcast group-delay model](../../../crates/bijux-gnss-nav/src/corrections/broadcast_group_delay.rs) |
+| combinations | ionosphere-free, geometry-free, narrow-lane, Melbourne-Wubbena, and related combinations | the [combination model](../../../crates/bijux-gnss-nav/src/corrections/combinations.rs), [ionosphere-free code model](../../../crates/bijux-gnss-nav/src/corrections/iono_free_code.rs), [ionosphere-free phase model](../../../crates/bijux-gnss-nav/src/corrections/iono_free_phase.rs), and [Melbourne-Wubbena model](../../../crates/bijux-gnss-nav/src/corrections/melbourne_wubbena.rs) |
+| carrier effects | phase windup and carrier-aware correction helpers | the [phase-windup model](../../../crates/bijux-gnss-nav/src/corrections/phase_windup.rs) |
+| dual-frequency support | dual-frequency correction and diagnostic surfaces | the [dual-frequency correction model](../../../crates/bijux-gnss-nav/src/corrections/dual_frequency.rs) |
 
 ## Boundary Rules
 
@@ -63,7 +63,8 @@ flowchart LR
 
 ## First Proof Check
 
-Inspect `crates/bijux-gnss-nav/docs/CORRECTIONS.md`,
-`crates/bijux-gnss-nav/src/corrections/`, and correction-focused integration
-tests for ionosphere, windup, bias, and signal-combination behavior before
-changing correction claims.
+Start with the navigation [correction guide](../../../crates/bijux-gnss-nav/docs/CORRECTIONS.md)
+and the [correction source tree](../../../crates/bijux-gnss-nav/src/corrections/).
+Then run or inspect the correction-focused integration tests for ionosphere,
+windup, bias, and signal-combination behavior before changing correction
+claims.

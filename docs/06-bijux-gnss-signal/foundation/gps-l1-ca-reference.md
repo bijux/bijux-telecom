@@ -56,16 +56,16 @@ flowchart LR
 
 | reader question | better owner |
 | --- | --- |
-| How is the C/A sequence generated or sampled? | `crates/bijux-gnss-signal/src/codes/ca_code.rs` |
-| How is the signal exposed to other crates? | `crates/bijux-gnss-signal/src/catalog.rs` and `src/api.rs` |
-| How does an acquisition search use this signal? | `bijux-gnss-receiver` acquisition docs and tests |
-| How does tracking interpret phase, lock, or CN0? | `bijux-gnss-receiver` tracking and diagnostics docs |
-| How does navigation use decoded GPS data? | `bijux-gnss-nav` |
+| How is the C/A sequence generated or sampled? | the [C/A code source](../../../crates/bijux-gnss-signal/src/codes/ca_code.rs) |
+| How is the signal exposed to other crates? | the [signal catalog](../../../crates/bijux-gnss-signal/src/catalog.rs) and [public API surface](../../../crates/bijux-gnss-signal/src/api.rs) |
+| How does an acquisition search use this signal? | the receiver [acquisition contracts](../../05-bijux-gnss-receiver/interfaces/acquisition-contracts.md) |
+| How does tracking interpret phase, lock, or CN0? | the receiver [tracking contracts](../../05-bijux-gnss-receiver/interfaces/tracking-contracts.md) and [diagnostic contracts](../../05-bijux-gnss-receiver/interfaces/diagnostic-contracts.md) |
+| How does navigation use decoded GPS data? | the navigation [time and model contracts](../../04-bijux-gnss-nav/interfaces/time-and-model-contracts.md) |
 
 ## First Proof Check
 
-Inspect `crates/bijux-gnss-signal/src/codes/ca_code.rs`,
-`crates/bijux-gnss-signal/src/catalog.rs`,
-`crates/bijux-gnss-signal/tests/integration_ca_code_reference.rs`,
-`crates/bijux-gnss-signal/tests/integration_ca_code_period_length.rs`, and
-`crates/bijux-gnss-signal/tests/integration_ca_code_long_duration_phase.rs`.
+Start with the [C/A code source](../../../crates/bijux-gnss-signal/src/codes/ca_code.rs)
+and the [signal catalog](../../../crates/bijux-gnss-signal/src/catalog.rs). Then
+confirm behavior through the [reference chip test](../../../crates/bijux-gnss-signal/tests/integration_ca_code_reference.rs),
+the [period-length test](../../../crates/bijux-gnss-signal/tests/integration_ca_code_period_length.rs),
+and the [long-duration phase test](../../../crates/bijux-gnss-signal/tests/integration_ca_code_long_duration_phase.rs).

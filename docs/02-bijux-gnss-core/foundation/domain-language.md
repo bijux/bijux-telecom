@@ -52,10 +52,10 @@ cross-crate comparisons, validation output, and persisted artifacts.
 
 ## First Proof Check
 
-Inspect `crates/bijux-gnss-core/src/ids.rs`,
-`crates/bijux-gnss-core/src/time.rs`,
-`crates/bijux-gnss-core/src/units.rs`,
-`crates/bijux-gnss-core/src/geo.rs`,
-`crates/bijux-gnss-core/src/observation/`,
-`crates/bijux-gnss-core/src/nav_solution.rs`, and
-`crates/bijux-gnss-core/docs/CONTRACT_MAP.md`.
+Start with the [identifier vocabulary](../../../crates/bijux-gnss-core/src/ids.rs),
+[time model](../../../crates/bijux-gnss-core/src/time.rs),
+[unit types](../../../crates/bijux-gnss-core/src/units.rs), and
+[geodesy helpers](../../../crates/bijux-gnss-core/src/geo.rs). Then verify
+cross-crate records through the [observation model](../../../crates/bijux-gnss-core/src/observation/),
+[navigation solution model](../../../crates/bijux-gnss-core/src/nav_solution.rs), and
+[contract map](../../../crates/bijux-gnss-core/docs/CONTRACT_MAP.md).
