@@ -51,9 +51,8 @@ flowchart TD
   component, and code role.
 - Review every public API export as a boundary change, not a convenience
   re-export.
-- Use the refusal ledger in
-  [This Package Does Not Own](../this-package-does-not-own.md) when pressure
-  repeats from another crate.
+- Use the [signal ownership boundaries](../ownership-boundaries.md) when
+  placement pressure repeats from another crate.
 
 ## Proof Check
 

@@ -122,8 +122,8 @@ undifferentiated execution block.
   care, and review scope
 - [Quality](quality/) for invariants, proof strategy, limitations, risk, and
   change validation
-- [This Package Does Not Own](this-package-does-not-own.md) for the explicit
-  refusal ledger
+- [Receiver ownership boundaries](ownership-boundaries.md) for separating
+  runtime lifecycle from reusable science and persistence
 
 ## Start Here When
 

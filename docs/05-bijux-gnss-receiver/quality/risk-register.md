@@ -28,7 +28,8 @@ This page records the main trust risks in `bijux-gnss-receiver`.
 - review `api.rs` changes as public contract changes
 - choose validation by runtime family, not by convenience
 - keep artifact and validation meaning documented and explicit
-- maintain the refusal ledger in [This Package Does Not Own](../this-package-does-not-own.md)
+- maintain placement decisions in the
+  [receiver ownership boundaries](../ownership-boundaries.md)
 
 ## First Proof Check
 

@@ -122,8 +122,8 @@ flowchart LR
   verification commands, and review scope
 - [Quality](quality/) for invariants, proof strategy, limitations, risk, and
   change validation
-- [This Package Does Not Own](this-package-does-not-own.md) for the explicit
-  refusal ledger
+- [Signal ownership boundaries](ownership-boundaries.md) for separating
+  reusable physical behavior from runtime and navigation policy
 
 ## Start Here When
 
