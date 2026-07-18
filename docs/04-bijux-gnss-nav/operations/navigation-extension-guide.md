@@ -4,57 +4,67 @@ audience: mixed
 type: operations
 status: canonical
 owner: bijux-gnss-nav-docs
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-18
 ---
 
 # Navigation Extension Guide
 
-This page replaces the old root-level navigation-extension note. Extending
-navigation behavior belongs with the crate that owns orbit state, correction
-law, and estimator meaning.
+Use this guide when adding navigation-domain behavior: product decoding, orbit
+state, correction law, clock handling, estimator behavior, PPP, RTK, or
+scientific refusal evidence. If the work is signal substrate, receiver runtime,
+repository persistence, or command presentation, leave this crate.
 
-## Add A Correction Model
+## Extension Route
 
-1. implement the model in
-   `crates/bijux-gnss-nav/src/corrections/`
-2. wire it through the owning correction flow instead of hiding it inside a
-   receiver or command helper
-3. add proof in `crates/bijux-gnss-nav/tests/` that covers both nominal use and
-   the failure or refusal mode that protects callers
-4. update public navigation contracts when the result shape or solver promise
-   changes
+```mermaid
+flowchart TD
+    claim["name the scientific claim"]
+    owner["choose format orbit correction clock estimator"]
+    implementation["implement in the owning nav family"]
+    proof["add reference, refusal, or budget proof"]
+    contract["update public contract docs when callers may rely on it"]
 
-Common existing owners worth matching before adding a new file are
-`broadcast_ionosphere_residuals.rs`, `dual_frequency.rs`,
-`measured_ionosphere.rs`, `phase_windup.rs`, and the combination helpers such
-as `iono_free_code.rs` and `narrow_lane.rs`.
+    claim --> owner --> implementation --> proof --> contract
+```
 
-## Extend Satellite Clock Handling
+## Choose The Owner
 
-1. keep broadcast clock behavior with the owning clock model rather than
-   scattering bias terms across unrelated solvers
-2. route external clock sources through the public product boundary that
-   already owns precise clock interpretation
-3. preserve the rule that precise-clock bias replaces the relevant broadcast
-   bias contribution rather than stacking on top of it blindly
-4. prove both broadcast fallback and precise-clock override behavior with
-   targeted tests such as `integration_clk_reference_accuracy.rs` or
-   `integration_broadcast_clock_reference.rs`
+| extension | owning area | required proof |
+| --- | --- | --- |
+| product decoder | `src/formats/` | valid product fixture and typed rejection case |
+| orbit state | `src/orbits/` | broadcast or precise reference comparison |
+| correction model | `src/corrections/` | nominal correction and refusal or quality evidence |
+| satellite clock behavior | clock/product owner used by orbit or estimator path | broadcast fallback and precise override proof |
+| position estimator behavior | `src/estimation/position/` | solver quality, residual, or integrity proof |
+| PPP behavior | `src/estimation/ppp/` | state lifecycle, precise-product, or convergence proof |
+| RTK behavior | `src/estimation/rtk/` | ambiguity, baseline, fix policy, or quality proof |
 
-## Extend An Estimator Surface
+## Extension Gates
 
-1. place new position behavior under `src/estimation/position/`, PPP behavior
-   under `src/estimation/ppp/`, and RTK behavior under `src/estimation/rtk/`
-2. keep shared filter primitives with `src/estimation/ekf/` only when they are
-   genuinely reusable across solver families
-3. add a refusal, downgrade, or integrity-focused proof when the extension can
-   fail in a scientifically meaningful way
-4. update public estimation contracts when downstream crates are meant to rely
-   on the new behavior
+- Name the physical or statistical claim before adding the module.
+- Keep reusable filter primitives under `src/estimation/ekf/` only when more
+  than one estimator family consumes them.
+- Add refusal, downgrade, or integrity evidence whenever an algorithm can fail
+  honestly.
+- Keep file discovery in infra and runtime scheduling in receiver.
+- Update public API docs only when another crate is expected to depend on the
+  new surface.
 
-## Boundary Rule
+## Existing Owner Patterns
 
-If the new behavior is reusable signal math, move it into
-`bijux-gnss-signal`. If the new behavior is runtime scheduling or stage
-plumbing, keep it in `bijux-gnss-receiver`. `bijux-gnss-nav` owns the science,
-not every caller convenience.
+- Correction examples: `broadcast_ionosphere_residuals.rs`,
+  `dual_frequency.rs`, `measured_ionosphere.rs`, `phase_windup.rs`,
+  `iono_free_code.rs`, and `narrow_lane.rs`.
+- Clock/product examples: precise CLK and broadcast clock tests prove fallback
+  and override behavior.
+- Estimator examples: position, PPP, and RTK subtrees separate reusable
+  primitives from solver-family policy.
+
+## First Proof Check
+
+Inspect `crates/bijux-gnss-nav/docs/CONTRACTS.md`,
+`crates/bijux-gnss-nav/docs/FORMATS.md`,
+`crates/bijux-gnss-nav/docs/CORRECTIONS.md`,
+`crates/bijux-gnss-nav/docs/ESTIMATION.md`,
+`crates/bijux-gnss-nav/docs/TESTS.md`, and the closest integration test under
+`crates/bijux-gnss-nav/tests/`.
