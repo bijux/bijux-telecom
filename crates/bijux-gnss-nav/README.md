@@ -13,29 +13,33 @@ orbit propagation, clock products, atmospheric and antenna corrections,
 position estimation, RTK, PPP, RAIM, residuals, uncertainty, and time-system
 interpretation needed by navigation algorithms.
 
-Start here when the question is about turning observations or external
-navigation products into a navigation claim. Do not start here for raw-IQ
-ingest, receiver scheduling, signal-code generation, or CLI presentation.
+Use this crate to turn observations or external navigation products into a
+typed navigation claim or a typed refusal. Raw-IQ ingest, receiver scheduling,
+signal-code generation, persistence, and CLI presentation belong elsewhere.
 
-## Install
+## Availability
+
+The first registry release has not been published. In this workspace, build or
+test the package directly:
 
 ```sh
-cargo add bijux-gnss-nav
+cargo test -p bijux-gnss-nav
 ```
 
-The Cargo package name is `bijux-gnss-nav`; its Rust import name is
-`bijux_gnss_nav`. All public packages in this repository share one release
-version.
+After publication, add it with `cargo add bijux-gnss-nav`. The Cargo package
+name is `bijux-gnss-nav`; its Rust import name is `bijux_gnss_nav`. All public
+packages in this repository share one release version.
 
-## Reader Route
+## Choose the Scientific Surface
 
 | question | go next |
 | --- | --- |
-| Which external format or product is parsed? | [Format guide](docs/FORMATS.md), `src/formats.rs` |
+| Which external format or product is parsed? | [format guide](docs/FORMATS.md) |
 | Which correction or model owns the science? | [Correction guide](docs/CORRECTIONS.md), [Model guide](docs/MODELS.md) |
-| Which orbit or clock contract applies? | [Orbit guide](docs/ORBITS.md), `src/orbits/` |
-| How is a solution estimated or refused? | [Estimation guide](docs/ESTIMATION.md), `src/estimation/` |
-| What changed in this package? | [Package changelog](CHANGELOG.md) |
+| Which orbit, clock, uncertainty, or product-gap contract applies? | [orbit guide](docs/ORBITS.md) |
+| How is a position, RTK, PPP, or integrity claim estimated or refused? | [estimation guide](docs/ESTIMATION.md) |
+| Which time system or rollover context is required? | [time guide](docs/TIME.md) |
+| What compatibility changed? | [package release history](CHANGELOG.md) |
 
 ## Owned Boundary
 
@@ -63,29 +67,43 @@ flowchart TB
     estimator --> solution
 ```
 
-## Source Map
+## Scientific Result Contract
 
-- `src/orbits/` owns satellite-state and ephemeris logic.
-- `src/formats.rs` owns navigation and precise-product parsing families.
-- `src/corrections/` owns atmosphere, bias, combinations, tides, and
-  carrier-aware computations.
-- `src/estimation/` owns SPP, PPP, RAIM, EKF, and RTK surfaces.
-- `src/models/` owns environmental and antenna models.
-- `src/time.rs` and `src/time/` own navigation-specific time behavior.
+Every public result must make these concerns reviewable:
 
-## Documentation Map
+- input product or observation provenance
+- constellation, signal, time system, coordinate frame, and units
+- correction and model assumptions
+- residual, covariance, uncertainty, or integrity evidence appropriate to the
+  claim
+- degraded and refused outcomes when prerequisites are missing
 
-- [Architecture guide](docs/ARCHITECTURE.md)
-- [Boundary guide](docs/BOUNDARY.md)
-- [Correction guide](docs/CORRECTIONS.md)
-- [Contract guide](docs/CONTRACTS.md)
-- [Estimation guide](docs/ESTIMATION.md)
-- [Format guide](docs/FORMATS.md)
-- [Model guide](docs/MODELS.md)
-- [Orbit guide](docs/ORBITS.md)
-- [Public API](docs/PUBLIC_API.md)
-- [Test guide](docs/TESTS.md)
-- [Time guide](docs/TIME.md)
+A successful-looking coordinate is not sufficient evidence. The
+[navigation extension guide](../../docs/04-bijux-gnss-nav/operations/navigation-extension-guide.md)
+defines the work required to add scientific behavior, and the
+[release guide](../../docs/04-bijux-gnss-nav/operations/release-and-versioning.md)
+defines compatibility evidence.
+
+## Implementation Ownership
+
+- The [format boundary](src/formats.rs) owns broadcast navigation, RINEX, SP3,
+  CLK, ANTEX, and bias-product interpretation.
+- The [orbit boundary](src/orbits/mod.rs) owns ephemeris, satellite state,
+  clocks, uncertainty, and constellation-specific propagation.
+- The [correction boundary](src/corrections/mod.rs) owns atmosphere, bias,
+  combinations, phase windup, and observation-derived corrections.
+- The [model boundary](src/models/mod.rs) owns environmental, antenna, tide,
+  celestial, and NeQuick models.
+- The [estimation boundary](src/estimation.rs) owns positioning, EKF, PPP, RTK,
+  integrity, uncertainty, and solution claims.
+- The [navigation time boundary](src/time.rs) owns week context, rollover, and
+  navigation-specific time interpretation.
+- The [public API](src/api.rs) owns deliberate downstream exports.
+
+For package architecture and contracts, continue with the
+[architecture guide](docs/ARCHITECTURE.md), [boundary guide](docs/BOUNDARY.md),
+[contract guide](docs/CONTRACTS.md), and [public API guide](docs/PUBLIC_API.md).
+The [test guide](docs/TESTS.md) maps scientific claims to proof families.
 
 ## Verification Focus
 
