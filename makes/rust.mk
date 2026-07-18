@@ -1,201 +1,25 @@
-RS_ARTIFACT_ROOT ?= artifacts/rust
-RS_RUN_ID ?= local
-PINNED_REF_GATE_BIN ?= makes/bin/run_pinned_ref_gate.sh
-NEXTEST_EXPR_BIN ?= makes/bin/nextest_expr.sh
+GNSS_RUST_GATE_BIN ?= makes/bin/run_gnss_rust_gate.sh
+RUST_GATE_BIN ?= $(GNSS_RUST_GATE_BIN)
+NEXTEST_SLOW_NAME_EXPR ?= test(/::slow__/)
+RUST_AUDIT_PREREQUISITES += audit-policy-rs
 
-RS_TARGET_DIR ?= $(abspath $(RS_ARTIFACT_ROOT)/target)
-RS_NEXTEST_CACHE_DIR ?= $(RS_TARGET_DIR)/nextest
-RS_NEXTEST_CONFIG_HOME ?= $(abspath $(RS_ARTIFACT_ROOT)/nextest/config)
-RS_PROFRAW_DIR ?= $(abspath $(RS_ARTIFACT_ROOT)/coverage/profraw)
-RS_LLVM_PROFILE_FILE ?= $(RS_PROFRAW_DIR)/default_%m_%p.profraw
+.PHONY: audit-policy-rs bench-compare
 
-RS_FMT_REPORT ?= $(RS_ARTIFACT_ROOT)/fmt/$(RS_RUN_ID)/report.txt
-RS_LINT_REPORT ?= $(RS_ARTIFACT_ROOT)/lint/$(RS_RUN_ID)/report.txt
-RS_TEST_REPORT ?= $(RS_ARTIFACT_ROOT)/test/$(RS_RUN_ID)/nextest.log
-RS_TEST_SLOW_REPORT ?= $(RS_ARTIFACT_ROOT)/test/$(RS_RUN_ID)/nextest-slow.log
-RS_TEST_ALL_REPORT ?= $(RS_ARTIFACT_ROOT)/test/$(RS_RUN_ID)/nextest-all.log
-RS_AUDIT_REPORT ?= $(RS_ARTIFACT_ROOT)/audit/$(RS_RUN_ID)/report.txt
-RS_COVERAGE_DIR ?= $(RS_ARTIFACT_ROOT)/coverage/$(RS_RUN_ID)
-RS_COVERAGE_TEST_REPORT ?= $(RS_COVERAGE_DIR)/nextest.log
-RS_LCOV_FILE ?= $(RS_COVERAGE_DIR)/lcov.info
-RS_COVERAGE_SUMMARY_REPORT ?= $(RS_COVERAGE_DIR)/summary.txt
-
-NEXTEST_PROFILE ?= default
-NEXTEST_PROFILE_FAST ?= $(NEXTEST_PROFILE)
-NEXTEST_PROFILE_SLOW ?= $(NEXTEST_PROFILE)
-NEXTEST_STATUS_LEVEL ?= all
-NEXTEST_FINAL_STATUS_LEVEL ?= all
-NEXTEST_FAST_EXPR ?= $(shell "$(NEXTEST_EXPR_BIN)" fast)
-NEXTEST_SLOW_EXPR ?= $(shell "$(NEXTEST_EXPR_BIN)" slow)
-
-define rs_require_tool
-	@command -v $(1) >/dev/null 2>&1 || { \
-		echo "$(1) is required but not installed"; \
-		exit 1; \
-	}
-endef
-
-define rs_nextest_summary
-	summary_line=$$(perl -pe 's/\e\[[0-9;]*[[:alpha:]]//g' "$(1)" | grep 'Summary \[' | tail -n 1 || true); \
-	printf '\033[1;36m%s\033[0m %s\n' "nextest-summary:" "$${summary_line:-unavailable}"
-endef
-
-.PHONY: fmt-rs lint-rs test-rs test-slow-rs test-all-rs test-all-frozen lint-frozen audit-frozen coverage-rs audit-rs bench-compare rustdoc-check
-
-fmt-rs: ## Run Rust formatting checks
-	@mkdir -p "$(dir $(RS_FMT_REPORT))"
-	@set -o pipefail; \
-	CARGO_TARGET_DIR="$(RS_TARGET_DIR)" \
-	CARGO_TERM_COLOR="$(CARGO_TERM_COLOR)" \
-	cargo fmt --all -- --check 2>&1 | tee "$(RS_FMT_REPORT)"
-
-lint-rs: ## Run Rust clippy checks with -D warnings
-	@mkdir -p "$(dir $(RS_LINT_REPORT))"
-	@set -o pipefail; \
-	CLIPPY_CONF_DIR="configs/rust" \
-	CARGO_TARGET_DIR="$(RS_TARGET_DIR)" \
-	CARGO_TERM_COLOR="$(CARGO_TERM_COLOR)" \
-	cargo clippy --workspace --all-targets --all-features --locked -- -D warnings 2>&1 | tee "$(RS_LINT_REPORT)"
-
-test-rs: ## Run Rust tests outside the governed slow roster
-	$(call rs_require_tool,cargo-nextest)
-	@mkdir -p "$(dir $(RS_TEST_REPORT))" "$(RS_PROFRAW_DIR)" "$(RS_NEXTEST_CONFIG_HOME)"
-	@status=0; \
-	LLVM_PROFILE_FILE="$(RS_LLVM_PROFILE_FILE)" \
-	XDG_CONFIG_HOME="$(RS_NEXTEST_CONFIG_HOME)" \
-	CARGO_TARGET_DIR="$(RS_TARGET_DIR)" \
-	NEXTEST_CACHE_DIR="$(RS_NEXTEST_CACHE_DIR)" \
-	CARGO_TERM_COLOR="$(CARGO_TERM_COLOR)" \
-	cargo nextest run \
-		--workspace \
-		--config-file configs/rust/nextest.toml \
-		--profile "$(NEXTEST_PROFILE_FAST)" \
-		-E "$(NEXTEST_FAST_EXPR)" \
-		--status-level "$(NEXTEST_STATUS_LEVEL)" \
-		--final-status-level "$(NEXTEST_FINAL_STATUS_LEVEL)" \
-		2>&1 | tee "$(RS_TEST_REPORT)" || status=$$?; \
-	$(call rs_nextest_summary,$(RS_TEST_REPORT)); \
-	test $$status -eq 0
-
-test-slow-rs: ## Run only governed slow tests from the roster and slow__ namespace
-	$(call rs_require_tool,cargo-nextest)
-	@mkdir -p "$(dir $(RS_TEST_SLOW_REPORT))" "$(RS_PROFRAW_DIR)" "$(RS_NEXTEST_CONFIG_HOME)"
-	@status=0; \
-	LLVM_PROFILE_FILE="$(RS_LLVM_PROFILE_FILE)" \
-	XDG_CONFIG_HOME="$(RS_NEXTEST_CONFIG_HOME)" \
-	CARGO_TARGET_DIR="$(RS_TARGET_DIR)" \
-	NEXTEST_CACHE_DIR="$(RS_NEXTEST_CACHE_DIR)" \
-	CARGO_TERM_COLOR="$(CARGO_TERM_COLOR)" \
-	cargo nextest run \
-		--workspace \
-		--config-file configs/rust/nextest.toml \
-		--profile "$(NEXTEST_PROFILE_SLOW)" \
-		-E "$(NEXTEST_SLOW_EXPR)" \
-		--status-level "$(NEXTEST_STATUS_LEVEL)" \
-		--final-status-level "$(NEXTEST_FINAL_STATUS_LEVEL)" \
-		2>&1 | tee "$(RS_TEST_SLOW_REPORT)" || status=$$?; \
-	$(call rs_nextest_summary,$(RS_TEST_SLOW_REPORT)); \
-	test $$status -eq 0
-
-test-all-rs: ## Run full Rust tests with nextest including ignored
-	$(call rs_require_tool,cargo-nextest)
-	@mkdir -p "$(dir $(RS_TEST_ALL_REPORT))" "$(RS_PROFRAW_DIR)" "$(RS_NEXTEST_CONFIG_HOME)"
-	@status=0; \
-	LLVM_PROFILE_FILE="$(RS_LLVM_PROFILE_FILE)" \
-	XDG_CONFIG_HOME="$(RS_NEXTEST_CONFIG_HOME)" \
-	CARGO_TARGET_DIR="$(RS_TARGET_DIR)" \
-	NEXTEST_CACHE_DIR="$(RS_NEXTEST_CACHE_DIR)" \
-	CARGO_TERM_COLOR="$(CARGO_TERM_COLOR)" \
-	cargo nextest run \
-		--workspace \
-		--run-ignored all \
-		--retries 0 \
-		--config-file configs/rust/nextest.toml \
-		--profile "$(NEXTEST_PROFILE)" \
-		--status-level "$(NEXTEST_STATUS_LEVEL)" \
-		--final-status-level "$(NEXTEST_FINAL_STATUS_LEVEL)" \
-		2>&1 | tee "$(RS_TEST_ALL_REPORT)" || status=$$?; \
-	$(call rs_nextest_summary,$(RS_TEST_ALL_REPORT)); \
-	test $$status -eq 0
-
-test-all-frozen: ## Start a detached full-suite run for a pinned commit and write artifacts under artifacts/<sha>/
-	@PINNED_REF_GATE_TARGET="test-all" "$(PINNED_REF_GATE_BIN)"
-
-lint-frozen: ## Start a detached lint run for a pinned commit and write artifacts under artifacts/<sha>/
-	@PINNED_REF_GATE_TARGET="lint" "$(PINNED_REF_GATE_BIN)"
-
-audit-frozen: ## Start a detached audit run for a pinned commit and write artifacts under artifacts/<sha>/
-	@PINNED_REF_GATE_TARGET="audit" "$(PINNED_REF_GATE_BIN)"
-
-coverage-rs: ## Run workspace coverage with cargo llvm-cov + nextest
-	$(call rs_require_tool,cargo-llvm-cov)
-	$(call rs_require_tool,cargo-nextest)
-	@mkdir -p "$(RS_COVERAGE_DIR)" "$(RS_PROFRAW_DIR)" "$(RS_NEXTEST_CONFIG_HOME)"
-	@status=0; \
-	LLVM_PROFILE_FILE="$(RS_LLVM_PROFILE_FILE)" \
-	XDG_CONFIG_HOME="$(RS_NEXTEST_CONFIG_HOME)" \
-	CARGO_TARGET_DIR="$(RS_TARGET_DIR)" \
-	CARGO_LLVM_COV_TARGET_DIR="$(RS_TARGET_DIR)" \
-	NEXTEST_CACHE_DIR="$(RS_NEXTEST_CACHE_DIR)" \
-	CARGO_TERM_COLOR="$(CARGO_TERM_COLOR)" \
-	CARGO_TERM_PROGRESS_WHEN="$(CARGO_TERM_PROGRESS_WHEN)" \
-	CARGO_TERM_PROGRESS_WIDTH="$(CARGO_TERM_PROGRESS_WIDTH)" \
-	CARGO_TERM_VERBOSE="$(CARGO_TERM_VERBOSE)" \
-	cargo llvm-cov nextest \
-		--color always \
-		--workspace \
-		--all-features \
-		--config-file configs/rust/nextest.toml \
-		--run-ignored all \
-		--lcov \
-		--output-path "$(RS_LCOV_FILE)" \
-		2>&1 | tee "$(RS_COVERAGE_TEST_REPORT)" || status=$$?; \
-	$(call rs_nextest_summary,$(RS_COVERAGE_TEST_REPORT)); \
-	test $$status -eq 0
-	@set -o pipefail; \
-	CARGO_TARGET_DIR="$(RS_TARGET_DIR)" \
-	CARGO_LLVM_COV_TARGET_DIR="$(RS_TARGET_DIR)" \
-	cargo llvm-cov report 2>&1 | tee "$(RS_COVERAGE_SUMMARY_REPORT)"
-
-audit-rs: ## Run cargo-deny and cargo-audit
-	$(call rs_require_tool,cargo-deny)
-	$(call rs_require_tool,cargo-audit)
-	@mkdir -p "$(dir $(RS_AUDIT_REPORT))"
-	@set -o pipefail; \
-	: > "$(RS_AUDIT_REPORT)"; \
-	run_and_log() { \
-		"$$@" 2>&1 | tee -a "$(RS_AUDIT_REPORT)"; \
-		return "$${PIPESTATUS[0]}"; \
-	}; \
-	audit_ignore_args=(); \
-	audit_ignore_args_line="$$(CARGO_TARGET_DIR="$(RS_TARGET_DIR)" cargo run -q -p bijux-gnss-dev -- audit-ignore-args)"; \
-	if [ -n "$${audit_ignore_args_line}" ]; then \
-		read -r -a audit_ignore_args <<< "$${audit_ignore_args_line}"; \
-	fi; \
-	governance_status=0; \
-	deny_status=0; \
-	audit_status=0; \
-	echo "run: cargo run -q -p bijux-gnss-dev -- audit-allowlist" | tee -a "$(RS_AUDIT_REPORT)"; \
-	run_and_log env CARGO_TARGET_DIR="$(RS_TARGET_DIR)" cargo run -q -p bijux-gnss-dev -- audit-allowlist || governance_status=$$?; \
-	echo | tee -a "$(RS_AUDIT_REPORT)"; \
-	echo "run: cargo run -q -p bijux-gnss-dev -- deny-policy-deviations" | tee -a "$(RS_AUDIT_REPORT)"; \
-	run_and_log env CARGO_TARGET_DIR="$(RS_TARGET_DIR)" cargo run -q -p bijux-gnss-dev -- deny-policy-deviations || governance_status=$$?; \
-	echo | tee -a "$(RS_AUDIT_REPORT)"; \
-	echo "run: cargo deny check bans licenses sources --config configs/rust/deny.toml" | tee -a "$(RS_AUDIT_REPORT)"; \
-	run_and_log env CARGO_TARGET_DIR="$(RS_TARGET_DIR)" cargo deny check bans licenses sources --config configs/rust/deny.toml || deny_status=$$?; \
-	echo | tee -a "$(RS_AUDIT_REPORT)"; \
-	if [ "$${#audit_ignore_args[@]}" -gt 0 ]; then \
-		echo "run: cargo audit $${audit_ignore_args[*]}" | tee -a "$(RS_AUDIT_REPORT)"; \
-	else \
-		echo "run: cargo audit" | tee -a "$(RS_AUDIT_REPORT)"; \
-	fi; \
-	run_and_log env CARGO_TARGET_DIR="$(RS_TARGET_DIR)" cargo audit "$${audit_ignore_args[@]}" || audit_status=$$?; \
-	test $$governance_status -eq 0; \
-	test $$deny_status -eq 0; \
-	test $$audit_status -eq 0
+audit-policy-rs: ## Validate GNSS audit allowlist and deny-policy governance
+	@mkdir -p "$(RS_CARGO_HOME)" "$(RS_TMP_DIR)" "$(RS_TARGET_DIR)"
+	@CARGO_HOME="$(RS_CARGO_HOME)" \
+		CARGO_TARGET_DIR="$(RS_TARGET_DIR)" \
+		TMPDIR="$(RS_TMP_DIR)" \
+		cargo run --locked -q -p bijux-gnss-dev -- audit-allowlist
+	@CARGO_HOME="$(RS_CARGO_HOME)" \
+		CARGO_TARGET_DIR="$(RS_TARGET_DIR)" \
+		TMPDIR="$(RS_TMP_DIR)" \
+		cargo run --locked -q -p bijux-gnss-dev -- deny-policy-deviations
 
 bench-compare: ## Run benchmark comparison through bijux-gnss-dev
-	@CARGO_TARGET_DIR="$(RS_TARGET_DIR)" cargo run --locked -q -p bijux-gnss-dev -- bench-compare $(if $(filter 1 true yes,$(BENCH_STRICT)),--strict,)
-
-rustdoc-check: ## Build workspace Rust API documentation
-	@CARGO_TARGET_DIR="$(RS_TARGET_DIR)" cargo doc --workspace --no-deps
+	@mkdir -p "$(RS_CARGO_HOME)" "$(RS_TMP_DIR)" "$(RS_TARGET_DIR)"
+	@CARGO_HOME="$(RS_CARGO_HOME)" \
+		CARGO_TARGET_DIR="$(RS_TARGET_DIR)" \
+		TMPDIR="$(RS_TMP_DIR)" \
+		cargo run --locked -q -p bijux-gnss-dev -- bench-compare \
+			$(if $(filter 1 true yes,$(BENCH_STRICT)),--strict,)

@@ -27,6 +27,12 @@ endif
 
 .PHONY: docs docs-check docs-clean docs-hygiene docs-install docs-render-check docs-require docs-sanity docs-serve docs-sync-root-icons gh-docs-build gh-docs-install gh-docs-verify
 
+BIJUX_HELP_TARGETS += docs docs-check docs-install docs-serve
+BIJUX_HELP_docs := Build the GNSS documentation site
+BIJUX_HELP_docs-check := Validate documentation source and rendered output
+BIJUX_HELP_docs-install := Install the documentation toolchain under artifacts
+BIJUX_HELP_docs-serve := Serve the GNSS documentation site locally
+
 ##@ Documentation
 docs-require: ## Verify documentation build inputs and tools
 	@test -f "$(MKDOCS_CFG)" || (echo "ERROR: missing $(MKDOCS_CFG)" && exit 1)

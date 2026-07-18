@@ -84,9 +84,9 @@ direct invocation.
 
 ## Nextest Policy Seam
 
-The slow-test ledger is not a runtime input to the dev binary. A
-[shell expression generator](https://github.com/bijux/bijux-gnss/blob/main/makes/bin/nextest_expr.sh) reads the
-ledger for Make’s fast and slow lanes. The
+The slow-test ledger is not a runtime input to the dev binary. The shared
+[shell expression generator](https://github.com/bijux/bijux-gnss/blob/main/.bijux/shared/bijux-makes-rs/scripts/nextest_expr.sh)
+reads the ledger for Make’s fast and slow lanes. The
 [suite-selection integration](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/tests/integration_nextest_suite_selection.rs)
 executes that generator and checks:
 

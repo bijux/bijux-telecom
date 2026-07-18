@@ -16,6 +16,10 @@ GH_RELEASE_CI_APPEARANCE_GRACE_SECONDS ?= 20
 	gh-release-plan-github gh-release-plan-crates \
 	gh-release-require-cargo-token gh-release-wait-for-ci
 
+BIJUX_HELP_TARGETS += publish-rs release-check
+BIJUX_HELP_publish-rs := Publish configured Rust crates with dry-run safety
+BIJUX_HELP_release-check := Validate public crate release metadata
+
 release-check: ## Validate public package metadata, ordering, and licenses
 	@python3 "$(RELEASE_VALIDATOR)" --repo-root "$(CURDIR)" --spec "$(RELEASE_SPEC)"
 

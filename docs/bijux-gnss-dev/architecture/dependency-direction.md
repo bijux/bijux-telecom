@@ -120,7 +120,8 @@ command effects and output ownership.
 Slow-test roster governance is not a subcommand. The
 [lane-selection integration test](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/tests/integration_nextest_suite_selection.rs)
 reads the roster, scans Rust test functions, and executes the
-[nextest expression generator](https://github.com/bijux/bijux-gnss/blob/main/makes/bin/nextest_expr.sh). This is a
+[shared nextest expression generator](https://github.com/bijux/bijux-gnss/blob/main/.bijux/shared/bijux-makes-rs/scripts/nextest_expr.sh).
+This is a
 test-time repository edge, separate from the binary’s command inventory.
 
 The source scan is heuristic: it recognizes test attributes followed by named

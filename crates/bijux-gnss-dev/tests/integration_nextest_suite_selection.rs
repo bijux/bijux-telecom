@@ -83,7 +83,11 @@ fn load_slow_roster(path: &Path) -> anyhow::Result<Vec<String>> {
 }
 
 fn nextest_expr(repo_root: &Path, mode: &str) -> anyhow::Result<String> {
-    let output = Command::new(repo_root.join("makes/bin/nextest_expr.sh")).arg(mode).output()?;
+    let output =
+        Command::new(repo_root.join(".bijux/shared/bijux-makes-rs/scripts/nextest_expr.sh"))
+            .env("NEXTEST_SLOW_NAME_EXPR", "test(/::slow__/)")
+            .arg(mode)
+            .output()?;
     assert!(
         output.status.success(),
         "nextest expression generator failed for mode {mode}: {}",

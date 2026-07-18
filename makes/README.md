@@ -3,6 +3,11 @@
 This directory owns the repository's stable `make` contract. Public targets stay meaningful across
 refactors; helper targets remain internal.
 
+Generic repository and Cargo orchestration comes from the capability-selected
+`.bijux/shared/bijux-makes/` and `.bijux/shared/bijux-makes-rs/` libraries.
+Repository-owned modules retain GNSS documentation, audit governance, release,
+and benchmark policy.
+
 ## Stable Targets
 
 - `fmt`
@@ -26,15 +31,14 @@ All other targets are implementation details.
 ## Frozen Gates
 
 Frozen gates run a detached background lane from a pinned repository commit instead of from the
-mutable working tree. The canonical pin variable is `PINNED_REF`; `TEST_ALL_FROZEN_REF` remains a
-cross-repository compatibility alias.
+mutable working tree. The canonical pin variable is `PINNED_REF`.
 
 Examples:
 
 ```bash
 PINNED_REF=HEAD make lint-frozen
 PINNED_REF=01d26ba9 make audit-frozen
-TEST_ALL_FROZEN_REF=01d26ba9 make test-all-frozen
+PINNED_REF=01d26ba9 make test-all-frozen
 ```
 
 The launcher resolves the target commit, clones that exact snapshot under
@@ -45,9 +49,9 @@ the code, reports, and cargo state aligned to the same immutable source tree.
 
 - `artifacts/<sha>/frozen-repo/`: detached checkout for the pinned commit
 - `artifacts/<sha>/rust/`: primary gate reports
-- `artifacts/<sha>/target/<gate>/`: isolated cargo target directory
-- `artifacts/<sha>/cargo/home/<gate>/`: isolated cargo home for registries and advisory data
-- `artifacts/<sha>/tmp/<gate>/`: gate-local temporary directory
+- `artifacts/<sha>/rust/target/`: isolated Cargo target directory
+- `artifacts/<sha>/rust/cargo/home/`: isolated Cargo home for registries and advisory data
+- `artifacts/<sha>/rust/tmp/`: gate-local temporary directory
 - `artifacts/<sha>/background/`: launcher metadata, console logs, pid files, and exit status
 
 ### Background Control Files
