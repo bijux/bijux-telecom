@@ -4,61 +4,107 @@ audience: mixed
 type: interfaces
 status: canonical
 owner: bijux-gnss-dev-docs
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-18
 ---
 
 # Binary Boundary
 
-`bijux-gnss-dev` is a repository-maintenance binary. Its public contract is the
-command line and the governed files those commands read or write. Product crates
-must not depend on its internals, and reviewers should treat any pressure to
-reuse `src/main.rs` helpers as a sign that reusable ownership belongs somewhere
-else.
+`bijux-gnss-dev` is an executable for repository maintenance. It has no library
+target. Its reusable contract is limited to documented command names,
+arguments, governed inputs, filesystem effects, exit behavior, and
+human-readable output.
 
-## What Callers May Rely On
-
-- the binary name `bijux-gnss-dev`
-- the command inventory documented in
-  `crates/bijux-gnss-dev/docs/COMMANDS.md`
-- the governed inputs and outputs named by the maintainer workflows
-- exit status and human-readable pass/fail output for the documented
-  validation commands
-
-## What Callers Must Not Assume
-
-- that internal helper functions are a reusable API
-- that the crate will expose `lib.rs`
-- that product crates should depend on maintainer internals instead of their
-  own owning surfaces
-
-## Boundary Flow
+## Boundary Shape
 
 ```mermaid
 flowchart LR
-    make[Makefile or CI] --> binary[bijux-gnss-dev]
-    binary --> audit[audit-allowlist.toml]
-    binary --> deny[configs/rust/deny.deviations.toml]
-    binary --> benches[benchmarks and artifacts]
-    binary -. no library contract .-> product[product crates]
+    caller["maintainer, Make, or CI"]
+    binary["maintainer executable"]
+    input["governed repository input"]
+    process["cargo or date child process"]
+    output["human output and repository evidence"]
+    product["product crates"]
+    policy["reusable policy crate"]
+
+    caller --> binary
+    input --> binary
+    process -. "selected commands" .-> binary
+    binary --> output
+    binary -. "no library API" .-> product
+    policy -. "test-only dependency" .-> binary
 ```
 
-The binary may inspect repository files and emit repository-scoped evidence.
-It should not become a library dependency, a source of GNSS product behavior,
-or an unreviewed escape hatch around governed configuration.
+Product crates must not depend on source helpers from the executable. If logic
+is reusable repository policy, move it to the policy owner. If it is GNSS
+behavior, move it to the relevant product crate. If it is command orchestration
+over governed repository state, it belongs here.
 
-## Command Contract
+## What Callers Can Rely On
 
-| command | durable promise | not promised |
+| contract | current guarantee | important limit |
 | --- | --- | --- |
-| `audit-allowlist` | validates advisory identifiers, owner, reason, link, and expiry in `audit-allowlist.toml` | deciding whether a vulnerability is acceptable |
-| `deny-policy-deviations` | validates local cargo-deny deviations are explicit and tied to standards review | changing shared standards policy |
-| `audit-ignore-args` | derives `cargo audit --ignore` flags from the reviewed allowlist | duplicating audit exception policy in CI |
-| `bench-compare` | runs the owned benchmark set and compares the normalized snapshot to baseline when available | proving all runtime or navigation performance behavior |
+| executable identity | the package builds the `bijux-gnss-dev` binary | there is no library import surface |
+| command inventory | four documented maintenance commands | there is no automated snapshot of the complete help text |
+| repository resolution | each command accepts an optional workspace root and otherwise uses the current directory | no ancestor search discovers the repository |
+| exit result | validation and strict benchmark failures return non-success | advisory benchmark regressions and missing benchmark baselines can still return success |
+| display output | maintainers receive contextual pass, failure, and benchmark messages | text is human-oriented, not a versioned machine protocol |
+| filesystem effects | benchmark evidence is written to documented repository locations | audit and deviation commands do not publish structured reports |
 
-## Protecting Proof
+The [command surface](command-surface.md) records exact behavior. The
+[dependency guide](../foundation/dependencies-and-adjacencies.md) explains the
+external process and working-directory requirements.
 
-- `crates/bijux-gnss-dev/src/main.rs`
-- `crates/bijux-gnss-dev/docs/PUBLIC_API.md`
-- `crates/bijux-gnss-dev/docs/COMMANDS.md`
-- `crates/bijux-gnss-dev/docs/WORKFLOWS.md`
-- `crates/bijux-gnss-dev/tests/integration_guardrails.rs`
+## What Is Not A Public Contract
+
+- helper function names and source organization;
+- exact diagnostic wording or line order;
+- a JSON error envelope or categorized numeric exit codes;
+- benchmark output emitted by `cargo` before normalization;
+- automatic repository-root discovery;
+- product benchmark performance itself;
+- the slow-test roster as a binary command.
+
+The slow roster is currently governed by an integration test and expression
+script, not by a `bijux-gnss-dev` subcommand. Do not document test-only
+repository behavior as executable functionality.
+
+## Failure Ownership
+
+```mermaid
+flowchart TD
+    failure["maintenance command failure"]
+    parse{"command syntax?"}
+    cli["binary command contract"]
+    file{"governed file missing or invalid?"}
+    governance["repository governance owner"]
+    child{"cargo or date failed?"}
+    environment["toolchain or host environment"]
+    output{"benchmark parsing or comparison?"}
+    workflow["maintainer workflow implementation"]
+
+    failure --> parse
+    parse -- yes --> cli
+    parse -- no --> file
+    file -- yes --> governance
+    file -- no --> child
+    child -- yes --> environment
+    child -- no --> output
+    output --> workflow
+```
+
+Preserve the distinction in automation. A malformed exception ledger is not a
+toolchain failure, and a product benchmark failure is not automatically a
+benchmark-parser defect.
+
+## Boundary Evidence
+
+The [source guardrail](../../../crates/bijux-gnss-dev/tests/integration_guardrails.rs)
+checks repository policy for this binary and deliberately disables the
+library-style public re-export rule. The
+[slow-lane integration evidence](../../../crates/bijux-gnss-dev/tests/integration_nextest_suite_selection.rs)
+checks roster and nextest expression behavior. Neither test invokes all four
+commands as external processes.
+
+When command syntax, output, or exit semantics become compatibility-critical,
+add process-level tests for that behavior rather than citing these structural
+tests.
