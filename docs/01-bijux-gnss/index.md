@@ -9,7 +9,7 @@ last_reviewed: 2026-07-17
 
 # bijux-gnss
 
-`bijux-gnss` owns the operator-facing command boundary for `bijux-telecom`.
+`bijux-gnss` owns the operator-facing command boundary for `bijux-gnss`.
 This crate is intentionally thin. Its job is not to absorb signal science,
 navigation estimators, or receiver internals. Its job is to expose a stable
 entrypoint over those lower-level owners and keep top-level workflows honest.

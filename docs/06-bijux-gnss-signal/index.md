@@ -10,7 +10,7 @@ last_reviewed: 2026-07-17
 # bijux-gnss-signal
 
 `bijux-gnss-signal` owns reusable GNSS signal definitions, code families, raw
-sample contracts, and runtime-neutral DSP primitives for `bijux-telecom`. This
+sample contracts, and runtime-neutral DSP primitives for `bijux-gnss`. This
 crate is where the repository answers signal-layer questions before receiver
 orchestration, dataset persistence, or navigation science start adding their
 own policy.

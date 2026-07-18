@@ -10,7 +10,7 @@ last_reviewed: 2026-07-17
 # bijux-gnss-dev
 
 `bijux-gnss-dev` owns maintainer-only repository workflows for
-`bijux-telecom`. This crate is not product runtime, GNSS science, or operator
+`bijux-gnss`. This crate is not product runtime, GNSS science, or operator
 workflow. It exists so governance checks, audit exception discipline,
 nextest-roster guardrails, and benchmark-comparison workflows have a typed,
 reviewable owner instead of living as shell folklore.

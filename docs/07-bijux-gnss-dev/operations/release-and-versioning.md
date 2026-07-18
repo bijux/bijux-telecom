@@ -9,7 +9,7 @@ last_reviewed: 2026-07-17
 
 # Release And Versioning
 
-`bijux-telecom` releases six crates under one version. Three workspace crates
+`bijux-gnss` releases six crates under one version. Three workspace crates
 remain repository-only. This page defines that boundary and the evidence a
 maintainer must inspect before any registry receives a release.
 

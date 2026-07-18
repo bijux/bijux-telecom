@@ -10,7 +10,7 @@ last_reviewed: 2026-07-17
 # bijux-gnss-core
 
 `bijux-gnss-core` owns the shared scientific and operational contracts that the
-rest of `bijux-telecom` depends on. This is where identifiers, units, time
+rest of `bijux-gnss` depends on. This is where identifiers, units, time
 systems, observation records, diagnostics, and artifact envelopes become
 durable enough for higher-level crates to build on without reinterpreting the
 same meaning in seven places.

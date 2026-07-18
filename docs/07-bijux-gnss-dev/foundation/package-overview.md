@@ -11,7 +11,7 @@ last_reviewed: 2026-07-18
 
 Repository rules are easiest to trust when the reviewed input, validation
 logic, effects, and failure status are visible together. `bijux-gnss-dev`
-provides that boundary for a small set of bijux-telecom maintenance workflows.
+provides that boundary for a small set of bijux-gnss maintenance workflows.
 It replaces duplicated command fragments with one typed binary while leaving
 policy approval with human reviewers.
 

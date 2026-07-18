@@ -1,6 +1,6 @@
 # bijux-gnss-dev
 
-`bijux-gnss-dev` is the repository-only maintenance binary for bijux-telecom.
+`bijux-gnss-dev` is the repository-only maintenance binary for bijux-gnss.
 It validates reviewed exception records, derives Cargo audit arguments, and
 captures a curated benchmark snapshot. It is not a GNSS library, does not ship
 with the public crates, and does not make governance decisions for reviewers.

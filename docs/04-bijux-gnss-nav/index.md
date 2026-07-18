@@ -9,7 +9,7 @@ last_reviewed: 2026-07-17
 
 # bijux-gnss-nav
 
-`bijux-gnss-nav` owns navigation-domain GNSS science in `bijux-telecom`. This
+`bijux-gnss-nav` owns navigation-domain GNSS science in `bijux-gnss`. This
 crate is where external navigation products become typed state, where orbit and
 clock models are interpreted, and where correction, positioning, integrity,
 PPP, and RTK behavior stay explicit instead of being scattered across the

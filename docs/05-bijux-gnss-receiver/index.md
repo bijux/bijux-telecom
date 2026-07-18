@@ -10,7 +10,7 @@ last_reviewed: 2026-07-17
 # bijux-gnss-receiver
 
 `bijux-gnss-receiver` owns GNSS receiver runtime orchestration for
-`bijux-telecom`. This crate is where configuration becomes a concrete run,
+`bijux-gnss`. This crate is where configuration becomes a concrete run,
 where acquisition, tracking, observation, and optional navigation stages are
 scheduled, and where receiver-boundary artifacts are emitted before
 repository-side persistence takes over.

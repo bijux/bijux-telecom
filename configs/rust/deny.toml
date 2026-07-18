@@ -28,7 +28,7 @@ name = "bitflags"
 
 [[bans.skip]]
 name = "thiserror"
-# why = "1.x is required by legacy transitive JNI path while telecom crates use 2.x."
+# why = "1.x is required by legacy transitive JNI path while GNSS crates use 2.x."
 
 [[bans.skip]]
 name = "thiserror-impl"

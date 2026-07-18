@@ -9,7 +9,7 @@ last_reviewed: 2026-07-18
 
 # Repository Fit
 
-`bijux-gnss-receiver` is the runtime center of `bijux-telecom`. It turns
+`bijux-gnss-receiver` is the runtime center of `bijux-gnss`. It turns
 configured sample streams, signal facts, navigation services, ports, and stage
 logic into receiver evidence. It does not own command syntax, persisted
 repository layout, standalone signal math, or navigation science.
