@@ -4,41 +4,77 @@ audience: mixed
 type: foundation
 status: canonical
 owner: bijux-gnss-dev-docs
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-18
 ---
 
 # Durable Naming
 
-This page replaces the old root-level naming guide. It records the maintainer
-language rules that keep the repository readable long after one delivery cycle
-is forgotten.
+Names in maintainer tooling must explain enduring repository ownership. A reader
+should understand why a command, file, module, output, or guardrail exists
+without knowing the delivery story that created it.
 
-## Preferred Public Terms
+## Naming Decision Route
 
-- observations rather than `obs`
-- ephemeris rather than `eph` in public surfaces
-- products when the scope is broad rather than overloading a narrow internal
-  type name
-- constellation, signal band, carrier phase, and pseudorange when the reader
-  needs domain-accurate language
+```mermaid
+flowchart TD
+    proposal["proposed name"]
+    owner["does it name the owner or domain?"]
+    contract["does it name the durable contract?"]
+    reader["will it still read clearly next year?"]
+    accept["accept"]
+    rename["rename by ownership and responsibility"]
 
-## Names To Reject
+    proposal --> owner
+    owner -- yes --> contract
+    owner -- no --> rename
+    contract -- yes --> reader
+    contract -- no --> rename
+    reader -- yes --> accept
+    reader -- no --> rename
+```
 
-- numbered or sequence-driven file names such as `foo_1.rs` or `new2.rs`
-- generic buckets such as `helpers.rs`, `support.rs`, or `misc.rs`
-- public names that abbreviate away domain meaning when the longer form is the
-  real contract
+## Preferred Public Language
 
-## Reader Rule
+| concept | use | avoid |
+| --- | --- | --- |
+| observation records | `observations` | abbreviation that hides the public contract |
+| ephemeris records | `ephemeris` | abbreviation in reader-facing names |
+| broad external inputs | `products` | overloading a narrow internal type name |
+| repository policy files | `governed inputs` | generic file buckets |
+| validation evidence | `artifacts` or a more specific evidence name | delivery-order labels |
+| GNSS domain facts | `constellation`, `signal band`, `carrier phase`, `pseudorange` | generic math or helper labels |
 
-If a name only tells the story of when a thing was introduced, renamed, or
-temporarily parked, it is not durable enough for this repository.
+## Rejection Tests
+
+Reject a name when it only answers one of these questions:
+
+- When was it introduced?
+- Which delivery sequence produced it?
+- Where was there room to put it?
+- Which short label was convenient for the author?
+- Which internal helper happened to call it first?
+
+Accept a name when it answers these questions:
+
+- Which domain owns it?
+- Which reader-facing contract does it defend?
+- Which adjacent crate may depend on it?
+- Which proof would fail if the name lied?
+
+## Maintainer Examples
+
+| weak name shape | durable direction |
+| --- | --- |
+| sequence-coded benchmark files | benchmark names by suite, workload, and baseline meaning |
+| generic command helpers | command modules by governed input, evidence output, or workflow |
+| broad support buckets | modules by validation, policy, benchmark, output, or execution boundary |
+| compressed public GNSS terms | full domain language in public APIs and docs |
 
 ## First Proof Check
 
 Inspect `crates/bijux-gnss-dev/docs/COMMANDS.md`,
-`crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md`, and
-`crates/bijux-gnss-dev/src/main.rs`. Then inspect
-`crates/bijux-gnss-dev/tests/integration_guardrails.rs` to confirm naming
-discipline is being defended as a repository guardrail rather than as a style
-preference.
+`crates/bijux-gnss-dev/docs/GOVERNANCE_FILES.md`,
+`crates/bijux-gnss-dev/src/main.rs`, and
+`crates/bijux-gnss-dev/tests/integration_guardrails.rs`. A naming rule is only
+credible if the command surface, governed files, and guardrail tests all tell
+the same repository story.
