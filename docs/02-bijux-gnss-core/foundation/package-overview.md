@@ -4,82 +4,80 @@ audience: mixed
 type: foundation
 status: canonical
 owner: bijux-gnss-core-docs
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-18
 ---
 
 # Package Overview
 
-`bijux-gnss-core` exists to make GNSS meaning durable before downstream crates
-add signal processing, navigation inference, runtime orchestration, or
-repository persistence.
+`bijux-gnss-core` is the shared language of the GNSS workspace. It defines
+identities, units, time, observations, navigation results, diagnostics, support
+records, and artifact envelopes before higher packages add algorithms,
+execution, persistence, or operator policy.
 
-The crate is foundational because it is restrictive, not because it is broad.
-It should collect only the record families that more than one downstream owner
-must share without reinterpretation.
+Core is useful because it is restrictive. A contract belongs here only when
+multiple packages need the same meaning and that meaning survives independently
+of any one workflow.
 
-## Role Model
+## Where Core Sits
 
 ```mermaid
 flowchart LR
-    meaning["identities units time records artifacts diagnostics"]
-    core["bijux-gnss-core"]
-    downstream["signal nav receiver infra gnss"]
+    producers["signal, navigation,<br/>receiver"]
+    core["shared core contracts"]
+    consumers["receiver, infra,<br/>command, tools"]
+    artifacts["versioned artifacts"]
 
-    meaning --> core --> downstream
+    producers --> core --> consumers
+    core --> artifacts --> consumers
 ```
 
-If a downstream crate needs to exchange a GNSS record with another crate or
-persist one inside a stable artifact envelope, this package is usually where
-that meaning should already be defined.
+The arrows describe exchange, not ownership transfer. Receiver may produce a
+tracking epoch and navigation may produce a solution epoch, but core owns the
+shared record semantics that let other packages consume those results.
 
-The durable centers of gravity are:
+## Use Core When
 
-- `src/ids.rs`, `src/time.rs`, `src/units.rs`, and `src/geo.rs` for canonical
-  identity, time, and physical meaning
-- `src/observation/`, `src/observation_quality.rs`, and
-  `src/nav_solution.rs` for exchanged runtime records
-- `src/artifact.rs`, `src/artifact/`, and `src/config.rs` for versioned
-  artifact and validation-report contracts
-- `src/diagnostic/`, `src/error.rs`, and `src/support_matrix.rs` for shared
-  failure, reporting, and support inventory semantics
+| need | core is the right owner when |
+| --- | --- |
+| identity or unit | every caller must agree on the same constellation, signal, time scale, coordinate frame, or physical quantity |
+| pipeline record | a result crosses package boundaries without carrying one stage's implementation state |
+| diagnostic | code, severity, fields, and aggregation need stable machine-readable meaning |
+| artifact payload | serialized records need explicit version and validation behavior |
+| support declaration | runtime, infra, and commands need one inventory vocabulary |
+| pure helper | the operation defines shared scientific meaning and requires no runtime, filesystem, or solver policy |
 
-## Boundary Verdict
+## Keep The Concern Elsewhere
 
-If the work improves shared identifiers, units, time conversions, observation
-records, navigation-solution records, diagnostics, or artifact envelopes
-without binding them to one runtime or persistence model, it belongs here. If
-the work starts carrying DSP implementation, repository layout, solver policy,
-or command behavior, it has crossed the boundary.
+- Signal catalogs, code generation, sample conversion, and DSP belong in
+  signal.
+- Orbit products, physical corrections, estimators, PPP, and RTK belong in
+  navigation.
+- Stage orchestration, channel lifecycle, ports, and runtime diagnostics belong
+  in receiver.
+- Dataset discovery, run layout, manifests, and artifact inspection belong in
+  infra.
+- Commands, flags, workflow selection, and report wording belong in the command
+  package.
 
-## What This Package Makes Possible
+A concern does not become core merely because two functions use it. The
+semantics must be shared, durable, and independent of both callers.
 
-- higher-level crates can exchange one observation or artifact language instead
-  of inventing near-duplicates
-- receiver and navigation code can disagree about algorithms without
-  disagreeing about record meaning
-- persisted artifacts can be validated against one contract owner rather than
-  against whichever crate happened to write them first
+## What Downstream Readers Can Rely On
 
-## Tempting Mistakes
+- Public contracts are imported through `bijux_gnss_core::api`.
+- Implementation modules remain private.
+- Units, time, coordinates, validity, and refusal state should be explicit in
+  exchanged records.
+- Versioned artifact meaning is owned here; repository placement is not.
+- Shared diagnostics remain structured rather than being reduced to display
+  text.
 
-- putting runtime-specific helpers into core because more than one stage calls
-  them today
-- moving repository persistence logic into artifact envelopes because both feel
-  "storage related"
-- broadening the public API with local implementation helpers that are not
-  actually cross-crate contracts
+## Continue Reading
 
-## First Proof Check
-
-- `crates/bijux-gnss-core/src/api.rs`
-- `crates/bijux-gnss-core/src/config.rs`
-- `crates/bijux-gnss-core/src/diagnostic/codes.rs`
-- `crates/bijux-gnss-core/src/artifact/`
-- `crates/bijux-gnss-core/src/observation/`
-- `crates/bijux-gnss-core/src/nav_solution.rs`
-
-## Design Pressure
-
-The package stays coherent only when it remains slightly stricter than
-contributors first want. Anything ambiguous should default toward a stronger
-downstream owner unless the cross-crate contract need is obvious.
+Use [Scope and Non-Goals](scope-and-non-goals.md) for ownership disputes,
+[Shared Concepts](shared-concepts.md) for the common vocabulary, and
+[Ownership Boundary](ownership-boundary.md) before admitting a new contract.
+For implementation structure, continue to the
+[Module Map](../architecture/module-map.md). For public or serialized changes,
+open [Public Imports](../interfaces/public-imports.md) and
+[State and Serialization](../architecture/state-and-serialization.md).
