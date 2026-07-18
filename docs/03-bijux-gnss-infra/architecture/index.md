@@ -1,78 +1,106 @@
 ---
-title: Architecture
+title: Infrastructure Architecture Guide
 audience: mixed
 type: index
 status: canonical
 owner: bijux-gnss-infra-docs
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-18
 ---
 
-# Architecture
+# Infrastructure Architecture Guide
 
-Open this section when the question is structural: where datasets, run layout,
-artifact inspection, overrides, hashing, and validation adapters live in code,
-and how the crate avoids becoming a generic glue bucket.
+`bijux-gnss-infra` is a set of repository-facing subsystems, not a scientific
+pipeline. Dataset resolution, run identity, persisted records, provenance,
+artifact inspection, typed variation, and reference adaptation each own a
+different part of the evidence lifecycle.
 
-## Structural Shape
-
-`bijux-gnss-infra` is not a single pipeline. It is a set of repository-facing
-subsystems with explicit responsibilities: dataset interpretation, run
-footprint management, artifact interrogation, reproducibility evidence, and
-typed configuration variation.
+## Repository Evidence Architecture
 
 ```mermaid
 flowchart LR
-    api["api.rs<br/>curated infra surface"]
-    datasets["datasets/"]
-    layout["run_layout/"]
-    inspect["artifact_inspection/"]
-    overrides["overrides/ experiments sweep"]
-    hash["hash/"]
-    validate["validate_reference.rs"]
-    callers["gnss and other callers"]
+    caller["command, test, or tool"]
+    dataset["dataset and sidecar<br/>resolution"]
+    variation["typed overrides<br/>and sweeps"]
+    identity["run identity<br/>and provenance"]
+    owner["scientific execution"]
+    records["typed domain records"]
+    persistence["manifest, report,<br/>artifacts, history"]
+    inspection["inspection, comparison,<br/>or replay"]
 
-    datasets --> api
-    layout --> api
-    inspect --> api
-    overrides --> api
-    hash --> api
-    validate --> api
-    api --> callers
+    caller --> dataset --> variation --> identity --> owner
+    owner --> records --> persistence --> inspection
 ```
 
-## Read These First
+Infrastructure owns the stages around scientific execution. Receiver, signal,
+and navigation packages remain responsible for the records they produce and the
+claims those records support.
 
-- open [Module Map](module-map.md) first when you need the fastest route from a
-  repository concern to the owning code area
-- open [Dependency Direction](dependency-direction.md) when the question is
-  whether the crate is aggregating lower-level APIs honestly
-- open [State and Persistence](state-and-persistence.md) when the issue is run
-  footprint durability rather than one helper implementation
+## Find The Structural Owner
 
-## First Proof Check
+| concern | architecture route | responsibility |
+| --- | --- | --- |
+| Registry entries, sidecars, coordinates, or capture provenance | [Module map](module-map.md) | turn repository declarations into typed inputs without guessing |
+| Run location, identity, manifests, reports, history, or artifact headers | [State and persistence](state-and-persistence.md) | preserve a durable execution footprint |
+| Order of preparation, variation, persistence, and later inspection | [Execution model](execution-model.md) | compose repository state around domain execution |
+| Dependency on core, signal, receiver, navigation, or command packages | [Dependency direction](dependency-direction.md) | adapt lower contracts without importing command policy |
+| Artifact explanation, validation, or reference alignment | [Integration seams](integration-seams.md) | interrogate persisted evidence without rerunning science |
+| Input, schema, persistence, or adaptation failure | [Error model](error-model.md) | preserve whether evidence was unreadable, invalid, or scientifically refused |
+| New repository-owned subsystem | [Extensibility model](extensibility-model.md) | require a durable object and explicit effects |
+| Mixed ownership or generic glue | [Architecture risks](architecture-risks.md) | reject convenience that obscures the real owner |
 
-- `crates/bijux-gnss-infra/src/datasets/`
-- `crates/bijux-gnss-infra/src/run_layout/`
-- `crates/bijux-gnss-infra/src/artifact_inspection/`
-- `crates/bijux-gnss-infra/docs/ARCHITECTURE.md`
+## Effects Stay At The Repository Boundary
 
-## Pages In This Section
+```mermaid
+flowchart TD
+    pure["typed resolution, hashing,<br/>override, validation logic"]
+    files["registry, sidecar,<br/>artifact files"]
+    process["Git and machine context"]
+    writes["run directories,<br/>records, history"]
+    infra["infrastructure boundary"]
+    science["domain packages"]
 
-- [Module Map](module-map.md)
-- [Dependency Direction](dependency-direction.md)
-- [Execution Model](execution-model.md)
-- [State and Persistence](state-and-persistence.md)
-- [Integration Seams](integration-seams.md)
-- [Error Model](error-model.md)
-- [Extensibility Model](extensibility-model.md)
-- [Code Navigation](code-navigation.md)
-- [Architecture Risks](architecture-risks.md)
+    files --> infra
+    process --> infra
+    pure --> infra
+    infra --> writes
+    infra --> science
+    science --> infra
+```
 
-## Leave This Section When
+Filesystem access, repository discovery, build context, and durable writes
+belong at explicit infrastructure seams. Domain packages should receive typed
+inputs and return typed records rather than opening repository files or
+assembling run paths.
 
-- leave for [Foundation](../foundation/) when the real disagreement is still
-  about ownership rather than structure
-- leave for [Interfaces](../interfaces/) when the structural question is
-  already about manifest or dataset contract shape
-- leave for [Quality](../quality/) when the structure is clear and the next
-  question is proof
+## Identity Before Placement
+
+A run path is the result of declared context, not the identity itself. Resume
+targets and explicit output locations affect placement; configuration, dataset,
+command, build, and determinism context explain attribution. Callers must use
+the run-layout contract instead of constructing child paths independently.
+
+This distinction matters during replay and comparison: identical directory
+names do not prove equivalent inputs, and different locations do not
+necessarily mean different scientific conditions.
+
+## Inspection Is Not Re-execution
+
+Artifact inspection can identify a kind, parse records, apply schema and
+payload checks, detect sequence problems, and summarize diagnostics. It cannot
+recreate receiver state or prove navigation accuracy. Reference adaptation can
+align persisted solutions with supplied epochs; navigation owns the resulting
+scientific interpretation.
+
+## Implementation Evidence
+
+Use [code navigation](code-navigation.md) after identifying the subsystem. The
+implementation authorities are the
+[dataset boundary](../../../crates/bijux-gnss-infra/src/datasets/mod.rs),
+[run-layout boundary](../../../crates/bijux-gnss-infra/src/run_layout.rs),
+[artifact inspector](../../../crates/bijux-gnss-infra/src/artifact_inspection/mod.rs),
+[override boundary](../../../crates/bijux-gnss-infra/src/overrides/mod.rs),
+[provenance hasher](../../../crates/bijux-gnss-infra/src/hash/mod.rs), and
+[reference adapter](../../../crates/bijux-gnss-infra/src/validate_reference.rs).
+
+The [crate architecture](../../../crates/bijux-gnss-infra/docs/ARCHITECTURE.md)
+states the package-level dependency and durability rules.
