@@ -9,73 +9,74 @@ last_reviewed: 2026-07-18
 
 # Public Imports
 
-Callers should import repository-facing helpers through `bijux_gnss_infra::api`
-rather than reaching into private module paths. Infra also exposes selected
-lower-owner re-exports when a caller is working through the repository-facing
-boundary.
+Import repository-facing helpers through `bijux_gnss_infra::api`. The crate
+keeps implementation modules private, so a direct import from an internal module
+is not an alternative API style: it is unavailable to downstream callers.
 
-## Import Route
+## Choose The Import By Meaning
 
 ```mermaid
-flowchart TD
-    caller["repository-facing caller"]
-    api["bijux_gnss_infra::api"]
-    infra["infra-owned helpers"]
-    reexports["curated lower-owner<br/>re-exports"]
-    private["private infra modules"]
+flowchart LR
+    need{"what does the caller need?"}
+    state["repository state"]
+    domain["domain record or behavior"]
+    api["infra API"]
+    owner["owning package API"]
 
-    caller --> api
-    api --> infra
-    api --> reexports
-    caller -. avoid .-> private
+    need --> state --> api
+    need --> domain --> owner
+    owner -. "use infra re-export only inside<br/>a repository workflow" .-> api
 ```
 
-## Import Families
-
-| family | import through `api` for | owner |
+| caller need | preferred import | reason |
 | --- | --- | --- |
-| datasets | registry loading, raw-IQ sidecar resolution, coordinates, and capture provenance | infra |
-| run layout | run directories, manifests, reports, artifact headers, and history entries | infra |
-| experiments and overrides | sweep expansion and typed profile mutation | infra |
-| artifacts | persisted artifact explanation and validation entrypoints | infra plus core payload meaning |
-| provenance | config hashes, git state, dirty-state evidence, and CPU feature evidence | infra |
-| reference validation | repository-facing comparison over persisted or loaded results | infra bridge over receiver validation |
-| receiver, core, signal, nav re-exports | one-boundary repository workflows that need lower-owner public APIs | lower crates |
+| load a registry or raw-IQ sidecar | `bijux_gnss_infra::api::{DatasetRegistry, load_raw_iq_metadata}` | infra owns file-backed dataset interpretation |
+| create a run footprint | `bijux_gnss_infra::api::{RunContextArgs, run_dir, write_manifest}` | infra owns deterministic placement and persistence |
+| inspect a persisted artifact | `bijux_gnss_infra::api::{artifact_explain, artifact_validate}` | infra owns post-run repository interpretation |
+| configure a receiver directly | `bijux_gnss_receiver::api` | receiver configuration is a product contract |
+| use units or shared records directly | `bijux_gnss_core::api` | core owns cross-package semantic types |
+| combine repository state with receiver records | the curated `receiver` or `core` re-export under the infra API | one import boundary can clarify a cohesive infrastructure workflow |
 
-## Import Rule
-
-If a caller needs a private infra module path directly, that is either a sign
-that the public surface is incomplete or that the caller is reaching past the
-repository contract.
-
-## Good Import Shape
+## Example: Repository-Owned State
 
 ```rust
-use bijux_gnss_infra::api::{DatasetRegistry, RunManifest, expand_sweep};
+use bijux_gnss_infra::api::{DatasetRegistry, expand_sweep};
 ```
 
-## Bad Import Shape
+Both names describe infrastructure work: loading registered inputs and
+expanding declared experiment cases.
+
+## Example: Domain-Owned State
 
 ```rust
-use bijux_gnss_infra::run_layout::records::RunManifest;
+use bijux_gnss_receiver::api::ReceiverConfig;
 ```
 
-The second style couples callers to file layout instead of to the stable
-infrastructure surface.
+Use the receiver API when the surrounding code configures or executes receiver
+behavior. Importing the same type through infra would obscure the real owner.
+
+## When An Export Is Missing
+
+Do not work around a missing export by copying parsing, path construction, or
+persistence logic into a caller. First decide whether the capability represents
+shared repository state:
+
+- If yes, propose a narrow infra export with a contract and protecting proof.
+- If no, add it to the package that owns the behavior.
+- If only one command needs it, keep it in that command until a shared contract
+  actually exists.
 
 ## Review Checks
 
-- Is the caller interpreting repository state rather than receiver runtime
-  internals?
-- Does the import make the infra boundary visible in code review?
-- Is a lower-owner re-export improving one coherent repository workflow, or is
-  it hiding an ownership mistake?
-- Would a run-layout refactor break this caller unnecessarily?
-- Does the public API doc mention the family that the caller imports?
+- Does the import reveal which package owns the meaning?
+- Would moving private source files leave the caller unchanged?
+- Is a lower-owner re-export supporting one coherent repository workflow?
+- Is feature-gated navigation code guarded by the same `nav` feature?
+- Does the [public API contract](../../../crates/bijux-gnss-infra/docs/PUBLIC_API.md)
+  describe the imported family?
 
-## First Proof Check
-
-Inspect `crates/bijux-gnss-infra/src/api.rs`,
-`crates/bijux-gnss-infra/docs/PUBLIC_API.md`, and
-`crates/bijux-gnss-infra/tests/integration_guardrails.rs` to confirm the
-import families documented here still match the curated public surface.
+The [curated API source](../../../crates/bijux-gnss-infra/src/api.rs) is the
+authoritative export list. The
+[infra boundary test](../../../crates/bijux-gnss-infra/tests/integration_guardrails.rs)
+protects repository shape, but it does not prove the behavior of every export;
+use the owning family’s tests for that claim.
