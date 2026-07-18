@@ -50,19 +50,20 @@ flowchart LR
 
 ## First Operational Surfaces
 
-- `crates/bijux-gnss-signal/tests/`
-- `crates/bijux-gnss-signal/tests/data/`
-- `crates/bijux-gnss-signal/tests/support/`
-- `crates/bijux-gnss-signal/docs/TESTS.md`
-- `crates/bijux-gnss-testkit/`
+- signal integration and property tests
+- signal test data
+- signal test support helpers
+- [signal test guide](../../../crates/bijux-gnss-signal/docs/TESTS.md)
+- testkit support crate when independent truth or fixtures are reused
 
 ## First Proof Check
 
-Inspect `crates/bijux-gnss-signal/docs/TESTS.md`,
-`crates/bijux-gnss-signal/docs/PUBLIC_API.md`,
-`crates/bijux-gnss-signal/docs/BOUNDARY.md`, and the operational surfaces
-above. That route shows whether a proposed change has been mapped to the right
-signal owner and the right proof family before execution starts.
+Inspect the [signal test guide](../../../crates/bijux-gnss-signal/docs/TESTS.md),
+[public API](../../../crates/bijux-gnss-signal/docs/PUBLIC_API.md),
+[boundary guide](../../../crates/bijux-gnss-signal/docs/BOUNDARY.md), and the
+operational surfaces above. That route shows whether a proposed change has
+been mapped to the right signal owner and the right proof family before
+execution starts.
 
 ## Leave This Section When
 

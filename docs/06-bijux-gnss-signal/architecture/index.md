@@ -55,21 +55,22 @@ flowchart LR
 
 ## First Code Roots
 
-- `crates/bijux-gnss-signal/src/catalog.rs`
-- `crates/bijux-gnss-signal/src/codes/`
-- `crates/bijux-gnss-signal/src/dsp/`
-- `crates/bijux-gnss-signal/src/raw_iq.rs`
-- `crates/bijux-gnss-signal/src/samples.rs`
-- `crates/bijux-gnss-signal/src/obs_validation.rs`
-- `crates/bijux-gnss-signal/src/error.rs`
+- catalog source for signal identity and wavelength meaning
+- code-family source for deterministic spreading and secondary-code behavior
+- DSP source for reusable front-end, timing, replica, spectrum, and tracking
+  primitives
+- raw-IQ and sample source for capture metadata and conversion contracts
+- observation-validation source for signal-level compatibility checks
+- error source for signal-owned failure language
 
 ## First Proof Check
 
-Inspect `crates/bijux-gnss-signal/docs/ARCHITECTURE.md`,
-`crates/bijux-gnss-signal/docs/PUBLIC_API.md`, and
-`crates/bijux-gnss-signal/docs/TESTS.md` first. Then move through the code
-roots above and the matching integration tests so architectural claims stay
-anchored to the real signal boundary and proof families.
+Inspect the [signal architecture guide](../../../crates/bijux-gnss-signal/docs/ARCHITECTURE.md),
+[public API](../../../crates/bijux-gnss-signal/docs/PUBLIC_API.md), and
+[signal test guide](../../../crates/bijux-gnss-signal/docs/TESTS.md) first.
+Then move through the code roots above and the matching integration tests so
+architectural claims stay anchored to the real signal boundary and proof
+families.
 
 ## Leave This Section When
 

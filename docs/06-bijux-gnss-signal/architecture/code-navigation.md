@@ -20,12 +20,10 @@ Use this route when reading the crate for the first time or reviewing a change.
    about canonical code behavior or reusable processing math.
 5. Read `src/raw_iq.rs`, `src/samples.rs`, and `src/obs_validation.rs` when the
    change touches capture metadata, conversion, or observation compatibility.
-6. Finish in the matching proof family under `crates/bijux-gnss-signal/tests/`:
-   `integration_*_registry.rs` for catalog truth,
-   `integration_*_reference.rs` for code truth,
-   continuity tests for long-duration or chunked behavior,
-   `integration_raw_iq_metadata.rs` and `integration_iq_sample_conversion.rs`
-   for sample contracts, and `prop_*.rs` for structural rules.
+6. Finish in the matching proof family: registry tests for catalog truth,
+   reference tests for code truth, continuity tests for long-duration or
+   chunked behavior, raw-IQ and sample-conversion tests for sample contracts,
+   and property tests for structural rules.
 
 ## Practical Shortcut
 
@@ -38,11 +36,8 @@ cleanup.
 
 ## First Proof Check
 
-Open `crates/bijux-gnss-signal/docs/ARCHITECTURE.md` and
-`crates/bijux-gnss-signal/docs/TESTS.md` first. Then follow this route through
-`crates/bijux-gnss-signal/src/lib.rs`,
-`crates/bijux-gnss-signal/src/api.rs`,
-`crates/bijux-gnss-signal/src/catalog.rs`,
-`crates/bijux-gnss-signal/src/codes/mod.rs`,
-`crates/bijux-gnss-signal/src/dsp/mod.rs`, and the matching integration test
-family under `crates/bijux-gnss-signal/tests/`.
+Open the [signal architecture guide](../../../crates/bijux-gnss-signal/docs/ARCHITECTURE.md)
+and [signal test guide](../../../crates/bijux-gnss-signal/docs/TESTS.md) first.
+Then follow this route through the crate boundary, curated API, catalog source,
+code-family source, DSP source, and the matching signal integration test
+family.
