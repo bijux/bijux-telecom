@@ -540,7 +540,7 @@
             "open-pull-requests-limit": 10,
             "labels": [
               "dependencies",
-              "github_actions"
+              "github"
             ]
           },
           {
@@ -1096,7 +1096,7 @@
             "open-pull-requests-limit": 10,
             "labels": [
               "dependencies",
-              "github_actions"
+              "github"
             ]
           },
           {
@@ -1376,7 +1376,7 @@
             "open-pull-requests-limit": 10,
             "labels": [
               "dependencies",
-              "github_actions"
+              "github"
             ]
           },
           {
@@ -1921,7 +1921,7 @@
             "open-pull-requests-limit": 10,
             "labels": [
               "dependencies",
-              "github_actions"
+              "github"
             ]
           },
           {
@@ -2054,8 +2054,7 @@
               "package_slug": "bijux-phylogenetics"
             },
             {
-              "package_slug": "phylogenetic",
-              "publish_auth": "token"
+              "package_slug": "phylogenetic"
             }
           ]
         },
@@ -2084,7 +2083,7 @@
             "open-pull-requests-limit": 10,
             "labels": [
               "dependencies",
-              "github_actions"
+              "github"
             ]
           },
           {
@@ -2576,8 +2575,7 @@
               "package_slug": "bijux-pollenomics"
             },
             {
-              "package_slug": "pollenomics",
-              "publish_auth": "token"
+              "package_slug": "pollenomics"
             }
           ]
         },
@@ -2606,7 +2604,7 @@
             "open-pull-requests-limit": 10,
             "labels": [
               "dependencies",
-              "github_actions"
+              "github"
             ]
           },
           {
@@ -3155,7 +3153,7 @@
             "open-pull-requests-limit": 10,
             "labels": [
               "dependencies",
-              "github_actions"
+              "github"
             ]
           },
           {
@@ -3700,7 +3698,7 @@
             "open-pull-requests-limit": 10,
             "labels": [
               "dependencies",
-              "github_actions"
+              "github"
             ]
           }
         ]
@@ -3712,22 +3710,170 @@
       "pinned_std_sha": "5da4225aedcfc2af92bb431875243fa2db2b0ce9"
     },
     {
-      "name": "bijux-telecom",
+      "name": "bijux-gnss",
       "release_env": [
         {
           "key": "BIJUX_RELEASE_ENABLED",
           "type": "bool",
+          "value": true
+        },
+        {
+          "key": "BIJUX_RELEASE_WAIT_FOR_CI_COMMAND",
+          "type": "string",
+          "value": "make gh-release-wait-for-ci"
+        },
+        {
+          "key": "BIJUX_RELEASE_PLAN_COMMAND",
+          "type": "string",
+          "value": "make gh-release-plan-github"
+        },
+        {
+          "key": "BIJUX_RELEASE_SETUP_RUST",
+          "type": "bool",
+          "value": true
+        },
+        {
+          "key": "BIJUX_RELEASE_RUST_TOOLCHAIN",
+          "type": "string",
+          "value": "1.86.0"
+        },
+        {
+          "key": "BIJUX_RELEASE_BUILD_MATRIX_JSON",
+          "type": "json",
+          "value": [
+            {
+              "package_slug": "bijux-gnss-core",
+              "package_dir": "crates/bijux-gnss-core",
+              "artifacts_dir": "artifacts/dist/bijux-gnss-core",
+              "makefile_path": "makes/release.mk",
+              "build_targets": "release-crate-build",
+              "dist_subdir": "release"
+            },
+            {
+              "package_slug": "bijux-gnss-signal",
+              "package_dir": "crates/bijux-gnss-signal",
+              "artifacts_dir": "artifacts/dist/bijux-gnss-signal",
+              "makefile_path": "makes/release.mk",
+              "build_targets": "release-crate-build",
+              "dist_subdir": "release"
+            },
+            {
+              "package_slug": "bijux-gnss-nav",
+              "package_dir": "crates/bijux-gnss-nav",
+              "artifacts_dir": "artifacts/dist/bijux-gnss-nav",
+              "makefile_path": "makes/release.mk",
+              "build_targets": "release-crate-build",
+              "dist_subdir": "release"
+            },
+            {
+              "package_slug": "bijux-gnss-receiver",
+              "package_dir": "crates/bijux-gnss-receiver",
+              "artifacts_dir": "artifacts/dist/bijux-gnss-receiver",
+              "makefile_path": "makes/release.mk",
+              "build_targets": "release-crate-build",
+              "dist_subdir": "release"
+            },
+            {
+              "package_slug": "bijux-gnss-infra",
+              "package_dir": "crates/bijux-gnss-infra",
+              "artifacts_dir": "artifacts/dist/bijux-gnss-infra",
+              "makefile_path": "makes/release.mk",
+              "build_targets": "release-crate-build",
+              "dist_subdir": "release"
+            },
+            {
+              "package_slug": "bijux-gnss",
+              "package_dir": "crates/bijux-gnss",
+              "artifacts_dir": "artifacts/dist/bijux-gnss",
+              "makefile_path": "makes/release.mk",
+              "build_targets": "release-crate-build",
+              "dist_subdir": "release"
+            }
+          ]
+        },
+        {
+          "key": "BIJUX_RELEASE_DELETE_EXISTING",
+          "type": "bool",
           "value": false
+        },
+        {
+          "key": "BIJUX_RELEASE_FAIL_ON_UNMATCHED_FILES",
+          "type": "bool",
+          "value": true
+        },
+        {
+          "key": "BIJUX_RELEASE_GENERATE_RELEASE_NOTES",
+          "type": "bool",
+          "value": true
         },
         {
           "key": "BIJUX_CRATES_RELEASE_ENABLED",
           "type": "bool",
-          "value": false
+          "value": true
+        },
+        {
+          "key": "BIJUX_CRATES_RELEASE_WAIT_FOR_CI_COMMAND",
+          "type": "string",
+          "value": "make gh-release-wait-for-ci"
+        },
+        {
+          "key": "BIJUX_CRATES_RELEASE_PLAN_COMMAND",
+          "type": "string",
+          "value": "make gh-release-plan-crates"
+        },
+        {
+          "key": "BIJUX_CRATES_RELEASE_SETUP_RUST",
+          "type": "bool",
+          "value": true
+        },
+        {
+          "key": "BIJUX_CRATES_RELEASE_RUST_TOOLCHAIN",
+          "type": "string",
+          "value": "1.86.0"
+        },
+        {
+          "key": "BIJUX_CRATES_RELEASE_VERIFY_TOKEN_COMMAND",
+          "type": "string",
+          "value": "make gh-release-require-cargo-token"
+        },
+        {
+          "key": "BIJUX_CRATES_RELEASE_PUBLISH_SKIP_EXISTING",
+          "type": "bool",
+          "value": true
+        },
+        {
+          "key": "BIJUX_CRATES_RELEASE_PUBLISH_COMMAND",
+          "type": "string",
+          "value": "make publish-rs RUST_PUBLISH_DRY_RUN=0 RUST_PUBLISH_SKIP_EXISTING=1 RUST_PUBLISH_PACKAGES=\"${PACKAGES}\""
         },
         {
           "key": "BIJUX_GHCR_RELEASE_ENABLED",
           "type": "bool",
-          "value": false
+          "value": true
+        },
+        {
+          "key": "BIJUX_GHCR_RELEASE_PACKAGE_MATRIX_JSON",
+          "type": "json",
+          "value": [
+            {
+              "package_slug": "bijux-gnss-core"
+            },
+            {
+              "package_slug": "bijux-gnss-signal"
+            },
+            {
+              "package_slug": "bijux-gnss-nav"
+            },
+            {
+              "package_slug": "bijux-gnss-receiver"
+            },
+            {
+              "package_slug": "bijux-gnss-infra"
+            },
+            {
+              "package_slug": "bijux-gnss"
+            }
+          ]
         },
         {
           "key": "BIJUX_PYPI_ENABLED",
@@ -3747,7 +3893,7 @@
             "open-pull-requests-limit": 10,
             "labels": [
               "dependencies",
-              "github_actions"
+              "github"
             ]
           },
           {
@@ -3921,7 +4067,11 @@
       "workflow_allowlist": [
         "deploy-docs",
         "github-policy",
-        "pr-approval-policy"
+        "pr-approval-policy",
+        "release-artifacts",
+        "release-crates",
+        "release-ghcr",
+        "release-github"
       ],
       "pinned_std_sha": "44a77e32edc759e92b95feb63b2988ff90f0ca59"
     },
@@ -3940,7 +4090,7 @@
             "open-pull-requests-limit": 10,
             "labels": [
               "dependencies",
-              "github_actions"
+              "github"
             ]
           },
           {

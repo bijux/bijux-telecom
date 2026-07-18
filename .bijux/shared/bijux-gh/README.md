@@ -111,6 +111,11 @@ Maturin mode keys:
 - `BIJUX_PYPI_MANIFEST_PATH`
 - `BIJUX_PYPI_INTERPRETER`
 
+When `BIJUX_PYPI_RUST_TOOLCHAIN` is unset, the workflow inherits
+`BIJUX_RELEASE_RUST_TOOLCHAIN` before falling back to its built-in default.
+That keeps PyPI publication aligned with the rest of the release lanes without
+forcing each repo to duplicate the same toolchain pin in multiple places.
+
 ## `release-crates.yml` configuration contract
 
 The shared crates workflow centralizes crates.io publication behind one

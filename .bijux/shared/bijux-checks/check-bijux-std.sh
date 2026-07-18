@@ -262,6 +262,36 @@ verify_workflow_run_shell_preambles() {
   echo "✔ Workflow shell preambles are executable"
 }
 
+verify_release_pypi_toolchain_inheritance() {
+  local workflow_rel
+  local workflow_path
+  workflow_rel="$(resolve_local_rel "shared/bijux-gh/workflows/release-pypi.yml")"
+  workflow_path="${repo_root}/${workflow_rel}"
+
+  if [[ ! -f "${workflow_path}" ]]; then
+    echo "ERROR: missing shared release-pypi workflow ${workflow_path}" >&2
+    exit 1
+  fi
+
+  if grep -qF '"1.85.0"' "${workflow_path}"; then
+    echo "ERROR: shared release-pypi workflow still hardcodes the stale Rust 1.85.0 fallback" >&2
+    echo "Hint: inherit the PyPI Rust toolchain from BIJUX_RELEASE_RUST_TOOLCHAIN before using a built-in default." >&2
+    exit 1
+  fi
+
+  if ! grep -qF 'release_rust_toolchain="$(from_values "" "${BIJUX_RELEASE_RUST_TOOLCHAIN:-}" "${{ vars.BIJUX_RELEASE_RUST_TOOLCHAIN || '\'''\'' }}" "1.86.0")"' "${workflow_path}"; then
+    echo "ERROR: shared release-pypi workflow must resolve a shared release Rust toolchain fallback" >&2
+    exit 1
+  fi
+
+  if ! grep -qF 'rust_toolchain="$(from_values "" "${BIJUX_PYPI_RUST_TOOLCHAIN:-}" "${{ vars.BIJUX_PYPI_RUST_TOOLCHAIN || '\'''\'' }}" "${release_rust_toolchain}")"' "${workflow_path}"; then
+    echo "ERROR: shared release-pypi workflow must inherit the release Rust toolchain when BIJUX_PYPI_RUST_TOOLCHAIN is unset" >&2
+    exit 1
+  fi
+
+  echo "✔ Shared release-pypi workflow inherits the release Rust toolchain"
+}
+
 verify_release_env_shell_safety() {
   python3 - "${repo_root}" "${tmp_dir}" <<'PY'
 import importlib.util
@@ -346,6 +376,7 @@ verify_no_legacy_root_shared_dirs
 verify_canonical_mermaid_init
 verify_homepage_sidebar_collapse_contract
 verify_workflow_run_shell_preambles
+verify_release_pypi_toolchain_inheritance
 verify_release_env_shell_safety
 
 echo "✔ bijux-std check passed (ref=${std_ref}, manifest=${manifest_rel}, remote=${git_url_default})"

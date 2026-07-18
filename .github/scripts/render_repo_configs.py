@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import shlex
 from pathlib import Path
@@ -27,15 +28,27 @@ DEPENDABOT_PR_SKIP_CONDITION = (
 )
 
 
-def resolve_repo_root(repo_name: str) -> Path:
-    if SCRIPT_REPO_ROOT.name == repo_name:
-        return SCRIPT_REPO_ROOT
+def repository_checkout_variable(repo_name: str) -> str:
+    suffix = "".join(character.upper() if character.isalnum() else "_" for character in repo_name)
+    return f"BIJUX_REPOSITORY_PATH_{suffix}"
 
-    candidate = ROOT / repo_name
-    if candidate.exists():
-        return candidate
 
-    raise FileNotFoundError(f"Unable to resolve repository root for '{repo_name}'")
+def resolve_repository_checkout(repo_name: str) -> Path:
+    variable = repository_checkout_variable(repo_name)
+    configured_path = os.environ.get(variable)
+    if configured_path:
+        repo_path = Path(configured_path).expanduser().resolve()
+    elif SCRIPT_REPO_ROOT.name == repo_name:
+        repo_path = SCRIPT_REPO_ROOT
+    else:
+        repo_path = ROOT / repo_name
+
+    if not repo_path.is_dir():
+        raise FileNotFoundError(
+            f"Repository checkout for '{repo_name}' not found at {repo_path}. "
+            f"Set {variable} to its checkout path."
+        )
+    return repo_path
 
 
 def yaml_scalar(value: Any) -> str:
@@ -338,7 +351,7 @@ def inject_dependabot_pull_request_skip(
 
 def render_repo(repo_name: str, manifest: dict) -> None:
     repo = find_repo_config(manifest, repo_name)
-    repo_root = resolve_repo_root(repo_name)
+    repo_root = resolve_repository_checkout(repo_name)
 
     release_path = repo_root / ".github/release.env"
     release_content = render_release_env(repo.get("release_env", []))
