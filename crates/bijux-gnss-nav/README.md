@@ -1,39 +1,61 @@
 # bijux-gnss-nav
 
-`bijux-gnss-nav` owns navigation-domain GNSS science for the workspace.
+`bijux-gnss-nav` owns navigation-domain science: navigation-product parsing,
+orbit propagation, clock products, atmospheric and antenna corrections,
+position estimation, RTK, PPP, RAIM, residuals, uncertainty, and time-system
+interpretation needed by navigation algorithms.
 
-## Scope
+Start here when the question is about turning observations or external
+navigation products into a navigation claim. Do not start here for raw-IQ
+ingest, receiver scheduling, signal-code generation, or CLI presentation.
 
-This crate owns:
+## Reader Route
 
-- broadcast and precise orbit state plus ephemeris interpretation
-- navigation-message and reference-product parsing
-- atmospheric, bias, and signal-combination corrections
-- position, integrity, PPP, and RTK estimation behavior
-- supporting physical models and navigation-time helpers
+| question | go next |
+| --- | --- |
+| Which external format or product is parsed? | [docs/FORMATS.md](docs/FORMATS.md), `src/formats.rs` |
+| Which correction or model owns the science? | [docs/CORRECTIONS.md](docs/CORRECTIONS.md), [docs/MODELS.md](docs/MODELS.md) |
+| Which orbit or clock contract applies? | [docs/ORBITS.md](docs/ORBITS.md), `src/orbits/` |
+| How is a solution estimated or refused? | [docs/ESTIMATION.md](docs/ESTIMATION.md), `src/estimation/` |
+| What changed in this package? | [CHANGELOG.md](CHANGELOG.md) |
 
-This crate does not own receiver scheduling, repository run layout, dataset registry mechanics, or
-operator command workflows.
+## Owned Boundary
 
-## Public surface
+- navigation-product formats and parsed product records
+- broadcast and precise orbit helpers
+- correction models for atmosphere, bias, combinations, tides, and carrier
+  effects
+- position estimation, uncertainty, residual, RTK, PPP, and RAIM behavior
+- navigation-specific time interpretation and rollover handling
 
-`bijux_gnss_nav::api` is the deliberate downstream surface. It organizes exports by durable
-scientific role rather than by internal file layout so higher-level crates consume navigation
-capabilities without coupling themselves to parser and solver internals.
+This crate does not own raw-IQ ingest, signal-code production, receiver
+tracking loops, persisted run layout, or operator command presentation.
 
-## Source map
+```mermaid
+flowchart TB
+    product["navigation products"]
+    obs["receiver observations"]
+    corrections["corrections and models"]
+    estimator["estimator"]
+    solution["solution or refusal evidence"]
+
+    product --> corrections
+    obs --> estimator
+    corrections --> estimator
+    estimator --> solution
+```
+
+## Source Map
 
 - `src/orbits/` owns satellite-state and ephemeris logic.
-- `src/formats/` owns navigation and precise-product parsing families.
-- `src/corrections/` owns atmosphere, bias, and combination computations.
+- `src/formats.rs` owns navigation and precise-product parsing families.
+- `src/corrections/` owns atmosphere, bias, combinations, tides, and
+  carrier-aware computations.
 - `src/estimation/` owns SPP, PPP, RAIM, EKF, and RTK surfaces.
-- `src/models/` owns supporting physical models.
-- `src/time/` owns navigation-specific time utilities.
+- `src/models/` owns environmental and antenna models.
+- `src/time.rs` and `src/time/` own navigation-specific time behavior.
 
-## Documentation
-
-The crate root intentionally contains only this README. Durable crate documentation lives under
-`docs/`:
+## Documentation Map
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - [docs/BOUNDARY.md](docs/BOUNDARY.md)
@@ -47,14 +69,15 @@ The crate root intentionally contains only this README. Durable crate documentat
 - [docs/TESTS.md](docs/TESTS.md)
 - [docs/TIME.md](docs/TIME.md)
 
-## Verification
+## Verification Focus
 
-Run from the repository root when changing this crate:
+Use navigation tests that match the scientific surface changed:
 
 ```sh
+cargo test -p bijux-gnss-nav --test integration_sp3
 cargo test -p bijux-gnss-nav --test integration_position
-cargo test -p bijux-gnss-nav --test integration_precise_products
-cargo test -p bijux-gnss-nav --test integration_rtk_baseline_accuracy
+cargo test -p bijux-gnss-nav --test integration_rtk_double_difference
 ```
 
-Repository-wide expectations are documented in [../../README.md](../../README.md).
+Repository-wide lanes and package routing are documented in
+[../../README.md](../../README.md).

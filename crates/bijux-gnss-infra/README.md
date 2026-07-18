@@ -1,39 +1,61 @@
 # bijux-gnss-infra
 
-`bijux-gnss-infra` owns repository-facing GNSS infrastructure.
+`bijux-gnss-infra` owns repository-side infrastructure: dataset registry,
+run identity, persisted artifact layout, provenance hashing, receiver-profile
+overrides, and experiment sweep expansion.
 
-## Scope
+Start here when a reader needs to understand how an input becomes a governed
+repository object or how a command writes reviewable evidence to disk. Do not
+start here for acquisition science, signal-code math, navigation estimation, or
+operator report wording.
 
-This crate owns:
+## Reader Route
 
-- dataset registry records and raw-IQ metadata resolution
-- run directory identity, reports, manifests, and history appends
-- artifact inspection and validation over persisted outputs
-- experiment sweep expansion, profile overrides, and provenance hashing
-- infrastructure-friendly API composition over lower-level crates
+| question | go next |
+| --- | --- |
+| Which dataset metadata is trusted? | [docs/DATASETS.md](docs/DATASETS.md), `src/datasets/` |
+| Where should a run write files? | [docs/RUN_LAYOUT.md](docs/RUN_LAYOUT.md), `src/run_layout/` |
+| How is provenance or hashing computed? | [docs/HASHING.md](docs/HASHING.md), `src/hash/` |
+| How do overrides and sweeps expand? | [docs/OVERRIDES.md](docs/OVERRIDES.md), [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md) |
+| What changed in this package? | [CHANGELOG.md](CHANGELOG.md) |
 
-This crate does not own DSP implementation, navigation estimation strategy, receiver stage
-execution, or operator command policy.
+## Owned Boundary
 
-## Public surface
+- dataset registration and metadata interpretation
+- deterministic run-directory layout and manifest persistence
+- artifact inspection and validation adapters
+- receiver-profile overrides and experiment sweep expansion
+- provenance hashing helpers for repository-owned inputs and outputs
 
-`bijux_gnss_infra::api` is the deliberate downstream surface. It mixes infrastructure-owned helpers
-with selected re-exports from lower layers so repository-facing callers can work through one
-boundary without transferring product ownership into this crate.
+This crate does not own receiver execution algorithms, signal generation,
+navigation estimation, or operator-facing report language.
 
-## Source map
+```mermaid
+flowchart LR
+    input["dataset or profile"]
+    registry["registry and overrides"]
+    run["run layout"]
+    artifact["manifest and artifacts"]
+    review["review evidence"]
 
-- `src/artifact_inspection/` owns post-run artifact explanation and validation.
-- `src/datasets/` owns dataset registry parsing, coordinate parsing, and metadata resolution.
-- `src/run_layout/` owns run identity, directories, manifests, reports, and history persistence.
-- `src/overrides/`, `src/experiments.rs`, and `src/sweep.rs` own typed configuration mutation.
-- `src/hash/` owns provenance-oriented hashing helpers.
+    input --> registry
+    registry --> run
+    run --> artifact
+    artifact --> review
+```
+
+## Source Map
+
+- `src/datasets/` owns dataset registry and raw-IQ sidecar metadata.
+- `src/run_layout/` owns run identity, directories, paths, persistence, and
+  records.
+- `src/artifact_inspection/` owns inspection summaries and validation adapters.
+- `src/overrides/` and `src/sweep.rs` own profile override and experiment sweep
+  behavior.
+- `src/hash/` owns provenance hashing helpers.
 - `src/validate_reference.rs` owns infrastructure-side validation adapters.
 
-## Documentation
-
-The crate root intentionally contains only this README. Durable crate documentation lives under
-`docs/`:
+## Documentation Map
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - [docs/BOUNDARY.md](docs/BOUNDARY.md)
@@ -47,13 +69,14 @@ The crate root intentionally contains only this README. Durable crate documentat
 - [docs/TESTS.md](docs/TESTS.md)
 - [docs/VALIDATION.md](docs/VALIDATION.md)
 
-## Verification
+## Verification Focus
 
-Run from the repository root when changing this crate:
+Use infra tests when changing repository semantics:
 
 ```sh
 cargo test -p bijux-gnss-infra --test integration_overrides
 cargo test -p bijux-gnss-infra --test integration_guardrails
 ```
 
-Repository-wide expectations are documented in [../../README.md](../../README.md).
+Repository-wide lanes and package routing are documented in
+[../../README.md](../../README.md).
