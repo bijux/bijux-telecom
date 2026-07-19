@@ -486,22 +486,24 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           TARGET_SHA: ${{ github.sha }}
           TARGET_REF_NAME: ${{ github.ref_name }}
+          WAIT_FOR_CI_COMMAND: ${{ needs.resolve.outputs.wait_for_ci_command }}
         shell: bash
         run: |
           set -euo pipefail
           CI_WAIT_STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           export CI_WAIT_STARTED_AT
-          eval "${{ needs.resolve.outputs.wait_for_ci_command }}"
+          eval "${WAIT_FOR_CI_COMMAND}"
 
       - name: Decide whether to publish PyPI distributions
         id: plan
         if: ${{ needs.resolve.outputs.plan_command != '' }}
         env:
+          PLAN_COMMAND: ${{ needs.resolve.outputs.plan_command }}
           TARGET_SHA: ${{ github.sha }}
         shell: bash
         run: |
           set -euo pipefail
-          eval "${{ needs.resolve.outputs.plan_command }}"
+          eval "${PLAN_COMMAND}"
 
       - name: Resolve publish decision
         id: release
@@ -549,6 +551,7 @@ jobs:
         if: ${{ steps.release.outputs.publish == 'true' }}
         id: release_tree
         env:
+          PREPARE_COMMAND: ${{ needs.resolve.outputs.prepare_command }}
           RELEASE_VERSION: ${{ steps.release.outputs.version }}
         shell: bash
         run: |
@@ -557,7 +560,7 @@ jobs:
           rm -rf "${release_tree}"
 
           if [[ -n "${{ needs.resolve.outputs.prepare_command }}" ]]; then
-            eval "${{ needs.resolve.outputs.prepare_command }}"
+            eval "${PREPARE_COMMAND}"
           else
             python3 .github/scripts/prepare_release_tree.py \
               --workspace-root . \
@@ -601,9 +604,10 @@ jobs:
       - name: Publish PyPI distributions
         if: ${{ steps.release.outputs.publish == 'true' }}
         env:
+          PUBLISH_COMMAND: ${{ needs.resolve.outputs.publish_command }}
           PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
           RELEASE_VERSION: ${{ steps.release.outputs.version }}
         shell: bash
         run: |
           set -euo pipefail
-          eval "${{ needs.resolve.outputs.publish_command }}"
+          eval "${PUBLISH_COMMAND}"
