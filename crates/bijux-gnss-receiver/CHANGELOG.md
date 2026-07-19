@@ -9,7 +9,7 @@ This package adheres to [Semantic Versioning](https://semver.org) and the
 
 ---
 
-## 0.1.0 - Unreleased
+## 0.1.0 - 2026-07-19
 
 ### Added
 
