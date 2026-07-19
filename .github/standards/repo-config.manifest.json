@@ -988,7 +988,7 @@
         {
           "key": "BIJUX_RELEASE_RUST_TOOLCHAIN",
           "type": "string",
-          "value": "1.85.0"
+          "value": "1.86.0"
         },
         {
           "key": "BIJUX_RELEASE_BUILD_MATRIX_JSON",
@@ -1000,6 +1000,14 @@
               "artifacts_dir": "artifacts/python",
               "makefile_path": "makes/root.mk",
               "build_targets": "build-py",
+              "dist_subdir": "build"
+            },
+            {
+              "package_slug": "bijux-dag",
+              "package_dir": ".",
+              "artifacts_dir": "artifacts/rust",
+              "makefile_path": "makes/root.mk",
+              "build_targets": "build-dag-release-bundle",
               "dist_subdir": "build"
             }
           ]
@@ -1027,7 +1035,7 @@
         {
           "key": "BIJUX_CRATES_RELEASE_RUST_TOOLCHAIN",
           "type": "string",
-          "value": "1.85.0"
+          "value": "1.86.0"
         },
         {
           "key": "BIJUX_CRATES_RELEASE_VERIFY_TOKEN_COMMAND",
@@ -1047,7 +1055,12 @@
         {
           "key": "BIJUX_CRATES_RELEASE_PACKAGES",
           "type": "string",
-          "value": "bijux-cli"
+          "value": "bijux-dag-core bijux-dag-artifacts bijux-dag-runtime bijux-dag-app bijux-dag-cli bijux-cli"
+        },
+        {
+          "key": "BIJUX_CRATES_RELEASE_ALLOWED_PACKAGES",
+          "type": "string",
+          "value": "bijux-dag-core bijux-dag-artifacts bijux-dag-runtime bijux-dag-app bijux-dag-cli bijux-cli"
         },
         {
           "key": "BIJUX_GHCR_RELEASE_ENABLED",
@@ -1060,8 +1073,16 @@
           "value": [
             {
               "package_slug": "bijux-cli"
+            },
+            {
+              "package_slug": "bijux-dag"
             }
           ]
+        },
+        {
+          "key": "BIJUX_GHCR_RELEASE_ALLOWED_PACKAGES",
+          "type": "string",
+          "value": "bijux-cli bijux-dag"
         },
         {
           "key": "BIJUX_PYPI_ENABLED",
@@ -1072,6 +1093,11 @@
           "key": "BIJUX_PYPI_MODE",
           "type": "string",
           "value": "maturin"
+        },
+        {
+          "key": "BIJUX_PYPI_RUST_TOOLCHAIN",
+          "type": "string",
+          "value": "1.86.0"
         },
         {
           "key": "BIJUX_PYPI_WAIT_FOR_CI_COMMAND",
@@ -1163,7 +1189,7 @@
             "PIP_DISABLE_PIP_VERSION_CHECK": 1,
             "PYTHONUNBUFFERED": 1,
             "BIJUXCLI_API_GUARD": 1,
-            "RUST_TOOLCHAIN_VERSION": "1.85.0"
+            "RUST_TOOLCHAIN_VERSION": "1.86.0"
           },
           "jobs": {
             "fmt": {

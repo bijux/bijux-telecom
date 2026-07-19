@@ -89,17 +89,7 @@ fi
 
 directory_tree_sha256() {
   local target_dir="$1"
-  if [[ ! -d "${target_dir}" ]]; then
-    echo "ERROR: missing directory ${target_dir}" >&2
-    exit 1
-  fi
-
-  (
-    cd "${target_dir}"
-    find . -type f -print | LC_ALL=C sort | while IFS= read -r file_rel; do
-      shasum -a 256 "${file_rel}"
-    done
-  ) | shasum -a 256 | awk '{print $1}'
+  "${script_dir}/scripts/directory-tree-sha256.sh" "${target_dir}"
 }
 
 manifest_sha_for_dir() {

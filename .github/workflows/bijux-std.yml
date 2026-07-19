@@ -19,7 +19,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        check: [standard, report]
+        check: [standard, contracts, report]
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -36,6 +36,9 @@ jobs:
                 --manifest-managed .github/standards/repo-config.manifest.json \
                 .github/workflows
               make bijux-std-checks
+              ;;
+            contracts)
+              make contract-tests
               ;;
             report)
               if [[ -x ".bijux/shared/bijux-checks/scripts/run-bijux-check-suite.sh" ]]; then
