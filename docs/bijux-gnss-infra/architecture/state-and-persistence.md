@@ -1,0 +1,41 @@
+---
+title: State and Persistence
+audience: mixed
+type: architecture
+status: canonical
+owner: bijux-gnss-infra-docs
+last_reviewed: 2026-07-17
+---
+
+# State and Persistence
+
+State is the reason this crate exists.
+
+## Main Persisted Families
+
+- dataset registry entries and sidecar-derived metadata
+- run identity, directory layout, and front-end provenance
+- manifests, reports, history entries, and artifact headers
+- provenance hashes and environment evidence
+
+## Persistence Boundary
+
+Infra owns how repository state is laid out and interpreted. It does not own
+the semantic meaning of core artifact payloads or the runtime-side production
+of those payloads.
+
+## Durability Rule
+
+Run footprints should remain understandable after the command and process that
+created them are gone. That is the architectural standard here, not a nice-to-
+have.
+
+## First Proof Check
+
+- the [run-layout guide](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/docs/RUN_LAYOUT.md)
+- the [dataset registry source](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/src/datasets/registry.rs)
+- the [run-layout facade](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/src/run_layout.rs)
+- the [run-record source](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/src/run_layout/records.rs)
+- the [persistence source](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/src/run_layout/persistence.rs)
+- the [front-end provenance source](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/src/run_layout/provenance/front_end.rs)
+- the [provenance hash source](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-infra/src/hash/provenance.rs)

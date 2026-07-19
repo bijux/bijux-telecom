@@ -1,0 +1,22 @@
+{
+  "id": "wrong-prn-eight",
+  "kind": "synthetic",
+  "sat": { "constellation": "Gps", "prn": 8 },
+  "signal_sat": { "constellation": "Gps", "prn": 7 },
+  "requested_sats": [
+    { "constellation": "Gps", "prn": 7 },
+    { "constellation": "Gps", "prn": 8 },
+    { "constellation": "Gps", "prn": 9 }
+  ],
+  "doppler_hz": 250.0,
+  "code_phase_chips": 300.0,
+  "cn0_db_hz": 48.0,
+  "seed": 604447000,
+  "search_hz": 1500,
+  "step_hz": 250,
+  "coherent_ms": 1,
+  "noncoherent": 1,
+  "expected_hypothesis": "rejected",
+  "expected_selected_reason": "wrong_prn_correlation",
+  "expect_not_accepted": true
+}

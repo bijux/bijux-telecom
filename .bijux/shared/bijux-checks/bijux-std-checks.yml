@@ -2,9 +2,22 @@ version: 1
 manifest: shared/shared-dir-sha256.txt
 directories:
   - shared/bijux-docs
+  - shared/bijux-makes
   - shared/bijux-makes-py
+  - shared/bijux-makes-rs
   - shared/bijux-checks
   - shared/bijux-gh
+capabilities:
+  common:
+    - shared/bijux-makes
+    - shared/bijux-checks
+    - shared/bijux-gh
+  docs:
+    - shared/bijux-docs
+  python:
+    - shared/bijux-makes-py
+  rust:
+    - shared/bijux-makes-rs
 remote:
   repo_url: https://github.com/bijux/bijux-std
   git_url: https://github.com/bijux/bijux-std.git

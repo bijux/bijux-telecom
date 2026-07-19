@@ -2,12 +2,17 @@
 #![allow(missing_docs)]
 
 use crate::pipeline::tracking::TrackingResult;
-use crate::validation_report::{ValidationBudgets, ValidationErrorStats};
+use crate::validation_report::{
+    ReferenceCoordinateCoverageReport, ReferencePositionErrorEpoch, ValidationBudgets,
+    ValidationErrorStats,
+};
 use bijux_gnss_core::api::{NavSolutionEpoch, StatsSummary};
 
 pub(crate) fn check_budgets(
     tracks: &[TrackingResult],
     solutions: &[NavSolutionEpoch],
+    reference_position_errors: &[ReferencePositionErrorEpoch],
+    reference_coordinate_coverage: &ReferenceCoordinateCoverageReport,
     budgets: &ValidationBudgets,
 ) -> Vec<String> {
     let mut violations = Vec::new();
@@ -83,6 +88,32 @@ pub(crate) fn check_budgets(
             ));
         }
     }
+    if let Some(max_error_m) = budgets.reference_position_error_3d_m_max {
+        if reference_coordinate_coverage.required && !reference_coordinate_coverage.ready {
+            if reference_coordinate_coverage.unmatched_solution_epochs.is_empty() {
+                violations
+                    .push("reference coordinates unavailable for position validation".to_string());
+            } else {
+                let epochs = reference_coordinate_coverage
+                    .unmatched_solution_epochs
+                    .iter()
+                    .map(u64::to_string)
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                violations.push(format!(
+                    "reference coordinates unavailable for solution epochs: {epochs}"
+                ));
+            }
+        }
+        for error in reference_position_errors {
+            if error.error_3d_m > max_error_m {
+                violations.push(format!(
+                    "reference position 3d error too high at epoch {}: {:.2} m",
+                    error.epoch_idx, error.error_3d_m
+                ));
+            }
+        }
+    }
     violations
 }
 
@@ -109,6 +140,7 @@ impl Default for ValidationBudgets {
             nav_rejected_ratio_max: 0.5,
             nav_nan_max: 0,
             nav_min_lock_epochs: 3,
+            reference_position_error_3d_m_max: None,
         }
     }
 }

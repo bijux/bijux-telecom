@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "RtkAmbiguityState",
+  "type": "object",
+  "required": ["epoch_idx", "status", "value"],
+  "properties": {
+    "epoch_idx": { "type": "integer", "minimum": 0 },
+    "status": {
+      "type": "string",
+      "enum": ["executed", "not_ready", "unsupported"]
+    },
+    "reason": { "type": ["string", "null"] },
+    "value": {
+      "anyOf": [
+        { "$ref": "#/definitions/AmbiguityState" },
+        { "type": "null" }
+      ]
+    }
+  },
+  "definitions": {
+    "AmbiguityState": {
+      "type": "object",
+      "required": ["epoch_idx", "mode", "float_count", "fixed_count"],
+      "properties": {
+        "epoch_idx": { "type": "integer", "minimum": 0 },
+        "mode": { "type": "string", "enum": ["Rtk", "Ppp"] },
+        "float_count": { "type": "integer", "minimum": 0 },
+        "fixed_count": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

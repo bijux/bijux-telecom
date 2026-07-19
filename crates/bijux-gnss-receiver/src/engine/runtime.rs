@@ -4,7 +4,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use bijux_gnss_core::api::DiagnosticEvent;
+use bijux_gnss_core::api::{DiagnosticEvent, GpsTime};
 
 #[derive(Debug, Clone, Default)]
 pub struct ReceiverRuntimeConfig {
@@ -12,6 +12,7 @@ pub struct ReceiverRuntimeConfig {
     pub trace_dir: Option<PathBuf>,
     pub run_dir: Option<PathBuf>,
     pub diagnostics_dump: bool,
+    pub capture_start_gps_time: Option<GpsTime>,
 }
 
 pub trait Logger: Send + Sync {
@@ -51,6 +52,12 @@ impl ReceiverRuntime {
         metrics: Arc<dyn MetricsSink>,
     ) -> Self {
         Self { config, logger, trace, metrics }
+    }
+
+    pub fn with_capture_start_gps_time(&self, capture_start_gps_time: GpsTime) -> Self {
+        let mut config = self.config.clone();
+        config.capture_start_gps_time = Some(capture_start_gps_time);
+        Self::with_sinks(config, self.logger.clone(), self.trace.clone(), self.metrics.clone())
     }
 }
 

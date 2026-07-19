@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+bijux_std_artifact_root="${repo_root}/artifacts/bijux-std"
+mkdir -p "${bijux_std_artifact_root}/pycache"
+export PYTHONPYCACHEPREFIX="${PYTHONPYCACHEPREFIX:-${bijux_std_artifact_root}/pycache}"
 default_config_path="${repo_root}/.bijux/shared/bijux-checks/bijux-std-checks.yml"
 if [[ ! -f "${default_config_path}" ]]; then
   default_config_path="${repo_root}/shared/bijux-checks/bijux-std-checks.yml"
@@ -13,13 +17,23 @@ if [[ ! -f "${config_path}" ]]; then
   exit 1
 fi
 
+directory_resolver="${script_dir}/scripts/resolve-shared-directories.sh"
+if [[ ! -x "${directory_resolver}" ]]; then
+  echo "ERROR: shared directory resolver is unavailable: ${directory_resolver}" >&2
+  exit 1
+fi
+
 read_scalar() {
   local key="$1"
   awk -F': ' -v key="${key}" '$1 == key {print $2; exit}' "${config_path}" | tr -d '"'
 }
 
 read_directories() {
-  awk '/^directories:/{flag=1;next} /^remote:/{flag=0} flag && /^  - /{sub(/^  - /, ""); print}' "${config_path}"
+  "${directory_resolver}" --all "${config_path}"
+}
+
+read_selected_directories() {
+  "${directory_resolver}" --select "${config_path}" "${BIJUX_STD_CAPABILITIES:-}"
 }
 
 resolve_local_rel() {
@@ -63,6 +77,7 @@ std_git_url="${BIJUX_STD_GIT_URL:-${git_url_default}}"
 std_root="${BIJUX_STD_ROOT:-${repo_root}/../bijux-std}"
 strict_remote="${BIJUX_STD_STRICT_REMOTE:-0}"
 require_remote_match="${BIJUX_STD_REQUIRE_REMOTE_MATCH:-0}"
+selected_directories="$(read_selected_directories)"
 manifest_local_rel="$(resolve_local_rel "${manifest_rel}")"
 manifest_path="${repo_root}/${manifest_local_rel}"
 
@@ -74,33 +89,7 @@ fi
 
 directory_tree_sha256() {
   local target_dir="$1"
-  if [[ ! -d "${target_dir}" ]]; then
-    echo "ERROR: missing directory ${target_dir}" >&2
-    exit 1
-  fi
-
-  local git_root=""
-  git_root="$(git -C "${target_dir}" rev-parse --show-toplevel 2>/dev/null || true)"
-  if [[ -n "${git_root}" ]]; then
-    local dir_rel=""
-    dir_rel="$(python3 -c 'from pathlib import Path; import sys; print(Path(sys.argv[2]).resolve().relative_to(Path(sys.argv[1]).resolve()).as_posix())' "${git_root}" "${target_dir}" 2>/dev/null || true)"
-    if [[ -n "${dir_rel}" ]]; then
-      (
-        cd "${git_root}"
-        git ls-files -- "${dir_rel}" | LC_ALL=C sort | while IFS= read -r file_rel; do
-          shasum -a 256 "${file_rel}" | sed "s#  ${dir_rel}/#  ./#"
-        done
-      ) | shasum -a 256 | awk '{print $1}'
-      return
-    fi
-  fi
-
-  (
-    cd "${target_dir}"
-    find . -type f -print | LC_ALL=C sort | while IFS= read -r file_rel; do
-      shasum -a 256 "${file_rel}"
-    done
-  ) | shasum -a 256 | awk '{print $1}'
+  "${script_dir}/scripts/directory-tree-sha256.sh" "${target_dir}"
 }
 
 manifest_sha_for_dir() {
@@ -167,7 +156,7 @@ verify_dir_against_manifests() {
     exit 1
   fi
 
-  echo "✔ ${local_dir_rel} matches bijux-std (${remote_expected})"
+  echo "✔ ${local_dir_rel} matches expected manifest (${expected_sha})"
 }
 
 verify_canonical_mermaid_init() {
@@ -262,6 +251,36 @@ verify_workflow_run_shell_preambles() {
   echo "✔ Workflow shell preambles are executable"
 }
 
+verify_release_pypi_toolchain_inheritance() {
+  local workflow_rel
+  local workflow_path
+  workflow_rel="$(resolve_local_rel "shared/bijux-gh/workflows/release-pypi.yml")"
+  workflow_path="${repo_root}/${workflow_rel}"
+
+  if [[ ! -f "${workflow_path}" ]]; then
+    echo "ERROR: missing shared release-pypi workflow ${workflow_path}" >&2
+    exit 1
+  fi
+
+  if grep -qF '"1.85.0"' "${workflow_path}"; then
+    echo "ERROR: shared release-pypi workflow still hardcodes the stale Rust 1.85.0 fallback" >&2
+    echo "Hint: inherit the PyPI Rust toolchain from BIJUX_RELEASE_RUST_TOOLCHAIN before using a built-in default." >&2
+    exit 1
+  fi
+
+  if ! grep -qF 'release_rust_toolchain="$(from_values "" "${BIJUX_RELEASE_RUST_TOOLCHAIN:-}" "${{ vars.BIJUX_RELEASE_RUST_TOOLCHAIN || '\'''\'' }}" "1.86.0")"' "${workflow_path}"; then
+    echo "ERROR: shared release-pypi workflow must resolve a shared release Rust toolchain fallback" >&2
+    exit 1
+  fi
+
+  if ! grep -qF 'rust_toolchain="$(from_values "" "${BIJUX_PYPI_RUST_TOOLCHAIN:-}" "${{ vars.BIJUX_PYPI_RUST_TOOLCHAIN || '\'''\'' }}" "${release_rust_toolchain}")"' "${workflow_path}"; then
+    echo "ERROR: shared release-pypi workflow must inherit the release Rust toolchain when BIJUX_PYPI_RUST_TOOLCHAIN is unset" >&2
+    exit 1
+  fi
+
+  echo "✔ Shared release-pypi workflow inherits the release Rust toolchain"
+}
+
 verify_release_env_shell_safety() {
   python3 - "${repo_root}" "${tmp_dir}" <<'PY'
 import importlib.util
@@ -308,14 +327,22 @@ print("✔ Rendered release.env files are shell-safe")
 PY
 }
 
-tmp_dir="$(mktemp -d)"
+tmp_dir="$(mktemp -d "${bijux_std_artifact_root}/check.XXXXXX")"
 tmp_manifest="${tmp_dir}/manifest.txt"
 cleanup() {
   rm -rf "${tmp_dir}"
 }
 trap cleanup EXIT
 
-if ! git clone --depth 1 --branch "${std_ref}" "${std_git_url}" "${tmp_dir}/bijux-std" >/dev/null 2>&1; then
+clone_std_ref() {
+  local destination="${tmp_dir}/bijux-std"
+  git init --quiet "${destination}"
+  git -C "${destination}" remote add origin "${std_git_url}"
+  git -C "${destination}" fetch --quiet --depth 1 origin "${std_ref}"
+  git -C "${destination}" checkout --quiet --detach FETCH_HEAD
+}
+
+if ! clone_std_ref >/dev/null 2>&1; then
   local_std_manifest="${std_root}/${manifest_rel}"
   if [[ "${strict_remote}" == "1" ]]; then
     echo "ERROR: failed to clone ${std_git_url}@${std_ref} (strict remote mode)" >&2
@@ -340,12 +367,15 @@ fi
 
 while IFS= read -r dir_rel; do
   verify_dir_against_manifests "${dir_rel}" "${tmp_manifest}"
-done < <(read_directories)
+done <<<"${selected_directories}"
 
 verify_no_legacy_root_shared_dirs
-verify_canonical_mermaid_init
-verify_homepage_sidebar_collapse_contract
+if grep -Fxq "shared/bijux-docs" <<<"${selected_directories}"; then
+  verify_canonical_mermaid_init
+  verify_homepage_sidebar_collapse_contract
+fi
 verify_workflow_run_shell_preambles
+verify_release_pypi_toolchain_inheritance
 verify_release_env_shell_safety
 
 echo "✔ bijux-std check passed (ref=${std_ref}, manifest=${manifest_rel}, remote=${git_url_default})"

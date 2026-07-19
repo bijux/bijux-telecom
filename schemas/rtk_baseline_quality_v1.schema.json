@@ -5,7 +5,7 @@
   "required": ["header", "payload"],
   "properties": {
     "header": { "$ref": "#/definitions/ArtifactHeader" },
-    "payload": { "type": "object" }
+    "payload": { "$ref": "#/definitions/RtkBaselineQuality" }
   },
   "definitions": {
     "ArtifactHeader": {
@@ -34,6 +34,53 @@
         "features": { "type": "array", "items": { "type": "string" } },
         "deterministic": { "type": "boolean" },
         "git_dirty": { "type": "boolean" }
+      }
+    },
+    "RtkBaselineQuality": {
+      "type": "object",
+      "required": ["epoch_idx", "status", "value"],
+      "properties": {
+        "epoch_idx": { "type": "integer", "minimum": 0 },
+        "status": {
+          "type": "string",
+          "enum": ["executed", "not_ready", "unsupported"]
+        },
+        "reason": { "type": ["string", "null"] },
+        "value": {
+          "anyOf": [
+            { "$ref": "#/definitions/BaselineQuality" },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "BaselineQuality": {
+      "type": "object",
+      "required": [
+        "epoch_idx",
+        "fixed",
+        "sigma_e",
+        "sigma_n",
+        "sigma_u",
+        "used_sats",
+        "residual_rms_m",
+        "predicted_rms_m",
+        "hpl_m",
+        "vpl_m"
+      ],
+      "properties": {
+        "epoch_idx": { "type": "integer", "minimum": 0 },
+        "fixed": { "type": "boolean" },
+        "sigma_e": { "type": "number" },
+        "sigma_n": { "type": "number" },
+        "sigma_u": { "type": "number" },
+        "used_sats": { "type": "integer", "minimum": 0 },
+        "residual_rms_m": { "type": "number" },
+        "predicted_rms_m": { "type": "number" },
+        "hpl_m": { "type": "number" },
+        "vpl_m": { "type": "number" },
+        "separation_sig": { "type": "string" },
+        "separation_max_m": { "type": "number" }
       }
     }
   }

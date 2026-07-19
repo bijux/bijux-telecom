@@ -6,9 +6,20 @@
 //! a single namespace without deep paths.
 
 pub mod acquisition;
+pub mod acquisition_assistance;
+pub(crate) mod acquisition_components;
+pub(crate) mod acquisition_symbol_hypotheses;
+pub mod doppler;
+pub mod hatch;
+#[cfg(feature = "nav")]
+pub(crate) mod nav_config;
 #[cfg(feature = "nav")]
 pub mod navigation;
+#[cfg(feature = "nav")]
+pub mod navigation_filter;
+pub mod observation_validation;
 pub mod observations;
+pub(crate) mod signal_capabilities;
 pub mod tracking;
 
 #[derive(Debug, Clone, Default)]

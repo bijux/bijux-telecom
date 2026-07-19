@@ -1,18 +1,66 @@
 [package]
 name = "bijux-gnss"
-version = "0.1.0"
+version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
+description = "GNSS facade and command-line workflows for receiver processing, validation, and evidence"
+repository.workspace = true
+homepage.workspace = true
+documentation = "https://docs.rs/bijux-gnss/latest/bijux_gnss/"
+readme = "README.md"
+categories = ["aerospace", "science::geo", "command-line-utilities"]
+keywords = ["gnss", "gps", "galileo", "receiver", "navigation"]
 
 [features]
-nav = ["bijux-gnss-receiver/nav", "bijux-gnss-nav"]
+default = ["cli", "precise-products"]
+cli = [
+  "dep:anyhow",
+  "dep:bijux-gnss-infra",
+  "dep:bijux-gnss-nav",
+  "dep:clap",
+  "dep:eyre",
+  "dep:hex",
+  "dep:serde",
+  "dep:serde_json",
+  "dep:serde_yaml",
+  "dep:sha2",
+  "dep:time",
+  "dep:toml",
+]
+nav = ["dep:bijux-gnss-nav", "bijux-gnss-receiver/nav"]
+precise-products = ["cli", "nav", "bijux-gnss-infra/precise-products"]
+tracing = ["cli", "bijux-gnss-infra/tracing", "dep:tracing-subscriber"]
+schema-validate = ["cli", "dep:jsonschema", "dep:schemars"]
+plots = ["cli", "dep:plotters"]
 
 [dependencies]
+anyhow = { workspace = true, optional = true }
+clap = { workspace = true, optional = true }
 bijux-gnss-core = { path = "../bijux-gnss-core", version = "0.1.0" }
-bijux-gnss-signal = { path = "../bijux-gnss-signal", version = "0.1.0" }
-bijux-gnss-receiver = { path = "../bijux-gnss-receiver", version = "0.1.0" }
+bijux-gnss-infra = { path = "../bijux-gnss-infra", version = "0.1.0", optional = true }
 bijux-gnss-nav = { path = "../bijux-gnss-nav", version = "0.1.0", optional = true }
+bijux-gnss-receiver = { path = "../bijux-gnss-receiver", version = "0.1.0" }
+bijux-gnss-signal = { path = "../bijux-gnss-signal", version = "0.1.0" }
+eyre = { workspace = true, optional = true }
+hex = { workspace = true, optional = true }
+jsonschema = { workspace = true, optional = true }
+plotters = { version = "0.3.7", optional = true, default-features = false, features = ["bitmap_backend", "bitmap_encoder", "line_series"] }
+schemars = { workspace = true, optional = true }
+serde = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
+serde_yaml = { workspace = true, optional = true }
+sha2 = { workspace = true, optional = true }
+time = { workspace = true, optional = true }
+toml = { workspace = true, optional = true }
+tracing-subscriber = { version = "0.3", optional = true, features = ["env-filter"] }
+
+[[bin]]
+name = "bijux"
+path = "src/main.rs"
+required-features = ["cli"]
 
 [dev-dependencies]
-bijux-gnss-policies = { path = "../bijux-gnss-policies", version = "0.1.0" }
+bijux-gnss-policies = { path = "../bijux-gnss-policies" }
+bijux-gnss-signal = { path = "../bijux-gnss-signal", version = "0.1.0" }
+bijux-gnss-testkit = { path = "../bijux-gnss-testkit" }

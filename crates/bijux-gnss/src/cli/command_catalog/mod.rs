@@ -1,0 +1,415 @@
+mod diagnostics_commands;
+mod artifact_commands;
+mod navigation_commands;
+mod configuration_commands;
+mod capture_arguments;
+mod validation_arguments;
+
+pub(crate) use artifact_commands::{ArtifactCommand, DiagnosticFailOn};
+pub(crate) use capture_arguments::{
+    AcquisitionSearchArgs, CaptureWindowArgs, CodeReplicaArgs, DefaultPrnSelectionArgs,
+    IntermediateFrequencyArgs, RawCaptureInputArgs, RequiredPrnSelectionArgs,
+    SamplingRateOverrideArgs,
+};
+pub(crate) use configuration_commands::{
+    ConfigCommand, ConfigSchemaArgs, ConfigUpgradeArgs, ValidateConfigArgs,
+};
+pub(crate) use diagnostics_commands::{AdvancedGateMode, DiagnosticsCommand, RouteTopic, WorkflowProfile};
+pub(crate) use navigation_commands::{NavCommand, ReferenceAlign};
+pub(crate) use validation_arguments::{
+    ObservationValidationArgs, ValidateArtifactsArgs, ValidateReferenceArgs, ValidateSidecarArgs,
+};
+
+#[derive(Subcommand)]
+pub(crate) enum GnssCommand {
+    /// Generate GPS L1 C/A code for a PRN
+    CaCode {
+        #[arg(long)]
+        prn: u8,
+
+        /// Zero-based chip offset within the repeating C/A sequence
+        #[arg(long, default_value_t = 0)]
+        start_chip: usize,
+
+        /// Number of chips to print
+        #[arg(long, default_value_t = 16)]
+        count: usize,
+
+        /// Print published PRN assignment metadata before the chip sequence
+        #[arg(long)]
+        with_reference: bool,
+
+        /// Print periodic autocorrelation summary before the chip sequence
+        #[arg(long)]
+        with_autocorrelation: bool,
+
+        /// Print periodic cross-correlation summary against another PRN before the chip sequence
+        #[arg(long, value_name = "PRN", value_parser = clap::value_parser!(u8).range(1..=32))]
+        cross_correlation_prn: Option<u8>,
+    },
+
+    /// Acquire satellites from a raw IQ file with explicit metadata
+    Acquire {
+        #[command(flatten)]
+        common: CommonArgs,
+
+        #[command(flatten)]
+        input: RawCaptureInputArgs,
+
+        #[command(flatten)]
+        sampling: SamplingRateOverrideArgs,
+
+        #[command(flatten)]
+        intermediate_frequency: IntermediateFrequencyArgs,
+
+        #[command(flatten)]
+        code_replica: CodeReplicaArgs,
+
+        #[command(flatten)]
+        acquisition_search: AcquisitionSearchArgs,
+
+        #[command(flatten)]
+        window: CaptureWindowArgs,
+
+        /// Number of top candidates per PRN
+        #[arg(long, default_value_t = 3)]
+        top: usize,
+
+        #[command(flatten)]
+        prns: DefaultPrnSelectionArgs,
+    },
+
+    /// Track satellites from a raw IQ file with explicit metadata
+    Track {
+        #[command(flatten)]
+        common: CommonArgs,
+
+        #[command(flatten)]
+        input: RawCaptureInputArgs,
+
+        #[command(flatten)]
+        sampling: SamplingRateOverrideArgs,
+
+        #[command(flatten)]
+        intermediate_frequency: IntermediateFrequencyArgs,
+
+        #[command(flatten)]
+        code_replica: CodeReplicaArgs,
+
+        #[command(flatten)]
+        acquisition_search: AcquisitionSearchArgs,
+
+        #[command(flatten)]
+        window: CaptureWindowArgs,
+
+        #[command(flatten)]
+        prns: DefaultPrnSelectionArgs,
+    },
+
+    /// Navigation-related commands
+    Nav {
+        #[command(subcommand)]
+        command: NavCommand,
+    },
+
+    /// Solve PVT from a dataset
+    Pvt {
+        #[command(flatten)]
+        common: CommonArgs,
+        /// Observation JSONL (ObsEpoch)
+        #[arg(long, value_name = "FILE")]
+        obs: PathBuf,
+
+        /// Broadcast navigation JSON, broadcast ephemeris JSON, RINEX NAV, or nav-decode report
+        #[arg(long, value_name = "FILE")]
+        eph: PathBuf,
+
+        /// Use the receiver-owned navigation filter solver
+        #[arg(long)]
+        ekf: bool,
+    },
+
+    /// Inspect raw IQ dataset statistics from explicit metadata
+    Inspect {
+        #[command(flatten)]
+        common: CommonArgs,
+
+        #[command(flatten)]
+        input: RawCaptureInputArgs,
+
+        #[command(flatten)]
+        sampling: SamplingRateOverrideArgs,
+
+        #[arg(long, default_value_t = 0)]
+        max_samples: usize,
+    },
+
+    /// RTK alignment and SD/DD artifacts
+    Rtk {
+        #[command(flatten)]
+        common: CommonArgs,
+
+        /// Base observation JSONL
+        #[arg(long, value_name = "FILE")]
+        base_obs: PathBuf,
+
+        /// Rover observation JSONL
+        #[arg(long, value_name = "FILE")]
+        rover_obs: PathBuf,
+
+        /// Broadcast ephemeris JSON, RINEX NAV, or nav-decode report
+        #[arg(long, value_name = "FILE")]
+        eph: PathBuf,
+
+        /// Base ECEF position "x,y,z"
+        #[arg(long, value_name = "ECEF")]
+        base_ecef: String,
+
+        /// Alignment tolerance in seconds
+        #[arg(long, default_value_t = 0.0005)]
+        tolerance_s: f64,
+
+        /// Reference satellite policy
+        #[arg(long, value_enum, default_value_t = RefPolicy::Global)]
+        ref_policy: RefPolicy,
+    },
+
+    /// Run parameter sweeps over synthetic scenarios
+    Experiment {
+        #[command(flatten)]
+        common: CommonArgs,
+
+        #[arg(long, value_name = "FILE")]
+        scenario: PathBuf,
+
+        /// Sweep parameters like "tracking.dll_bw_hz=1.0,2.0"
+        #[arg(long, value_name = "PARAM=VALS")]
+        sweep: Vec<String>,
+    },
+
+    /// Export a deterministic synthetic raw IQ bundle and matching truth artifact
+    ExportSyntheticIq {
+        /// Synthetic scenario TOML file
+        #[arg(long, value_name = "FILE")]
+        scenario: PathBuf,
+
+        /// Output directory for the generated run bundle
+        #[arg(long, alias = "output", value_name = "DIR")]
+        out: Option<PathBuf>,
+
+        /// Report output format
+        #[arg(long, value_enum, default_value_t = ReportFormat::Table)]
+        report: ReportFormat,
+
+        /// Synthetic capture start timestamp written into the sidecar
+        #[arg(long, default_value = "2026-07-09T00:00:00Z")]
+        capture_start_utc: String,
+    },
+
+    /// Validate a synthetic IQ bundle against truth-guided C/N0 expectations
+    ValidateSyntheticIq {
+        #[command(flatten)]
+        common: CommonArgs,
+
+        #[arg(long, alias = "path", value_name = "FILE")]
+        file: PathBuf,
+
+        /// Synthetic truth JSON emitted alongside the IQ capture
+        #[arg(long, value_name = "FILE")]
+        truth: PathBuf,
+
+        /// Maximum allowed absolute C/N0 error in dB-Hz
+        #[arg(long, default_value_t = 5.0)]
+        tolerance_db_hz: f64,
+
+        /// Maximum allowed wrapped acquisition code-phase error in samples
+        #[arg(long, default_value_t = 2)]
+        acquisition_code_phase_tolerance_samples: usize,
+
+        /// Maximum allowed acquisition Doppler error in Doppler bins
+        #[arg(long, default_value_t = 1)]
+        acquisition_doppler_tolerance_bins: usize,
+    },
+
+    /// Validate a full synthetic navigation scenario from acquisition through PVT
+    ValidateSyntheticNavigation {
+        #[command(flatten)]
+        common: CommonArgs,
+
+        /// Truth-complete synthetic navigation scenario TOML file
+        #[arg(long, value_name = "FILE")]
+        scenario: PathBuf,
+    },
+
+    /// Measure synthetic quantization loss against a float32 reference capture
+    MeasureSyntheticQuantization {
+        #[command(flatten)]
+        common: CommonArgs,
+
+        /// Synthetic scenario TOML file
+        #[arg(long, value_name = "FILE")]
+        scenario: PathBuf,
+
+        /// Quantization profiles to measure; defaults to the canonical float32-to-1-bit sweep
+        #[arg(long, value_enum, value_delimiter = ',')]
+        quantization: Vec<SyntheticQuantizationArg>,
+
+        /// Synthetic capture start timestamp used in generated metadata
+        #[arg(long, default_value = "2026-07-14T00:00:00Z")]
+        capture_start_utc: String,
+    },
+
+    /// Artifact validation and conversion
+    Artifact {
+        #[command(subcommand)]
+        command: ArtifactCommand,
+    },
+
+    /// Validate a receiver profile configuration file
+    ValidateConfig {
+        #[command(flatten)]
+        args: ValidateConfigArgs,
+    },
+
+    /// Configuration utilities
+    Config {
+        #[command(subcommand)]
+        command: ConfigCommand,
+    },
+
+    /// Validate observation or ephemeris artifacts against schemas
+    ValidateArtifacts {
+        #[command(flatten)]
+        args: ValidateArtifactsArgs,
+    },
+
+    /// Diagnostics and audit workflows for receiver evidence
+    Diagnostics {
+        #[command(subcommand)]
+        command: DiagnosticsCommand,
+    },
+
+    /// Validate sidecar file against schema
+    ValidateSidecar {
+        #[command(flatten)]
+        args: ValidateSidecarArgs,
+    },
+
+    /// Analyze a GNSS run directory and emit evidence-oriented summaries
+    Analyze {
+        /// Run directory produced by bijux-gnss
+        #[arg(long, value_name = "DIR")]
+        run_dir: PathBuf,
+
+        /// Optional reference JSONL for position error plots
+        #[arg(long, value_name = "FILE")]
+        reference: Option<PathBuf>,
+    },
+
+    /// Compare two GNSS run directories for quality deltas
+    Diff {
+        /// First run directory
+        #[arg(long, value_name = "DIR")]
+        run_a: PathBuf,
+
+        /// Second run directory
+        #[arg(long, value_name = "DIR")]
+        run_b: PathBuf,
+    },
+
+    /// Write JSON schema for receiver config
+    ConfigSchema {
+        #[command(flatten)]
+        args: ConfigSchemaArgs,
+    },
+
+    /// Upgrade a receiver config to the current schema version
+    ConfigUpgrade {
+        #[command(flatten)]
+        args: ConfigUpgradeArgs,
+    },
+
+    /// Run a streaming pipeline with optional replay rate
+    Run {
+        #[command(flatten)]
+        common: CommonArgs,
+
+        #[command(flatten)]
+        input: RawCaptureInputArgs,
+
+        /// Replay mode; if set, uses --rate to pace output
+        #[arg(long)]
+        replay: bool,
+
+        /// Replay rate multiplier (1.0 = real-time, 0 = as fast as possible)
+        #[arg(long, default_value_t = 1.0)]
+        rate: f64,
+    },
+
+    /// Write RINEX-like observation and navigation files
+    Rinex {
+        #[command(flatten)]
+        common: CommonArgs,
+
+        /// ObsEpoch JSONL
+        #[arg(long, value_name = "FILE")]
+        obs: PathBuf,
+
+        /// Ephemeris JSON
+        #[arg(long, value_name = "FILE")]
+        eph: PathBuf,
+
+        /// Enforce strict formatting checks
+        #[arg(long)]
+        strict: bool,
+    },
+
+    /// Print receiver runtime readiness diagnostics
+    Doctor {
+        #[command(flatten)]
+        common: CommonArgs,
+
+        #[command(flatten)]
+        input: RawCaptureInputArgs,
+    },
+
+    /// Run a full validation pipeline and emit validation_report.json
+    Validate {
+        #[command(flatten)]
+        args: ObservationValidationArgs,
+    },
+
+    /// Validate a run directory against a reference trajectory
+    ValidateReference {
+        #[command(flatten)]
+        args: ValidateReferenceArgs,
+    },
+
+    /// Validate a raw capture end to end from acquisition through navigation attempts
+    ValidateCapture {
+        #[command(flatten)]
+        common: CommonArgs,
+
+        #[command(flatten)]
+        input: RawCaptureInputArgs,
+
+        #[command(flatten)]
+        sampling: SamplingRateOverrideArgs,
+
+        #[command(flatten)]
+        intermediate_frequency: IntermediateFrequencyArgs,
+
+        #[command(flatten)]
+        code_replica: CodeReplicaArgs,
+
+        #[command(flatten)]
+        acquisition_search: AcquisitionSearchArgs,
+
+        /// Broadcast navigation JSON, broadcast ephemeris JSON, or RINEX NAV file
+        #[arg(long, value_name = "FILE")]
+        eph: PathBuf,
+
+        #[command(flatten)]
+        prns: RequiredPrnSelectionArgs,
+    },
+}

@@ -6,11 +6,16 @@
     "schema_version",
     "epoch_idx",
     "t_rx_s",
+    "source_time",
+    "source_observation_epoch_id",
     "ecef_m",
     "llh_deg",
     "clock_bias_s",
+    "clock_bias_m",
     "clock_drift_s_per_s",
+    "dops",
     "covariance",
+    "solver_diagnostics",
     "fix_quality",
     "validity",
     "rejected_measurements"
@@ -19,6 +24,16 @@
     "schema_version": { "type": "integer", "minimum": 1 },
     "epoch_idx": { "type": "integer", "minimum": 0 },
     "t_rx_s": { "type": "number" },
+    "source_time": {
+      "type": "object",
+      "required": ["sample_index", "sample_rate_hz", "receiver_time_s"],
+      "properties": {
+        "sample_index": { "type": "integer", "minimum": 0 },
+        "sample_rate_hz": { "type": "number", "exclusiveMinimum": 0 },
+        "receiver_time_s": { "type": "number" }
+      }
+    },
+    "source_observation_epoch_id": { "type": "string", "minLength": 1 },
     "ecef_m": {
       "type": "array",
       "minItems": 3,
@@ -38,7 +53,19 @@
       "items": { "type": "number" }
     },
     "clock_bias_s": { "type": "number" },
+    "clock_bias_m": { "type": "number" },
     "clock_drift_s_per_s": { "type": "number" },
+    "dops": {
+      "type": "object",
+      "required": ["pdop", "hdop", "vdop", "gdop", "tdop"],
+      "properties": {
+        "pdop": { "type": "number" },
+        "hdop": { "type": ["number", "null"] },
+        "vdop": { "type": ["number", "null"] },
+        "gdop": { "type": ["number", "null"] },
+        "tdop": { "type": ["number", "null"] }
+      }
+    },
     "covariance": {
       "type": "object",
       "required": ["sigma_h_m", "sigma_v_m", "covariance_xyz_m2"],
@@ -51,6 +78,15 @@
           "maxItems": 3,
           "items": { "type": "number" }
         }
+      }
+    },
+    "solver_diagnostics": {
+      "type": "object",
+      "required": ["wls_solver_rank", "wls_condition_number", "ekf_condition_number"],
+      "properties": {
+        "wls_solver_rank": { "type": ["integer", "null"], "minimum": 0 },
+        "wls_condition_number": { "type": ["number", "null"], "minimum": 0 },
+        "ekf_condition_number": { "type": ["number", "null"], "minimum": 0 }
       }
     },
     "fix_quality": { "type": "string" },

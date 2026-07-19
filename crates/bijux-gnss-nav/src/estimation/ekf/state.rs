@@ -4,6 +4,8 @@ use crate::linalg::Matrix;
 use bijux_gnss_core::api::NavHealthEvent;
 use serde::{Deserialize, Serialize};
 
+use super::statistics::InnovationConsistencyConfig;
+
 #[derive(Debug, Clone)]
 pub struct Ekf {
     pub x: Vec<f64>,
@@ -27,6 +29,7 @@ pub struct EkfConfig {
     pub gating_chi2_code: Option<f64>,
     pub gating_chi2_phase: Option<f64>,
     pub gating_chi2_doppler: Option<f64>,
+    pub innovation_consistency: Option<InnovationConsistencyConfig>,
     pub huber_k: Option<f64>,
     pub square_root: bool,
     pub covariance_epsilon: f64,
@@ -36,14 +39,21 @@ pub struct EkfConfig {
 #[derive(Debug, Clone)]
 pub struct EkfHealth {
     pub innovation_rms: f64,
+    pub peak_innovation_rms: f64,
+    pub normalized_innovation_squared: Option<f64>,
+    pub peak_normalized_innovation_squared: Option<f64>,
     pub rejected: usize,
     pub last_rejection: Option<String>,
     pub rejection_reasons: Vec<String>,
     pub last_rejection_code: Option<RejectionReason>,
     pub condition_number: Option<f64>,
+    pub peak_condition_number: Option<f64>,
     pub whiteness_ratio: Option<f64>,
+    pub peak_whiteness_ratio: Option<f64>,
     pub predicted_variance: Option<f64>,
     pub observed_variance: Option<f64>,
+    pub innovation_consistency_lower_bound: Option<f64>,
+    pub innovation_consistency_upper_bound: Option<f64>,
     pub events: Vec<NavHealthEvent>,
 }
 

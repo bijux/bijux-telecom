@@ -1,0 +1,21 @@
+id = "synthetic_iq_acquisition_reference_low_rate"
+sample_rate_hz = 2046000.0
+intermediate_freq_hz = 0.0
+duration_s = 0.04
+seed = 24071985
+
+[[satellites]]
+sat = { constellation = "Gps", prn = 3 }
+doppler_hz = 750.0
+code_phase_chips = 200.25
+carrier_phase_rad = 0.0
+cn0_db_hz = 58.0
+navigation_data = "alternating_start_positive"
+
+[[satellites]]
+sat = { constellation = "Gps", prn = 7 }
+doppler_hz = -1000.0
+code_phase_chips = 321.5
+carrier_phase_rad = 0.2
+cn0_db_hz = 52.0
+navigation_data = "constant_positive"

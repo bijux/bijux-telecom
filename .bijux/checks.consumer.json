@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "consumer_id": "bijux-telecom",
+  "consumer_id": "bijux-gnss",
   "suite": "verify",
   "checks": [
     {"id": "BJC-ROOT-HELP-001", "required": true},

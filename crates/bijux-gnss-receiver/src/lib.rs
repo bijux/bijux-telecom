@@ -5,7 +5,6 @@
 //! - `pipeline`: acquisition, tracking, observations, navigation
 //! - `io`: sample sources and dataset readers
 //! - `engine`: logging and runtime configuration
-//! - `rtk`: differencing and baseline solution helpers
 //! - `sim`: synthetic signal generation for tests
 //! - `Receiver`: high-level pipeline entrypoint
 //! - `ReceiverConfig`: on-disk configuration schema (serialize/deserialize)
@@ -17,12 +16,15 @@
 #![deny(missing_docs)]
 #![forbid(unsafe_code)]
 
+mod artifacts;
+#[cfg(feature = "nav")]
+mod covariance_realism;
 mod engine;
 mod io;
 mod pipeline;
 mod ports;
 #[cfg(feature = "nav")]
-mod rtk;
+mod reference_validation;
 #[cfg(feature = "nav")]
 mod sim;
 mod validation_helpers;

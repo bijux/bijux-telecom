@@ -23,6 +23,7 @@ fn deterministic_synthetic_runs_match() {
     let scenario = SyntheticScenario {
         sample_rate_hz: config.sampling_freq_hz,
         intermediate_freq_hz: config.intermediate_freq_hz,
+        receiver_clock_frequency_bias_hz: 0.0,
         duration_s: 0.01,
         seed: 42,
         satellites: vec![SyntheticSignalParams {
@@ -30,11 +31,14 @@ fn deterministic_synthetic_runs_match() {
                 constellation: bijux_gnss_core::api::Constellation::Gps,
                 prn: 1,
             },
+            glonass_frequency_channel: None,
+            signal_band: bijux_gnss_core::api::SignalBand::L1,
+            signal_code: bijux_gnss_core::api::SignalCode::Ca,
             doppler_hz: 1000.0,
             code_phase_chips: 100.0,
             carrier_phase_rad: 0.1,
             cn0_db_hz: 45.0,
-            data_bit_flip: false,
+            navigation_data: false.into(),
         }],
         ephemerides: Vec::new(),
         id: "determinism".to_string(),

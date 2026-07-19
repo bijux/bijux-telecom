@@ -1,29 +1,38 @@
 #![allow(missing_docs)]
 
 use super::state::{Ekf, EkfCheckpoint, EkfConfig, EkfHealth, MeasurementKind, RejectionReason};
+use super::statistics::innovation_consistency_bounds;
 use super::traits::{MeasurementModel, StateModel};
 use crate::linalg::Matrix;
 use bijux_gnss_core::api::NavHealthEvent;
 
 impl Ekf {
     pub fn new(x: Vec<f64>, p: Matrix, config: EkfConfig) -> Self {
+        let labels = vec![String::new(); x.len()];
         Self {
             x,
             p,
             config,
             health: EkfHealth {
                 innovation_rms: 0.0,
+                peak_innovation_rms: 0.0,
+                normalized_innovation_squared: None,
+                peak_normalized_innovation_squared: None,
                 rejected: 0,
                 last_rejection: None,
                 rejection_reasons: Vec::new(),
                 last_rejection_code: None,
                 condition_number: None,
+                peak_condition_number: None,
                 whiteness_ratio: None,
+                peak_whiteness_ratio: None,
                 predicted_variance: None,
                 observed_variance: None,
+                innovation_consistency_lower_bound: None,
+                innovation_consistency_upper_bound: None,
                 events: Vec::new(),
             },
-            labels: Vec::new(),
+            labels,
         }
     }
 
@@ -38,28 +47,54 @@ impl Ekf {
     }
 
     pub fn restore(checkpoint: EkfCheckpoint, config: EkfConfig) -> Self {
+        let mut labels = checkpoint.labels;
+        labels.resize(checkpoint.x.len(), String::new());
         Self {
             x: checkpoint.x,
             p: Matrix::from_parts(checkpoint.rows, checkpoint.cols, checkpoint.data),
             config,
             health: EkfHealth {
                 innovation_rms: 0.0,
+                peak_innovation_rms: 0.0,
+                normalized_innovation_squared: None,
+                peak_normalized_innovation_squared: None,
                 rejected: 0,
                 last_rejection: None,
                 rejection_reasons: Vec::new(),
                 last_rejection_code: None,
                 condition_number: None,
+                peak_condition_number: None,
                 whiteness_ratio: None,
+                peak_whiteness_ratio: None,
                 predicted_variance: None,
                 observed_variance: None,
+                innovation_consistency_lower_bound: None,
+                innovation_consistency_upper_bound: None,
                 events: Vec::new(),
             },
-            labels: checkpoint.labels,
+            labels,
         }
+    }
+
+    pub fn reset_epoch_health(&mut self) {
+        self.health.innovation_rms = 0.0;
+        self.health.peak_innovation_rms = 0.0;
+        self.health.normalized_innovation_squared = None;
+        self.health.peak_normalized_innovation_squared = None;
+        self.health.condition_number = None;
+        self.health.peak_condition_number = None;
+        self.health.whiteness_ratio = None;
+        self.health.peak_whiteness_ratio = None;
+        self.health.predicted_variance = None;
+        self.health.observed_variance = None;
+        self.health.innovation_consistency_lower_bound = None;
+        self.health.innovation_consistency_upper_bound = None;
+        self.health.events.clear();
     }
 
     pub fn add_state(&mut self, label: &str, value: f64, variance: f64) {
         let n = self.x.len();
+        self.labels.resize(n, String::new());
         self.x.push(value);
         let mut p_new = Matrix::new(n + 1, n + 1, 0.0);
         for r in 0..n {
@@ -70,6 +105,39 @@ impl Ekf {
         p_new[(n, n)] = variance;
         self.p = p_new;
         self.labels.push(label.to_string());
+    }
+
+    pub fn retain_states(&mut self, retained_indices: &[usize]) -> bool {
+        if retained_indices.is_empty() {
+            return false;
+        }
+        let n = self.x.len();
+        let mut seen = vec![false; n];
+        for &index in retained_indices {
+            if index >= n || seen[index] {
+                return false;
+            }
+            seen[index] = true;
+        }
+
+        let mut x = Vec::with_capacity(retained_indices.len());
+        let mut labels = Vec::with_capacity(retained_indices.len());
+        let mut p = Matrix::new(retained_indices.len(), retained_indices.len(), 0.0);
+        for (new_row, &old_row) in retained_indices.iter().enumerate() {
+            x.push(self.x[old_row]);
+            if let Some(label) = self.labels.get(old_row) {
+                labels.push(label.clone());
+            }
+            for (new_col, &old_col) in retained_indices.iter().enumerate() {
+                p[(new_row, new_col)] = self.p[(old_row, old_col)];
+            }
+        }
+
+        self.x = x;
+        self.p = p;
+        self.labels = labels;
+        self.sanitize_covariance();
+        true
     }
 
     pub fn predict<M: StateModel>(&mut self, model: &M, dt_s: f64) {
@@ -108,6 +176,8 @@ impl Ekf {
         }
         if min_diag > 0.0 {
             self.health.condition_number = Some(max_diag / min_diag);
+            self.health.peak_condition_number =
+                Some(self.health.peak_condition_number.unwrap_or(0.0).max(max_diag / min_diag));
         }
         let Some(s_inv) = s.invert() else {
             self.health.rejected += 1;
@@ -119,18 +189,19 @@ impl Ekf {
             return false;
         };
 
+        let mut chi = 0.0;
+        for i in 0..m {
+            for j in 0..m {
+                chi += y[i] * s_inv[(i, j)] * y[j];
+            }
+        }
+
         let chi2_gate = match model.kind() {
             MeasurementKind::Code => self.config.gating_chi2_code,
             MeasurementKind::Doppler => self.config.gating_chi2_doppler,
             MeasurementKind::Phase => self.config.gating_chi2_phase,
         };
         if let Some(chi2) = chi2_gate {
-            let mut chi = 0.0;
-            for i in 0..m {
-                for j in 0..m {
-                    chi += y[i] * s_inv[(i, j)] * y[j];
-                }
-            }
             if chi > chi2 {
                 self.health.rejected += 1;
                 let reason = format!("{}: chi2 gate", model.name());
@@ -139,6 +210,24 @@ impl Ekf {
                 self.health.last_rejection_code = Some(RejectionReason::Chi2Gate);
                 self.health.events.push(NavHealthEvent::InnovationRejected { reason });
                 return false;
+            }
+        }
+
+        self.health.normalized_innovation_squared = Some(chi);
+        self.health.peak_normalized_innovation_squared =
+            Some(self.health.peak_normalized_innovation_squared.unwrap_or(0.0).max(chi));
+        if let Some(config) = self.config.innovation_consistency {
+            if let Some(bounds) = innovation_consistency_bounds(m, config) {
+                self.health.innovation_consistency_lower_bound = Some(bounds.lower_bound);
+                self.health.innovation_consistency_upper_bound = Some(bounds.upper_bound);
+                if chi < bounds.lower_bound || chi > bounds.upper_bound {
+                    self.health.events.push(NavHealthEvent::InnovationConsistencyAnomaly {
+                        normalized_innovation_squared: chi,
+                        lower_bound: bounds.lower_bound,
+                        upper_bound: bounds.upper_bound,
+                        measurement_dimension: m,
+                    });
+                }
             }
         }
 
@@ -169,6 +258,7 @@ impl Ekf {
         let rms =
             if m > 0 { (y.iter().map(|v| v * v).sum::<f64>() / m as f64).sqrt() } else { 0.0 };
         self.health.innovation_rms = rms;
+        self.health.peak_innovation_rms = self.health.peak_innovation_rms.max(rms);
         let predicted = if m > 0 {
             let mut sum = 0.0;
             for i in 0..m {
@@ -182,7 +272,10 @@ impl Ekf {
         self.health.predicted_variance = Some(predicted);
         self.health.observed_variance = Some(observed);
         if predicted > 0.0 {
-            self.health.whiteness_ratio = Some(observed / predicted);
+            let whiteness_ratio = observed / predicted;
+            self.health.whiteness_ratio = Some(whiteness_ratio);
+            self.health.peak_whiteness_ratio =
+                Some(self.health.peak_whiteness_ratio.unwrap_or(0.0).max(whiteness_ratio));
         }
         true
     }

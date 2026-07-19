@@ -1,0 +1,68 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "RtkAmbiguityStateV1",
+  "type": "object",
+  "required": ["header", "payload"],
+  "properties": {
+    "header": { "$ref": "#/definitions/ArtifactHeader" },
+    "payload": { "$ref": "#/definitions/RtkAmbiguityState" }
+  },
+  "definitions": {
+    "ArtifactHeader": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "producer",
+        "producer_version",
+        "created_at_unix_ms",
+        "git_sha",
+        "config_hash",
+        "toolchain",
+        "features",
+        "deterministic",
+        "git_dirty"
+      ],
+      "properties": {
+        "schema_version": { "type": "integer", "const": 1 },
+        "producer": { "type": "string" },
+        "producer_version": { "type": "string" },
+        "created_at_unix_ms": { "type": "integer", "minimum": 0 },
+        "git_sha": { "type": "string" },
+        "config_hash": { "type": "string" },
+        "dataset_id": { "type": ["string", "null"] },
+        "toolchain": { "type": "string" },
+        "features": { "type": "array", "items": { "type": "string" } },
+        "deterministic": { "type": "boolean" },
+        "git_dirty": { "type": "boolean" }
+      }
+    },
+    "RtkAmbiguityState": {
+      "type": "object",
+      "required": ["epoch_idx", "status", "value"],
+      "properties": {
+        "epoch_idx": { "type": "integer", "minimum": 0 },
+        "status": {
+          "type": "string",
+          "enum": ["executed", "not_ready", "unsupported"]
+        },
+        "reason": { "type": ["string", "null"] },
+        "value": {
+          "anyOf": [
+            { "$ref": "#/definitions/AmbiguityState" },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "AmbiguityState": {
+      "type": "object",
+      "required": ["epoch_idx", "mode", "float_count", "fixed_count"],
+      "properties": {
+        "epoch_idx": { "type": "integer", "minimum": 0 },
+        "mode": { "type": "string", "enum": ["Rtk", "Ppp"] },
+        "float_count": { "type": "integer", "minimum": 0 },
+        "fixed_count": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

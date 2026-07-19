@@ -1,0 +1,97 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "NavSolutionEpochV1",
+  "type": "object",
+  "required": ["header", "payload"],
+  "properties": {
+    "header": { "$ref": "#/definitions/ArtifactHeader" },
+    "payload": { "$ref": "#/definitions/NavSolutionEpoch" }
+  },
+  "definitions": {
+    "ArtifactHeader": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "producer",
+        "producer_version",
+        "created_at_unix_ms",
+        "git_sha",
+        "config_hash",
+        "toolchain",
+        "features",
+        "deterministic",
+        "git_dirty"
+      ],
+      "properties": {
+        "schema_version": { "type": "integer", "const": 1 },
+        "producer": { "type": "string" },
+        "producer_version": { "type": "string" },
+        "created_at_unix_ms": { "type": "integer", "minimum": 0 },
+        "git_sha": { "type": "string" },
+        "config_hash": { "type": "string" },
+        "dataset_id": { "type": ["string", "null"] },
+        "toolchain": { "type": "string" },
+        "features": { "type": "array", "items": { "type": "string" } },
+        "deterministic": { "type": "boolean" },
+        "git_dirty": { "type": "boolean" }
+      }
+    },
+    "ReceiverSampleTrace": {
+      "type": "object",
+      "required": ["sample_index", "sample_rate_hz", "receiver_time_s"],
+      "properties": {
+        "sample_index": { "type": "integer", "minimum": 0 },
+        "sample_rate_hz": { "type": "number", "exclusiveMinimum": 0 },
+        "receiver_time_s": { "type": "number" }
+      }
+    },
+    "Epoch": {
+      "type": "object",
+      "required": ["index"],
+      "properties": {
+        "index": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "NavSolutionEpoch": {
+      "type": "object",
+      "required": [
+        "epoch",
+        "t_rx_s",
+        "source_time",
+        "ecef_x_m",
+        "ecef_y_m",
+        "ecef_z_m",
+        "clock_bias_s",
+        "clock_bias_m",
+        "status",
+        "valid",
+        "source_observation_epoch_id"
+      ],
+      "properties": {
+        "epoch": { "$ref": "#/definitions/Epoch" },
+        "t_rx_s": { "type": "number" },
+        "source_time": { "$ref": "#/definitions/ReceiverSampleTrace" },
+        "ecef_x_m": { "type": "number" },
+        "ecef_y_m": { "type": "number" },
+        "ecef_z_m": { "type": "number" },
+        "latitude_deg": { "type": "number" },
+        "longitude_deg": { "type": "number" },
+        "altitude_m": { "type": "number" },
+        "clock_bias_s": { "type": "number" },
+        "clock_bias_m": { "type": "number" },
+        "pdop": { "type": "number" },
+        "hdop": { "type": ["number", "null"] },
+        "vdop": { "type": ["number", "null"] },
+        "gdop": { "type": ["number", "null"] },
+        "tdop": { "type": ["number", "null"] },
+        "wls_solver_rank": { "type": ["integer", "null"], "minimum": 0 },
+        "wls_condition_number": { "type": ["number", "null"], "minimum": 0 },
+        "ekf_condition_number": { "type": ["number", "null"], "minimum": 0 },
+        "rms_m": { "type": "number" },
+        "status": { "type": "string" },
+        "valid": { "type": "boolean" },
+        "source_observation_epoch_id": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

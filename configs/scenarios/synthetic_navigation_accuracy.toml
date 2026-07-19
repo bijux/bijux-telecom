@@ -1,0 +1,183 @@
+id = "synthetic_navigation_accuracy"
+sample_rate_hz = 1023000.0
+intermediate_freq_hz = 0.0
+receiver_clock_frequency_bias_hz = 0.0
+duration_s = 0.125
+seed = 24245862
+receiver_ecef_m = [-2702588.8324926673, -4325046.226438757, 3817399.1784983957]
+reference_receive_time_s = 100000.0
+
+[[satellites]]
+sat = { constellation = "Gps", prn = 3 }
+doppler_hz = -250.0
+carrier_phase_rad = 0.0
+cn0_db_hz = 52.0
+navigation_data = "constant_positive"
+
+[[satellites]]
+sat = { constellation = "Gps", prn = 7 }
+doppler_hz = -125.0
+carrier_phase_rad = 0.0
+cn0_db_hz = 52.0
+navigation_data = "constant_positive"
+
+[[satellites]]
+sat = { constellation = "Gps", prn = 11 }
+doppler_hz = 0.0
+carrier_phase_rad = 0.0
+cn0_db_hz = 52.0
+navigation_data = "constant_positive"
+
+[[satellites]]
+sat = { constellation = "Gps", prn = 19 }
+doppler_hz = 125.0
+carrier_phase_rad = 0.0
+cn0_db_hz = 52.0
+navigation_data = "constant_positive"
+
+[[satellites]]
+sat = { constellation = "Gps", prn = 23 }
+doppler_hz = 250.0
+carrier_phase_rad = 0.0
+cn0_db_hz = 52.0
+navigation_data = "constant_positive"
+
+[[ephemerides]]
+sat = { constellation = "Gps", prn = 3 }
+iodc = 0
+iode = 0
+week = 0
+sv_health = 0
+toe_s = 100000.0
+toc_s = 100000.0
+sqrt_a = 5153.7954775
+e = 0.0
+i0 = 0.94
+idot = 0.0
+omegadot = 0.0
+w = 0.0
+omega0 = 3.930240132884638
+m0 = 1.3662532132612648
+delta_n = 0.0
+cuc = 0.0
+cus = 0.0
+crc = 0.0
+crs = 0.0
+cic = 0.0
+cis = 0.0
+af0 = 0.0
+af1 = 0.0
+af2 = 0.0
+tgd = 0.0
+
+[[ephemerides]]
+sat = { constellation = "Gps", prn = 7 }
+iodc = 0
+iode = 0
+week = 0
+sv_health = 0
+toe_s = 100000.0
+toc_s = 100000.0
+sqrt_a = 5153.7954775
+e = 0.0
+i0 = 0.94
+idot = 0.0
+omega0 = 4.914155257985065
+omegadot = 0.0
+w = 0.0
+m0 = 1.0930944354311876
+delta_n = 0.0
+cuc = 0.0
+cus = 0.0
+crc = 0.0
+crs = 0.0
+cic = 0.0
+cis = 0.0
+af0 = 0.0
+af1 = 0.0
+af2 = 0.0
+tgd = 0.0
+
+[[ephemerides]]
+sat = { constellation = "Gps", prn = 11 }
+iodc = 0
+iode = 0
+week = 0
+sv_health = 0
+toe_s = 100000.0
+toc_s = 100000.0
+sqrt_a = 5153.7954775
+e = 0.0
+i0 = 0.94
+idot = 0.0
+omega0 = 5.394998466597891
+omegadot = 0.0
+w = 0.0
+m0 = 0.31356254135896766
+delta_n = 0.0
+cuc = 0.0
+cus = 0.0
+crc = 0.0
+crs = 0.0
+cic = 0.0
+cis = 0.0
+af0 = 0.0
+af1 = 0.0
+af2 = 0.0
+tgd = 0.0
+
+[[ephemerides]]
+sat = { constellation = "Gps", prn = 19 }
+iodc = 0
+iode = 0
+week = 0
+sv_health = 0
+toe_s = 100000.0
+toc_s = 100000.0
+sqrt_a = 5153.7954775
+e = 0.0
+i0 = 0.94
+idot = 0.0
+omega0 = 4.801571468530807
+omegadot = 0.0
+w = 0.0
+m0 = 0.11408260757000671
+delta_n = 0.0
+cuc = 0.0
+cus = 0.0
+crc = 0.0
+crs = 0.0
+cic = 0.0
+cis = 0.0
+af0 = 0.0
+af1 = 0.0
+af2 = 0.0
+tgd = 0.0
+
+[[ephemerides]]
+sat = { constellation = "Gps", prn = 23 }
+iodc = 0
+iode = 0
+week = 0
+sv_health = 0
+toe_s = 100000.0
+toc_s = 100000.0
+sqrt_a = 5153.7954775
+e = 0.0
+i0 = 0.94
+idot = 0.0
+omega0 = 3.861102164123581
+omegadot = 0.0
+w = 0.0
+m0 = 0.9559097117650558
+delta_n = 0.0
+cuc = 0.0
+cus = 0.0
+crc = 0.0
+crs = 0.0
+cic = 0.0
+cis = 0.0
+af0 = 0.0
+af1 = 0.0
+af2 = 0.0
+tgd = 0.0

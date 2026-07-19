@@ -1,43 +1,109 @@
 #![allow(missing_docs)]
 
-use crate::orbits::gps::{is_ephemeris_valid, sat_state_gps_l1ca, GpsEphemeris, GpsSatState};
-use bijux_gnss_core::api::SatId;
+use crate::estimation::uncertainty::{
+    covariance_enu_standard_deviations_m, horizontal_error_ellipse,
+};
 
-#[derive(Debug, Clone)]
-pub struct PositionSolution {
-    pub ecef_x_m: f64,
-    pub ecef_y_m: f64,
-    pub ecef_z_m: f64,
-    pub latitude_deg: f64,
-    pub longitude_deg: f64,
-    pub altitude_m: f64,
-    pub clock_bias_s: f64,
-    pub pdop: f64,
-    pub hdop: Option<f64>,
-    pub vdop: Option<f64>,
-    pub gdop: Option<f64>,
-    pub rms_m: f64,
-    pub sigma_h_m: Option<f64>,
-    pub sigma_v_m: Option<f64>,
-    pub residuals: Vec<(SatId, f64, f64)>,
-    pub rejected: Vec<(SatId, bijux_gnss_core::api::MeasurementRejectReason)>,
-    pub separation_max_m: Option<f64>,
-    pub separation_suspect: Option<SatId>,
-    pub covariance_symmetrized: bool,
-    pub covariance_clamped: bool,
-    pub covariance_max_variance: Option<f64>,
-    pub sat_count: usize,
-    pub used_sat_count: usize,
-    pub rejected_sat_count: usize,
+use super::navigation::{
+    observation_consistency_metrics, resolve_position_inputs,
+    unknown_inter_system_time_offset_sats, PositionSolveInput, SatelliteState,
+};
+use super::raim::{
+    formal_protection_levels, PositionProtectionLevels, RaimFaultDetection, RaimFaultExclusion,
+    RaimFaultHypothesis, RaimSolutionSeparationCheck, RaimSolutionSeparationSubset,
+};
+use crate::models::atmosphere::KlobucharCoefficients;
+use crate::orbits::beidou::BeidouBroadcastNavigationData;
+use crate::orbits::galileo::GalileoBroadcastNavigationData;
+use crate::orbits::glonass::GlonassBroadcastNavigationFrame;
+use crate::orbits::gps::{
+    gps_ephemeris_age, is_ephemeris_valid, GpsBroadcastNavigationData, GpsEphemeris,
+};
+use bijux_gnss_core::api::{
+    Constellation, InterSystemBias, Llh, MeasurementRejectReason, ObsEpoch, SatId, Seconds,
+};
+
+mod corrections;
+pub mod dops;
+pub mod geodesy;
+mod least_squares;
+mod matrix;
+pub mod observation_inputs;
+pub mod robust_weighting;
+pub mod solution_outcome;
+mod solution_quality;
+mod state;
+pub mod weighting;
+use corrections::{
+    corrected_observation_records, linearized_geometry_row, linearized_pseudorange_row,
+    resolve_satellite_geometry,
+};
+use dops::{compute_dops, scaled_position_covariance_ecef_m2};
+use geodesy::ecef_to_geodetic;
+use least_squares::solve_weighted_least_squares;
+#[cfg(test)]
+use robust_weighting::robust_weight;
+use robust_weighting::robust_weights;
+use robust_weighting::PositionRobustWeighting;
+use solution_quality::{
+    constellation_residual_rms, detect_impossible_geometry, detect_replay_timing_anomaly,
+    estimate_has_plausible_terrestrial_geometry, raim_fault_detection_from_separation,
+    sanitize_covariance, solution_separation_m,
+    supports_reliable_raim_exclusion_after_prior_exclusions, working_set_rms_m,
+};
+use state::{
+    ClockStateModel, PositionEstimate, RaimExclusionCandidate, SatelliteGeometry,
+    WorkingSetResidual, WorkingSetSolution,
+};
+
+const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
+const SIGNAL_TIMING_CONSISTENCY_TOLERANCE_S: f64 = 1.0e-6;
+const EPHEMERIS_MISMATCH_CODE_RESIDUAL_GATE_M: f64 = 1_500.0;
+const TERRESTRIAL_GEOMETRY_MIN_RECEIVER_RADIUS_M: f64 = 6_000_000.0;
+const TERRESTRIAL_GEOMETRY_MAX_RECEIVER_RADIUS_M: f64 = 7_000_000.0;
+const TERRESTRIAL_GEOMETRY_MIN_ALTITUDE_M: f64 = -1_000.0;
+const TERRESTRIAL_GEOMETRY_MAX_ALTITUDE_M: f64 = 20_000.0;
+const REPLAY_TIMING_ANOMALY_MIN_MATCHED_SATELLITES: usize = 4;
+const REPLAY_TIMING_ANOMALY_CENTERED_DELAY_RMS_THRESHOLD_M: f64 = 40.0;
+const REPLAY_TIMING_ANOMALY_MAX_CENTERED_DELAY_THRESHOLD_M: f64 = 60.0;
+
+pub type ImpossibleGeometryEvidence = solution_outcome::ImpossibleGeometryEvidence;
+pub type ReplayTimingAnomalyEvidence = solution_outcome::ReplayTimingAnomalyEvidence;
+pub type PositionSolution = solution_outcome::PositionSolution;
+pub type PositionCorrectedObservation = solution_outcome::PositionCorrectedObservation;
+pub type PositionSolveRefusalKind = solution_outcome::PositionSolveRefusalKind;
+pub type PositionFilterDivergenceReason = solution_outcome::PositionFilterDivergenceReason;
+pub type PositionSolveRefusal = solution_outcome::PositionSolveRefusal;
+
+pub type PositionObservation = observation_inputs::PositionObservation;
+pub type PositionBroadcastNavigation = observation_inputs::PositionBroadcastNavigation;
+
+pub fn position_broadcast_navigation_from_gps_ephemerides(
+    ephemerides: &[GpsEphemeris],
+) -> Vec<PositionBroadcastNavigation> {
+    observation_inputs::position_broadcast_navigation_from_gps_ephemerides(ephemerides)
 }
 
-#[derive(Debug, Clone)]
-pub struct PositionObservation {
-    pub sat: SatId,
-    pub pseudorange_m: f64,
-    pub cn0_dbhz: f64,
-    pub elevation_deg: Option<f64>,
-    pub weight: f64,
+pub fn position_broadcast_navigation_from_galileo_navigations(
+    navigations: &[GalileoBroadcastNavigationData],
+) -> Vec<PositionBroadcastNavigation> {
+    observation_inputs::position_broadcast_navigation_from_galileo_navigations(navigations)
+}
+
+pub fn position_broadcast_navigation_from_glonass_frames(
+    navigation_frames: &[GlonassBroadcastNavigationFrame],
+) -> Vec<PositionBroadcastNavigation> {
+    observation_inputs::position_broadcast_navigation_from_glonass_frames(navigation_frames)
+}
+
+pub fn position_broadcast_navigation_from_beidou_navigations(
+    navigations: &[BeidouBroadcastNavigationData],
+) -> Vec<PositionBroadcastNavigation> {
+    observation_inputs::position_broadcast_navigation_from_beidou_navigations(navigations)
+}
+
+pub fn position_observations_from_epoch(epoch: &ObsEpoch) -> Vec<PositionObservation> {
+    observation_inputs::position_observations_from_epoch(epoch)
 }
 
 #[derive(Debug, Clone)]
@@ -46,10 +112,12 @@ pub struct PositionSolver {
     pub convergence_m: f64,
     pub residual_gate_m: f64,
     pub chi_square_gate: f64,
-    pub robust: bool,
-    pub huber_k: f64,
+    pub robust_weighting: PositionRobustWeighting,
     pub raim: bool,
     pub separation_gate_m: f64,
+    pub apply_broadcast_ionosphere: bool,
+    pub apply_broadcast_group_delay: bool,
+    pub apply_troposphere: bool,
 }
 
 impl Default for PositionSolver {
@@ -65,11 +133,32 @@ impl PositionSolver {
             convergence_m: 1e-3,
             residual_gate_m: 150.0,
             chi_square_gate: 9.0,
-            robust: true,
-            huber_k: 30.0,
+            robust_weighting: PositionRobustWeighting::huber(30.0),
             raim: true,
             separation_gate_m: 50.0,
+            apply_broadcast_ionosphere: true,
+            apply_broadcast_group_delay: true,
+            apply_troposphere: false,
         }
+    }
+
+    pub fn with_broadcast_ionosphere(mut self, apply_broadcast_ionosphere: bool) -> Self {
+        self.apply_broadcast_ionosphere = apply_broadcast_ionosphere;
+        self
+    }
+
+    pub fn with_broadcast_group_delay(mut self, apply_broadcast_group_delay: bool) -> Self {
+        self.apply_broadcast_group_delay = apply_broadcast_group_delay;
+        self
+    }
+
+    pub fn with_robust_weighting(mut self, robust_weighting: PositionRobustWeighting) -> Self {
+        self.robust_weighting = robust_weighting;
+        self
+    }
+
+    pub fn without_robust_weighting(self) -> Self {
+        self.with_robust_weighting(PositionRobustWeighting::disabled())
     }
 
     pub fn solve_wls(
@@ -78,247 +167,505 @@ impl PositionSolver {
         ephemerides: &[GpsEphemeris],
         t_rx_s: f64,
     ) -> Option<PositionSolution> {
-        if observations.len() < 4 {
-            return None;
+        self.try_solve_wls(observations, ephemerides, t_rx_s).ok()
+    }
+
+    pub fn try_solve_wls(
+        &self,
+        observations: &[PositionObservation],
+        ephemerides: &[GpsEphemeris],
+        t_rx_s: f64,
+    ) -> Result<PositionSolution, PositionSolveRefusal> {
+        let navigation = position_broadcast_navigation_from_gps_ephemerides(ephemerides);
+        self.try_solve_wls_with_navigation_data_and_broadcast_ionosphere(
+            observations,
+            &navigation,
+            t_rx_s,
+            None,
+        )
+    }
+
+    pub fn solve_wls_with_gps_broadcast_navigation(
+        &self,
+        observations: &[PositionObservation],
+        navigation: &GpsBroadcastNavigationData,
+        t_rx_s: f64,
+    ) -> Option<PositionSolution> {
+        self.try_solve_wls_with_gps_broadcast_navigation(observations, navigation, t_rx_s).ok()
+    }
+
+    pub fn try_solve_wls_with_gps_broadcast_navigation(
+        &self,
+        observations: &[PositionObservation],
+        navigation: &GpsBroadcastNavigationData,
+        t_rx_s: f64,
+    ) -> Result<PositionSolution, PositionSolveRefusal> {
+        self.try_solve_wls_with_broadcast_ionosphere(
+            observations,
+            &navigation.ephemerides,
+            t_rx_s,
+            navigation.klobuchar.as_ref(),
+        )
+    }
+
+    pub fn solve_wls_with_broadcast_ionosphere(
+        &self,
+        observations: &[PositionObservation],
+        ephemerides: &[GpsEphemeris],
+        t_rx_s: f64,
+        klobuchar: Option<&KlobucharCoefficients>,
+    ) -> Option<PositionSolution> {
+        let navigation = position_broadcast_navigation_from_gps_ephemerides(ephemerides);
+        self.try_solve_wls_with_navigation_data_and_broadcast_ionosphere(
+            observations,
+            &navigation,
+            t_rx_s,
+            klobuchar,
+        )
+        .ok()
+    }
+
+    pub fn try_solve_wls_with_broadcast_ionosphere(
+        &self,
+        observations: &[PositionObservation],
+        ephemerides: &[GpsEphemeris],
+        t_rx_s: f64,
+        klobuchar: Option<&KlobucharCoefficients>,
+    ) -> Result<PositionSolution, PositionSolveRefusal> {
+        let navigation = position_broadcast_navigation_from_gps_ephemerides(ephemerides);
+        self.try_solve_wls_with_navigation_data_and_broadcast_ionosphere(
+            observations,
+            &navigation,
+            t_rx_s,
+            klobuchar,
+        )
+    }
+
+    pub fn solve_wls_with_navigation_data(
+        &self,
+        observations: &[PositionObservation],
+        navigation: &[PositionBroadcastNavigation],
+        t_rx_s: f64,
+    ) -> Option<PositionSolution> {
+        self.try_solve_wls_with_navigation_data(observations, navigation, t_rx_s).ok()
+    }
+
+    pub fn try_solve_wls_with_navigation_data(
+        &self,
+        observations: &[PositionObservation],
+        navigation: &[PositionBroadcastNavigation],
+        t_rx_s: f64,
+    ) -> Result<PositionSolution, PositionSolveRefusal> {
+        self.try_solve_wls_with_navigation_data_and_broadcast_ionosphere(
+            observations,
+            navigation,
+            t_rx_s,
+            None,
+        )
+    }
+
+    pub fn solve_wls_with_navigation_data_and_broadcast_ionosphere(
+        &self,
+        observations: &[PositionObservation],
+        navigation: &[PositionBroadcastNavigation],
+        t_rx_s: f64,
+        klobuchar: Option<&KlobucharCoefficients>,
+    ) -> Option<PositionSolution> {
+        self.try_solve_wls_with_navigation_data_and_broadcast_ionosphere(
+            observations,
+            navigation,
+            t_rx_s,
+            klobuchar,
+        )
+        .ok()
+    }
+
+    pub fn try_solve_wls_with_navigation_data_and_broadcast_ionosphere(
+        &self,
+        observations: &[PositionObservation],
+        navigation: &[PositionBroadcastNavigation],
+        t_rx_s: f64,
+        klobuchar: Option<&KlobucharCoefficients>,
+    ) -> Result<PositionSolution, PositionSolveRefusal> {
+        let sat_count = observations.len();
+        if sat_count < 4 {
+            return Err(position_solve_refusal(
+                PositionSolveRefusalKind::InsufficientObservations,
+                sat_count,
+                sat_count,
+                Vec::new(),
+            ));
         }
         let mut observations = observations.to_vec();
         observations.sort_by_key(|obs| (obs.sat.constellation as u8, obs.sat.prn));
-        let mut x = 0.0_f64;
-        let mut y = 0.0_f64;
-        let mut z = 0.0_f64;
-        let mut cb = 0.0_f64;
-
-        let mut used: Vec<(PositionObservation, GpsSatState, f64)> = Vec::new();
-
-        let mut rejected = Vec::new();
-        let mut residuals = Vec::new();
-        let mut cov = None;
-        let mut cov_symmetrized = false;
-        let mut cov_clamped = false;
-        let mut cov_max_variance = None;
-        for _ in 0..self.max_iterations {
-            used.clear();
-            for obs in &observations {
-                let eph = match ephemerides.iter().find(|e| e.sat == obs.sat) {
-                    Some(eph) => eph,
-                    None => {
-                        rejected.push((
-                            obs.sat,
-                            bijux_gnss_core::api::MeasurementRejectReason::InvalidEphemeris,
-                        ));
-                        continue;
-                    }
-                };
-                if !is_ephemeris_valid(eph, t_rx_s) {
-                    rejected.push((
-                        obs.sat,
-                        bijux_gnss_core::api::MeasurementRejectReason::InvalidEphemeris,
-                    ));
-                    continue;
-                }
-                let mut tau = obs.pseudorange_m / 299_792_458.0;
-                let mut state = sat_state_gps_l1ca(eph, t_rx_s - tau, tau);
-                let mut converged = false;
-                for _ in 0..5 {
-                    let dx = x - state.x_m;
-                    let dy = y - state.y_m;
-                    let dz = z - state.z_m;
-                    let range = (dx * dx + dy * dy + dz * dz).sqrt();
-                    let next_tau = (range + cb * 299_792_458.0
-                        - state.clock_bias_s * 299_792_458.0)
-                        / 299_792_458.0;
-                    if (next_tau - tau).abs() < 1e-9 {
-                        converged = true;
-                    }
-                    tau = next_tau;
-                    state = sat_state_gps_l1ca(eph, t_rx_s - tau, tau);
-                    if converged {
-                        break;
-                    }
-                }
-                if !converged {
-                    return None;
-                }
-                used.push((obs.clone(), state, tau));
-            }
-            if used.len() < 4 {
-                return None;
-            }
-            let mut h = Vec::new();
-            let mut v = Vec::new();
-            residuals.clear();
-            for (obs, state, _tau) in &used {
-                let dx = x - state.x_m;
-                let dy = y - state.y_m;
-                let dz = z - state.z_m;
-                let range = (dx * dx + dy * dy + dz * dz).sqrt();
-                let pred = range + cb * 299_792_458.0 - state.clock_bias_s * 299_792_458.0;
-                let res = obs.pseudorange_m - pred;
-                residuals.push((obs.sat, res));
-                let hx = dx / range;
-                let hy = dy / range;
-                let hz = dz / range;
-                h.push([hx, hy, hz, 1.0]);
-                v.push(res);
-            }
-
-            let mut weights =
-                if self.robust { huber_weights(&v, self.huber_k) } else { vec![1.0; v.len()] };
-            for (i, (obs, _, _)) in used.iter().enumerate() {
-                if let Some(w) = weights.get_mut(i) {
-                    *w *= obs.weight;
-                }
-            }
-            let (dx, dy, dz, dcb, cov_out) = solve_weighted_normal_eq(&h, &v, &weights)?;
-            let (cov_out, sym, clamp, max_var) = sanitize_covariance(cov_out);
-            cov_symmetrized |= sym;
-            cov_clamped |= clamp;
-            if let Some(max_var) = max_var {
-                cov_max_variance =
-                    Some(cov_max_variance.map(|v: f64| v.max(max_var)).unwrap_or(max_var));
-            }
-            cov = Some(cov_out);
-            x += dx;
-            y += dy;
-            z += dz;
-            cb += dcb / 299_792_458.0;
-            if (dx * dx + dy * dy + dz * dz).sqrt() < self.convergence_m {
-                break;
-            }
-        }
-
-        let mut filtered = Vec::new();
-        for (obs, state, _tau) in &used {
-            let dx = x - state.x_m;
-            let dy = y - state.y_m;
-            let dz = z - state.z_m;
-            let range = (dx * dx + dy * dy + dz * dz).sqrt();
-            let pred = range + cb * 299_792_458.0 - state.clock_bias_s * 299_792_458.0;
-            let res = obs.pseudorange_m - pred;
-            let sigma_m = (1.0 / obs.weight.max(1e-6)).sqrt();
-            let norm = res / sigma_m;
-            if res.abs() > self.residual_gate_m || (norm * norm) > self.chi_square_gate {
-                rejected.push((obs.sat, bijux_gnss_core::api::MeasurementRejectReason::Outlier));
+        let mut timing_rejected = Vec::new();
+        observations.retain(|obs| {
+            if position_observation_has_valid_satellite_time(obs, t_rx_s) {
+                true
             } else {
-                filtered.push((obs.clone(), state.clone(), res));
+                timing_rejected.push((obs.sat, MeasurementRejectReason::TimeInconsistency));
+                false
             }
+        });
+        if observations.len() < 4 {
+            let kind = if timing_rejected.is_empty() {
+                PositionSolveRefusalKind::InsufficientObservations
+            } else {
+                PositionSolveRefusalKind::InvalidSatelliteTime
+            };
+            return Err(position_solve_refusal(
+                kind,
+                sat_count,
+                observations.len(),
+                timing_rejected,
+            ));
         }
-
-        if filtered.len() < 4 {
-            return None;
+        let mut rejected = timing_rejected;
+        let unknown_time_offset_sats =
+            unknown_inter_system_time_offset_sats(&observations, navigation);
+        if !unknown_time_offset_sats.is_empty() {
+            rejected.extend(
+                unknown_time_offset_sats
+                    .iter()
+                    .copied()
+                    .map(|sat| (sat, MeasurementRejectReason::TimeInconsistency)),
+            );
+            return Err(position_solve_refusal(
+                PositionSolveRefusalKind::UnknownInterSystemTimeOffset,
+                sat_count,
+                observations.len().saturating_sub(unknown_time_offset_sats.len()),
+                rejected,
+            ));
         }
-
-        let mut separation_max = None;
-        let mut separation_suspect = None;
-        if self.raim && filtered.len() >= 5 {
-            let (worst_idx, worst_res) = filtered
-                .iter()
-                .enumerate()
-                .map(|(i, (_, _, r))| (i, r.abs()))
-                .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
-                .unwrap_or((0, 0.0));
-            if worst_res > self.residual_gate_m {
-                rejected.push((
-                    filtered[worst_idx].0.sat,
-                    bijux_gnss_core::api::MeasurementRejectReason::Outlier,
-                ));
-                filtered.remove(worst_idx);
+        let inputs = resolve_position_inputs(&observations, navigation, t_rx_s, &mut rejected);
+        if inputs.len() < 4 {
+            return Err(position_solve_refusal(
+                PositionSolveRefusalKind::InvalidEphemeris,
+                sat_count,
+                inputs.len(),
+                rejected,
+            ));
+        }
+        let clock_model = ClockStateModel::from_inputs(&inputs).ok_or_else(|| {
+            position_solve_refusal(
+                PositionSolveRefusalKind::InvalidEphemeris,
+                sat_count,
+                inputs.len(),
+                rejected.clone(),
+            )
+        })?;
+        let initial_estimate = PositionEstimate::origin(clock_model);
+        let mut working_inputs = inputs;
+        let mut estimate = initial_estimate;
+        let mut raim_fault_detection = None;
+        let mut raim_fault_exclusion = None;
+        let mut raim_fault_exclusions = Vec::new();
+        let mut pre_fit_residual_rms_m = None;
+        let mut pre_fit_constellation_residuals = None;
+        let working_set = loop {
+            let solved =
+                self.solve_working_set(&working_inputs, estimate, klobuchar).ok_or_else(|| {
+                    position_solve_refusal(
+                        PositionSolveRefusalKind::SolverFailure,
+                        sat_count,
+                        working_inputs.len(),
+                        rejected.clone(),
+                    )
+                })?;
+            if pre_fit_residual_rms_m.is_none() {
+                pre_fit_residual_rms_m = Some(working_set_rms_m(&solved.residuals));
+                pre_fit_constellation_residuals = Some(solved.residuals.clone());
+            }
+            let outlier_indices = self.outlier_indices(&solved.residuals);
+            if outlier_indices.is_empty() {
+                break solved;
             }
 
-            for idx in 0..filtered.len() {
-                let mut subset = filtered.clone();
-                let removed = subset.remove(idx);
-                if subset.len() < 4 {
-                    continue;
-                }
-                let mut h_sep = Vec::new();
-                let mut v_sep = Vec::new();
-                for (_obs, state, res) in &subset {
-                    let dx = x - state.x_m;
-                    let dy = y - state.y_m;
-                    let dz = z - state.z_m;
-                    let range = (dx * dx + dy * dy + dz * dz).sqrt();
-                    let hx = dx / range;
-                    let hy = dy / range;
-                    let hz = dz / range;
-                    h_sep.push([hx, hy, hz, 1.0]);
-                    v_sep.push(*res);
-                }
-                if let Some((dx, dy, dz, _dcb, _)) =
-                    solve_weighted_normal_eq(&h_sep, &v_sep, &vec![1.0; v_sep.len()])
+            if let Some(exclusion_candidate) =
+                self.best_single_outlier_candidate(&working_inputs, &solved, klobuchar)
+            {
+                let rejection_reason = rejection_reason_for_excluded_input(
+                    working_inputs
+                        .get(exclusion_candidate.excluded_index)
+                        .expect("candidate exclusion must reference a working input"),
+                    &exclusion_candidate.candidate_estimate,
+                    self.apply_broadcast_group_delay,
+                );
+                if self.raim
+                    && !supports_reliable_raim_exclusion_after_prior_exclusions(
+                        working_inputs.len(),
+                        !raim_fault_exclusions.is_empty(),
+                    )
+                    && rejection_reason != MeasurementRejectReason::InvalidEphemeris
                 {
-                    let delta = (dx * dx + dy * dy + dz * dz).sqrt();
-                    if separation_max.map(|m| delta > m).unwrap_or(true) {
-                        separation_max = Some(delta);
-                        separation_suspect = Some(removed.0.sat);
-                    }
+                    push_unique_rejection(
+                        &mut rejected,
+                        exclusion_candidate.excluded_sat,
+                        rejection_reason,
+                    );
+                    return Err(position_solve_refusal(
+                        PositionSolveRefusalKind::UnderdeterminedRaimExclusion,
+                        sat_count,
+                        working_inputs.len().saturating_sub(1),
+                        rejected,
+                    ));
                 }
+                let separation_m = exclusion_candidate.solution_shift_m;
+                if raim_fault_detection.is_none() && separation_m > self.separation_gate_m {
+                    raim_fault_detection = Some(RaimFaultDetection::fault_detected(
+                        exclusion_candidate.excluded_sat,
+                        separation_m,
+                        self.separation_gate_m,
+                    ));
+                }
+                let exclusion = RaimFaultExclusion {
+                    excluded_sat: exclusion_candidate.excluded_sat,
+                    pre_exclusion_rms_m: exclusion_candidate.pre_exclusion_rms_m,
+                    post_exclusion_rms_m: exclusion_candidate.post_exclusion_rms_m,
+                    solution_shift_m: exclusion_candidate.solution_shift_m,
+                };
+                if raim_fault_exclusion.is_none() {
+                    raim_fault_exclusion = Some(exclusion);
+                }
+                if !raim_fault_exclusions.iter().any(|existing: &RaimFaultExclusion| {
+                    existing.excluded_sat == exclusion.excluded_sat
+                }) {
+                    raim_fault_exclusions.push(exclusion);
+                }
+                push_unique_rejection(
+                    &mut rejected,
+                    exclusion_candidate.excluded_sat,
+                    rejection_reason,
+                );
+                working_inputs = working_inputs
+                    .into_iter()
+                    .enumerate()
+                    .filter_map(|(index, input)| {
+                        (index != exclusion_candidate.excluded_index).then_some(input)
+                    })
+                    .collect();
+                estimate = exclusion_candidate.candidate_estimate;
+                continue;
+            }
+
+            for &outlier_index in &outlier_indices {
+                let input = working_inputs
+                    .get(outlier_index)
+                    .expect("outlier index must reference an input");
+                push_unique_rejection(
+                    &mut rejected,
+                    input.observation.sat,
+                    rejection_reason_for_excluded_input(
+                        input,
+                        &solved.estimate,
+                        self.apply_broadcast_group_delay,
+                    ),
+                );
+            }
+
+            let retained_len = working_inputs.len().saturating_sub(outlier_indices.len());
+            if retained_len < 4 {
+                return Err(position_solve_refusal(
+                    PositionSolveRefusalKind::InsufficientUsableSatellites,
+                    sat_count,
+                    retained_len,
+                    rejected,
+                ));
+            }
+
+            let retained_indices =
+                outlier_indices.into_iter().collect::<std::collections::BTreeSet<_>>();
+            working_inputs = working_inputs
+                .into_iter()
+                .enumerate()
+                .filter_map(|(index, input)| (!retained_indices.contains(&index)).then_some(input))
+                .collect();
+            estimate = solved.estimate;
+        };
+        let x = working_set.estimate.ecef_x_m;
+        let y = working_set.estimate.ecef_y_m;
+        let z = working_set.estimate.ecef_z_m;
+        let cb = working_set.estimate.reference_clock_bias_s();
+
+        let filtered = working_set
+            .geometry
+            .iter()
+            .zip(&working_set.residuals)
+            .map(|(geometry, residual)| {
+                (
+                    geometry.observation.clone(),
+                    geometry.state,
+                    residual.residual_m,
+                    residual.effective_weight,
+                )
+            })
+            .collect::<Vec<_>>();
+        if filtered.len() < 4 {
+            return Err(position_solve_refusal(
+                PositionSolveRefusalKind::InsufficientUsableSatellites,
+                sat_count,
+                filtered.len(),
+                rejected,
+            ));
+        }
+
+        let final_estimate = working_set.estimate;
+        let corrected_observations = corrected_observation_records(
+            &final_estimate,
+            &working_set.geometry,
+            &working_set.residuals,
+        )
+        .ok_or_else(|| {
+            position_solve_refusal(
+                PositionSolveRefusalKind::SolverFailure,
+                sat_count,
+                filtered.len(),
+                rejected.clone(),
+            )
+        })?;
+        let raim_solution_separation = self
+            .raim
+            .then(|| self.solution_separation_check(&working_inputs, &final_estimate, klobuchar))
+            .flatten();
+        if raim_fault_detection.is_none() {
+            if let Some(separation) = raim_solution_separation.as_ref() {
+                raim_fault_detection =
+                    Some(raim_fault_detection_from_separation(separation, self.separation_gate_m));
             }
         }
 
         let mut h = Vec::new();
         let mut v = Vec::new();
-        for (_obs, state, res) in &filtered {
-            let dx = x - state.x_m;
-            let dy = y - state.y_m;
-            let dz = z - state.z_m;
-            let range = (dx * dx + dy * dy + dz * dz).sqrt();
-            let hx = dx / range;
-            let hy = dy / range;
-            let hz = dz / range;
-            h.push([hx, hy, hz, 1.0]);
-            v.push(*res);
+        for (observation, state, residual_m, _effective_weight) in &filtered {
+            let (_range_m, design_row) =
+                linearized_geometry_row(&final_estimate, observation.sat.constellation, state)
+                    .ok_or_else(|| {
+                        position_solve_refusal(
+                            PositionSolveRefusalKind::SolverFailure,
+                            sat_count,
+                            filtered.len(),
+                            rejected.clone(),
+                        )
+                    })?;
+            h.push(design_row);
+            v.push(*residual_m);
         }
 
-        let (pdop, hdop, vdop, gdop) = compute_dops(&h).unwrap_or((0.0, None, None, None));
-        let rms = if !v.is_empty() {
+        let dops = compute_dops([x, y, z], &h);
+        let post_fit_residual_rms_m = if !v.is_empty() {
             let sum = v.iter().map(|r| r * r).sum::<f64>();
             (sum / v.len() as f64).sqrt()
         } else {
             0.0
         };
+        let pre_fit_residual_rms_m = pre_fit_residual_rms_m.unwrap_or(post_fit_residual_rms_m);
+        let constellation_residual_rms = constellation_residual_rms(
+            pre_fit_constellation_residuals.as_deref().unwrap_or(&working_set.residuals),
+            &filtered,
+        );
 
         let (lat, lon, alt) = ecef_to_geodetic(x, y, z);
 
-        let (sigma_h_m, sigma_v_m) = cov
-            .map(|cov| {
-                let sigma2 = if !v.is_empty() {
-                    let sum = v.iter().map(|r| r * r).sum::<f64>();
-                    let dof = (v.len() as i32 - 4).max(1) as f64;
-                    sum / dof
-                } else {
-                    0.0
-                };
-                let var_x = cov[0][0] * sigma2;
-                let var_y = cov[1][1] * sigma2;
-                let var_z = cov[2][2] * sigma2;
-                ((var_x + var_y).max(0.0).sqrt(), var_z.max(0.0).sqrt())
+        let position_covariance_ecef_m2 = working_set.covariance.as_ref().and_then(|covariance| {
+            let sigma2 = if !v.is_empty() {
+                let sum = v.iter().map(|r| r * r).sum::<f64>();
+                let dof = (v.len() as i32 - final_estimate.clock_model.parameter_len() as i32)
+                    .max(1) as f64;
+                sum / dof
+            } else {
+                0.0
+            };
+            scaled_position_covariance_ecef_m2(covariance, sigma2)
+        });
+        let (sigma_e_m, sigma_n_m, sigma_u_m) = position_covariance_ecef_m2
+            .and_then(|covariance_xyz| {
+                covariance_enu_standard_deviations_m([x, y, z], covariance_xyz)
             })
-            .unwrap_or((0.0, 0.0));
+            .map(|(sigma_e_m, sigma_n_m, sigma_u_m)| {
+                (Some(sigma_e_m), Some(sigma_n_m), Some(sigma_u_m))
+            })
+            .unwrap_or((None, None, None));
+        let (
+            horizontal_error_ellipse_major_axis_m,
+            horizontal_error_ellipse_minor_axis_m,
+            horizontal_error_ellipse_azimuth_deg,
+        ) = position_covariance_ecef_m2
+            .and_then(|covariance_xyz| horizontal_error_ellipse([x, y, z], covariance_xyz))
+            .map(|ellipse| {
+                (Some(ellipse.major_axis_m), Some(ellipse.minor_axis_m), Some(ellipse.azimuth_deg))
+            })
+            .unwrap_or((None, None, None));
+        let (sigma_h_m, sigma_v_m) = match (sigma_e_m, sigma_n_m, sigma_u_m) {
+            (Some(sigma_e_m), Some(sigma_n_m), Some(sigma_u_m)) => {
+                (Some((sigma_e_m * sigma_e_m + sigma_n_m * sigma_n_m).sqrt()), Some(sigma_u_m))
+            }
+            _ => (None, None),
+        };
+        let protection_levels = position_covariance_ecef_m2
+            .and_then(|covariance_xyz| formal_protection_levels([x, y, z], covariance_xyz));
+        let (integrity_hpl_m, integrity_vpl_m) = protection_levels
+            .map(|levels: PositionProtectionLevels| {
+                (Some(levels.horizontal_m), Some(levels.vertical_m))
+            })
+            .unwrap_or((None, None));
+        let impossible_geometry = detect_impossible_geometry(&final_estimate, filtered.len());
+        let replay_timing_anomaly = detect_replay_timing_anomaly(&filtered);
 
         let rejected_sat_count = rejected.len();
-        Some(PositionSolution {
+        let broadcast_ionosphere_applied =
+            working_set.geometry.iter().any(|geometry| geometry.iono_delay_m.abs() > 0.0);
+        Ok(PositionSolution {
             ecef_x_m: x,
             ecef_y_m: y,
             ecef_z_m: z,
+            position_covariance_ecef_m2,
+            horizontal_error_ellipse_major_axis_m,
+            horizontal_error_ellipse_minor_axis_m,
+            horizontal_error_ellipse_azimuth_deg,
+            sigma_e_m,
+            sigma_n_m,
+            sigma_u_m,
             latitude_deg: lat,
             longitude_deg: lon,
             altitude_m: alt,
+            broadcast_ionosphere_applied,
+            clock_reference_constellation: final_estimate.clock_model.reference_constellation,
             clock_bias_s: cb,
-            pdop,
-            hdop,
-            vdop,
-            gdop,
-            rms_m: rms,
-            sigma_h_m: Some(sigma_h_m),
-            sigma_v_m: Some(sigma_v_m),
-            residuals: filtered.iter().map(|(o, _, r)| (o.sat, *r, o.weight)).collect(),
+            inter_system_biases: final_estimate
+                .clock_model
+                .inter_system_biases(&final_estimate.clock_state_s),
+            pdop: dops.map(|dops| dops.pdop).unwrap_or(0.0),
+            hdop: dops.map(|dops| dops.hdop),
+            vdop: dops.map(|dops| dops.vdop),
+            gdop: dops.map(|dops| dops.gdop),
+            tdop: dops.map(|dops| dops.tdop),
+            pre_fit_residual_rms_m,
+            post_fit_residual_rms_m,
+            rms_m: post_fit_residual_rms_m,
+            sigma_h_m,
+            sigma_v_m,
+            integrity_hpl_m,
+            integrity_vpl_m,
+            residuals: filtered
+                .iter()
+                .map(|(observation, _state, residual_m, effective_weight)| {
+                    (observation.sat, *residual_m, *effective_weight)
+                })
+                .collect(),
+            corrected_observations,
+            constellation_residual_rms,
             rejected,
-            separation_max_m: separation_max,
-            separation_suspect,
-            covariance_symmetrized: cov_symmetrized,
-            covariance_clamped: cov_clamped,
-            covariance_max_variance: cov_max_variance,
+            raim_fault_detection,
+            raim_fault_exclusion,
+            raim_fault_exclusions,
+            raim_solution_separation,
+            impossible_geometry,
+            replay_timing_anomaly,
+            covariance_symmetrized: working_set.covariance_symmetrized,
+            covariance_clamped: working_set.covariance_clamped,
+            covariance_max_variance: working_set.covariance_max_variance,
+            solver_rank: working_set.solver_rank,
+            solver_condition_number: working_set.solver_condition_number,
             sat_count: observations.len(),
             used_sat_count: filtered.len(),
             rejected_sat_count,
@@ -326,251 +673,479 @@ impl PositionSolver {
     }
 }
 
-fn sanitize_covariance(mut cov: [[f64; 4]; 4]) -> ([[f64; 4]; 4], bool, bool, Option<f64>) {
-    let mut sym = false;
-    let mut clamp = false;
-    let mut max_var = None;
-    let mut i = 0;
-    while i < 4 {
-        let mut j = 0;
-        while j < 4 {
-            if (cov[i][j] - cov[j][i]).abs() > 1e-9 {
-                sym = true;
-                let avg = 0.5 * (cov[i][j] + cov[j][i]);
-                cov[i][j] = avg;
-                cov[j][i] = avg;
-            }
-            j += 1;
-        }
-        if cov[i][i] < 0.0 {
-            clamp = true;
-            cov[i][i] = 0.0;
-        }
-        max_var = Some(max_var.map(|v: f64| v.max(cov[i][i])).unwrap_or(cov[i][i]));
-        i += 1;
-    }
-    (cov, sym, clamp, max_var)
+fn position_solve_refusal(
+    kind: PositionSolveRefusalKind,
+    sat_count: usize,
+    used_sat_count: usize,
+    rejected: Vec<(SatId, MeasurementRejectReason)>,
+) -> PositionSolveRefusal {
+    PositionSolveRefusal { kind, sat_count, used_sat_count, rejected }
 }
 
-type NormalEqSolution = (f64, f64, f64, f64, [[f64; 4]; 4]);
-
-fn solve_weighted_normal_eq(h: &[[f64; 4]], v: &[f64], w: &[f64]) -> Option<NormalEqSolution> {
-    let mut n = [[0.0_f64; 4]; 4];
-    let mut u = [0.0_f64; 4];
-    for (i, row) in h.iter().enumerate() {
-        let wi = w.get(i).copied().unwrap_or(1.0);
-        for r in 0..4 {
-            u[r] += row[r] * v[i] * wi;
-            for c in 0..4 {
-                n[r][c] += row[r] * row[c] * wi;
-            }
-        }
-    }
-    let inv = invert_4x4(n)?;
-    let dx = inv[0][0] * u[0] + inv[0][1] * u[1] + inv[0][2] * u[2] + inv[0][3] * u[3];
-    let dy = inv[1][0] * u[0] + inv[1][1] * u[1] + inv[1][2] * u[2] + inv[1][3] * u[3];
-    let dz = inv[2][0] * u[0] + inv[2][1] * u[1] + inv[2][2] * u[2] + inv[2][3] * u[3];
-    let dcb = inv[3][0] * u[0] + inv[3][1] * u[1] + inv[3][2] * u[2] + inv[3][3] * u[3];
-    Some((dx, dy, dz, dcb, inv))
-}
-
-fn huber_weights(residuals: &[f64], k: f64) -> Vec<f64> {
-    residuals
+fn select_valid_ephemeris(
+    ephemerides: &[GpsEphemeris],
+    sat: SatId,
+    receive_tow_s: f64,
+) -> Option<&GpsEphemeris> {
+    ephemerides
         .iter()
-        .map(|r| {
-            let a = r.abs();
-            if a <= k {
-                1.0
-            } else {
-                k / a
-            }
+        .filter(|ephemeris| ephemeris.sat == sat)
+        .filter(|ephemeris| is_ephemeris_valid(ephemeris, receive_tow_s))
+        .min_by(|left, right| {
+            let left_age = gps_ephemeris_age(left, receive_tow_s);
+            let right_age = gps_ephemeris_age(right, receive_tow_s);
+            let left_max_age_s = left_age.toe_age_s.max(left_age.toc_age_s);
+            let right_max_age_s = right_age.toe_age_s.max(right_age.toc_age_s);
+            left_max_age_s.total_cmp(&right_max_age_s).then_with(|| {
+                (left_age.toe_age_s + left_age.toc_age_s)
+                    .total_cmp(&(right_age.toe_age_s + right_age.toc_age_s))
+            })
         })
-        .collect()
 }
 
-pub fn invert_4x4(a: [[f64; 4]; 4]) -> Option<[[f64; 4]; 4]> {
-    let mut m = [[0.0_f64; 8]; 4];
-    for i in 0..4 {
-        for j in 0..4 {
-            m[i][j] = a[i][j];
-        }
-        m[i][i + 4] = 1.0;
+#[cfg(test)]
+#[path = "solver_tests.rs"]
+mod tests;
+
+#[cfg(test)]
+#[path = "solver_tests/broadcast_group_delay.rs"]
+mod broadcast_group_delay;
+
+/// Returns whether a position observation carries a finite and internally consistent
+/// transmit-time description for navigation use.
+pub fn position_observation_has_valid_satellite_time(
+    obs: &PositionObservation,
+    t_rx_s: f64,
+) -> bool {
+    let Some(signal_timing) = obs.signal_timing else {
+        return obs.pseudorange_m.is_finite() && obs.pseudorange_m > 0.0;
+    };
+    let signal_travel_time_s = signal_timing.signal_travel_time_s.0;
+    if !signal_travel_time_s.is_finite() || signal_travel_time_s <= 0.0 {
+        return false;
     }
-    for i in 0..4 {
-        let mut pivot = i;
-        let mut max = m[i][i].abs();
-        for (r, row) in m.iter().enumerate().skip(i + 1) {
-            if row[i].abs() > max {
-                max = row[i].abs();
-                pivot = r;
+    if !obs.pseudorange_m.is_finite() {
+        return false;
+    }
+    let pseudorange_travel_time_s = obs.pseudorange_m / SPEED_OF_LIGHT_MPS;
+    if (pseudorange_travel_time_s - signal_travel_time_s).abs()
+        > SIGNAL_TIMING_CONSISTENCY_TOLERANCE_S
+    {
+        return false;
+    }
+    if !signal_timing.transmit_gps_time.tow_s.is_finite() {
+        return false;
+    }
+    let receive_delta_s = if let Some(receive_gps_time) = obs.gps_receive_time {
+        ((receive_gps_time.week as i64 - signal_timing.transmit_gps_time.week as i64) as f64
+            * 604_800.0)
+            + receive_gps_time.tow_s
+            - signal_timing.transmit_gps_time.tow_s
+    } else {
+        t_rx_s - signal_timing.transmit_gps_time.tow_s
+    };
+    receive_delta_s.is_finite()
+        && (receive_delta_s - signal_travel_time_s).abs() <= SIGNAL_TIMING_CONSISTENCY_TOLERANCE_S
+}
+
+impl PositionSolver {
+    fn solve_working_set(
+        &self,
+        inputs: &[PositionSolveInput],
+        initial_estimate: PositionEstimate,
+        klobuchar: Option<&KlobucharCoefficients>,
+    ) -> Option<WorkingSetSolution> {
+        let clock_model = ClockStateModel::from_inputs(inputs)?;
+        let mut estimate = initial_estimate.reproject(clock_model);
+        let mut geometry = resolve_satellite_geometry(
+            inputs,
+            &estimate,
+            klobuchar,
+            self.apply_broadcast_ionosphere,
+            self.apply_broadcast_group_delay,
+            self.apply_troposphere,
+        )?;
+        let mut covariance = None;
+        let mut covariance_symmetrized = false;
+        let mut covariance_clamped = false;
+        let mut covariance_max_variance = None;
+        let mut solver_rank = 0;
+        let mut solver_condition_number = None;
+
+        for iteration_index in 0..self.max_iterations {
+            if geometry.len() < 4 {
+                return None;
             }
+
+            let mut h = Vec::with_capacity(geometry.len());
+            let mut residual_values = Vec::with_capacity(geometry.len());
+            for satellite_geometry in &geometry {
+                let (residual_m, design_row) =
+                    linearized_pseudorange_row(&estimate, satellite_geometry)?;
+                residual_values.push(residual_m);
+                h.push(design_row);
+            }
+
+            let weights = self.measurement_weights(iteration_index, &geometry, &residual_values);
+            let least_squares = solve_weighted_least_squares(&h, &residual_values, &weights)?;
+            let delta = least_squares.delta;
+            let covariance_out = least_squares.covariance;
+            let (covariance_out, symmetrized, clamped, max_variance) =
+                sanitize_covariance(covariance_out);
+            covariance_symmetrized |= symmetrized;
+            covariance_clamped |= clamped;
+            if let Some(max_variance) = max_variance {
+                covariance_max_variance = Some(
+                    covariance_max_variance
+                        .map(|running_max: f64| running_max.max(max_variance))
+                        .unwrap_or(max_variance),
+                );
+            }
+            covariance = Some(covariance_out);
+            solver_rank = least_squares.rank;
+            solver_condition_number = least_squares.condition_number;
+
+            estimate.ecef_x_m += delta.first().copied().unwrap_or(0.0);
+            estimate.ecef_y_m += delta.get(1).copied().unwrap_or(0.0);
+            estimate.ecef_z_m += delta.get(2).copied().unwrap_or(0.0);
+            for (index, clock_delta_m) in delta.iter().copied().skip(3).enumerate() {
+                if let Some(clock_state_s) = estimate.clock_state_s.get_mut(index) {
+                    *clock_state_s += clock_delta_m / SPEED_OF_LIGHT_MPS;
+                }
+            }
+
+            let dx = delta.first().copied().unwrap_or(0.0);
+            let dy = delta.get(1).copied().unwrap_or(0.0);
+            let dz = delta.get(2).copied().unwrap_or(0.0);
+            if (dx * dx + dy * dy + dz * dz).sqrt() < self.convergence_m {
+                break;
+            }
+
+            geometry = resolve_satellite_geometry(
+                inputs,
+                &estimate,
+                klobuchar,
+                self.apply_broadcast_ionosphere,
+                self.apply_broadcast_group_delay,
+                self.apply_troposphere,
+            )?;
         }
-        if max < 1e-12 {
+
+        geometry = resolve_satellite_geometry(
+            inputs,
+            &estimate,
+            klobuchar,
+            self.apply_broadcast_ionosphere,
+            self.apply_broadcast_group_delay,
+            self.apply_troposphere,
+        )?;
+        if geometry.len() < 4 {
             return None;
         }
-        if pivot != i {
-            m.swap(i, pivot);
+        let residuals = self.finalize_working_set_residuals(&estimate, &geometry);
+
+        Some(WorkingSetSolution {
+            estimate,
+            geometry,
+            residuals,
+            covariance,
+            covariance_symmetrized,
+            covariance_clamped,
+            covariance_max_variance,
+            solver_rank,
+            solver_condition_number,
+        })
+    }
+
+    fn finalize_working_set_residuals(
+        &self,
+        estimate: &PositionEstimate,
+        geometry: &[SatelliteGeometry],
+    ) -> Vec<WorkingSetResidual> {
+        let residual_values = geometry
+            .iter()
+            .map(|satellite_geometry| {
+                linearized_pseudorange_row(estimate, satellite_geometry)
+                    .map(|row| row.0)
+                    .expect("working-set geometry must linearize")
+            })
+            .collect::<Vec<_>>();
+        let weights = self.measurement_weights(1, geometry, &residual_values);
+
+        geometry
+            .iter()
+            .zip(residual_values)
+            .zip(weights)
+            .map(|((satellite_geometry, residual_m), effective_weight)| WorkingSetResidual {
+                sat: satellite_geometry.observation.sat,
+                residual_m,
+                base_weight: satellite_geometry.observation.weight,
+                effective_weight,
+            })
+            .collect()
+    }
+
+    fn measurement_weights(
+        &self,
+        iteration_index: usize,
+        geometry: &[SatelliteGeometry],
+        residuals: &[f64],
+    ) -> Vec<f64> {
+        // Start IRLS from the observation model's base weights so robust kernels
+        // do not collapse the first linearization before the state is near truth.
+        let mut weights = if iteration_index == 0 {
+            vec![1.0; residuals.len()]
+        } else {
+            robust_weights(residuals, self.robust_weighting)
+        };
+        if weights.iter().all(|weight| *weight <= 0.0) {
+            weights.fill(1.0);
         }
-        let inv_pivot = 1.0 / m[i][i];
-        let mut j = i;
-        while j < 8 {
-            m[i][j] *= inv_pivot;
-            j += 1;
+        for (weight, satellite_geometry) in weights.iter_mut().zip(geometry) {
+            *weight *= satellite_geometry.observation.weight;
         }
-        for r in 0..4 {
-            if r == i {
+        weights
+    }
+
+    fn outlier_indices(&self, residuals: &[WorkingSetResidual]) -> Vec<usize> {
+        residuals
+            .iter()
+            .enumerate()
+            .filter_map(|(index, residual)| {
+                let sigma_m = (1.0 / residual.base_weight.max(1e-6)).sqrt();
+                let normalized_residual = residual.residual_m / sigma_m;
+                ((residual.residual_m.abs() > self.residual_gate_m)
+                    || (normalized_residual * normalized_residual) > self.chi_square_gate)
+                    .then_some((index, normalized_residual.abs(), residual.residual_m.abs()))
+            })
+            .max_by(|left, right| {
+                left.1
+                    .partial_cmp(&right.1)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+                    .then_with(|| left.2.partial_cmp(&right.2).unwrap_or(std::cmp::Ordering::Equal))
+            })
+            .map(|(index, _normalized_residual, _residual_m)| vec![index])
+            .unwrap_or_default()
+    }
+
+    fn best_single_outlier_candidate(
+        &self,
+        inputs: &[PositionSolveInput],
+        solved: &WorkingSetSolution,
+        klobuchar: Option<&KlobucharCoefficients>,
+    ) -> Option<RaimExclusionCandidate> {
+        if inputs.len() < 5 {
+            return None;
+        }
+
+        let pre_exclusion_rms_m = working_set_rms_m(&solved.residuals);
+        let mut best_candidate = None;
+        for excluded_index in 0..inputs.len() {
+            let candidate_inputs = inputs
+                .iter()
+                .enumerate()
+                .filter_map(|(index, input)| (index != excluded_index).then_some(input.clone()))
+                .collect::<Vec<_>>();
+            let Some(candidate_solution) =
+                self.solve_working_set(&candidate_inputs, solved.estimate.clone(), klobuchar)
+            else {
+                continue;
+            };
+            if !self.outlier_indices(&candidate_solution.residuals).is_empty() {
                 continue;
             }
-            let factor = m[r][i];
-            let mut j = i;
-            while j < 8 {
-                m[r][j] -= factor * m[i][j];
-                j += 1;
+
+            let candidate_rms_m = working_set_rms_m(&candidate_solution.residuals);
+            let excluded_sat = inputs
+                .get(excluded_index)
+                .expect("candidate exclusion must reference an input")
+                .observation
+                .sat;
+            let solution_shift_m =
+                solution_separation_m(&solved.estimate, &candidate_solution.estimate);
+            let candidate = RaimExclusionCandidate {
+                excluded_index,
+                excluded_sat,
+                candidate_estimate: candidate_solution.estimate,
+                pre_exclusion_rms_m,
+                post_exclusion_rms_m: candidate_rms_m,
+                solution_shift_m,
+            };
+            let better_candidate = best_candidate
+                .as_ref()
+                .map(|best_candidate: &RaimExclusionCandidate| {
+                    let candidate_plausible =
+                        estimate_has_plausible_terrestrial_geometry(&candidate.candidate_estimate);
+                    let best_plausible = estimate_has_plausible_terrestrial_geometry(
+                        &best_candidate.candidate_estimate,
+                    );
+                    candidate_plausible
+                        .cmp(&best_plausible)
+                        .then_with(|| {
+                            candidate
+                                .post_exclusion_rms_m
+                                .total_cmp(&best_candidate.post_exclusion_rms_m)
+                                .reverse()
+                        })
+                        .then_with(|| {
+                            best_candidate.solution_shift_m.total_cmp(&candidate.solution_shift_m)
+                        })
+                        == std::cmp::Ordering::Greater
+                })
+                .unwrap_or(true);
+            if better_candidate {
+                best_candidate = Some(candidate);
             }
         }
-    }
-    let mut inv = [[0.0_f64; 4]; 4];
-    for i in 0..4 {
-        for j in 0..4 {
-            inv[i][j] = m[i][j + 4];
-        }
-    }
-    Some(inv)
-}
 
-fn compute_pdop(h: &[[f64; 4]]) -> Option<f64> {
-    let mut n = [[0.0_f64; 4]; 4];
-    for row in h {
-        for r in 0..4 {
-            for c in 0..4 {
-                n[r][c] += row[r] * row[c];
+        best_candidate
+    }
+
+    fn solution_separation_check(
+        &self,
+        inputs: &[PositionSolveInput],
+        reference_estimate: &PositionEstimate,
+        klobuchar: Option<&KlobucharCoefficients>,
+    ) -> Option<RaimSolutionSeparationCheck> {
+        if inputs.len() < 5 {
+            return None;
+        }
+
+        let mut compared_subsets = Vec::with_capacity(inputs.len());
+        let reference_rms_m = working_set_rms_m(
+            &self.solve_working_set(inputs, reference_estimate.clone(), klobuchar)?.residuals,
+        );
+        for excluded_index in 0..inputs.len() {
+            let candidate_inputs = inputs
+                .iter()
+                .enumerate()
+                .filter_map(|(index, input)| (index != excluded_index).then_some(input.clone()))
+                .collect::<Vec<_>>();
+            let Some(candidate_solution) =
+                self.solve_working_set(&candidate_inputs, reference_estimate.clone(), klobuchar)
+            else {
+                continue;
+            };
+            let excluded_sat = inputs
+                .get(excluded_index)
+                .expect("subset exclusion must reference an input")
+                .observation
+                .sat;
+            compared_subsets.push(RaimSolutionSeparationSubset {
+                excluded_sat,
+                separation_m: solution_separation_m(
+                    reference_estimate,
+                    &candidate_solution.estimate,
+                ),
+            });
+        }
+        let compared_multi_fault_hypotheses =
+            self.multi_fault_solution_separation_hypotheses(inputs, reference_estimate, klobuchar);
+
+        (!compared_subsets.is_empty() || !compared_multi_fault_hypotheses.is_empty()).then_some(
+            RaimSolutionSeparationCheck {
+                reference_sat_count: inputs.len(),
+                compared_subsets,
+                compared_multi_fault_hypotheses: compared_multi_fault_hypotheses
+                    .into_iter()
+                    .filter(|hypothesis| hypothesis.post_exclusion_rms_m <= reference_rms_m)
+                    .collect(),
+            },
+        )
+    }
+
+    fn multi_fault_solution_separation_hypotheses(
+        &self,
+        inputs: &[PositionSolveInput],
+        reference_estimate: &PositionEstimate,
+        klobuchar: Option<&KlobucharCoefficients>,
+    ) -> Vec<RaimFaultHypothesis> {
+        if inputs.len() < 6 {
+            return Vec::new();
+        }
+
+        let mut hypotheses = Vec::new();
+        for first_index in 0..inputs.len() {
+            for second_index in (first_index + 1)..inputs.len() {
+                let candidate_inputs = inputs
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(index, input)| {
+                        (index != first_index && index != second_index).then_some(input.clone())
+                    })
+                    .collect::<Vec<_>>();
+                if candidate_inputs.len() < 4 {
+                    continue;
+                }
+                let Some(candidate_solution) = self.solve_working_set(
+                    &candidate_inputs,
+                    reference_estimate.clone(),
+                    klobuchar,
+                ) else {
+                    continue;
+                };
+                hypotheses.push(RaimFaultHypothesis {
+                    excluded_sats: vec![
+                        inputs[first_index].observation.sat,
+                        inputs[second_index].observation.sat,
+                    ],
+                    separation_m: solution_separation_m(
+                        reference_estimate,
+                        &candidate_solution.estimate,
+                    ),
+                    post_exclusion_rms_m: working_set_rms_m(&candidate_solution.residuals),
+                });
             }
         }
-    }
-    let inv = invert_4x4(n)?;
-    let pdop = (inv[0][0] + inv[1][1] + inv[2][2]).sqrt();
-    Some(pdop)
-}
-
-type DopTuple = (f64, Option<f64>, Option<f64>, Option<f64>);
-
-fn compute_dops(h: &[[f64; 4]]) -> Option<DopTuple> {
-    let mut n = [[0.0_f64; 4]; 4];
-    for row in h {
-        for r in 0..4 {
-            for c in 0..4 {
-                n[r][c] += row[r] * row[c];
-            }
-        }
-    }
-    let inv = invert_4x4(n)?;
-    let hdop = (inv[0][0] + inv[1][1]).max(0.0).sqrt();
-    let vdop = inv[2][2].max(0.0).sqrt();
-    let tdop = inv[3][3].max(0.0).sqrt();
-    let pdop = (hdop.powi(2) + vdop.powi(2)).sqrt();
-    let gdop = (pdop.powi(2) + tdop.powi(2)).sqrt();
-    Some((pdop, Some(hdop), Some(vdop), Some(gdop)))
-}
-
-pub fn ecef_to_geodetic(x: f64, y: f64, z: f64) -> (f64, f64, f64) {
-    let a = 6378137.0;
-    let f = 1.0 / 298.257_223_563;
-    let e2 = f * (2.0 - f);
-
-    let lon = y.atan2(x);
-    let p = (x * x + y * y).sqrt();
-    let mut lat = z.atan2(p * (1.0 - e2));
-    let mut alt = 0.0;
-    for _ in 0..5 {
-        let sin_lat = lat.sin();
-        let n = a / (1.0 - e2 * sin_lat * sin_lat).sqrt();
-        alt = p / lat.cos() - n;
-        lat = z.atan2(p * (1.0 - e2 * n / (n + alt)));
-    }
-    (lat.to_degrees(), lon.to_degrees(), alt)
-}
-
-pub fn geodetic_to_ecef(lat_deg: f64, lon_deg: f64, alt_m: f64) -> (f64, f64, f64) {
-    let a = 6378137.0;
-    let f = 1.0 / 298.257_223_563;
-    let e2 = f * (2.0 - f);
-    let lat = lat_deg.to_radians();
-    let lon = lon_deg.to_radians();
-    let sin_lat = lat.sin();
-    let cos_lat = lat.cos();
-    let n = a / (1.0 - e2 * sin_lat * sin_lat).sqrt();
-    let x = (n + alt_m) * cos_lat * lon.cos();
-    let y = (n + alt_m) * cos_lat * lon.sin();
-    let z = (n * (1.0 - e2) + alt_m) * sin_lat;
-    (x, y, z)
-}
-
-pub fn ecef_to_enu(
-    x: f64,
-    y: f64,
-    z: f64,
-    ref_lat_deg: f64,
-    ref_lon_deg: f64,
-    ref_alt_m: f64,
-) -> (f64, f64, f64) {
-    let (xr, yr, zr) = geodetic_to_ecef(ref_lat_deg, ref_lon_deg, ref_alt_m);
-    let dx = x - xr;
-    let dy = y - yr;
-    let dz = z - zr;
-    let lat = ref_lat_deg.to_radians();
-    let lon = ref_lon_deg.to_radians();
-    let sin_lat = lat.sin();
-    let cos_lat = lat.cos();
-    let sin_lon = lon.sin();
-    let cos_lon = lon.cos();
-    let east = -sin_lon * dx + cos_lon * dy;
-    let north = -sin_lat * cos_lon * dx - sin_lat * sin_lon * dy + cos_lat * dz;
-    let up = cos_lat * cos_lon * dx + cos_lat * sin_lon * dy + sin_lat * dz;
-    (east, north, up)
-}
-
-pub fn elevation_azimuth_deg(
-    rx_x: f64,
-    rx_y: f64,
-    rx_z: f64,
-    sat_x: f64,
-    sat_y: f64,
-    sat_z: f64,
-) -> (f64, f64) {
-    let (lat, lon, alt) = ecef_to_geodetic(rx_x, rx_y, rx_z);
-    let (e, n, u) = ecef_to_enu(sat_x, sat_y, sat_z, lat, lon, alt);
-    let az = e.atan2(n).to_degrees().rem_euclid(360.0);
-    let el = (u / (e * e + n * n + u * u).sqrt()).asin().to_degrees();
-    (az, el)
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct WeightingConfig {
-    pub min_elev_deg: f64,
-    pub elev_exponent: f64,
-    pub cn0_ref_dbhz: f64,
-    pub min_weight: f64,
-    pub enabled: bool,
-}
-
-impl Default for WeightingConfig {
-    fn default() -> Self {
-        Self {
-            min_elev_deg: 5.0,
-            elev_exponent: 2.0,
-            cn0_ref_dbhz: 50.0,
-            min_weight: 0.1,
-            enabled: true,
-        }
+        hypotheses
     }
 }
 
-pub fn weight_from_cn0_elev(cn0_dbhz: f64, elev_deg: f64, config: WeightingConfig) -> f64 {
-    if !config.enabled {
-        return 1.0;
+fn rejection_reason_for_excluded_input(
+    input: &PositionSolveInput,
+    estimate: &PositionEstimate,
+    apply_broadcast_group_delay: bool,
+) -> MeasurementRejectReason {
+    let receiver_clock_bias_s = estimate
+        .constellation_clock_bias_s(input.observation.sat.constellation)
+        .unwrap_or_else(|| estimate.reference_clock_bias_s());
+    let receiver_position_ecef_m = [estimate.ecef_x_m, estimate.ecef_y_m, estimate.ecef_z_m];
+    let gross_ephemeris_mismatch = observation_consistency_metrics(
+        &input.observation,
+        &input.navigation,
+        apply_broadcast_group_delay,
+        receiver_position_ecef_m,
+        receiver_clock_bias_s,
+        None,
+        None,
+    )
+    .map(|metrics| metrics.code_residual_m.abs() >= EPHEMERIS_MISMATCH_CODE_RESIDUAL_GATE_M)
+    .unwrap_or(true);
+
+    if gross_ephemeris_mismatch {
+        MeasurementRejectReason::InvalidEphemeris
+    } else {
+        MeasurementRejectReason::Outlier
     }
-    let elev = elev_deg.clamp(0.0, 90.0).max(config.min_elev_deg);
-    let w_elev = (elev / 90.0).powf(config.elev_exponent).max(config.min_weight);
-    let w_cn0 = (cn0_dbhz / config.cn0_ref_dbhz).max(config.min_weight);
-    (w_elev * w_cn0).max(config.min_weight)
+}
+
+fn push_unique_rejection(
+    rejected: &mut Vec<(SatId, MeasurementRejectReason)>,
+    sat: SatId,
+    reason: MeasurementRejectReason,
+) {
+    if rejected
+        .iter()
+        .any(|(rejected_sat, rejected_reason)| *rejected_sat == sat && *rejected_reason == reason)
+    {
+        return;
+    }
+    rejected.push((sat, reason));
+}
+
+#[cfg(test)]
+#[path = "solver_tests/replay_timing.rs"]
+mod replay_timing;
+pub fn invert_4x4(a: [[f64; 4]; 4]) -> Option<[[f64; 4]; 4]> {
+    matrix::invert_4x4(a)
 }

@@ -64,6 +64,12 @@ pub const DIAGNOSTIC_CODES: &[DiagnosticCode] = &[
         mitigation: "Ensure obs epochs are ordered by t_rx_s.",
     },
     DiagnosticCode {
+        code: "GNSS_OBS_TIME_INTERVAL_INVALID",
+        severity: DiagnosticSeverity::Error,
+        meaning: "Observation epoch spacing does not match the configured integration interval",
+        mitigation: "Check tracking integration_ms, sample clock, and observation sample indices.",
+    },
+    DiagnosticCode {
         code: "GNSS_OBS_ID_INVALID",
         severity: DiagnosticSeverity::Error,
         meaning: "Observation contains invalid signal or satellite IDs",
@@ -110,6 +116,42 @@ pub const DIAGNOSTIC_CODES: &[DiagnosticCode] = &[
         severity: DiagnosticSeverity::Error,
         meaning: "Nav solution clock jump exceeds threshold",
         mitigation: "Inspect clock model and measurement quality.",
+    },
+    DiagnosticCode {
+        code: "NAV_SAT_CLOCK_ANOMALY",
+        severity: DiagnosticSeverity::Warning,
+        meaning: "Residual history suggests a single-satellite clock anomaly",
+        mitigation: "Inspect the named satellite clock and compare against peer residual trends.",
+    },
+    DiagnosticCode {
+        code: "NAV_COMMON_CODE_DOPPLER_ANOMALY",
+        severity: DiagnosticSeverity::Warning,
+        meaning: "Common code and Doppler steps across satellites suggest coordinated signal manipulation",
+        mitigation: "Inspect receiver clock state, peer-satellite Doppler deltas, and spoofing or rebroadcast conditions.",
+    },
+    DiagnosticCode {
+        code: "NAV_REPLAY_TIMING_ANOMALY",
+        severity: DiagnosticSeverity::Warning,
+        meaning: "Large positive code-delay steps with non-common geometry spread suggest replayed timing",
+        mitigation: "Inspect matched-satellite code steps, receiver clock evolution, and rebroadcast or meaconing conditions.",
+    },
+    DiagnosticCode {
+        code: "NAV_CONSTELLATION_CLOCK_INCONSISTENCY",
+        severity: DiagnosticSeverity::Warning,
+        meaning: "A non-reference constellation clock offset changed too abruptly to be explained by stable inter-system timing",
+        mitigation: "Inspect mixed-constellation timing alignment, broadcast time-system handling, and constellation-specific clock consistency.",
+    },
+    DiagnosticCode {
+        code: "NAV_RESIDUAL_WHITENESS",
+        severity: DiagnosticSeverity::Warning,
+        meaning: "Residuals remain temporally correlated across epochs instead of behaving like white innovation noise",
+        mitigation: "Inspect persistent measurement biases, multipath structure, weighting, and state-model mismatch.",
+    },
+    DiagnosticCode {
+        code: "NAV_IMPOSSIBLE_GEOMETRY",
+        severity: DiagnosticSeverity::Warning,
+        meaning: "Solved navigation position lies outside the plausible terrestrial envelope",
+        mitigation: "Inspect pseudorange consistency, timing, ephemeris selection, and spoofing or rebroadcast conditions.",
     },
     DiagnosticCode {
         code: "NAV_EPHEMERIS_GAP",

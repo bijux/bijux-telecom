@@ -1,0 +1,40 @@
+schema_version = 1
+versioning_model = "workspace-unified"
+
+[publish]
+allow = [
+  "bijux-gnss-core",
+  "bijux-gnss-signal",
+  "bijux-gnss-nav",
+  "bijux-gnss-receiver",
+  "bijux-gnss-infra",
+  "bijux-gnss",
+]
+deny = [
+  "bijux-gnss-dev",
+  "bijux-gnss-policies",
+  "bijux-gnss-testkit",
+]
+
+[roles]
+"bijux-gnss" = "facade-and-command"
+"bijux-gnss-core" = "shared-contracts"
+"bijux-gnss-dev" = "maintainer-control-plane"
+"bijux-gnss-infra" = "dataset-and-artifact-infrastructure"
+"bijux-gnss-nav" = "navigation-engine"
+"bijux-gnss-policies" = "repository-policy"
+"bijux-gnss-receiver" = "receiver-runtime"
+"bijux-gnss-signal" = "signal-and-dsp"
+"bijux-gnss-testkit" = "scientific-test-support"
+
+[metadata_requirements]
+required_package_fields = [
+  "description",
+  "license",
+  "repository",
+  "homepage",
+  "documentation",
+  "readme",
+  "categories",
+  "keywords",
+]

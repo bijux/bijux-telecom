@@ -1,8 +1,16 @@
 [package]
 name = "bijux-gnss-infra"
-version = "0.1.0"
+version.workspace = true
 edition.workspace = true
 license.workspace = true
+rust-version.workspace = true
+description = "GNSS dataset, provenance, run-layout, artifact, override, and experiment infrastructure"
+repository.workspace = true
+homepage.workspace = true
+documentation = "https://docs.rs/bijux-gnss-infra/latest/bijux_gnss_infra/"
+readme = "README.md"
+categories = ["aerospace", "science::geo"]
+keywords = ["gnss", "datasets", "provenance", "artifacts", "experiments"]
 build = "build.rs"
 
 [dependencies]
@@ -12,10 +20,12 @@ serde_json.workspace = true
 toml.workspace = true
 sha2.workspace = true
 hex.workspace = true
+bijux-gnss-signal = { path = "../bijux-gnss-signal", version = "0.1.0" }
 bijux-gnss-receiver = { path = "../bijux-gnss-receiver", version = "0.1.0", default-features = false }
 
 [dev-dependencies]
-bijux-gnss-policies = { path = "../bijux-gnss-policies", version = "0.1.0" }
+bijux-gnss-policies = { path = "../bijux-gnss-policies" }
+tempfile = "3.24"
 
 [features]
 default = ["nav"]

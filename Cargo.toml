@@ -4,19 +4,23 @@ members = [
   "crates/bijux-gnss",
   "crates/bijux-gnss-core",
   "crates/bijux-gnss-receiver",
-  "crates/bijux-gnss-cli",
   "crates/bijux-gnss-signal",
   "crates/bijux-gnss-nav",
   "crates/bijux-gnss-infra",
   "crates/bijux-gnss-testkit",
   "crates/bijux-gnss-policies",
-  "crates/bijux-telecom-dev",
+  "crates/bijux-gnss-dev",
 ]
 
 [workspace.package]
 edition = "2021"
+version = "0.1.0"
 license = "Apache-2.0"
 rust-version = "1.86.0"
+description = "Rust GNSS toolkit for signal modeling, receiver processing, navigation, and reproducible evidence"
+repository = "https://github.com/bijux/bijux-gnss.git"
+homepage = "https://bijux.io/bijux-gnss/"
+keywords = ["gnss", "gps", "galileo", "receiver", "navigation"]
 
 [workspace.dependencies]
 anyhow = "1.0"
@@ -35,9 +39,10 @@ jsonschema = "0.46"
 sha2 = "0.11"
 hex = "0.4"
 proptest = "1.11"
-criterion = "0.8"
+criterion = { version = "0.8.2", default-features = false, features = ["cargo_bench_support", "rayon"] }
 toml = "1.1"
 eyre = "0.6"
+time = { version = "=0.3.36", features = ["parsing"] }
 bijux-gnss-core = { path = "crates/bijux-gnss-core", version = "0.1.0" }
 bijux-gnss-infra = { path = "crates/bijux-gnss-infra", version = "0.1.0" }
 bijux-gnss-policies = { path = "crates/bijux-gnss-policies", version = "0.1.0" }

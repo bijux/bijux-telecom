@@ -11,6 +11,13 @@
     "has_ambiguity_state": true
   },
   "claim": "fixed",
+  "evidence": {
+    "covariance_supported": true,
+    "residual_supported": true,
+    "ambiguity_supported": true,
+    "correction_supported": true,
+    "integrity_supported": true
+  },
   "expect": {
     "ready": true,
     "refusal_class": null,

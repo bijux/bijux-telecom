@@ -5,7 +5,7 @@
   "required": ["header", "payload"],
   "properties": {
     "header": { "$ref": "#/definitions/ArtifactHeader" },
-    "payload": { "type": "object" }
+    "payload": { "$ref": "#/definitions/RtkPrecision" }
   },
   "definitions": {
     "ArtifactHeader": {
@@ -34,6 +34,25 @@
         "features": { "type": "array", "items": { "type": "string" } },
         "deterministic": { "type": "boolean" },
         "git_dirty": { "type": "boolean" }
+      }
+    },
+    "RtkPrecision": {
+      "type": "object",
+      "required": [
+        "epoch_idx",
+        "fix_accepted",
+        "ratio",
+        "fixed_count",
+        "ref_changed",
+        "slip_count"
+      ],
+      "properties": {
+        "epoch_idx": { "type": "integer", "minimum": 0 },
+        "fix_accepted": { "type": "boolean" },
+        "ratio": { "type": ["number", "null"] },
+        "fixed_count": { "type": "integer", "minimum": 0 },
+        "ref_changed": { "type": "boolean" },
+        "slip_count": { "type": "integer", "minimum": 0 }
       }
     }
   }

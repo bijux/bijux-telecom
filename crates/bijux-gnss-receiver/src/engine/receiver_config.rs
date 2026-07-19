@@ -2,9 +2,18 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use bijux_gnss_core::api::{
-    AcqError, ConfigError, InputError, NavError, SchemaVersion, SignalBand, SignalError, TrackError,
+    AcqError, ConfigError, Constellation, InputError, NavError, SchemaVersion, SignalBand,
+    SignalError, TrackError,
 };
+use bijux_gnss_signal::api::FrontEndFilterSpec;
 use thiserror::Error;
+
+pub(crate) mod navigation;
+
+use self::navigation::{
+    ConstellationSelectionPolicy, NavigationConfig, NavigationMotionClass,
+    NavigationWeightingConfig, PppConfig, ScienceThresholdsConfig,
+};
 
 /// On-disk receiver configuration.
 ///
@@ -24,6 +33,12 @@ pub struct ReceiverConfig {
     pub code_freq_basis_hz: f64,
     /// Code length in chips.
     pub code_length: usize,
+    /// Front-end conditioning configuration.
+    #[serde(default)]
+    pub front_end: FrontEndConfig,
+    /// Receiver clock model used when forming observations from receiver time.
+    #[serde(default)]
+    pub receiver_clock: ReceiverClockConfig,
     /// RNG seed for deterministic operations.
     pub seed: u64,
     /// Acquisition configuration.
@@ -41,6 +56,18 @@ pub struct ReceiverPipelineConfig {
     pub sampling_freq_hz: f64,
     /// Intermediate frequency, in Hz.
     pub intermediate_freq_hz: f64,
+    /// Whether mean I/Q offset should be removed before acquisition consumes a frame.
+    pub remove_dc_offset: bool,
+    /// Optional complex front-end FIR filter applied before acquisition and tracking consume input.
+    pub front_end_filter: Option<FrontEndFilterSpec>,
+    /// Receiver clock bias applied to code and carrier observables, in seconds.
+    pub receiver_clock_bias_s: f64,
+    /// Receiver oscillator frequency bias applied to Doppler observations, in Hz.
+    pub receiver_clock_frequency_bias_hz: f64,
+    /// One-sigma receiver clock bias uncertainty represented in observation error models, in seconds.
+    pub receiver_clock_bias_sigma_s: f64,
+    /// Source label for receiver clock terms.
+    pub receiver_clock_source: String,
     /// Code frequency basis, in Hz.
     pub code_freq_basis_hz: f64,
     /// Code length in chips.
@@ -51,6 +78,10 @@ pub struct ReceiverPipelineConfig {
     pub acquisition_doppler_search_hz: i32,
     /// Doppler bin spacing used by acquisition, in Hz.
     pub acquisition_doppler_step_hz: i32,
+    /// Doppler-rate search range used by acquisition, in Hz/s.
+    pub acquisition_doppler_rate_search_hz_per_s: i32,
+    /// Doppler-rate bin spacing used by acquisition, in Hz/s.
+    pub acquisition_doppler_rate_step_hz_per_s: i32,
     /// Coherent integration used by acquisition, in milliseconds.
     pub acquisition_integration_ms: u32,
     /// Noncoherent integration used by acquisition.
@@ -59,6 +90,8 @@ pub struct ReceiverPipelineConfig {
     pub acquisition_peak_mean_threshold: f32,
     /// Minimum accepted peak-to-second-peak acquisition ratio.
     pub acquisition_peak_second_threshold: f32,
+    /// Acquisition threshold policy configuration.
+    pub acquisition_threshold_policy: AcquisitionThresholdPolicyConfig,
     /// Default early/late spacing, in chips.
     pub early_late_spacing_chips: f64,
     /// DLL noise bandwidth, in Hz.
@@ -67,6 +100,10 @@ pub struct ReceiverPipelineConfig {
     pub pll_bw_hz: f64,
     /// FLL noise bandwidth, in Hz.
     pub fll_bw_hz: f64,
+    /// Whether tracking loop and coherent integration adaptation are enabled.
+    pub adaptive_tracking_enabled: bool,
+    /// Whether receiver-wide vector tracking aid is enabled.
+    pub vector_tracking_enabled: bool,
     /// Integration time for tracking, in milliseconds.
     pub tracking_integration_ms: u32,
     /// Target per-epoch budget, in milliseconds.
@@ -81,6 +118,10 @@ pub struct ReceiverPipelineConfig {
     pub huber_k: f64,
     /// Whether RAIM-like checks are enabled.
     pub raim: bool,
+    /// Whether navigation position solutions should be smoothed across epochs.
+    pub position_solution_smoothing: bool,
+    /// Receiver motion class used to tune position-solution smoothing.
+    pub position_solution_motion_class: NavigationMotionClass,
     /// Hatch smoothing window, in epochs.
     pub hatch_window: u32,
     /// Navigation weighting configuration.
@@ -95,6 +136,8 @@ pub struct ReceiverPipelineConfig {
     pub ppp: PppConfig,
     /// Scientific threshold policy configuration.
     pub science_thresholds: ScienceThresholdsConfig,
+    /// Constellation selection policy for acquisition and navigation.
+    pub constellation_policy: ConstellationSelectionPolicy,
 }
 
 impl Default for ReceiverPipelineConfig {
@@ -102,19 +145,30 @@ impl Default for ReceiverPipelineConfig {
         Self {
             sampling_freq_hz: 5_000_000.0,
             intermediate_freq_hz: 0.0,
+            remove_dc_offset: false,
+            front_end_filter: None,
+            receiver_clock_bias_s: 0.0,
+            receiver_clock_frequency_bias_hz: 0.0,
+            receiver_clock_bias_sigma_s: 0.0,
+            receiver_clock_source: "config".to_string(),
             code_freq_basis_hz: 1_023_000.0,
             code_length: 1023,
             channels: 12,
             acquisition_doppler_search_hz: 10_000,
             acquisition_doppler_step_hz: 500,
+            acquisition_doppler_rate_search_hz_per_s: 0,
+            acquisition_doppler_rate_step_hz_per_s: 250,
             acquisition_integration_ms: 1,
             acquisition_noncoherent: 1,
             acquisition_peak_mean_threshold: 2.5,
             acquisition_peak_second_threshold: 1.5,
+            acquisition_threshold_policy: AcquisitionThresholdPolicyConfig::default(),
             early_late_spacing_chips: 0.5,
             dll_bw_hz: 2.0,
             pll_bw_hz: 15.0,
             fll_bw_hz: 10.0,
+            adaptive_tracking_enabled: default_adaptive_tracking_enabled(),
+            vector_tracking_enabled: default_vector_tracking_enabled(),
             tracking_integration_ms: 1,
             tracking_budget_ms: 1.0,
             tracking_over_budget_action: "drop_epochs".to_string(),
@@ -122,6 +176,8 @@ impl Default for ReceiverPipelineConfig {
             robust_solver: true,
             huber_k: 30.0,
             raim: true,
+            position_solution_smoothing: true,
+            position_solution_motion_class: NavigationMotionClass::Vehicle,
             hatch_window: 100,
             weighting: NavigationWeightingConfig::default(),
             iono_mode: "broadcast".to_string(),
@@ -129,8 +185,52 @@ impl Default for ReceiverPipelineConfig {
             tropo_ztd_m: 2.3,
             ppp: PppConfig::default(),
             science_thresholds: ScienceThresholdsConfig::default(),
+            constellation_policy: ConstellationSelectionPolicy::Mixed,
         }
     }
+}
+
+/// Front-end conditioning options applied before acquisition.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
+pub struct FrontEndConfig {
+    /// Remove the mean I/Q offset from the acquisition frame before processing.
+    #[serde(default)]
+    pub remove_dc_offset: bool,
+    /// Optional complex front-end FIR filter applied before acquisition and tracking.
+    #[serde(default)]
+    pub filter: Option<FrontEndFilterSpec>,
+}
+
+/// Receiver clock terms applied when observations are generated.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+pub struct ReceiverClockConfig {
+    /// Receiver clock bias relative to GNSS time, in seconds.
+    #[serde(default)]
+    pub bias_s: f64,
+    /// Receiver oscillator frequency bias added to Doppler observations, in Hz.
+    #[serde(default)]
+    pub frequency_bias_hz: f64,
+    /// One-sigma receiver clock bias uncertainty, in seconds.
+    #[serde(default)]
+    pub bias_sigma_s: f64,
+    /// Source label for configured clock terms.
+    #[serde(default = "default_receiver_clock_source")]
+    pub source: String,
+}
+
+impl Default for ReceiverClockConfig {
+    fn default() -> Self {
+        Self {
+            bias_s: 0.0,
+            frequency_bias_hz: 0.0,
+            bias_sigma_s: 0.0,
+            source: default_receiver_clock_source(),
+        }
+    }
+}
+
+pub fn default_receiver_clock_source() -> String {
+    "config".to_string()
 }
 
 /// Tracking parameters for a specific band.
@@ -185,6 +285,16 @@ impl ReceiverPipelineConfig {
             integration_ms: self.tracking_integration_ms,
         }
     }
+
+    /// Whether this runtime configuration allows a given constellation.
+    pub fn allows_constellation(&self, constellation: Constellation) -> bool {
+        self.constellation_policy.allows(constellation)
+    }
+
+    /// Selected constellations enabled by this runtime configuration.
+    pub fn selected_constellations(&self) -> &'static [Constellation] {
+        self.constellation_policy.selected_constellations()
+    }
 }
 
 #[derive(Debug, Error)]
@@ -217,6 +327,12 @@ pub struct AcquisitionConfig {
     pub doppler_search_hz: i32,
     /// Doppler bin spacing, in Hz.
     pub doppler_step_hz: i32,
+    /// Doppler-rate search range, in Hz/s.
+    #[serde(default)]
+    pub doppler_rate_search_hz_per_s: i32,
+    /// Doppler-rate bin spacing, in Hz/s.
+    #[serde(default)]
+    pub doppler_rate_step_hz_per_s: i32,
     /// Coherent integration length, in ms.
     pub integration_ms: u32,
     /// Noncoherent integration count.
@@ -226,6 +342,60 @@ pub struct AcquisitionConfig {
     pub peak_mean_threshold: f32,
     /// Peak-to-second-peak threshold.
     pub peak_second_threshold: f32,
+    /// Threshold policy used to derive acceptance thresholds.
+    #[serde(default)]
+    pub threshold_policy: AcquisitionThresholdPolicyConfig,
+}
+
+/// Threshold-derivation policy for acquisition acceptance.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum AcquisitionThresholdMode {
+    /// Use the configured ratio thresholds directly.
+    #[default]
+    FixedRatio,
+    /// Calibrate the peak-to-mean threshold against a declared false-alarm probability.
+    CalibratedFalseAlarm,
+}
+
+/// Acquisition threshold policy parameters.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct AcquisitionThresholdPolicyConfig {
+    /// Threshold derivation mode.
+    #[serde(default)]
+    pub mode: AcquisitionThresholdMode,
+    /// Target accepted false-alarm probability for calibrated acquisition thresholds.
+    #[serde(default = "default_acquisition_false_alarm_probability")]
+    pub false_alarm_probability: f64,
+    /// Number of deterministic noise-only trials used during calibration.
+    #[serde(default = "default_acquisition_threshold_calibration_trial_count")]
+    pub calibration_trial_count: usize,
+    /// Confidence level used to report the calibration interval.
+    #[serde(default = "default_acquisition_threshold_confidence_level")]
+    pub confidence_level: f64,
+}
+
+impl Default for AcquisitionThresholdPolicyConfig {
+    fn default() -> Self {
+        Self {
+            mode: AcquisitionThresholdMode::FixedRatio,
+            false_alarm_probability: default_acquisition_false_alarm_probability(),
+            calibration_trial_count: default_acquisition_threshold_calibration_trial_count(),
+            confidence_level: default_acquisition_threshold_confidence_level(),
+        }
+    }
+}
+
+pub fn default_acquisition_false_alarm_probability() -> f64 {
+    0.01
+}
+
+pub fn default_acquisition_threshold_calibration_trial_count() -> usize {
+    128
+}
+
+pub fn default_acquisition_threshold_confidence_level() -> f64 {
+    0.95
 }
 
 /// Tracking configuration parameters.
@@ -239,6 +409,12 @@ pub struct TrackingConfig {
     pub pll_bw_hz: f64,
     /// FLL noise bandwidth, in Hz.
     pub fll_bw_hz: f64,
+    /// Whether tracking loop and coherent integration adaptation are enabled.
+    #[serde(default = "default_adaptive_tracking_enabled")]
+    pub adaptive_tracking_enabled: bool,
+    /// Whether receiver-wide vector tracking aid is enabled.
+    #[serde(default = "default_vector_tracking_enabled")]
+    pub vector_tracking_enabled: bool,
     /// Maximum tracking channels.
     pub max_channels: usize,
     /// Per-epoch CPU budget, in milliseconds.
@@ -276,6 +452,24 @@ pub fn default_tracking_integration_ms() -> u32 {
     1
 }
 
+pub fn default_adaptive_tracking_enabled() -> bool {
+    true
+}
+
+pub fn default_vector_tracking_enabled() -> bool {
+    true
+}
+
+pub const SUPPORTED_ACQUISITION_INTEGRATION_MS: [u32; 5] = [1, 2, 5, 10, 20];
+
+pub fn acquisition_integration_ms_is_supported(integration_ms: u32) -> bool {
+    SUPPORTED_ACQUISITION_INTEGRATION_MS.contains(&integration_ms)
+}
+
+pub fn supported_acquisition_integration_ms_csv() -> String {
+    SUPPORTED_ACQUISITION_INTEGRATION_MS.iter().map(u32::to_string).collect::<Vec<_>>().join(", ")
+}
+
 pub fn default_over_budget_action() -> String {
     "drop_epochs".to_string()
 }
@@ -291,118 +485,4 @@ pub fn parse_band(text: &str) -> Option<SignalBand> {
         "b2" => Some(SignalBand::B2),
         _ => None,
     }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-/// Navigation configuration parameters.
-pub struct NavigationConfig {
-    /// Enable robust solver.
-    pub robust_solver: bool,
-    /// Huber loss parameter.
-    pub huber_k: f64,
-    /// Enable RAIM-like checks.
-    pub raim: bool,
-    /// Hatch smoothing window.
-    pub hatch_window: u32,
-    /// Weighting configuration.
-    pub weighting: NavigationWeightingConfig,
-    /// Ionosphere model mode identifier.
-    pub iono_mode: String,
-    /// Enable troposphere modeling.
-    pub tropo_enable: bool,
-    /// Default ZTD, in meters.
-    pub tropo_ztd_m: f64,
-    /// PPP configuration.
-    #[serde(default)]
-    pub ppp: PppConfig,
-    /// Scientific threshold policy configuration.
-    #[serde(default)]
-    pub science_thresholds: ScienceThresholdsConfig,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-/// Scientific threshold policy parameters.
-pub struct ScienceThresholdsConfig {
-    /// Minimum mean C/N0 for accepted navigation solutions.
-    pub min_mean_cn0_dbhz: f64,
-    /// Maximum PDOP for accepted navigation solutions.
-    pub max_pdop: f64,
-    /// Maximum residual RMS (meters) for accepted navigation solutions.
-    pub max_residual_rms_m: f64,
-    /// Minimum used satellites for accepted navigation solutions.
-    pub min_used_satellites: usize,
-    /// Minimum lock quality ratio for stable integrity classification.
-    pub min_lock_ratio: f64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-/// PPP configuration parameters.
-pub struct PppConfig {
-    /// Enable PPP processing.
-    pub enabled: bool,
-    /// Use ionosphere-free combinations.
-    pub use_iono_free: bool,
-    /// Use Doppler measurements.
-    pub use_doppler: bool,
-    /// Enable ionosphere state estimation.
-    pub enable_iono_state: bool,
-    /// Ambiguity resolution mode.
-    pub ar_mode: String,
-    /// Ambiguity ratio test threshold.
-    pub ar_ratio_threshold: f64,
-    /// Consecutive epochs required for AR acceptance.
-    pub ar_stability_epochs: u32,
-    /// Maximum satellites to attempt AR on.
-    pub ar_max_sats: usize,
-    /// Prefer elevation-based selection.
-    pub ar_use_elevation: bool,
-    /// Prune ambiguity states after this many epochs.
-    pub prune_after_epochs: u64,
-    /// Reset PPP state after a gap of this many seconds.
-    pub reset_gap_s: f64,
-    /// Residual gate threshold, in meters.
-    pub residual_gate_m: f64,
-    /// Drift detection window, in epochs.
-    pub drift_window_epochs: u64,
-    /// Drift detection threshold, in meters.
-    pub drift_threshold_m: f64,
-    /// Checkpoint interval, in epochs.
-    pub checkpoint_interval_epochs: u64,
-    /// Process noise for clock drift.
-    pub noise_clock_drift: f64,
-    /// Process noise for ZTD.
-    pub noise_ztd: f64,
-    /// Process noise for ionosphere.
-    pub noise_iono: f64,
-    /// Process noise for ambiguities.
-    pub noise_ambiguity: f64,
-    /// Minimum convergence time, in seconds.
-    pub convergence_min_time_s: f64,
-    /// Convergence position rate threshold, in m/s.
-    pub convergence_pos_rate_mps: f64,
-    /// Horizontal sigma threshold for convergence, in meters.
-    pub convergence_sigma_h_m: f64,
-    /// Vertical sigma threshold for convergence, in meters.
-    pub convergence_sigma_v_m: f64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-/// Navigation measurement weighting parameters.
-pub struct NavigationWeightingConfig {
-    /// Enable weighting.
-    pub enabled: bool,
-    /// Minimum elevation, in degrees.
-    pub min_elev_deg: f64,
-    /// Elevation exponent for weighting.
-    pub elev_exponent: f64,
-    /// Reference C/N0, in dB-Hz.
-    pub cn0_ref_dbhz: f64,
-    /// Minimum weight floor.
-    pub min_weight: f64,
-    /// Elevation mask, in degrees.
-    pub elev_mask_deg: f64,
-    /// Scalar tracking mode weight.
-    pub tracking_mode_scalar_weight: f64,
-    /// Vector tracking mode weight.
-    pub tracking_mode_vector_weight: f64,
 }

@@ -35,7 +35,8 @@ impl StateModel for NavClockModel {
     }
 
     fn propagate(&self, x: &mut [f64], p: &mut Matrix, dt_s: f64) {
-        if x.len() < 8 {
+        let n = x.len();
+        if n < 8 {
             return;
         }
         x[0] += x[3] * dt_s;
@@ -43,13 +44,13 @@ impl StateModel for NavClockModel {
         x[2] += x[5] * dt_s;
         x[6] += x[7] * dt_s;
 
-        let mut f = Matrix::identity(8);
+        let mut f = Matrix::identity(n);
         f[(0, 3)] = dt_s;
         f[(1, 4)] = dt_s;
         f[(2, 5)] = dt_s;
         f[(6, 7)] = dt_s;
 
-        let mut q = Matrix::new(8, 8, 0.0);
+        let mut q = Matrix::new(n, n, 0.0);
         q[(0, 0)] = self.noise.pos_m * self.noise.pos_m;
         q[(1, 1)] = self.noise.pos_m * self.noise.pos_m;
         q[(2, 2)] = self.noise.pos_m * self.noise.pos_m;
@@ -59,16 +60,247 @@ impl StateModel for NavClockModel {
         q[(6, 6)] = self.noise.clock_bias_s * self.noise.clock_bias_s;
         q[(7, 7)] = self.noise.clock_drift_s * self.noise.clock_drift_s;
 
-        if x.len() > 8 && self.noise.ztd_m > 0.0 {
+        if n > 8 && self.noise.ztd_m > 0.0 {
             let idx = 8;
-            if idx < q.rows() {
-                q[(idx, idx)] = self.noise.ztd_m * self.noise.ztd_m;
-            }
+            q[(idx, idx)] = self.noise.ztd_m * self.noise.ztd_m;
         }
 
         let ft = f.transpose();
         let p_new = f.mul(p).mul(&ft).add(&q);
         *p = p_new;
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct StaticNavClockModel {
+    pub noise: ProcessNoiseConfig,
+    pub velocity_decay_per_s: f64,
+}
+
+impl StaticNavClockModel {
+    pub fn new(noise: ProcessNoiseConfig, velocity_decay_per_s: f64) -> Self {
+        Self { noise, velocity_decay_per_s }
+    }
+}
+
+impl StateModel for StaticNavClockModel {
+    fn state_dim(&self) -> usize {
+        8
+    }
+
+    fn propagate(&self, x: &mut [f64], p: &mut Matrix, dt_s: f64) {
+        let n = x.len();
+        if n < 8 {
+            return;
+        }
+        let velocity_decay = (-self.velocity_decay_per_s.max(0.0) * dt_s).exp();
+        x[3] *= velocity_decay;
+        x[4] *= velocity_decay;
+        x[5] *= velocity_decay;
+        x[6] += x[7] * dt_s;
+
+        let mut f = Matrix::identity(n);
+        f[(3, 3)] = velocity_decay;
+        f[(4, 4)] = velocity_decay;
+        f[(5, 5)] = velocity_decay;
+        f[(6, 7)] = dt_s;
+
+        let mut q = Matrix::new(n, n, 0.0);
+        q[(0, 0)] = self.noise.pos_m * self.noise.pos_m;
+        q[(1, 1)] = self.noise.pos_m * self.noise.pos_m;
+        q[(2, 2)] = self.noise.pos_m * self.noise.pos_m;
+        q[(3, 3)] = self.noise.vel_mps * self.noise.vel_mps;
+        q[(4, 4)] = self.noise.vel_mps * self.noise.vel_mps;
+        q[(5, 5)] = self.noise.vel_mps * self.noise.vel_mps;
+        q[(6, 6)] = self.noise.clock_bias_s * self.noise.clock_bias_s;
+        q[(7, 7)] = self.noise.clock_drift_s * self.noise.clock_drift_s;
+
+        if n > 8 && self.noise.ztd_m > 0.0 {
+            let idx = 8;
+            q[(idx, idx)] = self.noise.ztd_m * self.noise.ztd_m;
+        }
+
+        let ft = f.transpose();
+        let p_new = f.mul(p).mul(&ft).add(&q);
+        *p = p_new;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bijux_gnss_core::api::{Constellation, SatId, SigId, SignalBand, SignalCode};
+
+    fn sample_sig_id() -> SigId {
+        SigId {
+            sat: SatId { constellation: Constellation::Gps, prn: 7 },
+            band: SignalBand::L1,
+            code: SignalCode::Ca,
+        }
+    }
+
+    #[test]
+    fn nav_clock_model_propagates_extended_state_covariance() {
+        let model = NavClockModel::new(ProcessNoiseConfig {
+            pos_m: 1.0,
+            vel_mps: 0.5,
+            clock_bias_s: 1.0e-4,
+            clock_drift_s: 1.0e-5,
+            ztd_m: 0.25,
+        });
+        let mut x = vec![0.0_f64; 9];
+        x[3] = 3.0;
+        x[4] = 4.0;
+        x[5] = 5.0;
+        x[7] = 2.0e-4;
+        x[8] = 2.3;
+        let mut p = Matrix::identity(9);
+
+        model.propagate(&mut x, &mut p, 2.0);
+
+        assert_eq!(x[0], 6.0);
+        assert_eq!(x[1], 8.0);
+        assert_eq!(x[2], 10.0);
+        assert_eq!(x[6], 4.0e-4);
+        assert_eq!(x[8], 2.3);
+        assert_eq!(p.rows(), 9);
+        assert_eq!(p.cols(), 9);
+        assert!(p[(8, 8)] > 1.0);
+    }
+
+    #[test]
+    fn static_nav_clock_model_preserves_position_and_damps_velocity() {
+        let model = StaticNavClockModel::new(
+            ProcessNoiseConfig {
+                pos_m: 1.0,
+                vel_mps: 0.5,
+                clock_bias_s: 1.0e-4,
+                clock_drift_s: 1.0e-5,
+                ztd_m: 0.25,
+            },
+            4.0,
+        );
+        let mut x = vec![10.0_f64, 20.0, 30.0, 3.0, 4.0, 5.0, 0.0, 2.0e-4, 2.3];
+        let mut p = Matrix::identity(9);
+
+        model.propagate(&mut x, &mut p, 2.0);
+
+        assert_eq!(x[0], 10.0);
+        assert_eq!(x[1], 20.0);
+        assert_eq!(x[2], 30.0);
+        assert!(x[3].abs() < 3.0);
+        assert!(x[4].abs() < 4.0);
+        assert!(x[5].abs() < 5.0);
+        assert_eq!(x[6], 4.0e-4);
+        assert_eq!(x[8], 2.3);
+        assert_eq!(p.rows(), 9);
+        assert_eq!(p.cols(), 9);
+        assert!(p[(8, 8)] > 1.0);
+    }
+
+    #[test]
+    fn pseudorange_measurement_subtracts_satellite_clock_bias() {
+        let measurement = PseudorangeMeasurement {
+            sig: sample_sig_id(),
+            z_m: 0.0,
+            sat_pos_m: [20_200_000.0, -1_500_000.0, 21_300_000.0],
+            sat_clock_s: 240.0e-9,
+            tropo_m: 3.2,
+            iono_m: 1.4,
+            sigma_m: 2.0,
+            elevation_deg: Some(45.0),
+            ztd_index: None,
+            isb_index: None,
+        };
+        let state = [1_117_194.907, -4_842_953.615, 3_985_351.233, 0.0, 0.0, 0.0, 2.75e-4, 0.0];
+        let mut corrected = [0.0];
+        let mut zero_clock = [0.0];
+
+        measurement.h(&state, &mut corrected);
+        PseudorangeMeasurement { sat_clock_s: 0.0, ..measurement.clone() }
+            .h(&state, &mut zero_clock);
+
+        let expected_delta_m = 299_792_458.0 * measurement.sat_clock_s;
+
+        assert!((zero_clock[0] - corrected[0] - expected_delta_m).abs() < 1.0e-6);
+    }
+
+    #[test]
+    fn carrier_phase_measurement_subtracts_satellite_clock_bias() {
+        let measurement = CarrierPhaseMeasurement {
+            sig: sample_sig_id(),
+            z_cycles: 0.0,
+            sat_pos_m: [20_200_000.0, -1_500_000.0, 21_300_000.0],
+            sat_clock_s: -170.0e-9,
+            tropo_m: 2.6,
+            iono_m: 0.8,
+            wavelength_m: 0.190_293_672_798_364_87,
+            ambiguity_index: None,
+            sigma_cycles: 0.05,
+            elevation_deg: Some(45.0),
+            ztd_index: None,
+            isb_index: None,
+        };
+        let state = [1_117_194.907, -4_842_953.615, 3_985_351.233, 0.0, 0.0, 0.0, 2.75e-4, 0.0];
+        let mut corrected = [0.0];
+        let mut zero_clock = [0.0];
+
+        measurement.h(&state, &mut corrected);
+        CarrierPhaseMeasurement { sat_clock_s: 0.0, ..measurement.clone() }
+            .h(&state, &mut zero_clock);
+
+        let expected_delta_cycles =
+            299_792_458.0 * measurement.sat_clock_s / measurement.wavelength_m;
+
+        assert!((zero_clock[0] - corrected[0] - expected_delta_cycles).abs() < 1.0e-6);
+    }
+
+    #[test]
+    fn doppler_measurement_jacobian_couples_position_and_velocity() {
+        let measurement = DopplerMeasurement {
+            sig: sample_sig_id(),
+            z_hz: 0.0,
+            sat_pos_m: [20_200_000.0, -1_500_000.0, 21_300_000.0],
+            sat_vel_mps: [750.0, -1_200.0, 300.0],
+            wavelength_m: 0.190_293_672_798_364_87,
+            sigma_hz: 0.1,
+        };
+        let state = [1_117_194.907, -4_842_953.615, 3_985_351.233, 32.0, -11.0, 4.0, 2.75e-4, 0.0];
+        let mut jacobian = Matrix::new(1, 8, 0.0);
+
+        measurement.jacobian(&state, &mut jacobian);
+
+        assert!(jacobian[(0, 0)].abs() > 0.0);
+        assert!(jacobian[(0, 1)].abs() > 0.0);
+        assert!(jacobian[(0, 2)].abs() > 0.0);
+        assert!(jacobian[(0, 3)].abs() > 0.0);
+        assert!(jacobian[(0, 4)].abs() > 0.0);
+        assert!(jacobian[(0, 5)].abs() > 0.0);
+    }
+
+    #[test]
+    fn doppler_measurement_prediction_tracks_receiver_clock_drift() {
+        let measurement = DopplerMeasurement {
+            sig: sample_sig_id(),
+            z_hz: 0.0,
+            sat_pos_m: [20_200_000.0, -1_500_000.0, 21_300_000.0],
+            sat_vel_mps: [750.0, -1_200.0, 300.0],
+            wavelength_m: 0.190_293_672_798_364_87,
+            sigma_hz: 0.1,
+        };
+        let drifting_state =
+            [1_117_194.907, -4_842_953.615, 3_985_351.233, 32.0, -11.0, 4.0, 2.75e-4, 5.0e-8];
+        let mut stable_state = drifting_state;
+        stable_state[7] = 0.0;
+        let mut drifting_prediction = [0.0];
+        let mut stable_prediction = [0.0];
+
+        measurement.h(&drifting_state, &mut drifting_prediction);
+        measurement.h(&stable_state, &mut stable_prediction);
+
+        let expected_delta_hz = 299_792_458.0 * drifting_state[7] / measurement.wavelength_m;
+
+        assert!((drifting_prediction[0] - stable_prediction[0] - expected_delta_hz).abs() < 1.0e-9);
     }
 }
 
@@ -201,6 +433,13 @@ impl MeasurementModel for DopplerMeasurement {
         let dz = x[2] - self.sat_pos_m[2];
         let range = (dx * dx + dy * dy + dz * dz).sqrt().max(1.0);
         let los = [dx / range, dy / range, dz / range];
+        let rel_vel =
+            [x[3] - self.sat_vel_mps[0], x[4] - self.sat_vel_mps[1], x[5] - self.sat_vel_mps[2]];
+        let range_rate = los[0] * rel_vel[0] + los[1] * rel_vel[1] + los[2] * rel_vel[2];
+        let position_scale = -1.0 / (range * self.wavelength_m);
+        h[(0, 0)] = position_scale * (rel_vel[0] - range_rate * los[0]);
+        h[(0, 1)] = position_scale * (rel_vel[1] - range_rate * los[1]);
+        h[(0, 2)] = position_scale * (rel_vel[2] - range_rate * los[2]);
         h[(0, 3)] = -los[0] / self.wavelength_m;
         h[(0, 4)] = -los[1] / self.wavelength_m;
         h[(0, 5)] = -los[2] / self.wavelength_m;

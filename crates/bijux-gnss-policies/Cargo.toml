@@ -1,8 +1,15 @@
 [package]
 name = "bijux-gnss-policies"
-version = "0.1.0"
-edition = "2021"
-license = "Apache-2.0"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Repository-only architecture and quality policy checks for bijux-gnss"
+repository.workspace = true
+homepage.workspace = true
+readme = "README.md"
+keywords = ["bijux", "gnss", "policy", "architecture", "quality"]
+publish = false
 
 [dependencies]
 regex = { workspace = true }

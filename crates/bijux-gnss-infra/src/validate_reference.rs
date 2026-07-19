@@ -1,8 +1,7 @@
 //! Reference validation helpers for CLI integrations.
 
-use bijux_gnss_receiver::api::core::{
-    align_reference_by_time, InputError, ReferenceAlign, ValidationReferenceEpoch,
-};
+use bijux_gnss_receiver::api::core::InputError;
+use bijux_gnss_receiver::api::{align_reference_by_time, ReferenceAlign, ValidationReferenceEpoch};
 
 /// Align reference epochs to solution epochs and validate alignment.
 pub fn validate_reference(

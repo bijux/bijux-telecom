@@ -1,0 +1,27 @@
+[package]
+name = "bijux-gnss-receiver-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+license = "Apache-2.0"
+rust-version = "1.86.0"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+toml = "1.1"
+bijux-gnss-receiver = { path = "..", version = "0.1.0" }
+
+[dev-dependencies]
+bijux-gnss-policies = { path = "../../bijux-gnss-policies", version = "0.1.0" }
+
+[[bin]]
+name = "receiver_profile_toml"
+path = "fuzz_targets/receiver_profile_toml.rs"
+test = false
+doc = false
+bench = false
+
+[workspace]

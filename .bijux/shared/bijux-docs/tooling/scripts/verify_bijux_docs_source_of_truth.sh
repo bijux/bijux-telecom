@@ -43,34 +43,12 @@ compare_required() {
 
 directory_tree_sha256() {
   local target_dir="$1"
-
-  if [[ ! -d "${target_dir}" ]]; then
-    echo "ERROR: missing directory ${target_dir}" >&2
+  local digest_script="${repo_root}/${shared_prefix}/bijux-checks/scripts/directory-tree-sha256.sh"
+  if [[ ! -x "${digest_script}" ]]; then
+    echo "ERROR: missing shared directory digest tool ${digest_script}" >&2
     exit 1
   fi
-
-  local git_root=""
-  git_root="$(git -C "${target_dir}" rev-parse --show-toplevel 2>/dev/null || true)"
-  if [[ -n "${git_root}" ]]; then
-    local dir_rel=""
-    dir_rel="$(python3 -c 'from pathlib import Path; import sys; print(Path(sys.argv[2]).resolve().relative_to(Path(sys.argv[1]).resolve()).as_posix())' "${git_root}" "${target_dir}" 2>/dev/null || true)"
-    if [[ -n "${dir_rel}" ]]; then
-      (
-        cd "${git_root}"
-        git ls-files -- "${dir_rel}" | LC_ALL=C sort | while IFS= read -r file_rel; do
-          shasum -a 256 "${file_rel}" | sed "s#  ${dir_rel}/#  ./#"
-        done
-      ) | shasum -a 256 | awk '{print $1}'
-      return
-    fi
-  fi
-
-  (
-    cd "${target_dir}"
-    find . -type f -print | LC_ALL=C sort | while IFS= read -r file_rel; do
-      shasum -a 256 "${file_rel}"
-    done
-  ) | shasum -a 256 | awk '{print $1}'
+  "${digest_script}" "${target_dir}"
 }
 
 manifest_sha_for_dir() {
@@ -153,20 +131,28 @@ if [[ ! -f "${local_manifest}" ]]; then
   exit 1
 fi
 
-local_dirs=(
-  "${shared_prefix}/bijux-docs"
-  "${shared_prefix}/bijux-makes-py"
-  "${shared_prefix}/bijux-checks"
-)
-
-if [[ -d "${repo_root}/${shared_prefix}/bijux-gh" ]]; then
-  local_dirs+=("${shared_prefix}/bijux-gh")
-fi
-
-for dir_rel in "${local_dirs[@]}"; do
-  manifest_dir_rel="${dir_rel#.bijux/}"
+manifest_entry_count=0
+local_dirs=()
+while read -r _ manifest_dir_rel; do
+  [[ -n "${manifest_dir_rel}" ]] || continue
+  case "${manifest_dir_rel}" in
+    shared/*)
+      dir_rel="${shared_prefix}/${manifest_dir_rel#shared/}"
+      ;;
+    *)
+      echo "ERROR: unsupported shared manifest path: ${manifest_dir_rel}" >&2
+      exit 1
+      ;;
+  esac
+  local_dirs+=("${dir_rel}")
   verify_shared_manifest_entry "${local_manifest}" "${dir_rel}" "local repository" "${manifest_dir_rel}"
-done
+  manifest_entry_count=$((manifest_entry_count + 1))
+done <"${local_manifest}"
+
+if [[ "${manifest_entry_count}" -eq 0 ]]; then
+  echo "ERROR: shared SHA manifest is empty: ${local_manifest}" >&2
+  exit 1
+fi
 
 workspace_root="$(cd "${repo_root}/.." && pwd)"
 std_root="${BIJUX_STD_ROOT:-${workspace_root}/bijux-std}"

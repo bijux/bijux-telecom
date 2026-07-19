@@ -1,0 +1,25 @@
+[package]
+name = "bijux-gnss-dev"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Repository-only maintenance commands and evidence policy for bijux-gnss"
+repository.workspace = true
+homepage.workspace = true
+readme = "README.md"
+keywords = ["bijux", "gnss", "maintenance", "governance", "testing"]
+publish = false
+
+[dependencies]
+anyhow.workspace = true
+clap = { workspace = true, features = ["derive"] }
+regex.workspace = true
+toml.workspace = true
+
+[[bin]]
+name = "bijux-gnss-dev"
+path = "src/main.rs"
+
+[dev-dependencies]
+bijux-gnss-policies.workspace = true

@@ -1,0 +1,273 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SyntheticGnssAccuracyArtifact",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "scenario_id",
+    "pass",
+    "truth_coverage_ready",
+    "closure_ready",
+    "data_source",
+    "reference_truth",
+    "acquisition",
+    "tracking",
+    "observation",
+    "pvt",
+    "closure"
+  ],
+  "properties": {
+    "schema_version": { "type": "integer", "minimum": 1 },
+    "scenario_id": { "type": "string", "minLength": 1 },
+    "pass": { "type": "boolean" },
+    "truth_coverage_ready": { "type": "boolean" },
+    "closure_ready": { "type": "boolean" },
+    "data_source": {
+      "type": "object",
+      "required": [
+        "source_kind",
+        "sample_rate_hz",
+        "intermediate_freq_hz",
+        "duration_s",
+        "satellite_count"
+      ],
+      "properties": {
+        "source_kind": { "type": "string", "minLength": 1 },
+        "sample_rate_hz": { "type": "number", "exclusiveMinimum": 0 },
+        "intermediate_freq_hz": { "type": "number" },
+        "duration_s": { "type": "number", "exclusiveMinimum": 0 },
+        "satellite_count": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "reference_truth": {
+      "type": "object",
+      "required": [
+        "truth_kind",
+        "receiver_ecef_m",
+        "reference_receive_time_s",
+        "satellite_count",
+        "reference_epoch_count"
+      ],
+      "properties": {
+        "truth_kind": { "type": "string", "minLength": 1 },
+        "receiver_ecef_m": {
+          "type": ["array", "null"],
+          "items": { "type": "number" },
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "reference_receive_time_s": { "type": ["number", "null"] },
+        "satellite_count": { "type": "integer", "minimum": 1 },
+        "reference_epoch_count": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "acquisition": { "$ref": "#/definitions/stage_artifact_acquisition" },
+    "tracking": { "$ref": "#/definitions/stage_artifact_tracking" },
+    "observation": { "$ref": "#/definitions/stage_artifact_observation" },
+    "pvt": { "$ref": "#/definitions/stage_artifact_pvt" },
+    "closure": { "$ref": "#/definitions/closure_summary" }
+  },
+  "definitions": {
+    "stage_artifact_acquisition": {
+      "type": "object",
+      "required": ["summary", "report"],
+      "properties": {
+        "summary": {
+          "type": "object",
+          "required": [
+            "pass",
+            "truth_coverage_ready",
+            "satellite_count",
+            "passing_satellite_count",
+            "observed_max_doppler_error_hz",
+            "observed_max_code_phase_error_samples",
+            "threshold_max_doppler_error_hz",
+            "threshold_max_code_phase_error_samples"
+          ],
+          "properties": {
+            "pass": { "type": "boolean" },
+            "truth_coverage_ready": { "type": "boolean" },
+            "satellite_count": { "type": "integer", "minimum": 0 },
+            "passing_satellite_count": { "type": "integer", "minimum": 0 },
+            "observed_max_doppler_error_hz": { "type": ["number", "null"] },
+            "observed_max_code_phase_error_samples": { "type": ["integer", "null"], "minimum": 0 },
+            "threshold_max_doppler_error_hz": { "type": "number", "minimum": 0 },
+            "threshold_max_code_phase_error_samples": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "report": { "type": "object" }
+      }
+    },
+    "stage_artifact_tracking": {
+      "type": "object",
+      "required": ["summary", "report"],
+      "properties": {
+        "summary": {
+          "type": "object",
+          "required": [
+            "pass",
+            "truth_coverage_ready",
+            "satellite_count",
+            "passing_satellite_count",
+            "observed_max_carrier_error_hz",
+            "observed_max_doppler_error_hz",
+            "observed_max_code_phase_error_samples",
+            "observed_max_cn0_error_db_hz",
+            "threshold_max_carrier_error_hz",
+            "threshold_max_doppler_error_hz",
+            "threshold_max_code_phase_error_samples",
+            "threshold_max_cn0_error_db_hz"
+          ],
+          "properties": {
+            "pass": { "type": "boolean" },
+            "truth_coverage_ready": { "type": "boolean" },
+            "satellite_count": { "type": "integer", "minimum": 0 },
+            "passing_satellite_count": { "type": "integer", "minimum": 0 },
+            "observed_max_carrier_error_hz": { "type": ["number", "null"] },
+            "observed_max_doppler_error_hz": { "type": ["number", "null"] },
+            "observed_max_code_phase_error_samples": { "type": ["number", "null"] },
+            "observed_max_cn0_error_db_hz": { "type": ["number", "null"] },
+            "threshold_max_carrier_error_hz": { "type": "number", "minimum": 0 },
+            "threshold_max_doppler_error_hz": { "type": "number", "minimum": 0 },
+            "threshold_max_code_phase_error_samples": { "type": "number", "minimum": 0 },
+            "threshold_max_cn0_error_db_hz": { "type": "number", "minimum": 0 }
+          }
+        },
+        "report": { "type": "object" }
+      }
+    },
+    "stage_artifact_observation": {
+      "type": "object",
+      "required": ["summary", "report"],
+      "properties": {
+        "summary": {
+          "type": "object",
+          "required": [
+            "pass",
+            "truth_coverage_ready",
+            "satellite_count",
+            "passing_satellite_count",
+            "observed_max_pseudorange_error_m",
+            "observed_max_carrier_phase_error_cycles",
+            "observed_max_doppler_error_hz",
+            "observed_max_cn0_error_db_hz",
+            "threshold_max_pseudorange_error_m",
+            "threshold_max_carrier_phase_error_cycles",
+            "threshold_max_doppler_error_hz",
+            "threshold_max_cn0_error_db_hz"
+          ],
+          "properties": {
+            "pass": { "type": "boolean" },
+            "truth_coverage_ready": { "type": "boolean" },
+            "satellite_count": { "type": "integer", "minimum": 0 },
+            "passing_satellite_count": { "type": "integer", "minimum": 0 },
+            "observed_max_pseudorange_error_m": { "type": ["number", "null"] },
+            "observed_max_carrier_phase_error_cycles": { "type": ["number", "null"] },
+            "observed_max_doppler_error_hz": { "type": ["number", "null"] },
+            "observed_max_cn0_error_db_hz": { "type": ["number", "null"] },
+            "threshold_max_pseudorange_error_m": { "type": "number", "minimum": 0 },
+            "threshold_max_carrier_phase_error_cycles": { "type": "number", "minimum": 0 },
+            "threshold_max_doppler_error_hz": { "type": "number", "minimum": 0 },
+            "threshold_max_cn0_error_db_hz": { "type": "number", "minimum": 0 }
+          }
+        },
+        "report": { "type": "object" }
+      }
+    },
+    "stage_artifact_pvt": {
+      "type": "object",
+      "required": ["summary", "report"],
+      "properties": {
+        "summary": {
+          "type": "object",
+          "required": [
+            "pass",
+            "truth_coverage_ready",
+            "epoch_count",
+            "passing_epoch_count",
+            "observed_max_position_error_3d_m",
+            "observed_max_clock_bias_error_m",
+            "observed_max_residual_rms_m",
+            "observed_max_pdop",
+            "threshold_max_position_error_3d_m",
+            "threshold_max_clock_bias_error_m",
+            "threshold_max_residual_rms_m",
+            "threshold_max_pdop"
+          ],
+          "properties": {
+            "pass": { "type": "boolean" },
+            "truth_coverage_ready": { "type": "boolean" },
+            "epoch_count": { "type": "integer", "minimum": 0 },
+            "passing_epoch_count": { "type": "integer", "minimum": 0 },
+            "observed_max_position_error_3d_m": { "type": ["number", "null"] },
+            "observed_max_clock_bias_error_m": { "type": ["number", "null"] },
+            "observed_max_residual_rms_m": { "type": ["number", "null"] },
+            "observed_max_pdop": { "type": ["number", "null"] },
+            "threshold_max_position_error_3d_m": { "type": "number", "minimum": 0 },
+            "threshold_max_clock_bias_error_m": { "type": "number", "minimum": 0 },
+            "threshold_max_residual_rms_m": { "type": "number", "minimum": 0 },
+            "threshold_max_pdop": { "type": "number", "minimum": 0 }
+          }
+        },
+        "report": { "type": "object" }
+      }
+    },
+    "closure_summary": {
+      "type": "object",
+      "required": [
+        "pass",
+        "applicable_stage_count",
+        "passed_stage_count",
+        "not_applicable_stage_count",
+        "stages"
+      ],
+      "properties": {
+        "pass": { "type": "boolean" },
+        "applicable_stage_count": { "type": "integer", "minimum": 0 },
+        "passed_stage_count": { "type": "integer", "minimum": 0 },
+        "not_applicable_stage_count": { "type": "integer", "minimum": 0 },
+        "stages": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/definitions/closure_stage" }
+        }
+      }
+    },
+    "closure_stage": {
+      "type": "object",
+      "required": [
+        "stage",
+        "status",
+        "executed",
+        "truth_backed",
+        "evidence_count",
+        "reason"
+      ],
+      "properties": {
+        "stage": {
+          "type": "string",
+          "enum": [
+            "iq_input",
+            "acquisition",
+            "tracking",
+            "navigation_data_timing",
+            "observations",
+            "satellite_states",
+            "corrections",
+            "estimator",
+            "ambiguity_processing",
+            "integrity_decision"
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": ["passed", "failed", "not_applicable"]
+        },
+        "executed": { "type": "boolean" },
+        "truth_backed": { "type": "boolean" },
+        "evidence_count": { "type": "integer", "minimum": 0 },
+        "reason": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

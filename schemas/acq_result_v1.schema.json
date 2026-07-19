@@ -1,0 +1,150 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AcqResultV1",
+  "type": "object",
+  "required": ["header", "payload"],
+  "properties": {
+    "header": { "$ref": "#/definitions/ArtifactHeader" },
+    "payload": { "$ref": "#/definitions/AcqResult" }
+  },
+  "definitions": {
+    "ArtifactHeader": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "producer",
+        "producer_version",
+        "created_at_unix_ms",
+        "git_sha",
+        "config_hash",
+        "toolchain",
+        "features",
+        "deterministic",
+        "git_dirty"
+      ],
+      "properties": {
+        "schema_version": { "type": "integer", "const": 1 },
+        "producer": { "type": "string" },
+        "producer_version": { "type": "string" },
+        "created_at_unix_ms": { "type": "integer", "minimum": 0 },
+        "git_sha": { "type": "string" },
+        "config_hash": { "type": "string" },
+        "dataset_id": { "type": ["string", "null"] },
+        "toolchain": { "type": "string" },
+        "features": { "type": "array", "items": { "type": "string" } },
+        "deterministic": { "type": "boolean" },
+        "git_dirty": { "type": "boolean" }
+      }
+    },
+    "ReceiverSampleTrace": {
+      "type": "object",
+      "required": ["sample_index", "sample_rate_hz", "receiver_time_s"],
+      "properties": {
+        "sample_index": { "type": "integer", "minimum": 0 },
+        "sample_rate_hz": { "type": "number", "exclusiveMinimum": 0 },
+        "receiver_time_s": { "type": "number" }
+      }
+    },
+    "SatId": {
+      "type": "object",
+      "required": ["constellation", "prn"],
+      "properties": {
+        "constellation": { "type": "string" },
+        "prn": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "AcqResult": {
+      "type": "object",
+      "required": [
+        "sat",
+        "signal_band",
+        "source_time",
+        "doppler_hz",
+        "carrier_hz",
+        "code_phase_samples",
+        "peak",
+        "peak_second_ratio",
+        "hypothesis"
+      ],
+      "properties": {
+        "sat": { "$ref": "#/definitions/SatId" },
+        "signal_band": { "type": "string" },
+        "source_time": { "$ref": "#/definitions/ReceiverSampleTrace" },
+        "candidate_rank": { "type": "integer", "minimum": 1 },
+        "is_primary_candidate": { "type": "boolean" },
+        "doppler_hz": { "type": "number" },
+        "carrier_hz": { "type": "number" },
+        "doppler_refinement": {
+          "anyOf": [
+            { "$ref": "#/definitions/AcqDopplerRefinement" },
+            { "type": "null" }
+          ]
+        },
+        "code_phase_refinement": {
+          "anyOf": [
+            { "$ref": "#/definitions/AcqCodePhaseRefinement" },
+            { "type": "null" }
+          ]
+        },
+        "uncertainty": {
+          "anyOf": [
+            { "$ref": "#/definitions/AcqUncertainty" },
+            { "type": "null" }
+          ]
+        },
+        "code_phase_samples": { "type": "integer", "minimum": 0 },
+        "peak": { "type": "number" },
+        "peak_second_ratio": { "type": "number" },
+        "hypothesis": { "type": "string" }
+      }
+    },
+    "AcqDopplerRefinement": {
+      "type": "object",
+      "required": [
+        "method",
+        "coarse_carrier_hz",
+        "offset_hz",
+        "offset_bins",
+        "left_peak_mean_ratio",
+        "center_peak_mean_ratio",
+        "right_peak_mean_ratio"
+      ],
+      "properties": {
+        "method": { "type": "string" },
+        "coarse_carrier_hz": { "type": "number" },
+        "offset_hz": { "type": "number" },
+        "offset_bins": { "type": "number" },
+        "left_peak_mean_ratio": { "type": "number" },
+        "center_peak_mean_ratio": { "type": "number" },
+        "right_peak_mean_ratio": { "type": "number" }
+      }
+    },
+    "AcqCodePhaseRefinement": {
+      "type": "object",
+      "required": [
+        "method",
+        "offset_samples",
+        "refined_code_phase_samples",
+        "left_correlation_norm",
+        "center_correlation_norm",
+        "right_correlation_norm"
+      ],
+      "properties": {
+        "method": { "type": "string" },
+        "offset_samples": { "type": "number" },
+        "refined_code_phase_samples": { "type": "number" },
+        "left_correlation_norm": { "type": "number" },
+        "center_correlation_norm": { "type": "number" },
+        "right_correlation_norm": { "type": "number" }
+      }
+    },
+    "AcqUncertainty": {
+      "type": "object",
+      "required": ["doppler_hz", "code_phase_samples"],
+      "properties": {
+        "doppler_hz": { "type": "number", "minimum": 0 },
+        "code_phase_samples": { "type": "number", "minimum": 0 }
+      }
+    }
+  }
+}

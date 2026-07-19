@@ -2,6 +2,7 @@
 
 //! Receiver runtime utilities.
 
+mod acquisition_catalog;
 pub mod alloc;
 pub mod diagnostics;
 #[allow(clippy::module_inception)]
@@ -13,6 +14,8 @@ pub mod receiver_config;
 pub mod receiver_config_defaults;
 pub mod receiver_config_validation;
 pub mod runtime;
+pub(crate) mod signal_selection;
+pub mod support_matrix;
 
 #[allow(dead_code)]
 pub fn runtime_modules() -> [&'static str; 8] {

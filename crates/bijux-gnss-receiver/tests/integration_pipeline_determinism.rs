@@ -1,4 +1,6 @@
-use bijux_gnss_core::api::{Chips, Constellation, Epoch, Hertz, SatId, TrackEpoch};
+use bijux_gnss_core::api::{
+    Chips, Constellation, Epoch, Hertz, ReceiverSampleTrace, SatId, TrackEpoch,
+};
 use bijux_gnss_receiver::api::TrackingResult;
 use bijux_gnss_receiver::api::{observations_from_tracking_results, ReceiverPipelineConfig};
 
@@ -7,7 +9,11 @@ fn make_track(prn: u8, config: &ReceiverPipelineConfig) -> TrackingResult {
     let epoch = TrackEpoch {
         epoch: Epoch { index: 0 },
         sample_index: 0,
+        source_time: ReceiverSampleTrace::from_sample_index(0, config.sampling_freq_hz),
         sat,
+        signal_band: bijux_gnss_core::api::SignalBand::L1,
+        signal_code: bijux_gnss_core::api::SignalCode::Unknown,
+        glonass_frequency_channel: None,
         prompt_i: 1.0,
         prompt_q: 0.0,
         carrier_hz: Hertz(0.0),

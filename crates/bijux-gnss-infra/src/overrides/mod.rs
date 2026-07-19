@@ -1,4 +1,5 @@
-pub(crate) mod core;
+mod receiver_profile;
+mod sweep_parameters;
 
 /// Common override values from CLI.
 #[derive(Debug, Clone, Copy)]
@@ -17,7 +18,7 @@ pub fn apply_overrides(
     code_hz: Option<f64>,
     code_length: Option<usize>,
 ) {
-    core::apply_overrides(profile, sampling_hz, if_hz, code_hz, code_length);
+    receiver_profile::apply_overrides(profile, sampling_hz, if_hz, code_hz, code_length);
 }
 
 /// Apply seed/determinism overrides.
@@ -25,7 +26,7 @@ pub fn apply_common_overrides(
     profile: &mut bijux_gnss_receiver::api::ReceiverConfig,
     common: CommonOverrides,
 ) {
-    core::apply_common_overrides(profile, common);
+    receiver_profile::apply_common_overrides(profile, common);
 }
 
 /// Apply sweep parameter overrides.
@@ -34,5 +35,5 @@ pub fn apply_sweep_value(
     key: &str,
     value: &str,
 ) -> Result<(), bijux_gnss_receiver::api::core::InputError> {
-    core::apply_sweep_value(profile, key, value)
+    sweep_parameters::apply_sweep_value(profile, key, value)
 }

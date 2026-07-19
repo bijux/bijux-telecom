@@ -10,12 +10,12 @@
     "has_min_satellites": true,
     "has_ambiguity_state": true
   },
-  "claim": "scaffolding",
+  "claim": "not_ready",
   "expect": {
     "ready": false,
     "refusal_class": "incomplete_corrections",
-    "downgraded": true,
-    "status_prefix": "degraded",
-    "final_claim": "scaffolding"
+    "downgraded": false,
+    "status_prefix": "not_ready",
+    "final_claim": "not_ready"
   }
 }

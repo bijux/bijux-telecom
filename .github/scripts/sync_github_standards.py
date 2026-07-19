@@ -51,7 +51,7 @@ DEFAULT_REPOS = [
     "bijux-phylogenetics",
     "bijux-pollenomics",
     "bijux-proteomics",
-    "bijux-telecom",
+    "bijux-gnss",
     "bijux.github.io",
 ]
 
@@ -89,6 +89,23 @@ LEGACY_MANAGED_SHARED_PATHS = {
     ".bijux/shared/bijux-gh/workflows/build-release-artifacts.yml",
     ".bijux/shared/bijux-gh/workflows/release-artifacts.yml",
 }
+
+
+def repository_checkout_variable(repo_name: str) -> str:
+    suffix = "".join(character.upper() if character.isalnum() else "_" for character in repo_name)
+    return f"BIJUX_REPOSITORY_PATH_{suffix}"
+
+
+def resolve_repository_checkout(repo_name: str) -> Path:
+    variable = repository_checkout_variable(repo_name)
+    configured_path = os.environ.get(variable)
+    repo_path = Path(configured_path).expanduser().resolve() if configured_path else ROOT / repo_name
+    if not repo_path.is_dir():
+        raise FileNotFoundError(
+            f"Repository checkout for '{repo_name}' not found at {repo_path}. "
+            f"Set {variable} to its checkout path."
+        )
+    return repo_path
 
 
 def run(cmd: list[str], cwd: Path | None = None) -> str:
@@ -142,16 +159,17 @@ def inventory_entries(manifest: dict[str, Any]) -> list[dict[str, str]]:
     return manifest.get("workflow_inventory", {}).get("managed_workflows", [])
 
 
-def copy_file_mapping(source_relative: str, destination_relative: str, target_repo: str) -> None:
+def copy_file_mapping(source_relative: str, destination_relative: str, repo_dir: Path) -> None:
     source = STD_REPO / source_relative
-    destination = ROOT / target_repo / destination_relative
+    destination = repo_dir / destination_relative
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_bytes(source.read_bytes())
 
 
 def copy_repo_files(target_repo: str, repo_config: dict[str, Any], manifest: dict[str, Any]) -> None:
+    repo_dir = resolve_repository_checkout(target_repo)
     for source_relative, destination_relative in BASE_FILE_MAPPINGS:
-        copy_file_mapping(source_relative, destination_relative, target_repo)
+        copy_file_mapping(source_relative, destination_relative, repo_dir)
 
     allowlist = set(repo_config.get("workflow_allowlist", []))
     managed_runtime_paths: dict[str, str] = {}
@@ -162,13 +180,12 @@ def copy_repo_files(target_repo: str, repo_config: dict[str, Any], manifest: dic
         shared_destination = f".bijux/{source_relative}"
         runtime_destination = workflow["consumer_runtime"]
 
-        copy_file_mapping(source_relative, shared_destination, target_repo)
+        copy_file_mapping(source_relative, shared_destination, repo_dir)
         managed_shared_paths.add(shared_destination)
         managed_runtime_paths[runtime_destination] = workflow_id
         if workflow_id in allowlist:
-            copy_file_mapping(source_relative, runtime_destination, target_repo)
+            copy_file_mapping(source_relative, runtime_destination, repo_dir)
 
-    repo_dir = ROOT / target_repo
     for runtime_path, workflow_id in sorted(managed_runtime_paths.items()):
         if workflow_id in allowlist:
             continue
@@ -214,13 +231,13 @@ def copy_shared_files(target_repo: str) -> None:
 
 
 def write_std_pin(repo_name: str, std_sha: str) -> None:
-    pin_file = ROOT / repo_name / PIN_PATH
+    pin_file = resolve_repository_checkout(repo_name) / PIN_PATH
     pin_file.parent.mkdir(parents=True, exist_ok=True)
     pin_file.write_text(f"{std_sha}\n", encoding="utf-8")
 
 
 def has_changes(repo_name: str) -> bool:
-    status = run(["git", "status", "--short"], cwd=ROOT / repo_name)
+    status = run(["git", "status", "--short"], cwd=resolve_repository_checkout(repo_name))
     return bool(status)
 
 
@@ -320,7 +337,7 @@ def main() -> None:
     changed_repos: list[str] = []
 
     for repo in repos:
-        repo_dir = ROOT / repo
+        repo_dir = resolve_repository_checkout(repo)
         copy_shared_files(repo)
         subprocess.run(["python3", str(render_script), "--repo", repo], check=True)
 
@@ -352,7 +369,7 @@ def main() -> None:
         print("merge_status:")
         for repo, pr_number, pr_url in pr_records:
             result = wait_for_merge(
-                ROOT / repo,
+                resolve_repository_checkout(repo),
                 pr_number,
                 timeout_seconds=args.merge_timeout_seconds,
                 interval_seconds=args.merge_poll_interval_seconds,

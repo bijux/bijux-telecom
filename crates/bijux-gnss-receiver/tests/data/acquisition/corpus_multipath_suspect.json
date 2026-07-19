@@ -1,0 +1,45 @@
+{
+  "id": "synthetic-multipath-suspect",
+  "kind": "synthetic_multi",
+  "sat": {
+    "constellation": "Gps",
+    "prn": 7
+  },
+  "requested_sats": [
+    {
+      "constellation": "Gps",
+      "prn": 7
+    }
+  ],
+  "signals": [
+    {
+      "sat": {
+        "constellation": "Gps",
+        "prn": 7
+      },
+      "doppler_hz": 0.0,
+      "code_phase_chips": 300.0,
+      "cn0_db_hz": 46.0
+    },
+    {
+      "sat": {
+        "constellation": "Gps",
+        "prn": 7
+      },
+      "doppler_hz": 0.0,
+      "code_phase_chips": 360.0,
+      "cn0_db_hz": 42.0
+    }
+  ],
+  "doppler_hz": 0.0,
+  "code_phase_chips": 300.0,
+  "cn0_db_hz": 46.0,
+  "seed": 604455170,
+  "search_hz": 500,
+  "step_hz": 250,
+  "coherent_ms": 1,
+  "noncoherent": 1,
+  "expected_hypothesis": "ambiguous",
+  "expected_selected_reason": "multipath_suspect",
+  "expect_not_accepted": true
+}

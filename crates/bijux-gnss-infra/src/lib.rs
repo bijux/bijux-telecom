@@ -2,9 +2,8 @@
 #![deny(missing_docs)]
 #![forbid(unsafe_code)]
 
-mod artifact_tools;
+mod artifact_inspection;
 mod commands;
-mod dataset;
 mod datasets;
 mod experiments;
 mod hash;

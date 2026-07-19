@@ -14,9 +14,12 @@
 #![deny(missing_docs)]
 #![forbid(unsafe_code)]
 
+mod catalog;
 mod codes;
 mod dsp;
 mod error;
+mod obs_validation;
+mod raw_iq;
 mod samples;
 
 /// Public API surface for this crate.

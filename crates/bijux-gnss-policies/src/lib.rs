@@ -4,7 +4,7 @@
 #![deny(missing_docs)]
 #![forbid(unsafe_code)]
 
-mod internal;
+mod guardrails;
 
 /// Public API surface for this crate.
 pub mod api;

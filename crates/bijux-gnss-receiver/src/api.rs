@@ -1,10 +1,18 @@
 //! Public API for bijux-gnss-receiver.
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
+pub use crate::engine::receiver_config::navigation::{
+    ConstellationSelectionPolicy, NavigationMotionClass, NavigationWeightingMode,
+};
 /// Receiver configuration and schema.
-pub use crate::engine::receiver_config::{ReceiverConfig, ReceiverError, ReceiverPipelineConfig};
+pub use crate::engine::receiver_config::{
+    AcquisitionThresholdMode, AcquisitionThresholdPolicyConfig, ReceiverConfig, ReceiverError,
+    ReceiverPipelineConfig,
+};
 /// Receiver runtime options (side-effectful controls).
-pub use crate::engine::runtime::{ReceiverRuntime, ReceiverRuntimeConfig};
+pub use crate::engine::runtime::{
+    Metric, MetricsSink, NullLogger, ReceiverRuntime, ReceiverRuntimeConfig, TraceRecord, TraceSink,
+};
 
 /// I/O helpers.
 pub use crate::io::data::{FileSamples, MemorySamples, SampleSourceError};
@@ -16,6 +24,12 @@ pub use bijux_gnss_core::api as core;
 /// Re-export signal API for downstream crates.
 pub use bijux_gnss_signal::api as signal;
 
+#[cfg(feature = "nav")]
+#[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
+pub use crate::reference_validation::{
+    align_reference_by_time, check_solution_consistency, reference_compare, reference_ecef,
+    ReferenceAlign, ReferenceCompareStats, SolutionConsistencyReport, ValidationReferenceEpoch,
+};
 /// Re-export nav API for downstream crates.
 #[cfg(feature = "nav")]
 #[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
@@ -29,94 +43,186 @@ pub use crate::ports::{ArtifactSink, SampleSource};
 
 /// Acquisition engine.
 pub use crate::pipeline::acquisition::Acquisition as AcquisitionEngine;
+/// Acquisition assistance helpers.
+pub use crate::pipeline::acquisition_assistance::{
+    build_common_oscillator_bias_follow_up_requests, estimate_common_oscillator_bias,
+    resolve_acquisition_search_bounds, CommonOscillatorBiasEstimate,
+    CommonOscillatorBiasFollowUpRequest, CommonOscillatorBiasSignalEstimate,
+    ResolvedAcquisitionSearchBounds,
+};
+/// Carrier/Doppler conversion helpers.
+pub use crate::pipeline::doppler::{carrier_hz_from_doppler_hz, doppler_hz_from_carrier_hz};
 /// Navigation engine and helpers.
 #[cfg(feature = "nav")]
 #[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
-pub use crate::pipeline::navigation::{EkfState, Navigation, NavigationEngine};
+pub use crate::pipeline::navigation::Navigation;
+/// Filtered navigation execution helpers.
+#[cfg(feature = "nav")]
+#[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
+pub use crate::pipeline::navigation_filter::NavigationFilter;
+/// Carrier-smoothed code validation helpers.
+pub use crate::pipeline::observation_validation::{
+    summarize_carrier_smoothed_code, validate_carrier_smoothed_code,
+    validate_carrier_smoothed_code_from_artifacts, CarrierSmoothedCodeValidationReport,
+};
 /// Observation-building helpers.
 pub use crate::pipeline::observations::{
-    observations_from_tracking, observations_from_tracking_results,
+    observation_artifacts_from_tracking_results,
+    observation_artifacts_from_tracking_results_with_gps_anchor,
+    observation_measurement_quality_from_tracking_results,
+    observation_measurement_quality_from_tracking_results_with_gps_anchor,
+    observation_residuals_from_tracking_results,
+    observation_residuals_from_tracking_results_with_gps_anchor, observations_from_tracking,
+    observations_from_tracking_results, observations_from_tracking_results_with_gps_anchor,
+    ObservationMeasurementQualityEpochReport, ObservationMeasurementQualitySatellite,
+    ObservationPipelineArtifacts, ObservationResidualEpochReport, ObservationResidualSatellite,
+    ObservationResidualValue,
 };
 /// Tracking engine and related types.
 pub use crate::pipeline::tracking::{
-    Channel, ChannelEvent, ChannelState, CorrelatorOutput, Tracking as TrackingEngine,
-    TrackingResult,
+    Channel, ChannelEvent, ChannelState, CorrelatorOutput, TrackEpochRequest,
+    Tracking as TrackingEngine, TrackingArtifacts, TrackingChannelState, TrackingChannelStateEvent,
+    TrackingChannelStateReport, TrackingCorrelationRequest, TrackingResult, TrackingSession,
 };
 /// Pipeline step report helpers.
 pub use crate::pipeline::{StepReport, StepStats};
+#[cfg(feature = "nav")]
+#[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
+pub use bijux_gnss_nav::api::NavigationFilterThresholds;
+/// Navigation engine and helpers.
+#[cfg(feature = "nav")]
+#[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
+pub use bijux_gnss_nav::api::{EkfState, NavigationEngine};
 
-/// RTK differencing and baseline helpers.
 #[cfg(feature = "nav")]
 #[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
-pub use crate::rtk::ambiguity::{
-    decorrelate_lambda, float_from_state, ratio_from_candidates, ratio_test,
-    search_integer_candidates, select_partial_fix, AmbiguityFixResult, AmbiguityManager,
-    DecorrelatedAmbiguities, FixAuditEvent, FixPolicy, FixState, FloatAmbiguitySolution,
-    IntegerCandidate, NaiveFixer,
+pub use bijux_gnss_nav::api::{
+    formal_protection_levels, PositionProtectionLevels, RaimFaultDetection,
+    RaimFaultDetectionStatus, RaimFaultExclusion, RaimFaultHypothesis, RaimSolutionSeparationCheck,
+    RaimSolutionSeparationSubset,
 };
-#[cfg(feature = "nav")]
-#[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
-pub use crate::rtk::core::{
-    build_dd, build_dd_per_constellation, build_sd, choose_ref_sat,
-    choose_ref_sat_per_constellation, dd_covariance, innovation_diagnostics, los_unit,
-    solve_baseline_dd, AlignmentDiagnostic, AlignmentReport, BaselineConfig, DdCovarianceModel,
-    DdObservation, EpochAligner, RefSatPolicy, RefSatSelector, SdObservation, SolutionSeparation,
-};
-#[cfg(feature = "nav")]
-#[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
-pub use crate::rtk::differencing::{double_difference, single_difference};
-#[cfg(feature = "nav")]
-#[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
-pub use crate::rtk::metrics::{
-    apply_fix_hold, baseline_from_ecef, dd_residual_metrics, enu_to_ecef, jitter_summary,
-    solution_separation, BaselineSolution, JitterSummary, RtkBaselineQuality, RtkPrecision,
-};
-#[cfg(feature = "nav")]
-#[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
-pub use crate::rtk::status::{
-    apply_downgrade_policy, evaluate_prerequisites, support_status_matrix, AdvancedMaturity,
-    AdvancedMode, AdvancedPrereqDecision, AdvancedPrerequisites, AdvancedRefusalClass,
-    AdvancedSolutionArtifact, AdvancedSolutionClaim, AdvancedSolutionProvenance,
-    AdvancedSupportMatrix, AdvancedSupportRow, AmbiguityStateArtifact, CorrectionInputArtifact,
-    ADVANCED_SUPPORT_MATRIX_VERSION,
-};
+
 #[cfg(feature = "nav")]
 #[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
 pub use bijux_gnss_core::api::rtk::{
     RtkBaselineEpochV1, RtkBaselineQualityV1, RtkDdEpochV1, RtkFixAuditV1, RtkPrecisionV1,
     RtkSdEpochV1,
 };
+#[cfg(feature = "nav")]
+#[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
+pub use bijux_gnss_nav::api::{
+    apply_downgrade_policy, evaluate_prerequisites, evaluate_solution_evidence,
+    support_status_matrix, AdvancedClaimDecision, AdvancedMaturity, AdvancedMode,
+    AdvancedPrereqDecision, AdvancedPrerequisites, AdvancedRefusalClass, AdvancedSolutionArtifact,
+    AdvancedSolutionClaim, AdvancedSolutionEvidence, AdvancedSolutionMeasurements,
+    AdvancedSolutionProvenance, AdvancedSupportMatrix, AdvancedSupportRow, AmbiguityStateArtifact,
+    CorrectionInputArtifact, ExecutionArtifact, ExecutionStatus, ADVANCED_SUPPORT_MATRIX_VERSION,
+};
+#[cfg(feature = "nav")]
+#[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
+pub use bijux_gnss_nav::api::{
+    apply_fix_hold, baseline_from_ecef, dd_residual_metrics, double_difference, enu_to_ecef,
+    evaluate_rtk_fixed_baseline_guard, jitter_summary, sd_residual_metrics, single_difference,
+    solution_separation, BaselineSolution, JitterSummary, RtkBaselineQuality,
+    RtkFixedBaselineGuardDecision, RtkFixedBaselineGuardPolicy, RtkPrecision,
+};
+#[cfg(feature = "nav")]
+#[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
+pub use bijux_gnss_nav::api::{
+    build_dd, build_dd_per_constellation, build_sd, build_sd_with_alignment_tolerance,
+    choose_ref_sat, choose_ref_sat_per_constellation, dd_covariance, innovation_diagnostics,
+    los_unit, solve_baseline_dd, solve_baseline_dd_with_satellite_states, solve_float_baseline_dd,
+    solve_float_baseline_dd_with_satellite_states, AlignmentDiagnostic, AlignmentReport,
+    BaselineConfig, DdCovarianceModel, DdObservation, EpochAligner, RefSatPolicy, RefSatSelector,
+    SdObservation, SolutionSeparation,
+};
+/// RTK differencing and baseline helpers.
+#[cfg(feature = "nav")]
+#[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
+pub use bijux_gnss_nav::api::{
+    rtk_ambiguity_state_from_fixed_solution, rtk_apply_ambiguity_fix_lifecycle,
+    rtk_apply_glonass_inter_frequency_bias_calibrations, rtk_candidate_ratio,
+    rtk_conditioned_baseline_from_fix_result, rtk_conditioned_baseline_from_fixed_ambiguities,
+    rtk_double_difference_code_covariance_matrix, rtk_double_difference_doppler_covariance_matrix,
+    rtk_double_difference_phase_covariance_matrix, rtk_fixed_ambiguity_hold_from_fix_result,
+    rtk_float_ambiguity_state_from_baseline_solution,
+    rtk_float_ambiguity_state_from_baseline_solution_with_bias_evidence,
+    rtk_float_ambiguity_state_from_filter_state,
+    rtk_float_baseline_reference_signals_by_constellation,
+    rtk_glonass_inter_frequency_bias_is_integer_compatible, rtk_integer_ambiguity_candidates,
+    rtk_lambda_decorrelate, rtk_lambda_integer_ambiguity_candidates,
+    rtk_monitor_fixed_ambiguity_hold, rtk_ratio_test_acceptance, rtk_select_partial_ambiguity_fix,
+    rtk_select_partial_ambiguity_fix_with_evidence, rtk_single_difference_code_covariance_matrix,
+    rtk_single_difference_doppler_covariance_matrix, rtk_single_difference_phase_covariance_matrix,
+    rtk_single_differences_from_aligned_obs_epochs_with_covariance,
+    rtk_switch_double_difference_reference, rtk_transform_fixed_ambiguity_reference,
+    rtk_transform_float_ambiguity_reference, rtk_transform_float_baseline_reference,
+    RtkAmbiguityFixAudit, RtkAmbiguityFixPolicy, RtkAmbiguityFixResult, RtkAmbiguityFixState,
+    RtkAmbiguityFixStatus, RtkAmbiguityHoldAction, RtkAmbiguityHoldMonitor, RtkAmbiguityHoldPolicy,
+    RtkAmbiguityHoldState, RtkAmbiguityHoldUpdate, RtkAmbiguityTracker,
+    RtkAppliedAmbiguityBaseline, RtkConditionedBaselineSolution, RtkConstellationTimeScale,
+    RtkDecorrelatedAmbiguityState, RtkDifferencedCovarianceConfig, RtkDoubleDifferenceAmbiguityId,
+    RtkDoubleDifferenceCovarianceEvidence, RtkDoubleDifferenceObservation,
+    RtkDoubleDifferenceSatelliteStates, RtkEpochAlignmentEvidence, RtkFixedAmbiguityHold,
+    RtkFloatAmbiguityState, RtkGlonassInterFrequencyBiasCalibration,
+    RtkGlonassInterFrequencyBiasEvidence, RtkGlonassInterFrequencyBiasStatus,
+    RtkIntegerAmbiguityCandidate, RtkPartialAmbiguitySelection,
+    RtkPartialAmbiguitySelectionCriterion, RtkRatioTestFixer, RtkSatelliteStateEvidence,
+    RtkSingleDifferenceCovarianceEvidence, RtkSingleDifferenceObservation,
+    RtkSourceObservationVariance, RTK_EPOCH_ALIGNMENT_TOLERANCE_S,
+};
+#[cfg(feature = "nav")]
+#[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
+pub use bijux_gnss_nav::api::{RtkFloatAmbiguityEstimate, RtkFloatBaselineSolution};
 
-/// Synthetic signal generation for tests and demos.
+/// Synthetic signal generation and canonical scenario execution for tests, validation, and demos.
 #[cfg(feature = "nav")]
 #[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
 pub use crate::sim::synthetic as sim;
 
+#[cfg(feature = "nav")]
+#[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
+pub use crate::covariance_realism::{
+    CovarianceCoverageClass, CovarianceCoverageRate, CovarianceRealismReport,
+};
 /// Validation report helpers.
 #[cfg(feature = "nav")]
 #[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
 pub use crate::validation_report::{
-    build_validation_report, check_time_consistency, ConvergenceReport, DiagnosticPartitionReport,
-    FixTimelineEntry, NavIntegrityClass, NavIntegrityReport, NavResidualReport, PppReadinessReport,
-    TimeConsistencyReport, ValidationAssumptionReport, ValidationBudgets, ValidationErrorStats,
-    ValidationReport, ValidationSciencePolicy,
+    build_validation_report, build_validation_report_from_observation_artifacts,
+    build_validation_report_from_observation_artifacts_with_budgets,
+    build_validation_report_with_budgets, check_time_consistency, ConvergenceReport,
+    DiagnosticPartitionReport, FixTimelineEntry, NavConstellationResidualReport, NavIntegrityClass,
+    NavIntegrityReport, NavResidualReport, PppReadinessReport, ProtectionLevelValidationReport,
+    ReferencePositionErrorEpoch, TimeConsistencyReport, ValidationAssumptionReport,
+    ValidationBudgets, ValidationErrorStats, ValidationReport, ValidationSciencePolicy,
 };
 
 /// Artifacts produced by a receiver pipeline run.
 #[derive(Debug, Default, Clone)]
 pub struct RunArtifacts {
+    /// Total complex samples consumed from the input source.
+    pub processed_input_samples: u64,
+    /// Total code-period epochs consumed from the input source.
+    pub processed_input_epochs: u64,
     /// Acquisition candidates captured during the run.
     pub acquisitions: Vec<bijux_gnss_core::api::AcqResult>,
     /// Acquisition explain artifacts captured during the run.
     pub acquisition_explain: Vec<bijux_gnss_core::api::AcqExplain>,
     /// Track transition artifacts captured during the run.
     pub track_transitions: Vec<bijux_gnss_core::api::TrackTransition>,
+    /// Per-channel tracking state reports captured during the run.
+    pub channel_state_reports: Vec<TrackingChannelStateReport>,
     /// Tracking reports captured during the run.
     pub tracking: Vec<TrackingResult>,
     /// Observation decision artifacts captured during the run.
     pub observation_decisions: Vec<bijux_gnss_core::api::ObsDecisionArtifact>,
     /// Observation epochs captured during the run.
     pub observations: Vec<bijux_gnss_core::api::ObsEpoch>,
+    /// Observation residual reports captured during the run.
+    pub observation_residuals: Vec<ObservationResidualEpochReport>,
+    /// Per-signal observation measurement quality reports captured during the run.
+    pub observation_measurement_quality: Vec<ObservationMeasurementQualityEpochReport>,
     /// Signal support matrix artifact.
     pub support_matrix: Option<bijux_gnss_core::api::SupportMatrix>,
     /// Navigation solution epochs captured during the run.

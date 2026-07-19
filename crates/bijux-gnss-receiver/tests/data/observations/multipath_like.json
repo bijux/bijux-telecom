@@ -11,7 +11,13 @@
       "prompt_i": 1.0,
       "prompt_q": 0.0,
       "carrier_hz": 0.0,
-      "lock_state": "tracking"
+      "lock_state": "tracking",
+      "tracking_uncertainty": {
+        "code_phase_samples": 0.18,
+        "carrier_phase_cycles": 0.06,
+        "doppler_hz": 1.2,
+        "cn0_dbhz": 0.5
+      }
     },
     {
       "sat_prn": 3,
@@ -23,7 +29,13 @@
       "prompt_i": 0.0,
       "prompt_q": 1.0,
       "carrier_hz": 0.0,
-      "lock_state": "tracking"
+      "lock_state": "tracking",
+      "tracking_uncertainty": {
+        "code_phase_samples": 0.18,
+        "carrier_phase_cycles": 0.06,
+        "doppler_hz": 1.2,
+        "cn0_dbhz": 0.5
+      }
     },
     {
       "sat_prn": 3,
@@ -35,18 +47,24 @@
       "prompt_i": -1.0,
       "prompt_q": 0.0,
       "carrier_hz": 0.0,
-      "lock_state": "tracking"
+      "lock_state": "tracking",
+      "tracking_uncertainty": {
+        "code_phase_samples": 0.18,
+        "carrier_phase_cycles": 0.06,
+        "doppler_hz": 1.2,
+        "cn0_dbhz": 0.5
+      }
     }
   ],
   "expect": {
     "decisions": [
-      { "epoch_idx": 0, "decision": "accepted" },
-      { "epoch_idx": 1, "decision": "accepted" },
-      { "epoch_idx": 2, "decision": "accepted" }
+      { "epoch_idx": 0, "decision": "rejected" },
+      { "epoch_idx": 1, "decision": "rejected" },
+      { "epoch_idx": 2, "decision": "rejected" }
     ],
-    "support_classes": ["supported"],
+    "support_classes": ["degraded", "unsupported"],
     "uncertainty_classes": ["medium"],
     "min_rejected": 0,
-    "multipath_any": true
+    "multipath_any": false
   }
 }

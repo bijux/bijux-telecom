@@ -1,14 +1,10 @@
 //! Public API for bijux-gnss-core.
 
-pub use crate::artifact::v1::acq::AcqResultV1;
-pub use crate::artifact::v1::acq_explain::AcqExplainV1;
-pub use crate::artifact::v1::nav::NavSolutionEpochV1;
-pub use crate::artifact::v1::obs::ObsEpochV1;
-pub use crate::artifact::v1::obs_decision::ObsDecisionV1;
+pub use crate::artifact::v1::acquisition::{AcqExplainV1, AcqResultV1};
+pub use crate::artifact::v1::navigation::{ppp, rtk, NavSolutionEpochV1};
+pub use crate::artifact::v1::observation::{ObsDecisionV1, ObsEpochV1};
 pub use crate::artifact::v1::support_matrix::SupportMatrixV1;
-pub use crate::artifact::v1::track::TrackEpochV1;
-pub use crate::artifact::v1::track_transition::TrackTransitionV1;
-pub use crate::artifact::v1::{ppp, rtk};
+pub use crate::artifact::v1::tracking::{TrackEpochV1, TrackTransitionV1};
 /// Artifact headers and versioned payloads.
 pub use crate::artifact::{
     convert_v1_to_v2, ArtifactHeaderV1, ArtifactKind, ArtifactPayloadValidate, ArtifactReadPolicy,
@@ -38,41 +34,64 @@ pub use crate::geo::{
 };
 /// Identity types and signal definitions.
 pub use crate::ids::{
-    format_sat, prns_to_sats, signal_registry, signal_spec_gps_l1_ca, signal_spec_gps_l2_py,
-    sort_obs_sats, sort_sat_ids, sort_sig_ids, Constellation, FreqHz, SatId, SigId, SignalBand,
-    SignalCode, SignalRegistryEntry, SignalSpec, BEIDOU_B1_CARRIER_HZ, BEIDOU_B2_CARRIER_HZ,
-    GALILEO_E1_CARRIER_HZ, GALILEO_E5_CARRIER_HZ, GLONASS_L1_CARRIER_HZ, GPS_L1_CA_CARRIER_HZ,
-    GPS_L2_PY_CARRIER_HZ, GPS_L5_CARRIER_HZ,
+    default_signal_band_for_constellation, format_sat, glonass_slot_from_sat, glonass_slot_sat,
+    prns_to_sats, sort_obs_sats, sort_sat_ids, sort_sig_ids, Constellation, FreqHz,
+    GlonassFrequencyChannel, GlonassL1FdmaSignal, GlonassSlot, SatId, SigId, SignalBand,
+    SignalCode, SignalComponentRole, SignalComponentSpec, SignalRegistryEntry,
+    SignalSecondaryCodeSpec, SignalSpec, SignalSubcarrierSpec, BEIDOU_B1_CARRIER_HZ,
+    BEIDOU_B2_CARRIER_HZ, GALILEO_E1_CARRIER_HZ, GALILEO_E5A_CARRIER_HZ, GALILEO_E5B_CARRIER_HZ,
+    GALILEO_E5_CARRIER_HZ, GLONASS_L1_CARRIER_HZ, GLONASS_L1_CHANNEL_SPACING_HZ,
+    GPS_L1_CA_CARRIER_HZ, GPS_L2C_CARRIER_HZ, GPS_L2_PY_CARRIER_HZ, GPS_L5_CARRIER_HZ,
+};
+pub use crate::nav_solution::{
+    InterSystemBias, NavConstellationResidualRms, NavResidual, NavSolutionEpoch,
 };
 /// Observation and tracking contracts.
-pub use crate::obs::{
-    acq_result_stability_key, check_inter_frequency_alignment, obs_epoch_stability_key,
-    stable_acq_result_keys, validate_obs_epochs, AcqAssumptions, AcqEvidence, AcqExplain,
-    AcqExplainCandidate, AcqHypothesis, AcqRequest, AcqResult, AcqThresholdProvenance, AmbiguityId,
-    AmbiguityState, AmbiguityStatus, BandLagEvent, DoubleDifference, InterFrequencyAlignmentReport,
-    InterSystemBias, LockFlags, MeasurementErrorModel, MeasurementRejectReason, NavAssumptions,
-    NavHealthEvent, NavLifecycleState, NavProvenance, NavQualityFlag, NavRefusalClass, NavResidual,
-    NavSolutionEpoch, NavUncertaintyClass, ObsDecisionArtifact, ObsEpoch, ObsEpochManifest,
-    ObsMetadata, ObsSatellite, ObservationEpochDecision, ObservationStatus,
-    ObservationSupportClass, ObservationUncertaintyClass, ReceiverRole, Sample, SamplesFrame,
-    SatObservationDecision, SignalSupportRow, SingleDifference, SolutionStatus, SolutionValidity,
-    SupportMatrix, SupportStatus, TrackEpoch, TrackTransition, TrackingAssumptions,
-    TrackingLifecycleState, NAV_OUTPUT_STABILITY_SIGNATURE_VERSION, NAV_SOLUTION_MODEL_VERSION,
+pub use crate::observation::acquisition::{
+    acq_result_stability_key, stable_acq_result_keys, trackable_acq_tracking_seeds,
+    AcqAssistanceBounds, AcqAssumptions, AcqCodePhaseRefinement, AcqComponentCombinationMode,
+    AcqComponentProvenance, AcqComponentStatistic, AcqDopplerRefinement, AcqEvidence, AcqExplain,
+    AcqExplainCandidate, AcqHypothesis, AcqRequest, AcqResult, AcqSearchSummary,
+    AcqThresholdProvenance, AcqTrackingSeed, AcqUncertainty, AcqUncertaintyCovariance,
+};
+pub use crate::observation::differencing::{
+    AmbiguityId, AmbiguityState, AmbiguityStatus, DoubleDifference, SingleDifference,
+};
+pub use crate::observation::epochs::{
+    obs_epoch_stability_key, ObsDecisionArtifact, ObsEpoch, ObsEpochManifest,
+    ObservationEpochDecision, ObservationStatus, ObservationSupportClass,
+    ObservationUncertaintyClass, ReceiverRole, Sample, SamplesFrame, SatObservationDecision,
+};
+pub use crate::observation::navigation::{
+    MeasurementRejectReason, NavAssumptions, NavHealthEvent, NavLifecycleState, NavProvenance,
+    NavQualityFlag, NavRefusalClass, NavUncertaintyClass, SolutionStatus, SolutionValidity,
+    NAV_OUTPUT_STABILITY_SIGNATURE_VERSION, NAV_SOLUTION_MODEL_VERSION,
+};
+pub use crate::observation::tracking::{
+    TrackEpoch, TrackTransition, TrackingAssumptions, TrackingLifecycleState, TrackingTransmitTime,
+    TrackingUncertainty,
+};
+pub use crate::observation::{
+    SignalDelayAlignment, OBSERVATION_DOPPLER_MODEL_TRACKED_CARRIER_IF_OFFSET,
     OBSERVATION_DOWNSTREAM_PROFILE_VERSION, OBSERVATION_MODEL_VERSION,
     TRACKING_STATE_MODEL_VERSION,
 };
+pub use crate::observation_quality::{
+    CarrierPhaseArc, CodeCarrierDivergence, CycleSlipDecisionEvidence, CycleSlipDetector,
+    CycleSlipDetectorEvidence, LockFlags, MeasurementErrorModel, ObsMetadata, ObsSatellite,
+    ObsSignalTiming, ObservationCovarianceStatus, ObservationMeasurementCovariance,
+};
+pub use crate::support_matrix::{
+    SignalStageSupport, SignalSupportRow, SupportMatrix, SupportStatus,
+};
 /// Engine boundary nav epoch alias.
 pub type NavEpoch = NavSolutionEpoch;
-/// Reference validation helpers.
-pub use crate::reference_validation::{
-    align_reference_by_time, check_solution_consistency, reference_compare, reference_ecef,
-    ReferenceAlign, ReferenceCompareStats, SolutionConsistencyReport, ValidationReferenceEpoch,
-};
 /// Statistical summaries.
 pub use crate::stats::{lla_to_ecef, stats, StatsSummary};
 /// Time and epoch structures.
 pub use crate::time::{
-    Epoch, GpsTime, LeapSecondEntry, LeapSeconds, SampleClock, SampleTime, TaiTime, UtcTime,
+    gps_to_utc, utc_to_gps, Epoch, GpsTime, LeapSecondEntry, LeapSeconds, ReceiverSampleTrace,
+    SampleClock, SampleTime, TaiTime, UtcTime,
 };
 /// Strong units for physical quantities.
 pub use crate::units::{

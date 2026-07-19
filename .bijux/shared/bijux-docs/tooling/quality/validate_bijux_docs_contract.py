@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 import yaml
 from pathlib import Path
 import sys
@@ -10,11 +11,12 @@ import sys
 CANONICAL_HUB_KEYS = (
     "bijux",
     "bijux-core",
+    "bijux-canon",
+    "bijux-atlas",
     "bijux-proteomics",
     "bijux-pollenomics",
     "bijux-phylogenetics",
-    "bijux-canon",
-    "bijux-atlas",
+    "bijux-gnss",
     "bijux-masterclass",
 )
 MERMAID_SCRIPTS = (
@@ -67,7 +69,7 @@ def validate_hub_links(hub_links: list[dict], config_name: str) -> None:
     canonical_positions = [CANONICAL_HUB_KEYS.index(key) for key in keys if key in CANONICAL_HUB_KEYS]
     require(
         canonical_positions == sorted(canonical_positions),
-        f"{config_name}: hub_links canonical repositories must appear in Bijux/Core/Proteomics/Pollenomics/Phylogenetics/Canon/Atlas/Masterclass order",
+        f"{config_name}: hub_links canonical repositories must appear in Bijux/Core/Canon/Atlas/Proteomics/Pollenomics/Phylogenetics/GNSS/Masterclass order",
     )
 
 
@@ -108,33 +110,71 @@ def validate_mermaid_contract(config: dict, config_name: str) -> None:
         )
 
 
-def validate_contract(config: dict, config_name: str) -> None:
+def shared_docs_root(repo_root: Path) -> Path:
+    local_root = repo_root / "shared/bijux-docs"
+    if local_root.is_dir():
+        return local_root
+    return repo_root / ".bijux/shared/bijux-docs"
+
+
+def load_canonical_hub_links(repo_root: Path) -> list[dict]:
+    path = shared_docs_root(repo_root) / "config/hub-links.json"
+    links = json.loads(path.read_text(encoding="utf-8"))
+    require(isinstance(links, list) and links, f"{path}: expected a non-empty list")
+    validate_hub_links(links, str(path))
+    require(
+        tuple(link["key"] for link in links) == CANONICAL_HUB_KEYS,
+        f"{path}: hub link keys must exactly match the canonical Bijux repository order",
+    )
+    return links
+
+
+def validate_root_contract(config: dict, config_name: str) -> None:
     extra = config.get("extra") or {}
     bijux = extra.get("bijux") or {}
 
     require(isinstance(bijux, dict), f"{config_name}: extra.bijux must be a mapping")
     require(bool(bijux.get("repository")), f"{config_name}: extra.bijux.repository is required")
-    require(bijux.get("nav_mode") == "default", f"{config_name}: extra.bijux.nav_mode must be 'default'")
-    require(bijux.get("theme_key") == "bijux:theme", f"{config_name}: extra.bijux.theme_key must be 'bijux:theme'")
+    require(
+        "hub_links" not in bijux,
+        f"{config_name}: extra.bijux.hub_links must be inherited from mkdocs.shared.yml",
+    )
+    if "nav_mode" in bijux:
+        require(bijux["nav_mode"] == "default", f"{config_name}: extra.bijux.nav_mode must be 'default'")
+    if "theme_key" in bijux:
+        require(bijux["theme_key"] == "bijux:theme", f"{config_name}: extra.bijux.theme_key must be 'bijux:theme'")
 
-    hub_links = bijux.get("hub_links")
-    require(isinstance(hub_links, list) and hub_links, f"{config_name}: extra.bijux.hub_links must be a non-empty list")
-    validate_hub_links(hub_links, config_name)
+
+def validate_shared_contract(
+    config: dict,
+    canonical_hub_links: list[dict],
+    config_name: str,
+) -> None:
+    shared_bijux = (config.get("extra") or {}).get("bijux") or {}
+    require(
+        shared_bijux.get("nav_mode") == "default",
+        f"{config_name}: extra.bijux.nav_mode must be 'default'",
+    )
+    require(
+        shared_bijux.get("theme_key") == "bijux:theme",
+        f"{config_name}: extra.bijux.theme_key must be 'bijux:theme'",
+    )
+    require(
+        shared_bijux.get("hub_links") == canonical_hub_links,
+        f"{config_name}: extra.bijux.hub_links must exactly match the canonical shared hub",
+    )
+    validate_mermaid_contract(config, config_name)
 
 
 if __name__ == "__main__":
     repo_root = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path.cwd()
     shared_cfg = load_yaml(repo_root / "mkdocs.shared.yml")
     root_cfg = load_yaml(repo_root / "mkdocs.yml")
+    canonical_hub_links = load_canonical_hub_links(repo_root)
 
-    # Shared config must define baseline bijux contract keys.
-    shared_bijux = (shared_cfg.get("extra") or {}).get("bijux") or {}
-    require(bool(shared_bijux.get("repository")), "mkdocs.shared.yml: extra.bijux.repository is required")
-    require(shared_bijux.get("nav_mode") == "default", "mkdocs.shared.yml: extra.bijux.nav_mode must be 'default'")
-    require(shared_bijux.get("theme_key") == "bijux:theme", "mkdocs.shared.yml: extra.bijux.theme_key must be 'bijux:theme'")
-    validate_mermaid_contract(shared_cfg, "mkdocs.shared.yml")
+    # Shared config defines shell policy; root config defines project identity.
+    validate_shared_contract(shared_cfg, canonical_hub_links, "mkdocs.shared.yml")
 
-    # Root config must provide project-level values, including hub links.
-    validate_contract(root_cfg, "mkdocs.yml")
+    validate_root_contract(root_cfg, "mkdocs.yml")
 
     print("Bijux docs contract validation passed")

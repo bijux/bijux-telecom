@@ -1,13 +1,14 @@
 #![allow(missing_docs)]
 use bijux_gnss_core::api::{
-    Constellation, LockFlags, ObsEpoch, ObsMetadata, ObsSatellite, ReceiverRole, SatId, SigId,
-    SignalBand, SignalSpec,
+    Constellation, LockFlags, ObsEpoch, ObsMetadata, ObsSatellite, ReceiverRole,
+    ReceiverSampleTrace, SatId, SigId, SignalBand, SignalSpec,
 };
 use bijux_gnss_nav::api::{
     geodetic_to_ecef, sat_state_gps_l1ca, GpsEphemeris, PositionObservation, PositionSolver,
 };
 use bijux_gnss_receiver::api::{
     baseline_from_ecef, build_dd, build_sd, choose_ref_sat, solution_separation, solve_baseline_dd,
+    solve_float_baseline_dd,
 };
 
 fn make_eph(prn: u8, omega0: f64, m0: f64) -> GpsEphemeris {
@@ -16,6 +17,8 @@ fn make_eph(prn: u8, omega0: f64, m0: f64) -> GpsEphemeris {
         iodc: 0,
         iode: 0,
         week: 0,
+        sv_health: 0,
+        sv_accuracy: Some(2),
         toe_s: 0.0,
         toc_s: 0.0,
         sqrt_a: 5153.7954775,
@@ -62,7 +65,7 @@ fn make_obs_epoch(
                     code: bijux_gnss_core::api::SignalCode::Ca,
                 },
                 pseudorange_m: bijux_gnss_core::api::Meters(
-                    range + 299_792_458.0 * (0.0 - sat.clock_bias_s),
+                    range + 299_792_458.0 * (0.0 - sat.clock_correction.bias_s),
                 ),
                 pseudorange_var_m2: 4.0,
                 carrier_phase_cycles: bijux_gnss_core::api::Cycles(range / lambda_m),
@@ -82,6 +85,7 @@ fn make_obs_epoch(
                 elevation_deg: None,
                 azimuth_deg: None,
                 weight: None,
+                timing: None,
                 error_model: None,
                 metadata: ObsMetadata {
                     tracking_mode: "synthetic".to_string(),
@@ -104,6 +108,7 @@ fn make_obs_epoch(
         .collect();
     ObsEpoch {
         t_rx_s: bijux_gnss_core::api::Seconds(t_rx_s),
+        source_time: ReceiverSampleTrace::from_sample_index((t_rx_s * 1000.0) as u64, 1_000.0),
         gps_week: None,
         tow_s: None,
         epoch_idx: (t_rx_s * 1000.0) as u64,
@@ -139,10 +144,15 @@ fn float_baseline_close_to_truth() {
         let range = (dx * dx + dy * dy + dz * dz).sqrt();
         obs.push(PositionObservation {
             sat: eph.sat,
-            pseudorange_m: range + 299_792_458.0 * (0.0 - sat.clock_bias_s),
+            pseudorange_m: range + 299_792_458.0 * (0.0 - sat.clock_correction.bias_s),
+            doppler_hz: None,
+            doppler_var_hz2: None,
             cn0_dbhz: 45.0,
             elevation_deg: None,
             weight: 1.0,
+            gps_receive_time: None,
+            signal_timing: None,
+            signal_id: None,
         });
     }
     let solver = PositionSolver::new();
@@ -173,12 +183,21 @@ fn rtk_dd_solution_close_to_baseline() {
     let sd = build_sd(&base_epoch, &rover_epoch);
     let ref_sig = choose_ref_sat(&sd).expect("ref sig");
     let dd = build_dd(&sd, ref_sig);
-    let baseline =
-        solve_baseline_dd(&dd, [base.0, base.1, base.2], &ephs, t_rx_s).expect("baseline");
+    let float_baseline =
+        solve_float_baseline_dd(&dd, [base.0, base.1, base.2], &ephs, t_rx_s).expect("baseline");
+    let baseline = solve_baseline_dd(&dd, [base.0, base.1, base.2], &ephs, t_rx_s)
+        .expect("projected baseline");
     let expected = baseline_from_ecef([base.0, base.1, base.2], [rover.0, rover.1, rover.2]);
 
-    assert!((baseline.enu_m[0] - expected.enu_m[0]).abs() < 500.0, "east error too large");
-    assert!((baseline.enu_m[1] - expected.enu_m[1]).abs() < 500.0, "north error too large");
+    assert!((float_baseline.enu_m[0] - expected.enu_m[0]).abs() < 1.0, "east error too large");
+    assert!((float_baseline.enu_m[1] - expected.enu_m[1]).abs() < 1.0, "north error too large");
+    assert!((float_baseline.enu_m[2] - expected.enu_m[2]).abs() < 2.0, "up error too large");
+    assert_eq!(baseline.enu_m, float_baseline.enu_m);
+    assert_eq!(
+        baseline.covariance_m2.expect("projected covariance"),
+        float_baseline.covariance_enu_m2
+    );
+    assert_eq!(float_baseline.float_ambiguities.len(), dd.len());
 }
 
 #[test]

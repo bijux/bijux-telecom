@@ -1,7 +1,10 @@
 #![allow(missing_docs)]
 #![allow(dead_code)]
 
+use crate::units::Seconds;
 use serde::{Deserialize, Serialize};
+
+const GPS_UNIX_EPOCH_OFFSET_S: f64 = 315_964_800.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct SampleTime {
@@ -12,6 +15,56 @@ pub struct SampleTime {
 impl SampleTime {
     pub fn seconds(&self) -> f64 {
         self.sample_index as f64 / self.sample_rate_hz
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct ReceiverSampleTrace {
+    pub sample_index: u64,
+    pub sample_rate_hz: f64,
+    pub receiver_time_s: Seconds,
+}
+
+impl ReceiverSampleTrace {
+    pub fn from_sample_time(sample_time: SampleTime) -> Self {
+        Self::from_sample_index(sample_time.sample_index, sample_time.sample_rate_hz)
+    }
+
+    pub fn from_sample_index(sample_index: u64, sample_rate_hz: f64) -> Self {
+        Self {
+            sample_index,
+            sample_rate_hz,
+            receiver_time_s: Seconds(sample_index as f64 / sample_rate_hz),
+        }
+    }
+
+    pub fn sample_time(&self) -> SampleTime {
+        SampleTime { sample_index: self.sample_index, sample_rate_hz: self.sample_rate_hz }
+    }
+
+    pub fn inferred_receiver_time_s(&self) -> Seconds {
+        Seconds(self.sample_index as f64 / self.sample_rate_hz)
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if self.sample_rate_hz <= 0.0 || !self.sample_rate_hz.is_finite() {
+            return Err("sample_rate_hz must be finite and positive".to_string());
+        }
+        if !self.receiver_time_s.0.is_finite() {
+            return Err("receiver_time_s must be finite".to_string());
+        }
+        let inferred = self.inferred_receiver_time_s().0;
+        let tolerance_s = (0.5 / self.sample_rate_hz).max(1.0e-12);
+        if (self.receiver_time_s.0 - inferred).abs() > tolerance_s {
+            return Err("receiver_time_s must match sample_index / sample_rate_hz".to_string());
+        }
+        Ok(())
+    }
+}
+
+impl Default for ReceiverSampleTrace {
+    fn default() -> Self {
+        Self { sample_index: 0, sample_rate_hz: 0.0, receiver_time_s: Seconds(0.0) }
     }
 }
 
@@ -56,7 +109,7 @@ impl SampleClock {
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct GpsTime {
-    pub week: u16,
+    pub week: u32,
     pub tow_s: f64,
 }
 
@@ -158,17 +211,20 @@ impl GpsTime {
         let mut seconds = total_seconds.max(0.0);
         let week = (seconds / week_seconds).floor() as u64;
         seconds -= week as f64 * week_seconds;
-        let week_mod = (week % 1024) as u16;
-        Self { week: week_mod, tow_s: seconds }
+        Self { week: week as u32, tow_s: seconds }
     }
 
     pub fn to_seconds(&self) -> f64 {
         self.week as f64 * 604_800.0 + self.tow_s
     }
+
+    pub fn offset_seconds(&self, delta_s: f64) -> Self {
+        Self::from_seconds(self.to_seconds() + delta_s)
+    }
 }
 
-pub(crate) fn gps_to_utc(gps: GpsTime, leap: &LeapSeconds) -> UtcTime {
-    let gps_s = gps.to_seconds();
+pub fn gps_to_utc(gps: GpsTime, leap: &LeapSeconds) -> UtcTime {
+    let gps_s = gps.to_seconds() + GPS_UNIX_EPOCH_OFFSET_S;
     let mut offset = leap.latest_offset();
     let mut utc_s = gps_s - offset as f64;
     let adjusted = leap.offset_at_utc(utc_s);
@@ -179,9 +235,9 @@ pub(crate) fn gps_to_utc(gps: GpsTime, leap: &LeapSeconds) -> UtcTime {
     UtcTime { unix_s: utc_s }
 }
 
-pub(crate) fn utc_to_gps(utc: UtcTime, leap: &LeapSeconds) -> GpsTime {
+pub fn utc_to_gps(utc: UtcTime, leap: &LeapSeconds) -> GpsTime {
     let offset = leap.offset_at_utc(utc.unix_s);
-    GpsTime::from_seconds(utc.unix_s + offset as f64)
+    GpsTime::from_seconds(utc.unix_s - GPS_UNIX_EPOCH_OFFSET_S + offset as f64)
 }
 
 pub(crate) fn tai_to_utc(tai: TaiTime, leap: &LeapSeconds) -> UtcTime {
@@ -192,4 +248,25 @@ pub(crate) fn tai_to_utc(tai: TaiTime, leap: &LeapSeconds) -> UtcTime {
 pub(crate) fn utc_to_tai(utc: UtcTime, leap: &LeapSeconds) -> TaiTime {
     let offset = leap.offset_at_utc(utc.unix_s);
     TaiTime { tai_s: utc.unix_s + offset as f64 + 19.0 }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::GpsTime;
+
+    #[test]
+    fn gps_time_offset_seconds_advances_across_week_boundary() {
+        let gps = GpsTime { week: 2200, tow_s: 604_799.75 };
+        let shifted = gps.offset_seconds(1.0);
+        assert_eq!(shifted.week, 2201);
+        assert!((shifted.tow_s - 0.75).abs() < 1.0e-9);
+    }
+
+    #[test]
+    fn gps_time_offset_seconds_rewinds_within_week() {
+        let gps = GpsTime { week: 2200, tow_s: 10.0 };
+        let shifted = gps.offset_seconds(-0.25);
+        assert_eq!(shifted.week, 2200);
+        assert!((shifted.tow_s - 9.75).abs() < 1.0e-9);
+    }
 }

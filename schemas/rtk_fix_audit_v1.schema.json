@@ -5,7 +5,7 @@
   "required": ["header", "payload"],
   "properties": {
     "header": { "$ref": "#/definitions/ArtifactHeader" },
-    "payload": { "type": "object" }
+    "payload": { "$ref": "#/definitions/RtkFixAudit" }
   },
   "definitions": {
     "ArtifactHeader": {
@@ -34,6 +34,17 @@
         "features": { "type": "array", "items": { "type": "string" } },
         "deterministic": { "type": "boolean" },
         "git_dirty": { "type": "boolean" }
+      }
+    },
+    "RtkFixAudit": {
+      "type": "object",
+      "required": ["epoch_idx", "ratio", "status", "reason", "fixed_count"],
+      "properties": {
+        "epoch_idx": { "type": "integer", "minimum": 0 },
+        "ratio": { "type": ["number", "null"] },
+        "status": { "type": "string", "enum": ["float", "fixed", "failed"] },
+        "reason": { "type": "string" },
+        "fixed_count": { "type": "integer", "minimum": 0 }
       }
     }
   }

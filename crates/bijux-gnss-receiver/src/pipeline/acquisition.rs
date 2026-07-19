@@ -3,19 +3,138 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 
+#[cfg(test)]
+use bijux_gnss_core::api::stable_acq_result_keys;
+#[cfg(test)]
+use bijux_gnss_core::api::AcqThresholdProvenance;
+#[cfg(test)]
+use bijux_gnss_core::api::SignalCode;
 use bijux_gnss_core::api::{
-    acq_result_stability_key, stable_acq_result_keys, AcqAssumptions, AcqEvidence, AcqExplain,
-    AcqExplainCandidate, AcqHypothesis, AcqResult, AcqThresholdProvenance, Hertz, SamplesFrame,
-    SatId,
+    acq_result_stability_key, AcqEvidence, AcqExplain, AcqHypothesis, AcqRequest, AcqResult, Hertz,
+    ReceiverSampleTrace, SamplesFrame, SatId,
 };
+#[cfg(test)]
 use num_complex::Complex;
-use rustfft::{num_traits::Zero, FftPlanner};
+use rustfft::FftPlanner;
 
-use crate::engine::receiver_config::ReceiverPipelineConfig;
+use crate::engine::receiver_config::{
+    acquisition_integration_ms_is_supported, ReceiverPipelineConfig,
+};
 use crate::engine::runtime::{ReceiverRuntime, TraceRecord};
-use bijux_gnss_signal::api::samples_per_code;
-use bijux_gnss_signal::api::Nco;
-use bijux_gnss_signal::api::{generate_ca_code, Prn};
+use crate::pipeline::acquisition_assistance::{
+    build_related_signal_follow_up_requests, resolve_acquisition_search_bounds,
+};
+use crate::pipeline::acquisition_components::acquisition_strategies_for_signal;
+#[cfg(test)]
+use crate::pipeline::acquisition_components::AcquisitionComponentPlan;
+#[cfg(test)]
+use crate::pipeline::acquisition_symbol_hypotheses::coherent_data_sign_hypotheses;
+use crate::pipeline::doppler::carrier_hz_from_doppler_hz;
+#[cfg(test)]
+use bijux_gnss_signal::api::SignalError;
+use bijux_gnss_signal::api::{measure_iq_front_end_metrics, AcquisitionSignalModel};
+
+mod peak_metrics;
+
+use cache::{CodeFftCache, CodeFftRequest};
+#[cfg(test)]
+use candidate_decision::selected_reason_for_candidate;
+use candidate_decision::{
+    acquisition_decision, component_strategy_ambiguity_reason, multipath_candidate_reason,
+    multipath_suspect_decision, ranked_alternative_candidate_reason, selected_candidate_reason,
+    AcquisitionDecision, AcquisitionDecisionReason,
+};
+use candidate_failures::{
+    acquisition_request_error_candidates, insufficient_frame_candidates,
+    unsupported_coherent_integration_candidates, AcquisitionCandidateContext,
+};
+use candidate_ranking::{
+    competing_candidate_ratio, has_strong_same_hypothesis_component_alternative,
+};
+use candidate_refinement::refine_acquisition_candidates;
+#[cfg(test)]
+use code_phase_profile::{
+    estimate_parabolic_code_phase_offset_samples, wrap_acquisition_code_phase_samples,
+};
+use code_phase_profile::{measure_code_phase_profile, CodePhaseProfileRequest};
+use correlation_accumulation::{
+    accumulate_component_correlations, combine_component_accumulations, ComponentCorrelationRequest,
+};
+#[cfg(test)]
+use correlation_accumulation::{
+    best_coherent_data_correlation, best_coherent_secondary_code_phase_correlation,
+    coherent_correlation_with_signs,
+};
+#[cfg(test)]
+use doppler_refinement::estimate_acquisition_doppler_refinement;
+#[cfg(test)]
+use false_alarm_calibration::noise_only_frame;
+use front_end_rejection::zero_signal_run;
+#[cfg(test)]
+use likelihood_covariance::{
+    estimate_log_likelihood_covariance_2x2, estimate_log_likelihood_covariance_3x3,
+};
+#[cfg(test)]
+use likelihood_covariance::{LocalAcquisitionLikelihoodSurface, LocalAcquisitionLikelihoodVolume};
+#[cfg(test)]
+use likelihood_measurement::estimate_quadratic_surface_peak_offsets;
+use peak_metrics::{
+    correlation_metrics, correlation_metrics_in_window, delayed_secondary_peak_diagnostic,
+    DelayedSecondaryPeakDiagnostic,
+};
+use related_signal_follow_up::{
+    annotate_related_signal_follow_up_candidates, annotate_related_signal_follow_up_explain,
+    should_replace_related_signal_row,
+};
+use search_window::{
+    append_assisted_search_fallback_reason, assisted_code_phase_search_window_diagnostic,
+    assisted_search_fallback_reason, search_window_candidate_reason, should_retry_assisted_search,
+    signal_outside_doppler_rate_search_range, signal_outside_search_range,
+    AssistedCodePhaseWindowDiagnosticRequest,
+};
+#[cfg(test)]
+use search_window::{SearchWindowDimension, SearchWindowEdge};
+#[cfg(test)]
+use signal_model::acquisition_signal_model_for_request;
+#[cfg(test)]
+use signal_model::acquisition_signal_model_for_sat;
+use signal_model::{
+    request_search_center_hz, resolved_request_signal_code, unsupported_acquisition_signal_error,
+};
+use strategy_components::{
+    candidate_uses_data_sign_hypotheses, strategy_component_indexes, strategy_component_provenance,
+    strategy_supports_search_model_refinement, strategy_uses_data_sign_hypotheses,
+    unique_strategy_components,
+};
+use threshold_resolution::{
+    threshold_provenance_for_request, ResolvedAcquisitionThresholds, ThresholdResolutionCache,
+};
+use uncertainty::{estimate_acquisition_uncertainty, AcquisitionUncertaintyRequest};
+use wrong_prn_suppression::{suppress_wrong_prn_correlations, AcquisitionSatEvaluation};
+
+mod cache;
+mod candidate_decision;
+mod candidate_failures;
+mod candidate_ranking;
+mod candidate_refinement;
+mod code_phase_profile;
+mod code_phase_refinement;
+mod correlation_accumulation;
+mod doppler_refinement;
+mod false_alarm_calibration;
+mod front_end_rejection;
+mod likelihood_covariance;
+mod likelihood_measurement;
+mod related_signal_follow_up;
+mod request_planning;
+mod result_reporting;
+mod search_window;
+mod signal_model;
+mod strategy_components;
+mod threshold_calibration;
+mod threshold_resolution;
+mod uncertainty;
+mod wrong_prn_suppression;
 
 /// Acquisition engine (coarse search).
 pub struct Acquisition {
@@ -24,6 +143,7 @@ pub struct Acquisition {
     doppler_search_hz: i32,
     doppler_step_hz: i32,
     cache: Mutex<CodeFftCache>,
+    threshold_cache: Mutex<ThresholdResolutionCache>,
     stats: Mutex<AcquisitionStats>,
 }
 
@@ -41,69 +161,6 @@ pub struct AcquisitionStats {
     pub rejected_count: u64,
     pub deferred_count: u64,
 }
-
-const ACQUISITION_CACHE_MODEL_VERSION: u32 = 1;
-const ACQUISITION_CACHE_POLICY_VERSION: u32 = 1;
-
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
-struct CodeFftCacheKey {
-    sat: SatId,
-    samples_per_code: usize,
-    sampling_hz_bits: u64,
-    if_hz_bits: u64,
-    code_hz_bits: u64,
-    code_length: usize,
-    doppler_search_hz: i32,
-    doppler_step_hz: i32,
-    coherent_ms: u32,
-    noncoherent: u32,
-    model_version: u32,
-    policy_version: u32,
-}
-
-impl CodeFftCacheKey {
-    fn from_runtime(
-        config: &ReceiverPipelineConfig,
-        sat: SatId,
-        samples_per_code: usize,
-        doppler_search_hz: i32,
-        doppler_step_hz: i32,
-        coherent_ms: u32,
-        noncoherent: u32,
-    ) -> Self {
-        Self {
-            sat,
-            samples_per_code,
-            sampling_hz_bits: config.sampling_freq_hz.to_bits(),
-            if_hz_bits: config.intermediate_freq_hz.to_bits(),
-            code_hz_bits: config.code_freq_basis_hz.to_bits(),
-            code_length: config.code_length,
-            doppler_search_hz,
-            doppler_step_hz,
-            coherent_ms,
-            noncoherent,
-            model_version: ACQUISITION_CACHE_MODEL_VERSION,
-            policy_version: ACQUISITION_CACHE_POLICY_VERSION,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-enum CacheMissReason {
-    ColdStart,
-    IncompatibleAssumptions,
-}
-
-impl CacheMissReason {
-    fn as_str(self) -> &'static str {
-        match self {
-            CacheMissReason::ColdStart => "cold_start",
-            CacheMissReason::IncompatibleAssumptions => "incompatible_assumptions",
-        }
-    }
-}
-
-type CodeFftCache = HashMap<CodeFftCacheKey, Vec<Complex<f32>>>;
 
 #[derive(Debug, Clone)]
 pub struct AcquisitionRun {
@@ -137,6 +194,7 @@ impl Acquisition {
             doppler_search_hz: config.acquisition_doppler_search_hz,
             doppler_step_hz,
             cache: Mutex::new(HashMap::new()),
+            threshold_cache: Mutex::new(HashMap::new()),
             stats: Mutex::new(AcquisitionStats::default()),
         }
     }
@@ -147,18 +205,32 @@ impl Acquisition {
         self
     }
 
-    /// Perform satellite acquisition on a 1 ms buffer using FFT-based circular correlation.
+    /// Perform satellite acquisition on a buffer that spans the configured integration window.
     pub fn run_fft(&self, frame: &SamplesFrame, sats: &[SatId]) -> Vec<AcqResult> {
-        self.run_fft_topn(
+        self.run_fft_topn_for_requests(
             frame,
-            sats,
+            &self.default_requests_for_sats(
+                sats,
+                self.config.acquisition_integration_ms,
+                self.config.acquisition_noncoherent,
+            ),
             1,
-            self.config.acquisition_integration_ms,
-            self.config.acquisition_noncoherent,
         )
         .into_iter()
         .filter_map(|mut v| if v.is_empty() { None } else { Some(v.remove(0)) })
         .collect()
+    }
+
+    /// Perform acquisition for explicit request rows.
+    pub fn run_fft_for_requests(
+        &self,
+        frame: &SamplesFrame,
+        requests: &[AcqRequest],
+    ) -> Vec<AcqResult> {
+        self.run_fft_topn_for_requests(frame, requests, 1)
+            .into_iter()
+            .filter_map(|mut rows| if rows.is_empty() { None } else { Some(rows.remove(0)) })
+            .collect()
     }
 
     pub fn run_fft_topn_with_explain(
@@ -169,7 +241,11 @@ impl Acquisition {
         coherent_ms: u32,
         noncoherent: u32,
     ) -> AcquisitionRun {
-        self.run_fft_topn_internal(frame, sats, top_n, coherent_ms, noncoherent, true)
+        self.run_fft_topn_for_requests_with_explain(
+            frame,
+            &self.default_requests_for_sats(sats, coherent_ms, noncoherent),
+            top_n,
+        )
     }
 
     pub fn run_fft_topn(
@@ -180,56 +256,260 @@ impl Acquisition {
         coherent_ms: u32,
         noncoherent: u32,
     ) -> Vec<Vec<AcqResult>> {
-        self.run_fft_topn_internal(frame, sats, top_n, coherent_ms, noncoherent, false).results
+        self.run_fft_topn_for_requests(
+            frame,
+            &self.default_requests_for_sats(sats, coherent_ms, noncoherent),
+            top_n,
+        )
+    }
+
+    /// Perform acquisition for explicit request rows and return explain artifacts.
+    pub fn run_fft_topn_for_requests_with_explain(
+        &self,
+        frame: &SamplesFrame,
+        requests: &[AcqRequest],
+        top_n: usize,
+    ) -> AcquisitionRun {
+        self.run_fft_topn_internal(frame, requests, top_n, true, true)
+    }
+
+    /// Perform acquisition for explicit request rows.
+    pub fn run_fft_topn_for_requests(
+        &self,
+        frame: &SamplesFrame,
+        requests: &[AcqRequest],
+        top_n: usize,
+    ) -> Vec<Vec<AcqResult>> {
+        self.run_fft_topn_internal(frame, requests, top_n, false, true).results
     }
 
     fn run_fft_topn_internal(
         &self,
         frame: &SamplesFrame,
-        sats: &[SatId],
+        requests: &[AcqRequest],
         top_n: usize,
-        coherent_ms: u32,
-        noncoherent: u32,
+        emit_explanations: bool,
+        allow_related_signal_follow_up: bool,
+    ) -> AcquisitionRun {
+        let mut run = self.run_fft_topn_single_pass(frame, requests, top_n, emit_explanations);
+        if !allow_related_signal_follow_up || requests.len() < 2 {
+            return run;
+        }
+        let follow_up_requests =
+            build_related_signal_follow_up_requests(&self.config, requests, &run.results);
+        for follow_up_request in follow_up_requests {
+            let follow_up_run = self.run_fft_topn_single_pass(
+                frame,
+                &[follow_up_request.request],
+                top_n,
+                emit_explanations,
+            );
+            let Some(replacement_candidates) = follow_up_run.results.into_iter().next() else {
+                continue;
+            };
+            if !should_replace_related_signal_row(
+                run.results.get(follow_up_request.request_index).map(Vec::as_slice).unwrap_or(&[]),
+                &replacement_candidates,
+            ) {
+                continue;
+            }
+            self.runtime.trace.record(TraceRecord {
+                name: "acquisition_related_signal_follow_up",
+                fields: vec![
+                    ("constellation", format!("{:?}", follow_up_request.request.sat.constellation)),
+                    ("prn", follow_up_request.request.sat.prn.to_string()),
+                    ("source_band", format!("{:?}", follow_up_request.source_signal_band)),
+                    ("source_code", format!("{:?}", follow_up_request.source_signal_code)),
+                    ("target_band", format!("{:?}", follow_up_request.request.signal_band)),
+                    ("target_code", format!("{:?}", follow_up_request.request.signal_code)),
+                    (
+                        "doppler_center_hz",
+                        format!("{:.6}", follow_up_request.estimated_signal_doppler_hz),
+                    ),
+                    (
+                        "code_phase_samples",
+                        format!("{:.6}", follow_up_request.transferred_code_phase_samples),
+                    ),
+                ],
+            });
+            let mut replacement_candidates = replacement_candidates;
+            annotate_related_signal_follow_up_candidates(
+                &mut replacement_candidates,
+                &follow_up_request,
+            );
+            run.results[follow_up_request.request_index] = replacement_candidates;
+            if emit_explanations {
+                if let Some(replacement_explain) = follow_up_run.explains.into_iter().next() {
+                    run.explains[follow_up_request.request_index] =
+                        annotate_related_signal_follow_up_explain(
+                            replacement_explain,
+                            &follow_up_request,
+                        );
+                }
+            }
+        }
+        run
+    }
+
+    fn run_fft_topn_single_pass(
+        &self,
+        frame: &SamplesFrame,
+        requests: &[AcqRequest],
+        top_n: usize,
         emit_explanations: bool,
     ) -> AcquisitionRun {
-        let samples_per_code = samples_per_code(
-            self.config.sampling_freq_hz,
-            self.config.code_freq_basis_hz,
-            self.config.code_length,
-        );
-        let total_ms = (coherent_ms * noncoherent).max(1) as usize;
-        let required = samples_per_code * total_ms;
-        if frame.len() < required {
-            return AcquisitionRun { results: Vec::new(), explains: Vec::new() };
-        }
-
         let mut planner = FftPlanner::<f32>::new();
-        let fft = planner.plan_fft_forward(samples_per_code);
-        let ifft = planner.plan_fft_inverse(samples_per_code);
 
         self.with_stats(|stats| {
-            stats.sat_count += sats.len() as u64;
-            stats.doppler_bins +=
-                doppler_bin_count(self.doppler_search_hz, self.doppler_step_hz) * sats.len() as u64;
-            stats.code_search_bins += (samples_per_code * sats.len()) as u64;
+            stats.sat_count += requests.len() as u64;
         });
+        let front_end_metrics = measure_iq_front_end_metrics(&frame.iq);
+        if front_end_metrics.zero_signal_detected {
+            self.runtime.trace.record(TraceRecord {
+                name: "acquisition_front_end_rejection",
+                fields: vec![
+                    ("reason", "zero_signal_input".to_string()),
+                    ("sample_count", frame.len().to_string()),
+                    ("centered_rms", format!("{:.9}", front_end_metrics.centered_rms)),
+                ],
+            });
+            self.with_stats(|stats| {
+                stats.rejected_count = stats.rejected_count.saturating_add(requests.len() as u64);
+            });
+            return zero_signal_run(
+                &self.config,
+                requests,
+                ReceiverSampleTrace::from_sample_time(frame.t0),
+                frame.len(),
+                front_end_metrics.zero_signal_reason.as_deref(),
+                emit_explanations,
+            );
+        }
 
-        let assumptions = AcqAssumptions {
-            doppler_search_hz: self.doppler_search_hz,
-            doppler_step_hz: self.doppler_step_hz,
-            coherent_ms,
-            noncoherent,
-            samples_per_code,
-            frame_samples: frame.len(),
-            code_phase_search_start_sample: 0,
-            code_phase_search_step_samples: 1,
-            code_phase_search_bins: samples_per_code,
-            code_phase_search_mode: "full_code".to_string(),
-        };
-
-        let mut results = Vec::new();
-        let mut explains = Vec::new();
-        for &sat in sats {
+        let mut sat_evaluations = Vec::new();
+        for &request in requests {
+            let sat = request.sat;
+            let requested_threshold_provenance =
+                threshold_provenance_for_request(&self.config, request);
+            let signal_code = resolved_request_signal_code(request);
+            let strategies = match acquisition_strategies_for_signal(
+                sat,
+                request.signal_band,
+                signal_code,
+                request.glonass_frequency_channel,
+                request.coherent_ms,
+            ) {
+                Ok(strategies) => strategies,
+                Err(error) => {
+                    sat_evaluations.push(AcquisitionSatEvaluation {
+                        sat,
+                        candidates: acquisition_request_error_candidates(
+                            &self.config,
+                            request,
+                            &requested_threshold_provenance,
+                            ReceiverSampleTrace::from_sample_time(frame.t0),
+                            frame.len(),
+                            error,
+                        ),
+                        search_window_diagnostic: None,
+                    });
+                    continue;
+                }
+            };
+            let signal_model = match strategies.first() {
+                Some(strategy) => strategy.search_model.clone(),
+                None => {
+                    sat_evaluations.push(AcquisitionSatEvaluation {
+                        sat,
+                        candidates: acquisition_request_error_candidates(
+                            &self.config,
+                            request,
+                            &requested_threshold_provenance,
+                            ReceiverSampleTrace::from_sample_time(frame.t0),
+                            frame.len(),
+                            unsupported_acquisition_signal_error(
+                                request.sat,
+                                request.signal_band,
+                                request.signal_code,
+                            ),
+                        ),
+                        search_window_diagnostic: None,
+                    });
+                    continue;
+                }
+            };
+            let strategy_components = unique_strategy_components(&strategies);
+            let strategy_component_indexes = strategies
+                .iter()
+                .map(|strategy| strategy_component_indexes(strategy, &strategy_components))
+                .collect::<Vec<_>>();
+            let search_center_hz =
+                request_search_center_hz(&signal_model, self.config.intermediate_freq_hz, request);
+            let samples_per_code = signal_model.samples_per_code(self.config.sampling_freq_hz);
+            let resolved_bounds =
+                resolve_acquisition_search_bounds(&self.config, &signal_model, request);
+            let resolved_request =
+                AcqRequest { doppler_search_hz: resolved_bounds.doppler_search_hz, ..request };
+            self.with_stats(|stats| {
+                stats.doppler_bins += doppler_bin_count(
+                    resolved_request.doppler_search_hz,
+                    resolved_request.doppler_step_hz.max(1),
+                );
+            });
+            let assumptions =
+                self.search_assumptions(frame.len(), request, &resolved_bounds, samples_per_code);
+            let candidate_context = AcquisitionCandidateContext {
+                sat,
+                signal_model: &signal_model,
+                signal_code,
+                glonass_frequency_channel: request.glonass_frequency_channel,
+                assumptions: &assumptions,
+                threshold_provenance: &requested_threshold_provenance,
+                intermediate_freq_hz: search_center_hz,
+                source_time: ReceiverSampleTrace::from_sample_time(frame.t0),
+            };
+            if !acquisition_integration_ms_is_supported(request.coherent_ms) {
+                sat_evaluations.push(AcquisitionSatEvaluation {
+                    sat,
+                    candidates: unsupported_coherent_integration_candidates(
+                        candidate_context,
+                        request.coherent_ms,
+                    ),
+                    search_window_diagnostic: None,
+                });
+                continue;
+            }
+            let coherent_periods = match signal_model.coherent_periods(request.coherent_ms) {
+                Some(periods) => periods,
+                None => {
+                    sat_evaluations.push(AcquisitionSatEvaluation {
+                        sat,
+                        candidates: unsupported_coherent_integration_candidates(
+                            candidate_context,
+                            request.coherent_ms,
+                        ),
+                        search_window_diagnostic: None,
+                    });
+                    continue;
+                }
+            };
+            let required = samples_per_code
+                * coherent_periods.max(1) as usize
+                * request.noncoherent.max(1) as usize;
+            if frame.len() < required {
+                sat_evaluations.push(AcquisitionSatEvaluation {
+                    sat,
+                    candidates: insufficient_frame_candidates(
+                        candidate_context,
+                        frame.len(),
+                        required,
+                    ),
+                    search_window_diagnostic: None,
+                });
+                continue;
+            }
+            let resolved_thresholds =
+                self.resolve_thresholds_for_request(resolved_request, &signal_model);
             self.runtime.trace.record(TraceRecord {
                 name: "acquisition_sat_start",
                 fields: vec![
@@ -237,87 +517,175 @@ impl Acquisition {
                     ("prn", sat.prn.to_string()),
                 ],
             });
+            self.with_stats(|stats| {
+                stats.code_search_bins = stats
+                    .code_search_bins
+                    .saturating_add(resolved_bounds.code_phase_search_bins as u64);
+            });
+            let fft = planner.plan_fft_forward(samples_per_code);
+            let ifft = planner.plan_fft_inverse(samples_per_code);
+            let component_ffts = strategy_components
+                .iter()
+                .map(|component| {
+                    self.code_fft(CodeFftRequest {
+                        signal_model: &signal_model,
+                        component,
+                        sat,
+                        signal_code,
+                        samples_per_code,
+                        fft: fft.as_ref(),
+                    })
+                })
+                .collect::<Vec<_>>();
+            let mut grid_candidates = Vec::new();
+            let mut doppler_rate = -resolved_request.doppler_rate_search_hz_per_s;
+            while doppler_rate <= resolved_request.doppler_rate_search_hz_per_s {
+                let absolute_doppler_rate_hz_per_s =
+                    request.doppler_rate_center_hz_per_s + doppler_rate as f64;
+                let mut doppler = -resolved_request.doppler_search_hz;
+                while doppler <= resolved_request.doppler_search_hz {
+                    let absolute_doppler_hz = request.doppler_center_hz + doppler as f64;
+                    let carrier = carrier_hz_from_doppler_hz(search_center_hz, doppler as f64);
+                    let mut component_accumulations = Vec::with_capacity(strategy_components.len());
 
-            let threshold_provenance = AcqThresholdProvenance {
-                coherent_ms,
-                noncoherent,
-                doppler_search_hz: self.doppler_search_hz,
-                doppler_step_hz: self.doppler_step_hz,
-                peak_mean_threshold: self.config.acquisition_peak_mean_threshold,
-                peak_second_threshold: self.config.acquisition_peak_second_threshold,
-            };
-            let code_fft =
-                self.code_fft(sat, samples_per_code, coherent_ms, noncoherent, fft.as_ref());
-            let mut candidates = Vec::new();
-
-            let mut doppler = -self.doppler_search_hz;
-            while doppler <= self.doppler_search_hz {
-                let carrier = self.config.intermediate_freq_hz + doppler as f64;
-                let mut noncoherent_acc = vec![0.0f32; samples_per_code];
-
-                for nc in 0..noncoherent {
-                    let mut coherent_corr: Vec<Complex<f32>> =
-                        vec![Complex::zero(); samples_per_code];
-                    for c in 0..coherent_ms {
-                        let offset_ms = (nc * coherent_ms + c) as usize;
-                        let start = offset_ms * samples_per_code;
-                        let end = start + samples_per_code;
-                        let block = &frame.iq[start..end];
-
-                        let mut mixed = vec![Complex::zero(); samples_per_code];
-                        let mut nco = Nco::new(-carrier, self.config.sampling_freq_hz);
-                        for (i, sample) in block.iter().enumerate() {
-                            let (sin, cos) = nco.next_sin_cos();
-                            let rot = Complex::new(cos as f32, -sin as f32);
-                            mixed[i] = *sample * rot;
-                        }
-
-                        let mut input_fft = mixed;
-                        fft.process(&mut input_fft);
-
-                        let mut prod = vec![Complex::zero(); samples_per_code];
-                        for i in 0..samples_per_code {
-                            prod[i] = input_fft[i] * code_fft[i].conj();
-                        }
-
-                        ifft.process(&mut prod);
-                        for i in 0..samples_per_code {
-                            coherent_corr[i] += prod[i];
-                        }
+                    for (component, code_fft) in
+                        strategy_components.iter().zip(component_ffts.iter())
+                    {
+                        let accumulation =
+                            accumulate_component_correlations(ComponentCorrelationRequest {
+                                frame,
+                                component,
+                                code_fft,
+                                carrier_hz: carrier,
+                                doppler_rate_hz_per_s: absolute_doppler_rate_hz_per_s,
+                                sample_rate_hz: self.config.sampling_freq_hz,
+                                samples_per_code,
+                                coherent_periods,
+                                noncoherent: request.noncoherent,
+                                fft: fft.as_ref(),
+                                ifft: ifft.as_ref(),
+                            });
+                        component_accumulations.push(accumulation);
                     }
 
-                    for i in 0..samples_per_code {
-                        noncoherent_acc[i] += coherent_corr[i].norm();
+                    for (strategy, component_indexes) in
+                        strategies.iter().zip(strategy_component_indexes.iter())
+                    {
+                        let combined_accumulator = combine_component_accumulations(
+                            strategy.combination_mode,
+                            component_indexes,
+                            &component_accumulations,
+                            samples_per_code,
+                            request.noncoherent,
+                        );
+
+                        let correlation_metrics = correlation_metrics_in_window(
+                            &combined_accumulator,
+                            resolved_bounds.code_phase_search_start_sample,
+                            resolved_bounds.code_phase_search_step_samples,
+                            resolved_bounds.code_phase_search_bins,
+                        );
+                        let peak_mean_ratio =
+                            correlation_metrics.peak / (correlation_metrics.mean + 1e-6);
+                        let peak_second_ratio =
+                            correlation_metrics.peak / (correlation_metrics.second + 1e-6);
+                        let cn0_proxy = peak_mean_ratio * 10.0;
+                        let component_provenance = strategy_component_provenance(
+                            strategy,
+                            component_indexes,
+                            &component_accumulations,
+                        );
+                        grid_candidates.push(AcqResult {
+                            sat,
+                            signal_band: signal_model.signal_band,
+                            signal_code,
+                            glonass_frequency_channel: request.glonass_frequency_channel,
+                            source_time: ReceiverSampleTrace::from_sample_time(frame.t0),
+                            candidate_rank: 1,
+                            is_primary_candidate: true,
+                            doppler_hz: Hertz(absolute_doppler_hz),
+                            doppler_rate_hz_per_s: absolute_doppler_rate_hz_per_s,
+                            carrier_hz: Hertz(carrier),
+                            code_phase_samples: correlation_metrics.peak_idx,
+                            peak: correlation_metrics.peak,
+                            second_peak: correlation_metrics.second,
+                            mean: correlation_metrics.mean,
+                            peak_mean_ratio,
+                            peak_second_ratio,
+                            cn0_proxy,
+                            score: 0.0,
+                            hypothesis: AcqHypothesis::Deferred,
+                            assumptions: Some(assumptions.clone()),
+                            evidence: vec![AcqEvidence {
+                                rank: 1,
+                                code_phase_samples: correlation_metrics.peak_idx,
+                                doppler_hz: absolute_doppler_hz,
+                                doppler_rate_hz_per_s: absolute_doppler_rate_hz_per_s,
+                                peak: correlation_metrics.peak,
+                                second_peak: correlation_metrics.second,
+                                peak_mean_ratio,
+                                peak_second_ratio,
+                                mean: correlation_metrics.mean,
+                                component_provenance: Some(component_provenance),
+                            }],
+                            threshold_provenance: Some(resolved_thresholds.provenance.clone()),
+                            explain_selection_reason: None,
+                            doppler_refinement: None,
+                            code_phase_refinement: None,
+                            signal_delay_alignment: None,
+                            uncertainty: None,
+                        });
                     }
+
+                    doppler += resolved_request.doppler_step_hz.max(1);
                 }
 
-                let (peak_idx, peak, second, mean) = correlation_metrics(&noncoherent_acc);
-                let peak_mean_ratio = peak / (mean + 1e-6);
-                let peak_second_ratio = peak / (second + 1e-6);
-                let cn0_proxy = peak_mean_ratio * 10.0;
-
-                candidates.push(AcqResult {
-                    sat,
-                    carrier_hz: Hertz(carrier),
-                    code_phase_samples: peak_idx,
-                    peak,
-                    second_peak: second,
-                    mean,
-                    peak_mean_ratio,
-                    peak_second_ratio,
-                    cn0_proxy,
-                    score: 0.0,
-                    hypothesis: AcqHypothesis::Deferred,
-                    assumptions: Some(assumptions.clone()),
-                    evidence: Vec::new(),
-                    threshold_provenance: Some(threshold_provenance.clone()),
-                    explain_selection_reason: None,
-                });
-
-                doppler += self.doppler_step_hz;
+                doppler_rate += resolved_request.doppler_rate_step_hz_per_s.max(1);
             }
 
-            candidates.sort_by(|a, b| {
+            let doppler_search_window_diagnostic = signal_outside_search_range(
+                &grid_candidates,
+                search_center_hz,
+                resolved_request.doppler_search_hz,
+                resolved_request.doppler_step_hz.max(1),
+                resolved_thresholds.peak_mean_threshold,
+            );
+
+            let mut ranked_candidates = grid_candidates.clone();
+            ranked_candidates.sort_by(|a, b| {
+                if let Some(expected_line_of_sight_doppler_hz) =
+                    request.expected_line_of_sight_doppler_hz
+                {
+                    let doppler_step_hz = resolved_request.doppler_step_hz.max(1) as f64;
+                    let left_expected_bin = candidate_matches_expected_line_of_sight_doppler(
+                        a,
+                        expected_line_of_sight_doppler_hz,
+                        doppler_step_hz,
+                    );
+                    let right_expected_bin = candidate_matches_expected_line_of_sight_doppler(
+                        b,
+                        expected_line_of_sight_doppler_hz,
+                        doppler_step_hz,
+                    );
+                    if left_expected_bin != right_expected_bin {
+                        return right_expected_bin.cmp(&left_expected_bin);
+                    }
+                    let expected_bin_order = candidate_expected_line_of_sight_doppler_bin_distance(
+                        a,
+                        expected_line_of_sight_doppler_hz,
+                        doppler_step_hz,
+                    )
+                    .total_cmp(
+                        &candidate_expected_line_of_sight_doppler_bin_distance(
+                            b,
+                            expected_line_of_sight_doppler_hz,
+                            doppler_step_hz,
+                        ),
+                    );
+                    if expected_bin_order != std::cmp::Ordering::Equal {
+                        return expected_bin_order;
+                    }
+                }
                 let primary = b
                     .peak_mean_ratio
                     .partial_cmp(&a.peak_mean_ratio)
@@ -327,246 +695,302 @@ impl Acquisition {
                 }
                 primary
             });
+            let competing_peak_ratio = competing_candidate_ratio(&ranked_candidates);
+            let component_strategy_ambiguity =
+                front_end_metrics.power_imbalance_warning || competing_peak_ratio.is_infinite();
+            let component_strategy_ambiguity = component_strategy_ambiguity
+                && has_strong_same_hypothesis_component_alternative(
+                    &ranked_candidates,
+                    resolved_thresholds.peak_mean_threshold,
+                    resolved_thresholds.peak_second_threshold,
+                );
+            let component_strategy_evidence_gap = if front_end_metrics.power_imbalance_warning {
+                "front_end_power_imbalance"
+            } else {
+                "no_independent_competing_peak"
+            };
+            let mut candidates = ranked_candidates;
             candidates.truncate(top_n.max(1));
+            if strategies.len() == 1
+                && strategy_supports_search_model_refinement(&strategies[0])
+                && !strategy_uses_data_sign_hypotheses(&strategies[0], coherent_periods)
+            {
+                refine_acquisition_candidates(
+                    candidate_refinement::CandidateRefinementRequest {
+                        acquisition: self,
+                        frame,
+                        signal_model: &signal_model,
+                        grid_candidates: &grid_candidates,
+                        doppler_step_hz: request.doppler_step_hz.max(1),
+                        coherent_ms: request.coherent_ms,
+                        noncoherent: request.noncoherent,
+                    },
+                    &mut candidates,
+                );
+            }
             if candidates.is_empty() {
-                self.runtime.trace.record(TraceRecord {
-                    name: "acquisition_sat_done",
-                    fields: vec![
-                        ("constellation", format!("{:?}", sat.constellation)),
-                        ("prn", sat.prn.to_string()),
-                        ("outcome", "no_candidates".to_string()),
-                    ],
-                });
-                self.with_stats(|stats| {
-                    stats.deferred_count = stats.deferred_count.saturating_add(1);
-                });
-                if emit_explanations {
-                    explains.push(AcqExplain {
+                if should_retry_assisted_search(
+                    request,
+                    &resolved_bounds,
+                    None,
+                    doppler_search_window_diagnostic.as_ref(),
+                ) {
+                    let fallback_reason = assisted_search_fallback_reason(
+                        None,
+                        doppler_search_window_diagnostic.as_ref(),
+                    );
+                    let fallback_request = AcqRequest { assistance_bounds: None, ..request };
+                    let mut fallback_candidates = self
+                        .run_fft_topn_for_requests_with_explain(frame, &[fallback_request], top_n)
+                        .results
+                        .into_iter()
+                        .next()
+                        .unwrap_or_default();
+                    append_assisted_search_fallback_reason(
+                        &mut fallback_candidates,
+                        &fallback_reason,
+                    );
+                    sat_evaluations.push(AcquisitionSatEvaluation {
                         sat,
-                        selected_rank: None,
-                        selected_reason: "no_candidates".to_string(),
-                        candidate_count: 0,
-                        candidates: Vec::new(),
+                        candidates: fallback_candidates,
+                        search_window_diagnostic: None,
                     });
+                    continue;
                 }
+                sat_evaluations.push(AcquisitionSatEvaluation {
+                    sat,
+                    candidates: Vec::new(),
+                    search_window_diagnostic: None,
+                });
                 continue;
             }
-
-            let second_peak_ratio = candidates
-                .get(1)
-                .map(|candidate| candidate.peak_second_ratio)
-                .unwrap_or(f32::INFINITY);
+            let mut selected_search_window_diagnostic = doppler_search_window_diagnostic.clone();
             for (rank, candidate) in candidates.iter_mut().enumerate() {
-                candidate.evidence.push(AcqEvidence {
-                    rank: rank as u8 + 1,
-                    code_phase_samples: candidate.code_phase_samples,
-                    doppler_hz: candidate.carrier_hz.0,
-                    peak: candidate.peak,
-                    second_peak: candidate.second_peak,
-                    peak_mean_ratio: candidate.peak_mean_ratio,
-                    peak_second_ratio: candidate.peak_second_ratio,
-                    mean: candidate.mean,
-                });
-                let separation_ratio =
-                    if rank == 0 { second_peak_ratio } else { candidate.peak_second_ratio };
+                candidate.candidate_rank = rank as u8 + 1;
+                candidate.is_primary_candidate = rank == 0;
+                if let Some(evidence) = candidate.evidence.first_mut() {
+                    evidence.rank = candidate.candidate_rank;
+                    evidence.code_phase_samples = candidate.code_phase_samples;
+                    evidence.doppler_hz = candidate.doppler_hz.0;
+                    evidence.doppler_rate_hz_per_s = candidate.doppler_rate_hz_per_s;
+                    evidence.peak = candidate.peak;
+                    evidence.second_peak = candidate.second_peak;
+                    evidence.peak_mean_ratio = candidate.peak_mean_ratio;
+                    evidence.peak_second_ratio = candidate.peak_second_ratio;
+                    evidence.mean = candidate.mean;
+                }
+                let local_peak_separation_ratio = candidate.peak_second_ratio;
                 if rank == 0 {
-                    let (hypothesis, score) = acquisition_hypothesis(
-                        candidate.peak_mean_ratio,
-                        candidate.peak_second_ratio,
-                        separation_ratio,
-                        &self.config,
-                    );
-                    candidate.hypothesis = hypothesis;
-                    candidate.score = score;
-                    candidate.explain_selection_reason = Some(format!(
-                        "rank 1 selected; peak_mean_ratio={:.6}, separation_ratio={:.6}, score={:.6}",
-                        candidate.peak_mean_ratio,
-                        separation_ratio,
-                        score
-                    ));
-                } else {
-                    candidate.hypothesis = AcqHypothesis::Deferred;
-                    candidate.explain_selection_reason = Some("not_selected".to_string());
-                }
-            }
-
-            let best = &candidates[0];
-            if emit_explanations {
-                let selected_reason = match best.hypothesis {
-                    AcqHypothesis::Accepted => "accepted_by_ratio_thresholds",
-                    AcqHypothesis::Ambiguous => "ambiguous_ratio_thresholds",
-                    AcqHypothesis::Rejected => "rejected_peak_mean_threshold",
-                    AcqHypothesis::Deferred => "deferred",
-                };
-                explains.push(AcqExplain {
-                    sat,
-                    selected_rank: Some(1),
-                    selected_reason: selected_reason.to_string(),
-                    candidate_count: candidates.len(),
-                    candidates: candidates
-                        .iter()
-                        .enumerate()
-                        .map(|(rank, candidate)| AcqExplainCandidate {
-                            rank: rank as u8 + 1,
-                            code_phase_samples: candidate.code_phase_samples,
-                            carrier_hz: candidate.carrier_hz.0,
-                            peak: candidate.peak,
-                            peak_mean_ratio: candidate.peak_mean_ratio,
-                            peak_second_ratio: candidate.peak_second_ratio,
-                            second_peak_ratio: (if candidate.peak == 0.0 {
-                                f32::INFINITY
-                            } else {
-                                candidate.peak / (candidate.second_peak + 1e-6)
-                            }),
-                            mean: candidate.mean,
-                            hypothesis: candidate.hypothesis,
-                            score: candidate.score,
-                            threshold_hit: matches!(candidate.hypothesis, AcqHypothesis::Accepted),
-                            reason: candidate
-                                .explain_selection_reason
-                                .clone()
-                                .unwrap_or_else(|| "discarded".to_string()),
+                    let search_window_diagnostic = selected_search_window_diagnostic
+                        .clone()
+                        .or_else(|| {
+                            assisted_code_phase_search_window_diagnostic(
+                                AssistedCodePhaseWindowDiagnosticRequest {
+                                    config: &self.config,
+                                    signal_model: &signal_model,
+                                    frame,
+                                    carrier_hz: candidate.carrier_hz.0,
+                                    doppler_rate_hz_per_s: candidate.doppler_rate_hz_per_s,
+                                    coherent_ms: request.coherent_ms,
+                                    noncoherent: request.noncoherent,
+                                    resolved_bounds: &resolved_bounds,
+                                    peak_mean_threshold: resolved_thresholds.peak_mean_threshold,
+                                },
+                            )
                         })
-                        .collect(),
+                        .or_else(|| {
+                            signal_outside_doppler_rate_search_range(
+                                &grid_candidates,
+                                candidate
+                                    .doppler_refinement
+                                    .as_ref()
+                                    .map(|refinement| refinement.coarse_carrier_hz.0)
+                                    .unwrap_or(candidate.carrier_hz.0),
+                                request.doppler_rate_center_hz_per_s,
+                                resolved_request.doppler_rate_search_hz_per_s,
+                                resolved_request.doppler_rate_step_hz_per_s.max(1),
+                                resolved_thresholds.peak_mean_threshold,
+                            )
+                        });
+                    if let Some(diagnostic) = search_window_diagnostic.as_ref() {
+                        selected_search_window_diagnostic = Some(diagnostic.clone());
+                        candidate.hypothesis = AcqHypothesis::Rejected;
+                        candidate.score = 0.0;
+                        candidate.explain_selection_reason =
+                            Some(search_window_candidate_reason(diagnostic));
+                    } else {
+                        let decision = acquisition_decision(
+                            candidate.peak_mean_ratio,
+                            candidate.peak_second_ratio,
+                            local_peak_separation_ratio,
+                            competing_peak_ratio,
+                            &resolved_thresholds,
+                        );
+                        let multipath_diagnostic = if candidate_uses_data_sign_hypotheses(
+                            candidate,
+                            &strategies,
+                            coherent_periods,
+                        ) {
+                            None
+                        } else {
+                            classify_delayed_secondary_peak(DelayedSecondaryPeakRequest {
+                                config: &self.config,
+                                frame,
+                                signal_model: &signal_model,
+                                carrier_hz: candidate.carrier_hz.0,
+                                doppler_rate_hz_per_s: candidate.doppler_rate_hz_per_s,
+                                code_phase_samples: candidate.code_phase_samples,
+                                samples_per_code,
+                                coherent_ms: request.coherent_ms,
+                                noncoherent: request.noncoherent,
+                                peak_mean_ratio: candidate.peak_mean_ratio,
+                                peak_second_ratio: candidate.peak_second_ratio,
+                                competing_peak_ratio,
+                                thresholds: &resolved_thresholds,
+                            })
+                        };
+                        let decision =
+                            multipath_diagnostic.as_ref().map_or(decision, |diagnostic| {
+                                multipath_suspect_decision(
+                                    candidate.peak_mean_ratio,
+                                    candidate.peak_second_ratio,
+                                    competing_peak_ratio,
+                                    diagnostic,
+                                )
+                            });
+                        let decision = if multipath_diagnostic.is_none()
+                            && component_strategy_ambiguity
+                            && matches!(decision.hypothesis, AcqHypothesis::Accepted)
+                        {
+                            AcquisitionDecision {
+                                hypothesis: AcqHypothesis::Ambiguous,
+                                reason: AcquisitionDecisionReason::AmbiguousRatioThresholds,
+                                score: (candidate.peak_mean_ratio * 0.35)
+                                    + (candidate.peak_second_ratio.min(competing_peak_ratio)
+                                        * 0.15),
+                            }
+                        } else {
+                            decision
+                        };
+                        candidate.hypothesis = decision.hypothesis;
+                        candidate.score = decision.score;
+                        candidate.explain_selection_reason =
+                            Some(match multipath_diagnostic.as_ref() {
+                                Some(diagnostic) => multipath_candidate_reason(
+                                    candidate.peak_mean_ratio,
+                                    candidate.peak_second_ratio,
+                                    competing_peak_ratio,
+                                    diagnostic,
+                                    samples_per_code,
+                                    signal_model.code_length,
+                                    decision.score,
+                                ),
+                                None if component_strategy_ambiguity
+                                    && matches!(decision.hypothesis, AcqHypothesis::Ambiguous) =>
+                                {
+                                    component_strategy_ambiguity_reason(
+                                        candidate.peak_mean_ratio,
+                                        local_peak_separation_ratio,
+                                        competing_peak_ratio,
+                                        component_strategy_evidence_gap,
+                                        decision.score,
+                                    )
+                                }
+                                None => selected_candidate_reason(
+                                    decision,
+                                    candidate.peak_mean_ratio,
+                                    local_peak_separation_ratio,
+                                    competing_peak_ratio,
+                                    &resolved_thresholds,
+                                ),
+                            });
+                        candidate.uncertainty =
+                            estimate_acquisition_uncertainty(AcquisitionUncertaintyRequest {
+                                config: &self.config,
+                                frame,
+                                signal_model: &signal_model,
+                                candidate,
+                                coherent_ms: request.coherent_ms,
+                                noncoherent: request.noncoherent,
+                                doppler_step_hz: request.doppler_step_hz.max(1),
+                                doppler_rate_search_hz_per_s: request
+                                    .doppler_rate_search_hz_per_s
+                                    .max(0),
+                                doppler_rate_step_hz_per_s: request
+                                    .doppler_rate_step_hz_per_s
+                                    .max(1),
+                            });
+                    }
+                }
+            }
+            let primary_candidate = candidates
+                .first()
+                .cloned()
+                .expect("retained acquisition candidates must include a primary row");
+            if should_retry_assisted_search(
+                request,
+                &resolved_bounds,
+                Some(&primary_candidate),
+                selected_search_window_diagnostic.as_ref(),
+            ) {
+                let fallback_reason = assisted_search_fallback_reason(
+                    Some(&primary_candidate),
+                    selected_search_window_diagnostic.as_ref(),
+                );
+                let fallback_request = AcqRequest { assistance_bounds: None, ..request };
+                let mut fallback_candidates = self
+                    .run_fft_topn_for_requests_with_explain(frame, &[fallback_request], top_n)
+                    .results
+                    .into_iter()
+                    .next()
+                    .unwrap_or_default();
+                append_assisted_search_fallback_reason(&mut fallback_candidates, &fallback_reason);
+                sat_evaluations.push(AcquisitionSatEvaluation {
+                    sat,
+                    candidates: fallback_candidates,
+                    search_window_diagnostic: None,
                 });
+                continue;
             }
-            let outcome = match best.hypothesis {
-                AcqHypothesis::Accepted => "accepted",
-                AcqHypothesis::Ambiguous => "ambiguous",
-                AcqHypothesis::Rejected => "rejected",
-                AcqHypothesis::Deferred => "deferred",
-            };
-            self.runtime.trace.record(TraceRecord {
-                name: "acquisition_sat_done",
-                fields: vec![
-                    ("constellation", format!("{:?}", best.sat.constellation)),
-                    ("prn", best.sat.prn.to_string()),
-                    ("outcome", outcome.to_string()),
-                    ("carrier_hz", format!("{:.3}", best.carrier_hz.0)),
-                    ("score", format!("{:.6}", best.score)),
-                    ("peak_mean_ratio", format!("{:.6}", best.peak_mean_ratio)),
-                ],
-            });
-            if !best.evidence.is_empty() {
-                self.runtime.trace.record(TraceRecord {
-                    name: "acquisition_evidence",
-                    fields: vec![
-                        ("constellation", format!("{:?}", best.sat.constellation)),
-                        ("prn", best.sat.prn.to_string()),
-                        ("rank", format!("{}", best.evidence.first().map(|e| e.rank).unwrap_or(0))),
-                        ("peak", format!("{:.6}", best.peak)),
-                        ("second_peak", format!("{:.6}", best.second_peak)),
-                        ("mean", format!("{:.6}", best.mean)),
-                    ],
-                });
+            for candidate in candidates.iter_mut().skip(1) {
+                candidate.hypothesis = AcqHypothesis::Rejected;
+                candidate.score = 0.0;
+                candidate.explain_selection_reason =
+                    Some(ranked_alternative_candidate_reason(&primary_candidate, candidate));
             }
-            self.with_stats(|stats| match best.hypothesis {
-                AcqHypothesis::Accepted => {
-                    stats.accepted_count = stats.accepted_count.saturating_add(1)
-                }
-                AcqHypothesis::Ambiguous => {
-                    stats.ambiguous_count = stats.ambiguous_count.saturating_add(1)
-                }
-                AcqHypothesis::Rejected => {
-                    stats.rejected_count = stats.rejected_count.saturating_add(1)
-                }
-                AcqHypothesis::Deferred => {
-                    stats.deferred_count = stats.deferred_count.saturating_add(1)
-                }
+            sat_evaluations.push(AcquisitionSatEvaluation {
+                sat,
+                candidates,
+                search_window_diagnostic: selected_search_window_diagnostic,
             });
-            let stable_keys = stable_acq_result_keys(&candidates);
-            self.runtime.trace.record(TraceRecord {
-                name: "acquisition_stability_signature",
-                fields: vec![
-                    ("constellation", format!("{:?}", sat.constellation)),
-                    ("prn", sat.prn.to_string()),
-                    ("candidate_count", stable_keys.len().to_string()),
-                    (
-                        "top_signature",
-                        stable_keys.first().cloned().unwrap_or_else(|| "none".to_string()),
-                    ),
-                ],
-            });
-            results.push(candidates);
         }
-        AcquisitionRun { results, explains }
+        suppress_wrong_prn_correlations(&mut sat_evaluations);
+
+        self.report_satellite_evaluations(sat_evaluations, emit_explanations)
     }
+}
 
-    fn code_fft(
-        &self,
-        sat: SatId,
-        samples_per_code: usize,
-        coherent_ms: u32,
-        noncoherent: u32,
-        fft: &dyn rustfft::Fft<f32>,
-    ) -> Vec<Complex<f32>> {
-        let key = CodeFftCacheKey::from_runtime(
-            &self.config,
-            sat,
-            samples_per_code,
-            self.doppler_search_hz,
-            self.doppler_step_hz,
-            coherent_ms,
-            noncoherent,
-        );
-        if let Some(cached) = self.cache.lock().ok().and_then(|m| m.get(&key).cloned()) {
-            self.with_stats(|stats| {
-                stats.cache_hits = stats.cache_hits.saturating_add(1);
-            });
-            self.runtime.trace.record(TraceRecord {
-                name: "acquisition_code_fft_cache_hit",
-                fields: vec![
-                    ("constellation", format!("{:?}", sat.constellation)),
-                    ("prn", sat.prn.to_string()),
-                    ("samples_per_code", samples_per_code.to_string()),
-                ],
-            });
-            return cached;
-        }
+fn candidate_matches_expected_line_of_sight_doppler(
+    candidate: &AcqResult,
+    expected_line_of_sight_doppler_hz: f64,
+    doppler_step_hz: f64,
+) -> bool {
+    candidate_expected_line_of_sight_doppler_bin_distance(
+        candidate,
+        expected_line_of_sight_doppler_hz,
+        doppler_step_hz,
+    ) <= 1.0 + f64::EPSILON
+}
 
-        let miss_reason = self.cache.lock().ok().map_or(CacheMissReason::ColdStart, |cache| {
-            let has_same_satellite = cache
-                .keys()
-                .any(|cached| cached.sat == sat && cached.samples_per_code == samples_per_code);
-            if has_same_satellite {
-                CacheMissReason::IncompatibleAssumptions
-            } else {
-                CacheMissReason::ColdStart
-            }
-        });
-
-        self.with_stats(|stats| {
-            stats.cache_misses = stats.cache_misses.saturating_add(1);
-            match miss_reason {
-                CacheMissReason::ColdStart => {
-                    stats.cache_miss_cold_start = stats.cache_miss_cold_start.saturating_add(1)
-                }
-                CacheMissReason::IncompatibleAssumptions => {
-                    stats.cache_miss_incompatible = stats.cache_miss_incompatible.saturating_add(1)
-                }
-            }
-        });
-        self.runtime.trace.record(TraceRecord {
-            name: "acquisition_code_fft_cache_miss",
-            fields: vec![
-                ("constellation", format!("{:?}", sat.constellation)),
-                ("prn", sat.prn.to_string()),
-                ("samples_per_code", samples_per_code.to_string()),
-                ("reason", miss_reason.as_str().to_string()),
-                ("model_version", ACQUISITION_CACHE_MODEL_VERSION.to_string()),
-                ("policy_version", ACQUISITION_CACHE_POLICY_VERSION.to_string()),
-            ],
-        });
-        let code = ca_code_or_default(sat.prn);
-        let local_code = upsample_code(&code, samples_per_code);
-        let mut code_fft: Vec<Complex<f32>> =
-            local_code.iter().map(|&x| Complex::new(x, 0.0)).collect();
-        fft.process(&mut code_fft);
-        if let Ok(mut cache) = self.cache.lock() {
-            cache.insert(key, code_fft.clone());
-        }
-        code_fft
+fn candidate_expected_line_of_sight_doppler_bin_distance(
+    candidate: &AcqResult,
+    expected_line_of_sight_doppler_hz: f64,
+    doppler_step_hz: f64,
+) -> f64 {
+    if !expected_line_of_sight_doppler_hz.is_finite() || doppler_step_hz <= 0.0 {
+        return f64::INFINITY;
     }
+    (candidate.doppler_hz.0 - expected_line_of_sight_doppler_hz).abs() / doppler_step_hz
 }
 
 fn doppler_bin_count(search_hz: i32, step_hz: i32) -> u64 {
@@ -578,144 +1002,66 @@ fn doppler_bin_count(search_hz: i32, step_hz: i32) -> u64 {
     (search / step).saturating_mul(2).saturating_add(1)
 }
 
-fn acquisition_hypothesis(
+struct DelayedSecondaryPeakRequest<'a> {
+    config: &'a ReceiverPipelineConfig,
+    frame: &'a SamplesFrame,
+    signal_model: &'a AcquisitionSignalModel,
+    carrier_hz: f64,
+    doppler_rate_hz_per_s: f64,
+    code_phase_samples: usize,
+    samples_per_code: usize,
+    coherent_ms: u32,
+    noncoherent: u32,
     peak_mean_ratio: f32,
     peak_second_ratio: f32,
-    separation_ratio: f32,
-    config: &ReceiverPipelineConfig,
-) -> (AcqHypothesis, f32) {
-    if peak_mean_ratio < config.acquisition_peak_mean_threshold {
-        return (AcqHypothesis::Rejected, 0.0);
-    }
-    if !separation_ratio.is_finite() {
-        return (AcqHypothesis::Ambiguous, 0.25 * peak_mean_ratio);
-    }
-    if peak_second_ratio < config.acquisition_peak_second_threshold
-        || separation_ratio < config.acquisition_peak_second_threshold
+    competing_peak_ratio: f32,
+    thresholds: &'a ResolvedAcquisitionThresholds,
+}
+
+fn classify_delayed_secondary_peak(
+    request: DelayedSecondaryPeakRequest<'_>,
+) -> Option<DelayedSecondaryPeakDiagnostic> {
+    let DelayedSecondaryPeakRequest {
+        config,
+        frame,
+        signal_model,
+        carrier_hz,
+        doppler_rate_hz_per_s,
+        code_phase_samples,
+        samples_per_code,
+        coherent_ms,
+        noncoherent,
+        peak_mean_ratio,
+        peak_second_ratio,
+        competing_peak_ratio,
+        thresholds,
+    } = request;
+    if peak_mean_ratio < thresholds.peak_mean_threshold
+        || peak_second_ratio >= thresholds.peak_second_threshold
+        || competing_peak_ratio < thresholds.peak_second_threshold
     {
-        return (AcqHypothesis::Ambiguous, (peak_mean_ratio * 0.35) + (peak_second_ratio * 0.15));
+        return None;
     }
-    (AcqHypothesis::Accepted, (peak_mean_ratio * 0.5) + (peak_second_ratio * 0.5))
+    if !signal_model.supports_secondary_peak_multipath_screening() {
+        return None;
+    }
+    let correlation_profile = measure_code_phase_profile(CodePhaseProfileRequest {
+        config,
+        signal_model,
+        frame,
+        carrier_hz,
+        doppler_rate_hz_per_s,
+        coherent_ms,
+        noncoherent,
+    })?;
+    delayed_secondary_peak_diagnostic(
+        &correlation_profile,
+        code_phase_samples,
+        samples_per_code,
+        signal_model.code_length,
+    )
 }
 
-#[allow(clippy::items_after_test_module)]
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn acquisition_hypothesis_rejects_weak_primary_peak() {
-        let config = ReceiverPipelineConfig::default();
-        let (hypothesis, score) = acquisition_hypothesis(2.0, 2.0, 2.0, &config);
-        assert_eq!(hypothesis.to_string(), "rejected");
-        assert_eq!(score, 0.0);
-    }
-
-    #[test]
-    fn acquisition_hypothesis_marks_ambiguous_on_low_peak_separation() {
-        let config = ReceiverPipelineConfig::default();
-        let (hypothesis, score) = acquisition_hypothesis(3.0, 1.0, 1.4, &config);
-        assert_eq!(hypothesis.to_string(), "ambiguous");
-        assert!((score - 1.2).abs() < 1e-6);
-    }
-
-    #[test]
-    fn acquisition_hypothesis_accepts_clean_peak() {
-        let config = ReceiverPipelineConfig::default();
-        let (hypothesis, score) = acquisition_hypothesis(3.5, 2.0, 2.5, &config);
-        assert_eq!(hypothesis.to_string(), "accepted");
-        assert!((score - 2.75).abs() < f32::EPSILON);
-    }
-
-    #[test]
-    fn acquisition_stability_keys_are_sorted() {
-        let sat = SatId { constellation: bijux_gnss_core::api::Constellation::Gps, prn: 1 };
-        let mut rows = vec![
-            AcqResult {
-                sat,
-                carrier_hz: Hertz(100.0),
-                code_phase_samples: 10,
-                peak: 10.0,
-                second_peak: 2.0,
-                mean: 1.0,
-                peak_mean_ratio: 10.0,
-                peak_second_ratio: 5.0,
-                cn0_proxy: 10.0,
-                score: 2.0,
-                hypothesis: AcqHypothesis::Accepted,
-                assumptions: None,
-                evidence: Vec::new(),
-                threshold_provenance: None,
-                explain_selection_reason: None,
-            },
-            AcqResult {
-                sat,
-                carrier_hz: Hertz(50.0),
-                code_phase_samples: 20,
-                peak: 10.0,
-                second_peak: 2.0,
-                mean: 1.0,
-                peak_mean_ratio: 10.0,
-                peak_second_ratio: 5.0,
-                cn0_proxy: 10.0,
-                score: 2.0,
-                hypothesis: AcqHypothesis::Accepted,
-                assumptions: None,
-                evidence: Vec::new(),
-                threshold_provenance: None,
-                explain_selection_reason: None,
-            },
-        ];
-        rows.sort_by(|a, b| {
-            let primary = b
-                .peak_mean_ratio
-                .partial_cmp(&a.peak_mean_ratio)
-                .unwrap_or(std::cmp::Ordering::Equal);
-            if primary == std::cmp::Ordering::Equal {
-                return acq_result_stability_key(a).cmp(&acq_result_stability_key(b));
-            }
-            primary
-        });
-        let keys = stable_acq_result_keys(&rows);
-        assert!(keys.windows(2).all(|window| window[0] <= window[1]));
-    }
-}
-
-fn correlation_metrics(corr: &[f32]) -> (usize, f32, f32, f32) {
-    let mut peak_idx = 0;
-    let mut peak = 0.0f32;
-    let mut second = 0.0f32;
-    let mut sum = 0.0f32;
-
-    for (idx, &mag) in corr.iter().enumerate() {
-        sum += mag;
-        if mag > peak {
-            second = peak;
-            peak = mag;
-            peak_idx = idx;
-        } else if mag > second {
-            second = mag;
-        }
-    }
-
-    let mean = sum / corr.len().max(1) as f32;
-    (peak_idx, peak, second, mean)
-}
-
-fn upsample_code(code: &[i8], samples_per_code: usize) -> Vec<f32> {
-    let chips = code.len();
-    let samples_per_chip = samples_per_code as f64 / chips as f64;
-    let mut out = vec![0.0f32; samples_per_code];
-    for (i, value) in out.iter_mut().enumerate() {
-        let chip_index = (i as f64 / samples_per_chip).floor() as usize;
-        *value = code[chip_index] as f32;
-    }
-    out
-}
-
-fn ca_code_or_default(prn: u8) -> Vec<i8> {
-    match generate_ca_code(Prn(prn)) {
-        Ok(code) => code,
-        Err(_) => vec![1; 1023],
-    }
-}
+#[path = "acquisition/tests.rs"]
+mod tests;

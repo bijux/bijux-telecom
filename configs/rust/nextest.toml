@@ -1,7 +1,7 @@
 # schema_version = 1
-# owner = bijux-telecom-dev
+# owner = bijux-gnss-dev
 # purpose = Contract config for Rust nextest execution
-# authority = bijux-telecom-dev
+# authority = bijux-gnss-dev
 # stability = stable
 
 [profile.default]

@@ -1,5 +1,7 @@
 use bijux_gnss_core::api::{Constellation, SampleTime, SamplesFrame, SatId, Seconds};
-use bijux_gnss_receiver::api::{ReceiverPipelineConfig, TrackingEngine};
+use bijux_gnss_receiver::api::{
+    ReceiverPipelineConfig, TrackingCorrelationRequest, TrackingEngine,
+};
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
 use num_complex::Complex;
 
@@ -23,7 +25,15 @@ fn bench_correlator(c: &mut Criterion) {
         b.iter_batched(
             || frame.clone(),
             |frame| {
-                let _ = tracking.correlate_epoch(&frame, sat, 0.0, 0.0, 0.5);
+                let _ = tracking.correlate_epoch(TrackingCorrelationRequest {
+                    frame: &frame,
+                    sat,
+                    carrier_hz: 0.0,
+                    carrier_phase_cycles: 0.0,
+                    code_rate_hz: config.code_freq_basis_hz,
+                    code_phase_samples: 0.0,
+                    early_late_spacing_chips: 0.5,
+                });
             },
             BatchSize::SmallInput,
         )

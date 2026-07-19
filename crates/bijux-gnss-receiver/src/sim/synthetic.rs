@@ -1,191 +1,158 @@
 #![allow(missing_docs)]
 
+use std::collections::BTreeMap;
 use std::f32::consts::TAU;
 
 use num_complex::Complex;
 
-use bijux_gnss_core::api::{Constellation, SampleClock, SampleTime, SamplesFrame, SatId, Seconds};
+use crate::reference_validation::{reference_ecef, ValidationReferenceEpoch};
+use bijux_gnss_core::api::{
+    ecef_to_enu, ecef_to_geodetic, elevation_azimuth_deg, stats, AcqHypothesis, AcqResult, Chips,
+    Constellation, Cycles, Epoch, GlonassFrequencyChannel, GpsTime, Hertz, Llh, Meters,
+    NavQualityFlag, NavSolutionEpoch, ObsEpoch, ObservationStatus, ReceiverSampleTrace,
+    SampleClock, SampleTime, SamplesFrame, SatId, Seconds, SigId, SignalBand, SignalCode,
+    SignalDelayAlignment, SignalSpec, SolutionStatus, SolutionValidity, TrackEpoch,
+};
+use bijux_gnss_signal::api::SignalSource;
 
 use crate::engine::receiver_config::ReceiverPipelineConfig;
-use bijux_gnss_nav::api::GpsEphemeris;
-use bijux_gnss_signal::api::{generate_ca_code, Prn};
+use crate::io::data::SampleSourceError;
+use crate::pipeline::doppler::carrier_hz_from_doppler_hz;
+use bijux_gnss_nav::api::{sat_state_gps_l1ca, GpsEphemeris, SaastamoinenModel, TroposphereModel};
+use bijux_gnss_signal::api::{
+    calibrated_lock_detector_thresholds, carrier_phase_radians_at_time_with_jerk,
+    encode_quantized_samples, first_order_ionosphere_code_delay_m,
+    lock_detector_probability_summary, quantize_samples_for_storage,
+    receiver_search_code_phase_samples, samples_per_code, IqQuantization, IqSampleFormat,
+    LockDetectorCalibrationInput, LockDetectorProbabilityInput, RawIqMetadata,
+};
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub struct SyntheticSignalParams {
-    pub sat: SatId,
-    pub doppler_hz: f64,
-    pub code_phase_chips: f64,
-    pub carrier_phase_rad: f64,
-    pub cn0_db_hz: f32,
-    pub data_bit_flip: bool,
-}
+const SYNTHETIC_IQ_TRUTH_SCHEMA_VERSION: u32 = 8;
+const SYNTHETIC_GNSS_ACCURACY_ARTIFACT_SCHEMA_VERSION: u32 = 1;
+#[cfg(test)]
+const GPS_L1_CA_NAV_BIT_PERIOD_S: f64 = 0.02;
+const SYNTHETIC_COMPLEX_NOISE_POWER: f64 = 1.0;
+const SYNTHETIC_NOISE_STD_PER_COMPONENT: f32 = std::f32::consts::FRAC_1_SQRT_2;
+const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SyntheticScenario {
-    pub sample_rate_hz: f64,
-    pub intermediate_freq_hz: f64,
-    pub duration_s: f64,
-    pub seed: u64,
-    pub satellites: Vec<SyntheticSignalParams>,
-    #[serde(default)]
-    pub ephemerides: Vec<GpsEphemeris>,
-    #[serde(default)]
-    pub id: String,
-}
+include!("synthetic/scenario.rs");
+include!("synthetic/ionosphere.rs");
+include!("synthetic/observation_truth.rs");
+include!("synthetic/stage_accuracy.rs");
+include!("synthetic/pvt_profile_types.rs");
+include!("synthetic/observation_validation_types.rs");
+include!("synthetic/gnss_artifact_types.rs");
+include!("synthetic/artifact_validation.rs");
+include!("synthetic/closure_validation.rs");
+include!("synthetic/artifact_build.rs");
+include!("synthetic/pvt_profile_cases.rs");
+include!("synthetic/pvt_profiles_signal_geometry.rs");
+include!("synthetic/pvt_profiles_motion_clock.rs");
+include!("synthetic/pvt_profiles_time_accuracy.rs");
+include!("synthetic/pvt_truth.rs");
+include!("synthetic/acquisition_validation_types.rs");
+include!("synthetic/acquisition_detection_types.rs");
+include!("synthetic/acquisition_noise_refinement_types.rs");
+include!("synthetic/acquisition_operating_envelope_types.rs");
+include!("synthetic/acquisition_interference_types.rs");
+include!("synthetic/acquisition_uncertainty_types.rs");
+include!("synthetic/tracking_validation_types.rs");
+include!("synthetic/tracking_sensitivity_types.rs");
+include!("synthetic/tracking_noise_characterization.rs");
+include!("synthetic/tracking_numerical_stability.rs");
+include!("synthetic/capture_tracking.rs");
+include!("synthetic/composite_component_recovery.rs");
+include!("synthetic/acquisition_validation.rs");
+include!("synthetic/sensitivity_profiles.rs");
+include!("synthetic/signal_generation.rs");
 
-/// Generate a synthetic GPS L1 C/A signal at the receiver sample rate.
-///
-/// The C/N0 control is approximate and intended for test harnesses.
-pub fn generate_l1_ca(
-    config: &ReceiverPipelineConfig,
-    params: SyntheticSignalParams,
-    seed: u64,
-    duration_s: f64,
-) -> SamplesFrame {
-    generate_l1_ca_multi(
-        config,
-        &SyntheticScenario {
-            sample_rate_hz: config.sampling_freq_hz,
-            intermediate_freq_hz: config.intermediate_freq_hz,
-            duration_s,
-            seed,
-            satellites: vec![params],
-            ephemerides: Vec::new(),
-            id: "synthetic".to_string(),
-        },
-    )
-}
+#[cfg(test)]
+mod tests {
+    use super::{
+        build_iq16_capture_bundle, build_quantized_capture_bundle,
+        build_quantized_capture_bundle_with_receiver_oscillator, build_truth_bundle,
+        expected_acquisition_code_phase_samples, expected_acquisition_code_phase_samples_f64,
+        generate_l1_ca, generate_l1_ca_multi, generate_l1_ca_multi_signal_only,
+        generate_l1_ca_multi_with_receiver_oscillator, generate_l1_ca_with_carrier_dynamics,
+        generate_l1_ca_with_doppler_ramp, generate_l1_ca_with_fades,
+        generate_l1_ca_with_phase_windows, measure_noise_only_acquisition_false_alarm_rate,
+        measure_noise_only_acquisition_false_alarm_rates,
+        measure_synthetic_acquisition_uncertainty_coverage,
+        measure_truth_guided_acquisition_detection_probability,
+        measure_truth_guided_acquisition_detection_rate,
+        measure_truth_guided_acquisition_interference, measure_truth_guided_tracking_lock_rate,
+        nav_bit_index_at_time_s, nav_bit_sign_at_time_s, signal_amplitude_from_cn0,
+        summarize_observation_errors, summarize_truth_guided_accuracy_cn0_profile,
+        summarize_truth_guided_pvt_clock_profile, summarize_truth_guided_pvt_cn0_profile,
+        summarize_truth_guided_pvt_constellation_geometry_profile,
+        summarize_truth_guided_pvt_geometry_profile, summarize_truth_guided_pvt_motion_profile,
+        summarize_truth_guided_pvt_multipath_profile, summarize_truth_guided_pvt_time_profile,
+        synthetic_tracking_sensitivity_report, truth_guided_receiver_accuracy_budgets,
+        validate_acquisition_accuracy_budget, validate_pvt_accuracy_budget,
+        validate_truth_guided_acquisition_code_phase,
+        validate_truth_guided_acquisition_code_phase_refinement,
+        validate_truth_guided_acquisition_coherent_integration,
+        validate_truth_guided_acquisition_doppler,
+        validate_truth_guided_acquisition_receiver_clock_offset,
+        validate_truth_guided_acquisition_sample_rates,
+        validate_truth_guided_assisted_acquisition_bounds, validate_truth_guided_cn0,
+        validate_truth_guided_common_oscillator_bias_follow_up,
+        validate_truth_guided_composite_component_recovery, validate_truth_guided_pvt_table,
+        wrapped_code_phase_error_samples, wrapped_code_phase_error_samples_f64, SatState,
+        SyntheticAccuracyCn0ProfileReport, SyntheticAcquisitionDetectionRateCase,
+        SyntheticAcquisitionDetectionRatePoint, SyntheticAcquisitionDetectionRateReport,
+        SyntheticAcquisitionFalseAlarmClass, SyntheticAcquisitionFalseAlarmRateCase,
+        SyntheticAcquisitionInterferenceCase, SyntheticAcquisitionInterferenceFailureClass,
+        SyntheticAcquisitionSampleRateValidationCase, SyntheticAcquisitionTruthTableReport,
+        SyntheticAcquisitionTruthTableSatellite, SyntheticAcquisitionUncertaintyCoverageCase,
+        SyntheticCarrierDynamicsParams, SyntheticDopplerRampParams, SyntheticFadeWindow,
+        SyntheticNavBitMode, SyntheticNavigationData, SyntheticPhaseWindow,
+        SyntheticPvtAccuracyEpoch, SyntheticPvtAccuracyReport, SyntheticPvtClockProfileCase,
+        SyntheticPvtCn0ProfileCase, SyntheticPvtCn0ProfilePoint, SyntheticPvtCn0ProfileReport,
+        SyntheticPvtConstellationGeometryProfileCase,
+        SyntheticPvtConstellationGeometryProfileReport, SyntheticPvtGeometryProfileCase,
+        SyntheticPvtGeometryProfileReport, SyntheticPvtMotionProfileCase,
+        SyntheticPvtMotionProfileReport, SyntheticPvtMultipathProfileCase,
+        SyntheticPvtMultipathProfileReport, SyntheticPvtTimeProfileCase,
+        SyntheticPvtTimeProfileReport, SyntheticPvtTimeTrend, SyntheticPvtTruthReferenceEpoch,
+        SyntheticPvtTruthTableClockBias, SyntheticPvtTruthTableDop, SyntheticPvtTruthTableEcef,
+        SyntheticPvtTruthTableEnuError, SyntheticPvtTruthTableEpoch,
+        SyntheticPvtTruthTableGeodetic, SyntheticPvtTruthTableReport,
+        SyntheticReceiverOscillatorModel, SyntheticReceiverOscillatorNoiseModel,
+        SyntheticReceiverPhaseNoiseModel, SyntheticScenario, SyntheticSignalParams,
+        SyntheticSignalSource, SyntheticTrackingLockRateCase, SyntheticTrackingLockRatePoint,
+        SyntheticTrackingLockRateReport, SyntheticTrackingSensitivityTrial,
+        SyntheticTrackingSignalIdentity, SyntheticTrackingTruthTableEpoch,
+        SyntheticTrackingTruthTableReport, SyntheticTrackingTruthTableSatellite,
+        SPEED_OF_LIGHT_MPS, SYNTHETIC_COMPLEX_NOISE_POWER, SYNTHETIC_NOISE_STD_PER_COMPONENT,
+    };
+    use crate::engine::receiver_config::ReceiverPipelineConfig;
+    use crate::reference_validation::ValidationReferenceEpoch;
+    use bijux_gnss_core::api::{
+        ecef_to_geodetic, lla_to_ecef, Constellation, Cycles, Epoch, FreqHz,
+        GlonassFrequencyChannel, Hertz, LockFlags, Meters, NavLifecycleState, NavQualityFlag,
+        NavSolutionEpoch, NavUncertaintyClass, ObsEpoch, ObsMetadata, ObsSatellite,
+        ObservationStatus, ReceiverSampleTrace, SampleTime, SamplesFrame, SatId, Seconds, SigId,
+        SignalBand, SignalCode, SignalSpec, SolutionStatus, SolutionValidity,
+        NAV_OUTPUT_STABILITY_SIGNATURE_VERSION, NAV_SOLUTION_MODEL_VERSION,
+    };
+    use bijux_gnss_nav::api::GpsEphemeris;
+    use bijux_gnss_signal::api::{
+        advance_code_phase_seconds, sample_ca_code, samples_per_code, IqQuantization,
+        IqSampleFormat, Prn, RawIqMetadata, SignalSource,
+    };
+    use num_complex::Complex;
 
-pub fn generate_l1_ca_multi(
-    config: &ReceiverPipelineConfig,
-    scenario: &SyntheticScenario,
-) -> SamplesFrame {
-    let clock = SampleClock::new(config.sampling_freq_hz);
-    let dt_s = clock.dt_s();
-    let sample_count = (scenario.duration_s * config.sampling_freq_hz).round() as usize;
+    const RECEIVER_PHASE_TOLERANCE_SAMPLES: f64 = 1e-6;
+    type ObservationEpoch = ObsEpoch;
 
-    let max_cn0 = scenario.satellites.iter().map(|s| s.cn0_db_hz).fold(0.0_f32, f32::max);
-    let snr_db = max_cn0 - 30.0;
-    let snr_linear = 10.0f32.powf(snr_db / 10.0).max(1e-6);
-    let noise_std = 1.0f32 / snr_linear.sqrt();
-
-    let mut rng = XorShift64::new(scenario.seed);
-    let mut iq = Vec::with_capacity(sample_count);
-
-    let sat_states: Vec<SatState> =
-        scenario.satellites.iter().map(|sat| SatState::new(config, *sat)).collect();
-
-    for n in 0..sample_count {
-        let t = n as f64 * dt_s;
-        let mut sample = Complex::new(0.0f32, 0.0f32);
-        for sat in &sat_states {
-            sample += sat.sample_at(t);
-        }
-
-        let noise_i = rng.next_gaussian() * noise_std;
-        let noise_q = rng.next_gaussian() * noise_std;
-        let noise = Complex::new(noise_i, noise_q);
-
-        iq.push(sample + noise);
-    }
-
-    let t0 = SampleTime { sample_index: 0, sample_rate_hz: config.sampling_freq_hz };
-
-    SamplesFrame::new(t0, Seconds(dt_s), iq)
-}
-
-#[derive(Debug, Clone)]
-struct SatState {
-    doppler_hz: f64,
-    code_phase_chips: f64,
-    carrier_phase_rad: f64,
-    cn0_db_hz: f32,
-    data_bit_flip: bool,
-    code: Vec<i8>,
-    code_rate_hz: f64,
-    if_hz: f64,
-}
-
-impl SatState {
-    fn new(config: &ReceiverPipelineConfig, params: SyntheticSignalParams) -> Self {
-        let carrier = match params.sat.constellation {
-            Constellation::Galileo => bijux_gnss_core::api::GALILEO_E1_CARRIER_HZ.value(),
-            Constellation::Gps => bijux_gnss_core::api::GPS_L1_CA_CARRIER_HZ.value(),
-            Constellation::Glonass => bijux_gnss_core::api::GLONASS_L1_CARRIER_HZ.value(),
-            _ => bijux_gnss_core::api::GPS_L1_CA_CARRIER_HZ.value(),
-        };
-        Self {
-            doppler_hz: params.doppler_hz,
-            code_phase_chips: params.code_phase_chips,
-            carrier_phase_rad: params.carrier_phase_rad,
-            cn0_db_hz: params.cn0_db_hz,
-            data_bit_flip: params.data_bit_flip,
-            code: generate_ca_code(Prn(params.sat.prn)).unwrap_or_else(|_| vec![1; 1023]),
-            code_rate_hz: config.code_freq_basis_hz,
-            if_hz: config.intermediate_freq_hz
-                + (carrier - bijux_gnss_core::api::GPS_L1_CA_CARRIER_HZ.value()),
-        }
-    }
-
-    fn sample_at(&self, t: f64) -> Complex<f32> {
-        let code_phase = self.code_phase_chips + self.code_rate_hz * t;
-        let chip_index = (code_phase.floor() as usize) % self.code.len();
-        let chip = self.code[chip_index] as f32;
-
-        let data_bit = if self.data_bit_flip {
-            let bit_index = (t / 0.02).floor() as i64;
-            if bit_index % 2 == 0 {
-                1.0
-            } else {
-                -1.0
-            }
-        } else {
-            1.0
-        };
-
-        let carrier_hz = self.if_hz + self.doppler_hz;
-        let phase = self.carrier_phase_rad as f32 + TAU * (carrier_hz as f32) * (t as f32);
-        let carrier = Complex::new(phase.cos(), phase.sin());
-
-        let snr_db = self.cn0_db_hz - 30.0;
-        let snr_linear = 10.0f32.powf(snr_db / 10.0).max(1e-6);
-        let amplitude = snr_linear.sqrt();
-
-        carrier * (chip * data_bit * amplitude)
-    }
-}
-
-#[derive(Debug, Clone)]
-struct XorShift64 {
-    state: u64,
-}
-
-impl XorShift64 {
-    fn new(seed: u64) -> Self {
-        let seed = if seed == 0 { 0xDEADBEEFCAFEBABE } else { seed };
-        Self { state: seed }
-    }
-
-    fn next_u64(&mut self) -> u64 {
-        let mut x = self.state;
-        x ^= x << 13;
-        x ^= x >> 7;
-        x ^= x << 17;
-        self.state = x;
-        x
-    }
-
-    fn next_f32(&mut self) -> f32 {
-        let val = (self.next_u64() >> 40) as u32;
-        val as f32 / (u32::MAX as f32)
-    }
-
-    fn next_gaussian(&mut self) -> f32 {
-        let u1 = self.next_f32().max(1e-12);
-        let u2 = self.next_f32();
-        let r = (-2.0 * u1.ln()).sqrt();
-        let theta = TAU * u2;
-        r * theta.cos()
-    }
+    include!("synthetic/tests/foundation.rs");
+    include!("synthetic/tests/pvt_profiles_signal_conditions.rs");
+    include!("synthetic/tests/pvt_profiles_motion_timing.rs");
+    include!("synthetic/tests/profile_fixtures.rs");
+    include!("synthetic/tests/signal_model.rs");
+    include!("synthetic/tests/validation_composite_recovery.rs");
+    include!("synthetic/tests/validation_detection_reports.rs");
+    include!("synthetic/tests/validation_frequency_sampling.rs");
 }

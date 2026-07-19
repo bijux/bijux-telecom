@@ -9,6 +9,72 @@ pub struct SatId {
     pub prn: u8,
 }
 
+/// One-based GLONASS orbital slot identifier.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct GlonassSlot(u8);
+
+impl GlonassSlot {
+    pub const MIN: u8 = 1;
+    pub const MAX: u8 = 24;
+
+    pub const fn new(value: u8) -> Option<Self> {
+        if value >= Self::MIN && value <= Self::MAX {
+            Some(Self(value))
+        } else {
+            None
+        }
+    }
+
+    pub const fn value(self) -> u8 {
+        self.0
+    }
+}
+
+/// GLONASS FDMA carrier channel number.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct GlonassFrequencyChannel(i8);
+
+impl GlonassFrequencyChannel {
+    pub const MIN: i8 = -7;
+    pub const MAX: i8 = 13;
+
+    pub const fn new(value: i8) -> Option<Self> {
+        if value >= Self::MIN && value <= Self::MAX {
+            Some(Self(value))
+        } else {
+            None
+        }
+    }
+
+    pub const fn value(self) -> i8 {
+        self.0
+    }
+}
+
+/// Concrete GLONASS L1 FDMA signal identity.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct GlonassL1FdmaSignal {
+    pub slot: GlonassSlot,
+    pub frequency_channel: GlonassFrequencyChannel,
+}
+
+impl GlonassL1FdmaSignal {
+    pub fn sat_id(self) -> SatId {
+        glonass_slot_sat(self.slot)
+    }
+
+    pub fn signal_id(self) -> SigId {
+        SigId { sat: self.sat_id(), band: SignalBand::L1, code: SignalCode::Unknown }
+    }
+
+    pub fn carrier_hz(self) -> FreqHz {
+        FreqHz::new(
+            GLONASS_L1_CARRIER_HZ.value()
+                + f64::from(self.frequency_channel.value()) * GLONASS_L1_CHANNEL_SPACING_HZ.value(),
+        )
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct SigId {
     pub sat: SatId,
@@ -40,11 +106,16 @@ pub enum SignalBand {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum SignalCode {
     Ca,
+    L2C,
+    L5I,
+    L5Q,
     Py,
     E1B,
     E1C,
     E5a,
     E5b,
+    B1I,
+    B2I,
     Unknown,
 }
 
@@ -82,9 +153,30 @@ pub fn format_sat(sat: SatId) -> String {
     format!("{:?}-{}", sat.constellation, sat.prn)
 }
 
+/// Build a GLONASS satellite identifier from a validated orbital slot.
+pub fn glonass_slot_sat(slot: GlonassSlot) -> SatId {
+    SatId { constellation: Constellation::Glonass, prn: slot.value() }
+}
+
+/// Extract a validated GLONASS slot from one satellite ID.
+pub fn glonass_slot_from_sat(sat: SatId) -> Option<GlonassSlot> {
+    (sat.constellation == Constellation::Glonass).then(|| GlonassSlot::new(sat.prn)).flatten()
+}
+
 /// Convert GPS PRNs into satellite IDs.
 pub fn prns_to_sats(prns: &[u8]) -> Vec<SatId> {
     prns.iter().map(|&prn| SatId { constellation: Constellation::Gps, prn }).collect()
+}
+
+/// Return the default civil tracking band used for a constellation when no explicit signal is given.
+pub fn default_signal_band_for_constellation(constellation: Constellation) -> SignalBand {
+    match constellation {
+        Constellation::Gps => SignalBand::L1,
+        Constellation::Galileo => SignalBand::E1,
+        Constellation::Glonass => SignalBand::L1,
+        Constellation::Beidou => SignalBand::B1,
+        Constellation::Unknown => SignalBand::Unknown,
+    }
 }
 
 fn constellation_rank(constellation: Constellation) -> u8 {
@@ -113,12 +205,17 @@ fn band_rank(band: SignalBand) -> u8 {
 fn code_rank(code: SignalCode) -> u8 {
     match code {
         SignalCode::Ca => 0,
-        SignalCode::Py => 1,
-        SignalCode::E1B => 2,
-        SignalCode::E1C => 3,
-        SignalCode::E5a => 4,
-        SignalCode::E5b => 5,
-        SignalCode::Unknown => 9,
+        SignalCode::L2C => 1,
+        SignalCode::L5I => 2,
+        SignalCode::L5Q => 3,
+        SignalCode::Py => 4,
+        SignalCode::E1B => 5,
+        SignalCode::E1C => 6,
+        SignalCode::E5a => 7,
+        SignalCode::E5b => 8,
+        SignalCode::B1I => 9,
+        SignalCode::B2I => 10,
+        SignalCode::Unknown => 11,
     }
 }
 
@@ -137,10 +234,14 @@ impl FreqHz {
 }
 
 pub const GPS_L1_CA_CARRIER_HZ: FreqHz = FreqHz::new(1_575_420_000.0);
+pub const GPS_L2C_CARRIER_HZ: FreqHz = FreqHz::new(1_227_600_000.0);
 pub const GPS_L2_PY_CARRIER_HZ: FreqHz = FreqHz::new(1_227_600_000.0);
 pub const GPS_L5_CARRIER_HZ: FreqHz = FreqHz::new(1_176_450_000.0);
 pub const GALILEO_E1_CARRIER_HZ: FreqHz = FreqHz::new(1_575_420_000.0);
-pub const GALILEO_E5_CARRIER_HZ: FreqHz = FreqHz::new(1_176_450_000.0);
+pub const GALILEO_E5A_CARRIER_HZ: FreqHz = FreqHz::new(1_176_450_000.0);
+pub const GALILEO_E5B_CARRIER_HZ: FreqHz = FreqHz::new(1_207_140_000.0);
+pub const GALILEO_E5_CARRIER_HZ: FreqHz = GALILEO_E5A_CARRIER_HZ;
+pub const GLONASS_L1_CHANNEL_SPACING_HZ: FreqHz = FreqHz::new(562_500.0);
 pub const GLONASS_L1_CARRIER_HZ: FreqHz = FreqHz::new(1_602_000_000.0);
 pub const BEIDOU_B1_CARRIER_HZ: FreqHz = FreqHz::new(1_561_098_000.0);
 pub const BEIDOU_B2_CARRIER_HZ: FreqHz = FreqHz::new(1_207_140_000.0);
@@ -149,9 +250,11 @@ pub const BEIDOU_B2_CARRIER_HZ: FreqHz = FreqHz::new(1_207_140_000.0);
 pub struct SignalRegistryEntry {
     pub spec: SignalSpec,
     pub code_length: Option<u32>,
+    pub default_component_role: SignalComponentRole,
+    pub components: Vec<SignalComponentSpec>,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct SignalSpec {
     pub constellation: Constellation,
     pub band: SignalBand,
@@ -160,59 +263,43 @@ pub struct SignalSpec {
     pub carrier_hz: FreqHz,
 }
 
-pub fn signal_spec_gps_l1_ca() -> SignalSpec {
-    SignalSpec {
-        constellation: Constellation::Gps,
-        band: SignalBand::L1,
-        code: SignalCode::Ca,
-        code_rate_hz: 1_023_000.0,
-        carrier_hz: GPS_L1_CA_CARRIER_HZ,
-    }
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SignalComponentRole {
+    Data,
+    Pilot,
 }
 
-pub fn signal_spec_gps_l2_py() -> SignalSpec {
-    SignalSpec {
-        constellation: Constellation::Gps,
-        band: SignalBand::L2,
-        code: SignalCode::Py,
-        code_rate_hz: 10_230_000.0,
-        carrier_hz: GPS_L2_PY_CARRIER_HZ,
-    }
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub enum SignalSubcarrierSpec {
+    None,
+    Boc { cycles_per_chip: u32 },
+    Cboc { boc11_weight: f32, boc61_weight: f32 },
 }
 
-pub fn signal_registry(
-    constellation: Constellation,
-    band: SignalBand,
-    code: SignalCode,
-) -> Option<SignalRegistryEntry> {
-    let spec =
-        SignalSpec { constellation, band, code, code_rate_hz: 0.0, carrier_hz: FreqHz::new(0.0) };
-    let (carrier_hz, code_rate_hz, code_length) = match (constellation, band, code) {
-        (Constellation::Gps, SignalBand::L1, SignalCode::Ca) => {
-            (GPS_L1_CA_CARRIER_HZ, 1_023_000.0, Some(1023))
-        }
-        (Constellation::Gps, SignalBand::L2, SignalCode::Py) => {
-            (GPS_L2_PY_CARRIER_HZ, 10_230_000.0, Some(10230))
-        }
-        (Constellation::Gps, SignalBand::L5, SignalCode::Unknown) => {
-            (GPS_L5_CARRIER_HZ, 10_230_000.0, None)
-        }
-        (Constellation::Galileo, SignalBand::E1, SignalCode::E1B) => {
-            (GALILEO_E1_CARRIER_HZ, 1_023_000.0, None)
-        }
-        (Constellation::Galileo, SignalBand::E5, SignalCode::E5a) => {
-            (GALILEO_E5_CARRIER_HZ, 10_230_000.0, None)
-        }
-        (Constellation::Glonass, SignalBand::L1, SignalCode::Unknown) => {
-            (GLONASS_L1_CARRIER_HZ, 511_000.0, None)
-        }
-        (Constellation::Beidou, SignalBand::B1, SignalCode::Unknown) => {
-            (BEIDOU_B1_CARRIER_HZ, 2_046_000.0, None)
-        }
-        (Constellation::Beidou, SignalBand::B2, SignalCode::Unknown) => {
-            (BEIDOU_B2_CARRIER_HZ, 2_046_000.0, None)
-        }
-        _ => return None,
-    };
-    Some(SignalRegistryEntry { spec: SignalSpec { carrier_hz, code_rate_hz, ..spec }, code_length })
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct SignalSecondaryCodeSpec {
+    pub chip_count: u32,
+    pub chip_period_s: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct SignalComponentSpec {
+    pub role: SignalComponentRole,
+    pub primary_code_rate_hz: f64,
+    pub primary_code_chips: u32,
+    pub primary_code_period_s: f64,
+    pub secondary_code: Option<SignalSecondaryCodeSpec>,
+    pub subcarrier: SignalSubcarrierSpec,
+    pub symbol_period_s: Option<f64>,
+    pub power_fraction: f32,
+}
+
+impl SignalRegistryEntry {
+    pub fn default_component(&self) -> Option<&SignalComponentSpec> {
+        self.component(self.default_component_role)
+    }
+
+    pub fn component(&self, role: SignalComponentRole) -> Option<&SignalComponentSpec> {
+        self.components.iter().find(|component| component.role == role)
+    }
 }

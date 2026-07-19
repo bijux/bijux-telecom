@@ -1,0 +1,136 @@
+#![allow(missing_docs)]
+
+use bijux_gnss_core::api::{
+    Constellation, SatId, SignalBand, SignalCode, SupportStatus, BEIDOU_B1_CARRIER_HZ,
+    GPS_L1_CA_CARRIER_HZ,
+};
+use bijux_gnss_receiver::api::{
+    sim::{SyntheticScenario, SyntheticSignalParams, SyntheticSignalSource},
+    ConstellationSelectionPolicy, Receiver, ReceiverPipelineConfig, ReceiverRuntime,
+};
+
+fn beidou_b1_config() -> ReceiverPipelineConfig {
+    ReceiverPipelineConfig {
+        sampling_freq_hz: 4_092_000.0,
+        intermediate_freq_hz: GPS_L1_CA_CARRIER_HZ.value() - BEIDOU_B1_CARRIER_HZ.value(),
+        code_freq_basis_hz: 2_046_000.0,
+        code_length: 2046,
+        acquisition_doppler_search_hz: 0,
+        acquisition_doppler_step_hz: 250,
+        acquisition_integration_ms: 1,
+        acquisition_noncoherent: 1,
+        channels: 4,
+        tracking_budget_ms: 100.0,
+        tracking_over_budget_action: "continue".to_string(),
+        ..ReceiverPipelineConfig::default()
+    }
+}
+
+fn beidou_b1_scenario(sat: SatId) -> SyntheticScenario {
+    SyntheticScenario {
+        sample_rate_hz: 4_092_000.0,
+        intermediate_freq_hz: GPS_L1_CA_CARRIER_HZ.value() - BEIDOU_B1_CARRIER_HZ.value(),
+        receiver_clock_frequency_bias_hz: 0.0,
+        duration_s: 0.080,
+        seed: 0xB1D0_1000,
+        satellites: vec![SyntheticSignalParams {
+            sat,
+            glonass_frequency_channel: None,
+            signal_band: bijux_gnss_core::api::SignalBand::B1,
+            signal_code: bijux_gnss_core::api::SignalCode::B1I,
+            doppler_hz: 0.0,
+            code_phase_chips: 321.375,
+            carrier_phase_rad: 0.25,
+            cn0_db_hz: 60.0,
+            navigation_data: false.into(),
+        }],
+        ephemerides: Vec::new(),
+        id: "receiver-beidou-b1-boundary".to_string(),
+    }
+}
+
+#[test]
+fn receiver_emits_beidou_b1i_tracking_artifacts() {
+    let config = beidou_b1_config();
+    let sat = SatId { constellation: Constellation::Beidou, prn: 11 };
+    let scenario = beidou_b1_scenario(sat);
+    let mut source = SyntheticSignalSource::new_signal_only(&config, &scenario);
+    let receiver = Receiver::new(config, ReceiverRuntime::default());
+
+    let artifacts = receiver.run(&mut source).expect("receiver run");
+    let acquisition = artifacts
+        .acquisitions
+        .iter()
+        .find(|result| result.sat == sat)
+        .expect("BeiDou acquisition result");
+    let track =
+        artifacts.tracking.iter().find(|result| result.sat == sat).expect("BeiDou tracking result");
+    let report = artifacts
+        .channel_state_reports
+        .iter()
+        .find(|report| report.sat == sat)
+        .expect("BeiDou tracking state report");
+
+    assert_eq!(acquisition.signal_band, SignalBand::B1, "{acquisition:?}");
+    assert!(
+        matches!(
+            acquisition.hypothesis,
+            bijux_gnss_core::api::AcqHypothesis::Accepted
+                | bijux_gnss_core::api::AcqHypothesis::Ambiguous
+        ),
+        "{acquisition:?}"
+    );
+    assert!(!track.epochs.is_empty(), "{artifacts:?}");
+    assert!(
+        track.epochs.iter().all(
+            |epoch| epoch.signal_band == SignalBand::B1 && epoch.signal_code == SignalCode::B1I
+        ),
+        "{track:?}",
+    );
+    assert!(!report.emitted_states.is_empty(), "{report:?}");
+}
+
+#[test]
+fn support_matrix_describes_beidou_b1i_as_observation_ready() {
+    let config = beidou_b1_config();
+    let sat = SatId { constellation: Constellation::Beidou, prn: 11 };
+    let scenario = beidou_b1_scenario(sat);
+    let mut source = SyntheticSignalSource::new_signal_only(&config, &scenario);
+    let receiver = Receiver::new(config, ReceiverRuntime::default());
+
+    let artifacts = receiver.run(&mut source).expect("receiver run");
+    let support_matrix = artifacts.support_matrix.expect("support matrix");
+    let row = support_matrix
+        .rows
+        .iter()
+        .find(|row| {
+            row.constellation == Constellation::Beidou
+                && row.band == SignalBand::B1
+                && row.code == SignalCode::B1I
+        })
+        .expect("BeiDou B1I support row");
+
+    assert!(matches!(row.status, SupportStatus::Planned), "{row:?}");
+    assert!(matches!(row.stage_support.acquisition, SupportStatus::Supported), "{row:?}");
+    assert!(matches!(row.stage_support.tracking, SupportStatus::Supported), "{row:?}");
+    assert!(matches!(row.stage_support.data_decoding, SupportStatus::Planned), "{row:?}");
+    assert!(matches!(row.stage_support.observations, SupportStatus::Supported), "{row:?}");
+    assert!(matches!(row.stage_support.positioning, SupportStatus::Supported), "{row:?}");
+    assert!(row.requirements.is_empty(), "{row:?}");
+}
+
+#[test]
+fn receiver_gps_only_policy_skips_beidou_signal_acquisition() {
+    let mut config = beidou_b1_config();
+    config.constellation_policy = ConstellationSelectionPolicy::GpsOnly;
+    let sat = SatId { constellation: Constellation::Beidou, prn: 11 };
+    let scenario = beidou_b1_scenario(sat);
+    let mut source = SyntheticSignalSource::new_signal_only(&config, &scenario);
+    let receiver = Receiver::new(config, ReceiverRuntime::default());
+
+    let artifacts = receiver.run(&mut source).expect("receiver run");
+
+    assert!(artifacts.acquisitions.is_empty(), "{artifacts:?}");
+    assert!(artifacts.tracking.is_empty(), "{artifacts:?}");
+    assert!(artifacts.observations.is_empty(), "{artifacts:?}");
+}

@@ -10,7 +10,6 @@ allow = [
   "Apache-2.0 WITH LLVM-exception",
   "MIT",
   "MIT-0",
-  "MPL-2.0",
   "BSD-2-Clause",
   "BSD-3-Clause",
   "ISC",
@@ -28,16 +27,8 @@ name = "bitflags"
 # why = "Simultaneous 1.x and 2.x are required by macOS graphics stack and modern transitive crates."
 
 [[bans.skip]]
-name = "core-foundation"
-# why = "Parallel 0.9/0.10 lines are pulled by legacy graphics and newer TLS verifier stacks."
-
-[[bans.skip]]
-name = "getrandom"
-# why = "0.2 and 0.3 are both required by mixed transitive ecosystems; no direct telecom crate selects them."
-
-[[bans.skip]]
 name = "thiserror"
-# why = "1.x is required by legacy transitive JNI path while telecom crates use 2.x."
+# why = "1.x is required by legacy transitive JNI path while GNSS crates use 2.x."
 
 [[bans.skip]]
 name = "thiserror-impl"

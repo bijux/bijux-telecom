@@ -1,0 +1,97 @@
+#![allow(missing_docs)]
+
+use bijux_gnss_core::api::{Constellation, SamplesFrame, SatId};
+use bijux_gnss_receiver::api::{
+    sim::{
+        build_iq16_capture_bundle, generate_l1_ca_multi,
+        validate_truth_guided_acquisition_doppler_refinement, SyntheticScenario,
+        SyntheticSignalParams,
+    },
+    ReceiverPipelineConfig,
+};
+
+#[test]
+fn acquisition_refinement_recovers_fractional_doppler_more_closely_than_the_raw_bin() {
+    for (sampling_freq_hz, scenario_id) in [
+        (4_092_000.0, "acquisition_doppler_refinement_high_rate"),
+        (4_000_000.0, "acquisition_doppler_refinement_fractional_rate"),
+    ] {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 1023,
+            acquisition_doppler_search_hz: 10_000,
+            acquisition_doppler_step_hz: 500,
+            ..ReceiverPipelineConfig::default()
+        };
+        let scenario = SyntheticScenario {
+            sample_rate_hz: config.sampling_freq_hz,
+            intermediate_freq_hz: config.intermediate_freq_hz,
+            receiver_clock_frequency_bias_hz: 0.0,
+            duration_s: 0.04,
+            seed: 24_071_985,
+            satellites: vec![
+                SyntheticSignalParams {
+                    sat: SatId { constellation: Constellation::Gps, prn: 3 },
+                    glonass_frequency_channel: None,
+                    signal_band: bijux_gnss_core::api::SignalBand::L1,
+                    signal_code: bijux_gnss_core::api::SignalCode::Ca,
+                    doppler_hz: 875.0,
+                    code_phase_chips: 200.25,
+                    carrier_phase_rad: 0.0,
+                    cn0_db_hz: 58.0,
+                    navigation_data: true.into(),
+                },
+                SyntheticSignalParams {
+                    sat: SatId { constellation: Constellation::Gps, prn: 7 },
+                    glonass_frequency_channel: None,
+                    signal_band: bijux_gnss_core::api::SignalBand::L1,
+                    signal_code: bijux_gnss_core::api::SignalCode::Ca,
+                    doppler_hz: -1_125.0,
+                    code_phase_chips: 321.5,
+                    carrier_phase_rad: 0.2,
+                    cn0_db_hz: 52.0,
+                    navigation_data: false.into(),
+                },
+            ],
+            ephemerides: Vec::new(),
+            id: scenario_id.to_string(),
+        };
+        let frame = generate_l1_ca_multi(&config, &scenario);
+        let bundle = build_iq16_capture_bundle(
+            &scenario.id,
+            &scenario,
+            &frame,
+            "2026-07-09T00:00:00Z",
+            Some("integration acquisition doppler refinement".to_string()),
+        );
+        let scaled_frame = scaled_frame(&frame, bundle.truth.output_scale_applied);
+
+        let report = validate_truth_guided_acquisition_doppler_refinement(
+            &config,
+            &scaled_frame,
+            &bundle.truth,
+        );
+
+        assert!(report.pass, "{report:?}");
+        assert_eq!(report.sample_rate_hz, sampling_freq_hz);
+        assert_eq!(report.doppler_step_hz, 500);
+        assert_eq!(report.satellites.len(), 2);
+        for row in &report.satellites {
+            assert!(row.pass, "{row:?}");
+            assert!(row.coarse_error_hz >= 125.0 - f64::EPSILON, "{row:?}");
+            assert!(row.refined_error_hz + f64::EPSILON < row.coarse_error_hz, "{row:?}");
+            assert!(row.improvement_hz > 0.0, "{row:?}");
+            assert!(row.refinement_bins.abs() <= 0.5 + f64::EPSILON, "{row:?}");
+        }
+    }
+}
+
+fn scaled_frame(frame: &SamplesFrame, output_scale_applied: f32) -> SamplesFrame {
+    SamplesFrame::new(
+        frame.t0,
+        frame.dt_s,
+        frame.iq.iter().map(|sample| *sample * output_scale_applied).collect(),
+    )
+}

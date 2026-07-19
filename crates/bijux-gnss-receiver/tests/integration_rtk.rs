@@ -1,18 +1,20 @@
 #![allow(missing_docs)]
 use bijux_gnss_core::api::{
-    Constellation, LockFlags, ObsEpoch, ObsMetadata, ObsSatellite, ReceiverRole, SatId, SigId,
-    SignalBand, SignalSpec,
+    Constellation, LockFlags, ObsEpoch, ObsMetadata, ObsSatellite, ReceiverRole,
+    ReceiverSampleTrace, SatId, SigId, SignalBand, SignalSpec,
 };
 use bijux_gnss_nav::api::geodetic_to_ecef;
 use bijux_gnss_receiver::api::baseline_from_ecef;
 use bijux_gnss_receiver::api::{
-    apply_fix_hold, build_dd, build_dd_per_constellation, build_sd, choose_ref_sat,
-    choose_ref_sat_per_constellation, EpochAligner,
+    apply_fix_hold, build_dd, build_dd_per_constellation, build_sd,
+    build_sd_with_alignment_tolerance, choose_ref_sat, choose_ref_sat_per_constellation,
+    EpochAligner,
 };
 
 fn make_epoch(t_rx_s: f64, prn: u8) -> ObsEpoch {
     ObsEpoch {
         t_rx_s: bijux_gnss_core::api::Seconds(t_rx_s),
+        source_time: ReceiverSampleTrace::from_sample_index((t_rx_s * 1000.0) as u64, 1_000.0),
         gps_week: None,
         tow_s: None,
         epoch_idx: (t_rx_s * 1000.0) as u64,
@@ -45,6 +47,7 @@ fn make_epoch(t_rx_s: f64, prn: u8) -> ObsEpoch {
             elevation_deg: None,
             azimuth_deg: None,
             weight: None,
+            timing: None,
             error_model: None,
             metadata: ObsMetadata {
                 tracking_mode: "scalar".to_string(),
@@ -87,6 +90,19 @@ fn aligner_handles_missing_epochs() {
 }
 
 #[test]
+fn receiver_rtk_single_differences_honor_configured_epoch_tolerance() {
+    let base = make_epoch(0.0, 1);
+    let rover = make_epoch(0.0008, 1);
+
+    assert!(build_sd(&base, &rover).is_empty());
+    let sd = build_sd_with_alignment_tolerance(&base, &rover, 0.001);
+
+    assert_eq!(sd.len(), 1);
+    assert!((sd[0].epoch_alignment.delta_s - 0.0008).abs() < 1.0e-12);
+    assert_eq!(sd[0].epoch_alignment.tolerance_s, 0.001);
+}
+
+#[test]
 fn dd_builder_skips_ref_drop() {
     let base = make_epoch(0.0, 1);
     let rover = make_epoch(0.0, 1);
@@ -126,7 +142,7 @@ fn dd_variance_matches_expected_sum() {
     let ref_sig = choose_ref_sat(&sd).expect("ref");
     let dd = build_dd(&sd, ref_sig);
     assert!(dd.is_empty());
-    assert!((sd[0].variance_code - 13.0).abs() < 1e-6);
+    assert!((sd[0].code_variance_m2 - 13.0).abs() < 1e-6);
 }
 
 #[test]
@@ -139,7 +155,7 @@ fn variance_model_decreases_with_cn0() {
     high.sats[0].pseudorange_var_m2 = 0.0;
     let sd_low = build_sd(&low, &low);
     let sd_high = build_sd(&high, &high);
-    assert!(sd_high[0].variance_code < sd_low[0].variance_code);
+    assert!(sd_high[0].code_variance_m2 < sd_low[0].code_variance_m2);
 }
 
 #[test]

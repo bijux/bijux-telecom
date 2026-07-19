@@ -1,7 +1,9 @@
 #![allow(missing_docs)]
 
 use bijux_gnss_core::api::{Constellation, SatId, SigId, SignalBand, SignalCode};
-use bijux_gnss_nav::api::{Ekf, EkfConfig, Matrix, PseudorangeMeasurement};
+use bijux_gnss_nav::api::{
+    Ekf, EkfConfig, InnovationConsistencyConfig, Matrix, PseudorangeMeasurement,
+};
 
 #[test]
 fn ekf_long_run_stability() {
@@ -9,6 +11,7 @@ fn ekf_long_run_stability() {
         gating_chi2_code: Some(1e9),
         gating_chi2_phase: Some(1e9),
         gating_chi2_doppler: Some(1e9),
+        innovation_consistency: Some(InnovationConsistencyConfig::default()),
         huber_k: None,
         square_root: true,
         covariance_epsilon: 1e-9,

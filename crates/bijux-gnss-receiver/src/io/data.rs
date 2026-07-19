@@ -2,12 +2,16 @@
 
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
+use std::path::Path;
 
 use thiserror::Error;
 
 use bijux_gnss_core::api::{SampleClock, SampleTime, SamplesFrame, Seconds};
 
-use bijux_gnss_signal::api::{iq_i16_to_samples, SampleSource, SignalSource};
+use bijux_gnss_signal::api::{
+    iq_f32_to_samples, iq_i16_to_samples, iq_i8_to_samples, IqSampleFormat, RawIqMetadata,
+    SampleSource, SignalSource,
+};
 
 #[derive(Debug, Error)]
 pub enum SampleSourceError {
@@ -63,27 +67,40 @@ impl SignalSource for MemorySamples {
     fn is_done(&self) -> bool {
         self.cursor_samples >= self.data.len() / 2
     }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }
 
-/// File-backed sample source for raw i16 samples.
+/// File-backed sample source for raw IQ captures.
 pub struct FileSamples {
     file: File,
     done: bool,
     clock: SampleClock,
     sample_index: u64,
+    metadata: RawIqMetadata,
 }
 
 impl FileSamples {
-    pub fn open(
-        path: &str,
-        offset_bytes: u64,
-        sample_rate_hz: f64,
-    ) -> Result<Self, SampleSourceError> {
+    /// Open a raw IQ capture using explicit metadata.
+    pub fn open_raw_iq(path: &Path, metadata: RawIqMetadata) -> Result<Self, SampleSourceError> {
         let mut file = File::open(path)?;
-        if offset_bytes > 0 {
-            file.seek(SeekFrom::Start(offset_bytes))?;
+        if metadata.offset_bytes > 0 {
+            file.seek(SeekFrom::Start(metadata.offset_bytes))?;
         }
-        Ok(Self { file, done: false, clock: SampleClock::new(sample_rate_hz), sample_index: 0 })
+        Ok(Self {
+            file,
+            done: false,
+            clock: SampleClock::new(metadata.sample_rate_hz),
+            sample_index: 0,
+            metadata,
+        })
+    }
+
+    /// Metadata declared for this raw IQ source.
+    pub fn metadata(&self) -> &RawIqMetadata {
+        &self.metadata
     }
 }
 
@@ -98,29 +115,17 @@ impl SignalSource for FileSamples {
         if self.done {
             return Ok(None);
         }
-        let byte_len = frame_len * 4;
+        let byte_len = frame_len * self.metadata.format.bytes_per_complex_sample();
         let mut buf = vec![0u8; byte_len];
         let read = self.file.read(&mut buf)?;
         if read == 0 {
             self.done = true;
             return Ok(None);
         }
-        let i16_count = read / 2;
-        if i16_count % 2 != 0 {
-            self.done = true;
-            return Err(SampleSourceError::InvalidIqLength);
-        }
-        let samples_read = i16_count / 2;
-        let mut i16_buf = vec![0i16; i16_count];
-        for i in 0..i16_count {
-            let lo = buf[2 * i] as u16;
-            let hi = buf[2 * i + 1] as u16;
-            i16_buf[i] = i16::from_le_bytes([lo as u8, hi as u8]);
-        }
+        let (iq, samples_read) = decode_samples(&self.metadata, &buf[..read])?;
         if samples_read < frame_len {
             self.done = true;
         }
-        let iq = iq_i16_to_samples(&i16_buf[..samples_read * 2]);
         let t0 = SampleTime {
             sample_index: self.sample_index,
             sample_rate_hz: self.clock.sample_rate_hz,
@@ -133,6 +138,10 @@ impl SignalSource for FileSamples {
     fn is_done(&self) -> bool {
         self.done
     }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }
 
 impl SampleSource for FileSamples {
@@ -141,4 +150,61 @@ impl SampleSource for FileSamples {
     fn next_samples(&mut self, frame_len: usize) -> Result<Option<SamplesFrame>, Self::Error> {
         self.next_frame(frame_len)
     }
+}
+
+fn decode_samples(
+    metadata: &RawIqMetadata,
+    raw_bytes: &[u8],
+) -> Result<(Vec<bijux_gnss_core::api::Sample>, usize), SampleSourceError> {
+    match metadata.format {
+        IqSampleFormat::Iq8 => decode_i8_samples(raw_bytes),
+        IqSampleFormat::Iq16Le => decode_i16_le_samples(raw_bytes),
+        IqSampleFormat::Cf32Le => decode_cf32_le_samples(raw_bytes),
+    }
+}
+
+fn decode_i8_samples(
+    raw_bytes: &[u8],
+) -> Result<(Vec<bijux_gnss_core::api::Sample>, usize), SampleSourceError> {
+    if raw_bytes.len() % 2 != 0 {
+        return Err(SampleSourceError::InvalidIqLength);
+    }
+    let mut i8_buf = vec![0i8; raw_bytes.len()];
+    for (idx, byte) in raw_bytes.iter().enumerate() {
+        i8_buf[idx] = *byte as i8;
+    }
+    Ok((iq_i8_to_samples(&i8_buf), raw_bytes.len() / 2))
+}
+
+fn decode_i16_le_samples(
+    raw_bytes: &[u8],
+) -> Result<(Vec<bijux_gnss_core::api::Sample>, usize), SampleSourceError> {
+    let i16_count = raw_bytes.len() / 2;
+    if i16_count * 2 != raw_bytes.len() || i16_count % 2 != 0 {
+        return Err(SampleSourceError::InvalidIqLength);
+    }
+    let mut i16_buf = vec![0i16; i16_count];
+    for i in 0..i16_count {
+        i16_buf[i] = i16::from_le_bytes([raw_bytes[2 * i], raw_bytes[2 * i + 1]]);
+    }
+    Ok((iq_i16_to_samples(&i16_buf), i16_count / 2))
+}
+
+fn decode_cf32_le_samples(
+    raw_bytes: &[u8],
+) -> Result<(Vec<bijux_gnss_core::api::Sample>, usize), SampleSourceError> {
+    let f32_count = raw_bytes.len() / 4;
+    if f32_count * 4 != raw_bytes.len() || f32_count % 2 != 0 {
+        return Err(SampleSourceError::InvalidIqLength);
+    }
+    let mut f32_buf = vec![0f32; f32_count];
+    for i in 0..f32_count {
+        f32_buf[i] = f32::from_le_bytes([
+            raw_bytes[4 * i],
+            raw_bytes[4 * i + 1],
+            raw_bytes[4 * i + 2],
+            raw_bytes[4 * i + 3],
+        ]);
+    }
+    Ok((iq_f32_to_samples(&f32_buf), f32_count / 2))
 }

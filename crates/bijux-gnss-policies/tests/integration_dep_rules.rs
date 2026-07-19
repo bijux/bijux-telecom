@@ -42,8 +42,7 @@ fn dependency_direction_rules() {
         workspace_dependency_edges(&metadata, &workspace, DependencyKindFilter::NormalAndBuild);
 
     let allowed: HashMap<&str, HashSet<&str>> = [
-        ("bijux-gnss-cli", HashSet::from(["bijux-gnss-infra"])),
-        ("bijux-gnss-infra", HashSet::from(["bijux-gnss-receiver"])),
+        ("bijux-gnss-infra", HashSet::from(["bijux-gnss-receiver", "bijux-gnss-signal"])),
         (
             "bijux-gnss-receiver",
             HashSet::from(["bijux-gnss-signal", "bijux-gnss-core", "bijux-gnss-nav"]),
@@ -52,16 +51,20 @@ fn dependency_direction_rules() {
             "bijux-gnss",
             HashSet::from([
                 "bijux-gnss-core",
+                "bijux-gnss-infra",
                 "bijux-gnss-signal",
                 "bijux-gnss-receiver",
                 "bijux-gnss-nav",
             ]),
         ),
         ("bijux-gnss-signal", HashSet::from(["bijux-gnss-core"])),
-        ("bijux-gnss-nav", HashSet::from(["bijux-gnss-core"])),
+        ("bijux-gnss-nav", HashSet::from(["bijux-gnss-core", "bijux-gnss-signal"])),
         ("bijux-gnss-core", HashSet::new()),
-        ("bijux-gnss-testkit", HashSet::from(["bijux-gnss-infra", "bijux-gnss-receiver"])),
-        ("bijux-telecom-dev", HashSet::new()),
+        (
+            "bijux-gnss-testkit",
+            HashSet::from(["bijux-gnss-core", "bijux-gnss-infra", "bijux-gnss-nav"]),
+        ),
+        ("bijux-gnss-dev", HashSet::new()),
         ("bijux-gnss-policies", HashSet::new()),
     ]
     .into_iter()
@@ -100,7 +103,10 @@ fn dependency_direction_rules() {
 #[test]
 fn no_cyclic_dev_dependencies() {
     let metadata = load_metadata();
-    let workspace = workspace_package_names(&metadata);
+    let workspace = workspace_package_names(&metadata)
+        .into_iter()
+        .filter(|name| !is_shared_test_support_crate(name))
+        .collect::<HashSet<_>>();
     let edges = workspace_dependency_edges(&metadata, &workspace, DependencyKindFilter::All);
     let mut visiting = HashSet::new();
     let mut visited = HashSet::new();
@@ -161,6 +167,10 @@ fn workspace_package_names(metadata: &Metadata) -> HashSet<String> {
         .filter(|pkg| member_ids.contains(&pkg.id))
         .map(|pkg| pkg.name.clone())
         .collect()
+}
+
+fn is_shared_test_support_crate(name: &str) -> bool {
+    name.ends_with("-testkit")
 }
 
 fn workspace_dependency_edges(

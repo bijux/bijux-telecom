@@ -19,6 +19,7 @@ sync_file() {
 }
 
 for required in \
+  "${shared_root}/config/hub-links.json" \
   "${shared_root}/partials/header.html" \
   "${shared_root}/partials/footer.html" \
   "${shared_root}/partials/footer-profile-links.html" \
@@ -28,6 +29,7 @@ for required in \
   "${shared_root}/styles/extra.css" \
   "${shared_root}/scripts/mermaid-init.js" \
   "${shared_root}/scripts/nav-sync.js" \
+  "${shared_root}/tooling/scripts/sync_mkdocs_hub.py" \
   "${shared_root}/assets/bijux_icon.png" \
   "${shared_root}/assets/bijux_logo_hq.png" \
   "${shared_root}/assets/site-icons/favicon.ico" \
@@ -38,6 +40,9 @@ for required in \
     exit 1
   fi
 done
+
+# Canonical hub navigation belongs in the inherited MkDocs configuration.
+python3 "${shared_root}/tooling/scripts/sync_mkdocs_hub.py" "${repo_root}" "${shared_root}"
 
 # shared -> docs
 sync_file "${shared_root}/partials/header.html" "${repo_root}/docs/overrides/partials/header.html"

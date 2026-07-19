@@ -1,9 +1,15 @@
 #![allow(missing_docs)]
+use bijux_gnss_core::api::Llh;
 use bijux_gnss_core::api::{
-    signal_spec_gps_l1_ca, Constellation, LockFlags, ObsEpoch, ObsMetadata, ObsSatellite,
-    ReceiverRole, SatId, SigId, SignalBand, SignalCode,
+    Constellation, LockFlags, ObsEpoch, ObsMetadata, ObsSatellite, ReceiverRole,
+    ReceiverSampleTrace, SatId, SigId, SignalBand, SignalCode,
 };
-use bijux_gnss_nav::api::{BroadcastProductsProvider, GpsEphemeris, PppConfig, PppFilter};
+use bijux_gnss_nav::api::{
+    geodetic_to_ecef, BroadcastProductsProvider, GpsEphemeris, PppConfig, PppFilter,
+    PppLifecycleEvent, PppLifecycleEventKind, PppMeasurementNoise, PppProductSupport,
+    PppStochasticEvidence, SaastamoinenModel,
+};
+use bijux_gnss_signal::api::signal_spec_gps_l1_ca;
 
 fn make_eph(prn: u8) -> GpsEphemeris {
     GpsEphemeris {
@@ -11,6 +17,8 @@ fn make_eph(prn: u8) -> GpsEphemeris {
         iodc: 0,
         iode: 0,
         week: 0,
+        sv_health: 0,
+        sv_accuracy: Some(2),
         toe_s: 0.0,
         toc_s: 0.0,
         sqrt_a: 5153.7954775,
@@ -40,6 +48,7 @@ fn make_obs(epoch_idx: u64, t_rx_s: f64, prn: u8) -> ObsEpoch {
     let spec = signal_spec_gps_l1_ca();
     ObsEpoch {
         t_rx_s: bijux_gnss_core::api::Seconds(t_rx_s),
+        source_time: ReceiverSampleTrace::from_sample_index(epoch_idx, 1_000.0),
         gps_week: None,
         tow_s: None,
         epoch_idx,
@@ -68,6 +77,7 @@ fn make_obs(epoch_idx: u64, t_rx_s: f64, prn: u8) -> ObsEpoch {
             elevation_deg: None,
             azimuth_deg: None,
             weight: None,
+            timing: None,
             error_model: None,
             metadata: ObsMetadata {
                 tracking_mode: "test".to_string(),
@@ -113,6 +123,7 @@ fn make_obs_with_slips(epoch_idx: u64, t_rx_s: f64, prns: &[u8]) -> ObsEpoch {
                 elevation_deg: None,
                 azimuth_deg: None,
                 weight: None,
+                timing: None,
                 error_model: None,
                 metadata: ObsMetadata {
                     tracking_mode: "test".to_string(),
@@ -129,6 +140,7 @@ fn make_obs_with_slips(epoch_idx: u64, t_rx_s: f64, prns: &[u8]) -> ObsEpoch {
         .collect();
     ObsEpoch {
         t_rx_s: bijux_gnss_core::api::Seconds(t_rx_s),
+        source_time: ReceiverSampleTrace::from_sample_index(epoch_idx, 1_000.0),
         gps_week: None,
         tow_s: None,
         epoch_idx,
@@ -140,6 +152,40 @@ fn make_obs_with_slips(epoch_idx: u64, t_rx_s: f64, prns: &[u8]) -> ObsEpoch {
         decision: bijux_gnss_core::api::ObservationEpochDecision::Accepted,
         decision_reason: Some("accepted_observables_present".to_string()),
         manifest: None,
+    }
+}
+
+fn make_obs_group(epoch_idx: u64, t_rx_s: f64, prns: &[u8]) -> ObsEpoch {
+    let mut epoch = make_obs(epoch_idx, t_rx_s, prns[0]);
+    for &prn in &prns[1..] {
+        epoch.sats.push(make_obs(epoch_idx, t_rx_s, prn).sats[0].clone());
+    }
+    epoch
+}
+
+struct EmptyProducts;
+
+impl bijux_gnss_nav::api::ProductsProvider for EmptyProducts {
+    fn sat_state(
+        &self,
+        _sat: SatId,
+        _t_s: f64,
+        _diag: &mut bijux_gnss_nav::api::ProductDiagnostics,
+    ) -> Option<bijux_gnss_nav::api::GpsSatState> {
+        None
+    }
+
+    fn clock_correction(
+        &self,
+        _sat: SatId,
+        _t_s: f64,
+        _diag: &mut bijux_gnss_nav::api::ProductDiagnostics,
+    ) -> Option<bijux_gnss_nav::api::GpsSatelliteClockCorrection> {
+        None
+    }
+
+    fn coverage_s(&self, _sat: SatId) -> Option<(f64, f64)> {
+        None
     }
 }
 
@@ -158,35 +204,60 @@ fn ppp_resets_on_gap() {
 
 #[test]
 fn ppp_handles_missing_products() {
-    struct EmptyProducts;
-    impl bijux_gnss_nav::api::ProductsProvider for EmptyProducts {
-        fn sat_state(
-            &self,
-            _sat: SatId,
-            _t_s: f64,
-            _diag: &mut bijux_gnss_nav::api::ProductDiagnostics,
-        ) -> Option<bijux_gnss_nav::api::GpsSatState> {
-            None
-        }
-
-        fn clock_bias_s(
-            &self,
-            _sat: SatId,
-            _t_s: f64,
-            _diag: &mut bijux_gnss_nav::api::ProductDiagnostics,
-        ) -> Option<f64> {
-            None
-        }
-
-        fn coverage_s(&self, _sat: SatId) -> Option<(f64, f64)> {
-            None
-        }
-    }
     let mut ppp = PppFilter::new(PppConfig::default());
     let ephs = vec![make_eph(1), make_eph(2), make_eph(3), make_eph(4)];
     let epoch = make_obs(1, 0.0, 1);
     let sol = ppp.solve_epoch(&epoch, &ephs, &EmptyProducts);
     assert!(sol.is_none());
+}
+
+#[test]
+fn ppp_uses_current_broadcast_fallbacks_when_precise_products_are_missing() {
+    let mut ppp = PppFilter::new(PppConfig::default());
+    let ephs = vec![make_eph(1), make_eph(2), make_eph(3), make_eph(4)];
+    let epoch = make_obs_group(1, 0.0, &[1, 2, 3, 4]);
+
+    let _ = ppp.solve_epoch(&epoch, &ephs, &EmptyProducts);
+
+    assert_eq!(ppp.health.warnings.len(), 4);
+    assert!(ppp.health.warnings.iter().all(|warning| warning.contains("products fallback used")));
+}
+
+#[test]
+fn ppp_public_api_exposes_stochastic_configuration_and_evidence() {
+    let config = PppConfig {
+        measurement_noise: PppMeasurementNoise {
+            code_floor_m: 0.4,
+            phase_floor_cycles: 0.02,
+            ..PppMeasurementNoise::default()
+        },
+        ..PppConfig::default()
+    };
+    let evidence = PppStochasticEvidence {
+        code_observation_variance_supported: true,
+        phase_observation_variance_supported: true,
+        satellite_orbit_uncertainty_supported: true,
+        satellite_clock_uncertainty_supported: false,
+        atmosphere_residual_supported: true,
+        antenna_residual_supported: true,
+        process_covariance_supported: true,
+    };
+
+    assert_eq!(config.measurement_noise.code_floor_m, 0.4);
+    assert_eq!(config.measurement_noise.phase_floor_cycles, 0.02);
+    assert!(evidence.code_observation_variance_supported);
+    assert!(!evidence.satellite_clock_uncertainty_supported);
+    let support = PppProductSupport { precise_orbit: true, precise_clock: false };
+    let event = PppLifecycleEvent {
+        kind: PppLifecycleEventKind::ProductSupportChanged,
+        epoch_idx: Some(8),
+        sat: None,
+        signal: None,
+        removed_states: Vec::new(),
+        reason: "product_support_changed".to_string(),
+    };
+    assert!(support.precise_orbit);
+    assert_eq!(event.kind, PppLifecycleEventKind::ProductSupportChanged);
 }
 
 #[test]
@@ -262,4 +333,58 @@ fn ppp_iono_storm_triggers_residual_gate() {
     }
     let sol = ppp.solve_epoch(&epoch, &ephs, &products);
     assert!(sol.is_none());
+}
+
+#[test]
+fn ppp_rejects_stale_broadcast_fallbacks() {
+    let mut ppp = PppFilter::new(PppConfig::default());
+    let ephs = vec![make_eph(1), make_eph(2), make_eph(3), make_eph(4)];
+    let epoch = make_obs_group(1, 7_201.0, &[1, 2, 3, 4]);
+
+    let sol = ppp.solve_epoch(&epoch, &ephs, &EmptyProducts);
+
+    assert!(sol.is_none());
+}
+
+#[test]
+fn ppp_seed_receiver_state_sets_position_and_clock_bias() {
+    let mut ppp = PppFilter::new(PppConfig::default());
+
+    ppp.seed_receiver_state([1.0, 2.0, 3.0], 4.0e-6);
+
+    assert_eq!(ppp.ekf.x[ppp.indices.pos[0]], 1.0);
+    assert_eq!(ppp.ekf.x[ppp.indices.pos[1]], 2.0);
+    assert_eq!(ppp.ekf.x[ppp.indices.pos[2]], 3.0);
+    assert_eq!(ppp.ekf.x[ppp.indices.clock_bias], 4.0e-6);
+    assert_eq!(ppp.last_pos, Some([1.0, 2.0, 3.0]));
+}
+
+#[test]
+fn ppp_seed_receiver_state_seeds_saastamoinen_zenith_delay() {
+    let mut ppp = PppFilter::new(PppConfig::default());
+    let receiver = Llh { lat_deg: 37.0, lon_deg: -122.0, alt_m: 10.0 };
+    let seeded_ecef = geodetic_to_ecef(receiver.lat_deg, receiver.lon_deg, receiver.alt_m);
+
+    ppp.seed_receiver_state([seeded_ecef.0, seeded_ecef.1, seeded_ecef.2], 4.0e-6);
+
+    let expected_ztd_m = SaastamoinenModel::zenith_delay_m(receiver);
+
+    assert!((ppp.ekf.x[ppp.indices.ztd] - expected_ztd_m).abs() < 1.0e-9);
+}
+
+#[test]
+fn ppp_seed_receiver_state_uses_local_meteorology_when_configured() {
+    let receiver = Llh { lat_deg: 37.0, lon_deg: -122.0, alt_m: 10.0 };
+    let seeded_ecef = geodetic_to_ecef(receiver.lat_deg, receiver.lon_deg, receiver.alt_m);
+    let standard_ztd_m = SaastamoinenModel::zenith_delay_m(receiver);
+    let mut ppp = PppFilter::new(PppConfig {
+        tropo_pressure_hpa: Some(980.0),
+        tropo_temperature_k: Some(301.15),
+        tropo_relative_humidity: Some(0.9),
+        ..PppConfig::default()
+    });
+
+    ppp.seed_receiver_state([seeded_ecef.0, seeded_ecef.1, seeded_ecef.2], 4.0e-6);
+
+    assert!((ppp.ekf.x[ppp.indices.ztd] - standard_ztd_m).abs() > 0.05);
 }
