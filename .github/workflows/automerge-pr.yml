@@ -22,7 +22,7 @@ jobs:
         shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          BIJUX_REQUIRED_WORKFLOWS: pull request approval
+          BIJUX_REQUIRED_WORKFLOWS: .github/workflows/pr-approval-policy.yml
         run: |
           set -euo pipefail
           python3 .github/scripts/check_workflow_prerequisites.py
