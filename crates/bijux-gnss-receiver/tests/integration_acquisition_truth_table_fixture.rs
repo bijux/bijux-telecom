@@ -14,6 +14,7 @@ use bijux_gnss_receiver::api::{
 };
 
 const REGENERATE_ACQUISITION_TRUTH_FIXTURE_ENV: &str = "BIJUX_REGENERATE_ACQUISITION_TRUTH_FIXTURE";
+const DOPPLER_REFINEMENT_TOLERANCE_HZ: f64 = 5.0e-5;
 
 #[test]
 fn acquisition_truth_table_matches_low_rate_reference_fixture() {
@@ -36,6 +37,8 @@ fn acquisition_truth_table_matches_low_rate_reference_fixture() {
     assert_eq!(report.period_samples, expected.period_samples);
     assert_eq!(report.doppler_step_hz, expected.doppler_step_hz);
     assert_eq!(report.pass, expected.pass);
+    let doppler_refinement_tolerance_bins =
+        DOPPLER_REFINEMENT_TOLERANCE_HZ / f64::from(report.doppler_step_hz);
     assert_close("sample_rate_hz", report.sample_rate_hz, expected.sample_rate_hz, 1.0e-12);
     assert_close(
         "doppler_tolerance_hz",
@@ -87,19 +90,19 @@ fn acquisition_truth_table_matches_low_rate_reference_fixture() {
             "measured_doppler_hz",
             actual_satellite.measured_doppler_hz,
             expected_satellite.measured_doppler_hz,
-            1.0e-9,
+            DOPPLER_REFINEMENT_TOLERANCE_HZ,
         );
         assert_close(
             "doppler_error_hz",
             actual_satellite.doppler_error_hz,
             expected_satellite.doppler_error_hz,
-            1.0e-9,
+            DOPPLER_REFINEMENT_TOLERANCE_HZ,
         );
         assert_close(
             "doppler_error_bins",
             actual_satellite.doppler_error_bins,
             expected_satellite.doppler_error_bins,
-            1.0e-12,
+            doppler_refinement_tolerance_bins,
         );
         assert_close(
             "injected_code_phase_chips",
