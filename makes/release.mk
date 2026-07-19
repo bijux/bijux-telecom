@@ -1,3 +1,5 @@
+SHELL := bash
+
 RELEASE_SPEC ?= configs/release/crates.toml
 RELEASE_VALIDATOR ?= makes/bin/validate_release.py
 RELEASE_ARTIFACT_ROOT ?= artifacts/release
