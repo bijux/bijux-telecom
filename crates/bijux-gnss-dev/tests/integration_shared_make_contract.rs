@@ -43,6 +43,10 @@ fn managed_gates_preserve_summary_and_frozen_reference_contracts() {
     let make_readme = fs::read_to_string(root.join("makes/README.md")).expect("read Make contract");
 
     assert!(pinned_gate.contains("${PINNED_REF:-${TEST_ALL_FROZEN_REF:-HEAD}}"));
+    assert!(pinned_gate.contains("artifact_execution_root=\"${pinned_repo_dir}/artifacts\""));
+    assert!(pinned_gate.contains("export ARTIFACT_ROOT=\"${artifact_execution_root}\""));
+    assert!(pinned_gate.contains("artifact publication conflict:"));
+    assert!(pinned_gate.contains("ln -s "));
     assert!(rust_gate.contains("\"nextest-summary:\""));
     assert!(rust_gate.contains("return \"${status}\""));
     assert!(make_readme.contains("TEST_ALL_FROZEN_REF=01d26ba9 make test-all-frozen"));
