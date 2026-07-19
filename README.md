@@ -136,10 +136,9 @@ repository boundaries, and `bijux-gnss-testkit` provides independent test
 evidence. The [crate release contract](configs/release/crates.toml) is the
 machine-readable authority for publication order and exclusions.
 
-The workspace is preparing its first `0.1.0` release. Registry, package, and
-release badges identify the intended destinations; they do not assert that a
-release already exists. Publication is performed later through the governed
-GitHub release workflows.
+The workspace publishes versioned crates, container images, and source
+artifacts through governed GitHub release workflows. The release badge and
+[release history](CHANGELOG.md) identify the current published line.
 
 ## Read And Verify Evidence
 
@@ -184,3 +183,10 @@ lane validates both the published handbook and Rust API docs.
 Release preparation and compatibility decisions are recorded in the
 [workspace release history](CHANGELOG.md). Package-specific history belongs
 with each package rather than being inferred from this overview.
+
+## Contributing and Security
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md) for repository boundaries, validation
+commands, and pull-request expectations. Report vulnerabilities privately
+through the channels in [SECURITY.md](SECURITY.md); do not disclose unpatched
+security details in a public issue.

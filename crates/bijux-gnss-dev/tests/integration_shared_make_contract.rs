@@ -16,7 +16,7 @@ fn root_make_entrypoint_loads_the_shared_rust_contract() {
     assert!(root_make.contains("BIJUX_MAKE_COMPONENTS := rust"));
     assert!(root_make.contains(".bijux/shared/bijux-makes/bijux.mk"));
     assert!(rust_make.contains("RUST_GATE_BIN ?= $(GNSS_RUST_GATE_BIN)"));
-    assert!(rust_make.contains("NEXTEST_SLOW_NAME_EXPR ?= test(/::slow__/)"));
+    assert!(rust_make.contains("NEXTEST_SLOW_NAME_EXPR ?= test(/(^|::)slow__/)"));
     assert!(rust_make.contains("RUST_AUDIT_PREREQUISITES += audit-policy-rs"));
 }
 

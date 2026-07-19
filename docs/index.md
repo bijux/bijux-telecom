@@ -149,7 +149,6 @@ The root contains one handbook for each primary owner:
 - [Receiver execution](bijux-gnss-receiver/index.md)
 - [Signal processing](bijux-gnss-signal/index.md)
 - [Maintainer tooling](bijux-gnss-dev/index.md)
-- [Badge reference](badges.md)
 
 Handbook directory names match durable package ownership so published URLs,
 repository links, and crate identities remain aligned. Link text should

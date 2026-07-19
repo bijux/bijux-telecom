@@ -58,8 +58,8 @@ fn slow_roster_feeds_nextest_lane_expressions() -> anyhow::Result<()> {
         "fast nextest expression must negate the governed slow lane: {fast_expr}"
     );
     assert!(
-        slow_expr.contains("test(/::slow__/)"),
-        "slow nextest expression must select the slow__ namespace: {slow_expr}"
+        slow_expr.contains("test(/(^|::)slow__/)"),
+        "slow nextest expression must select root and nested slow__ tests: {slow_expr}"
     );
     assert!(
         fast_expr.contains(&slow_expr),
@@ -89,7 +89,7 @@ fn load_slow_roster(path: &Path) -> anyhow::Result<Vec<String>> {
 fn nextest_expr(repo_root: &Path, mode: &str) -> anyhow::Result<String> {
     let output =
         Command::new(repo_root.join(".bijux/shared/bijux-makes-rs/scripts/nextest_expr.sh"))
-            .env("NEXTEST_SLOW_NAME_EXPR", "test(/::slow__/)")
+            .env("NEXTEST_SLOW_NAME_EXPR", "test(/(^|::)slow__/)")
             .arg(mode)
             .output()?;
     assert!(
