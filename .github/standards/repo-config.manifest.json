@@ -3986,7 +3986,7 @@
         {
           "key": "BIJUX_RELEASE_RUST_TOOLCHAIN",
           "type": "string",
-          "value": "1.86.0"
+          "value": "1.88.0"
         },
         {
           "key": "BIJUX_RELEASE_BUILD_MATRIX_JSON",
@@ -4080,7 +4080,7 @@
         {
           "key": "BIJUX_CRATES_RELEASE_RUST_TOOLCHAIN",
           "type": "string",
-          "value": "1.86.0"
+          "value": "1.88.0"
         },
         {
           "key": "BIJUX_CRATES_RELEASE_VERIFY_TOKEN_COMMAND",
@@ -4184,7 +4184,7 @@
             "contents": "read"
           },
           "env": {
-            "RUST_TOOLCHAIN_VERSION": "1.86.0",
+            "RUST_TOOLCHAIN_VERSION": "1.88.0",
             "CARGO_DENY_VERSION": "0.18.3",
             "CARGO_AUDIT_VERSION": "0.22.0",
             "CARGO_NEXTEST_VERSION": "0.9.100"
