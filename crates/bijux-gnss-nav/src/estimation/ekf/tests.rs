@@ -252,12 +252,15 @@ fn ekf_records_innovation_consistency_anomaly_when_nis_exceeds_bounds() {
     };
 
     assert!(ekf.update(&meas));
-    assert!(ekf.health.normalized_innovation_squared.is_some());
-    assert!(ekf.health.innovation_consistency_upper_bound.is_some());
-    assert!(
-        ekf.health.normalized_innovation_squared.unwrap()
-            > ekf.health.innovation_consistency_upper_bound.unwrap()
-    );
+    let normalized_innovation_squared = ekf
+        .health
+        .normalized_innovation_squared
+        .expect("accepted EKF measurement must record normalized innovation");
+    let innovation_consistency_upper_bound = ekf
+        .health
+        .innovation_consistency_upper_bound
+        .expect("accepted EKF measurement must record the configured consistency bound");
+    assert!(normalized_innovation_squared > innovation_consistency_upper_bound);
     assert!(ekf.health.events.iter().any(|event| matches!(
         event,
         bijux_gnss_core::api::NavHealthEvent::InnovationConsistencyAnomaly { .. }

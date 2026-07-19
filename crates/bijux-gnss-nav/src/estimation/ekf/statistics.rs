@@ -125,8 +125,8 @@ mod tests {
 
     #[test]
     fn innovation_consistency_bounds_are_ordered_for_scalar_measurements() {
-        let bounds =
-            innovation_consistency_bounds(1, InnovationConsistencyConfig::default()).unwrap();
+        let bounds = innovation_consistency_bounds(1, InnovationConsistencyConfig::default())
+            .expect("default scalar innovation probabilities must define finite bounds");
 
         assert!(bounds.lower_bound >= 0.0);
         assert!(bounds.lower_bound < bounds.upper_bound);
