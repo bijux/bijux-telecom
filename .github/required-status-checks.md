@@ -5,8 +5,8 @@
 
 Required branch-protection checks for `main`:
 
-- `policy / github` (from workflow `policy / github`)
-- `policy / pr approval` (from workflow `policy / pr approval`)
+- `github governance` (from workflow `repository policy`)
+- `owner approval` (from workflow `pull request approval`)
 - `std / standard` (from workflow `bijux-std`)
 - `std / report` (from workflow `bijux-std`)
 

@@ -1,7 +1,7 @@
 # SSOT NOTICE: Synced consumer copies are generated from bijux-std/shared/bijux-gh/workflows/github-policy.yml.
 # Do not edit consumer workflow copies directly; update bijux-std and run standards sync refresh.
 
-name: policy / github
+name: repository policy
 
 on:
   push:
@@ -20,7 +20,7 @@ permissions:
 
 jobs:
   policy:
-    name: policy / github
+    name: github governance
     runs-on: ubuntu-latest
 
     steps:

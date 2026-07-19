@@ -64,7 +64,7 @@ crates do not receive crates.io or GHCR badges.
 
 <!-- bijux-gnss-badges:generated:start -->
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-0F766E)](https://github.com/bijux/bijux-gnss/blob/main/LICENSE)
-[![CI](https://github.com/bijux/bijux-gnss/workflows/repo%20/%20ci/badge.svg)](https://github.com/bijux/bijux-gnss/actions/workflows/ci.yml?query=branch%3Amain)
+[![CI](https://github.com/bijux/bijux-gnss/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/bijux/bijux-gnss/actions/workflows/ci.yml?query=branch%3Amain)
 [![Docs](https://github.com/bijux/bijux-gnss/workflows/deploy-docs/badge.svg)](https://github.com/bijux/bijux-gnss/actions/workflows/deploy-docs.yml)
 [![Release](https://img.shields.io/github/v/release/bijux/bijux-gnss?display_name=tag&label=release)](https://github.com/bijux/bijux-gnss/releases)
 [![GHCR targets](https://img.shields.io/badge/ghcr%20targets-6%20packages-181717?logo=github)](https://github.com/bijux?tab=packages&repo_name=bijux-gnss)

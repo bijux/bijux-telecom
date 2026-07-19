@@ -1,7 +1,7 @@
 # SSOT NOTICE: Synced consumer copies are generated from bijux-std/shared/bijux-gh/workflows/pr-approval-policy.yml.
 # Do not edit consumer workflow copies directly; update bijux-std and run standards sync refresh.
 
-name: policy / pr approval
+name: pull request approval
 
 on:
   pull_request_target:
@@ -26,7 +26,7 @@ permissions:
 
 jobs:
   pr-approval:
-    name: policy / pr approval
+    name: owner approval
     runs-on: ubuntu-latest
 
     steps:
