@@ -7,6 +7,20 @@ This project adheres to [Semantic Versioning](https://semver.org) and the
 
 ---
 
+## Unreleased
+
+### Added
+
+- Added repository-specific contribution guidance and coordinated private
+  vulnerability reporting policy.
+
+### Fixed
+
+- Preserved the canonical MkDocs hub registry order in desktop and mobile
+  navigation.
+- Excluded both root-level and nested `slow__` tests from the fast nextest lane
+  used by pull-request CI.
+
 ## 0.1.0 - 2026-07-19
 
 ### Added
