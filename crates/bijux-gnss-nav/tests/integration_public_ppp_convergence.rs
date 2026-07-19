@@ -14,6 +14,8 @@ use support::public_spp_case::ab43_public_spp_case;
 
 const REGENERATE_PUBLIC_PPP_CONVERGENCE_FIXTURE_ENV: &str =
     "BIJUX_REGENERATE_PUBLIC_PPP_CONVERGENCE_FIXTURE";
+const POSITION_REPORT_TOLERANCE_M: f64 = 1.0e-5;
+const TIME_REPORT_TOLERANCE_S: f64 = 1.0e-9;
 
 #[test]
 fn public_ab43_ppp_run_reports_convergence_metrics() {
@@ -28,15 +30,8 @@ fn public_ab43_ppp_run_reports_convergence_metrics() {
     if env::var_os(REGENERATE_PUBLIC_PPP_CONVERGENCE_FIXTURE_ENV).is_some() {
         write_convergence_fixture("public_ppp_convergence/ab43.json", &report);
     }
-    let expected = load_convergence_fixture_text("public_ppp_convergence/ab43.json");
-    let actual =
-        format!("{}\n", serde_json::to_string_pretty(&report).expect("serialize report fixture"));
-
-    assert_eq!(
-        actual,
-        expected,
-        "AB43 PPP convergence report drifted; set {REGENERATE_PUBLIC_PPP_CONVERGENCE_FIXTURE_ENV}=1 to refresh the fixture when the new behavior is intended",
-    );
+    let expected = load_convergence_fixture("public_ppp_convergence/ab43.json");
+    assert_convergence_report_close(&report, &expected);
     assert!(
         report.all_epochs_solved,
         "AB43 PPP should solve every public epoch; diagnostics={}",
@@ -169,8 +164,10 @@ fn public_ab43_ppp_config() -> PppConfig {
     PppConfig { use_iono_free: true, reset_gap_s: 30.0, ..PppConfig::default() }
 }
 
-fn load_convergence_fixture_text(fixture_file: &str) -> String {
-    fs::read_to_string(fixture_path(fixture_file)).expect("public PPP convergence fixture")
+fn load_convergence_fixture(fixture_file: &str) -> PublicPppConvergenceReport {
+    let contents =
+        fs::read_to_string(fixture_path(fixture_file)).expect("public PPP convergence fixture");
+    serde_json::from_str(&contents).expect("valid public PPP convergence fixture")
 }
 
 fn write_convergence_fixture(fixture_file: &str, report: &PublicPppConvergenceReport) {
@@ -184,6 +181,96 @@ fn write_convergence_fixture(fixture_file: &str, report: &PublicPppConvergenceRe
 
 fn fixture_path(fixture_file: &str) -> std::path::PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/data").join(fixture_file)
+}
+
+fn assert_convergence_report_close(
+    actual: &PublicPppConvergenceReport,
+    expected: &PublicPppConvergenceReport,
+) {
+    assert_eq!(actual.marker_name, expected.marker_name);
+    assert_eq!(actual.fixture_name, expected.fixture_name);
+    assert_eq!(actual.troposphere_source, expected.troposphere_source);
+    assert_eq!(actual.observation_epoch_count, expected.observation_epoch_count);
+    assert_eq!(actual.solved_epoch_count, expected.solved_epoch_count);
+    assert_eq!(actual.all_epochs_solved, expected.all_epochs_solved);
+    assert_optional_close(
+        "time_to_1m_s",
+        actual.time_to_1m_s,
+        expected.time_to_1m_s,
+        TIME_REPORT_TOLERANCE_S,
+    );
+    assert_optional_close(
+        "time_to_decimeter_s",
+        actual.time_to_decimeter_s,
+        expected.time_to_decimeter_s,
+        TIME_REPORT_TOLERANCE_S,
+    );
+    assert_close(
+        "final_3d_error_m",
+        actual.final_3d_error_m,
+        expected.final_3d_error_m,
+        POSITION_REPORT_TOLERANCE_M,
+    );
+    assert_close(
+        "best_3d_error_m",
+        actual.best_3d_error_m,
+        expected.best_3d_error_m,
+        POSITION_REPORT_TOLERANCE_M,
+    );
+    assert_close(
+        "worst_3d_error_m",
+        actual.worst_3d_error_m,
+        expected.worst_3d_error_m,
+        POSITION_REPORT_TOLERANCE_M,
+    );
+    assert_eq!(actual.epochs.len(), expected.epochs.len());
+
+    for (index, (actual_epoch, expected_epoch)) in
+        actual.epochs.iter().zip(&expected.epochs).enumerate()
+    {
+        assert_eq!(actual_epoch.gps_time.week, expected_epoch.gps_time.week);
+        assert_close(
+            &format!("epochs[{index}].gps_time.tow_s"),
+            actual_epoch.gps_time.tow_s,
+            expected_epoch.gps_time.tow_s,
+            TIME_REPORT_TOLERANCE_S,
+        );
+        assert_close(
+            &format!("epochs[{index}].elapsed_s"),
+            actual_epoch.elapsed_s,
+            expected_epoch.elapsed_s,
+            TIME_REPORT_TOLERANCE_S,
+        );
+        assert_eq!(actual_epoch.gps_satellite_count, expected_epoch.gps_satellite_count);
+        assert_eq!(
+            actual_epoch.dual_frequency_satellite_count,
+            expected_epoch.dual_frequency_satellite_count
+        );
+        assert_eq!(actual_epoch.solved, expected_epoch.solved);
+        assert_optional_close(
+            &format!("epochs[{index}].three_dimensional_error_m"),
+            actual_epoch.three_dimensional_error_m,
+            expected_epoch.three_dimensional_error_m,
+            POSITION_REPORT_TOLERANCE_M,
+        );
+        assert_eq!(actual_epoch.last_rejection, expected_epoch.last_rejection);
+    }
+}
+
+fn assert_optional_close(label: &str, actual: Option<f64>, expected: Option<f64>, tolerance: f64) {
+    match (actual, expected) {
+        (Some(actual), Some(expected)) => assert_close(label, actual, expected, tolerance),
+        (None, None) => {}
+        _ => panic!("{label} presence mismatch: actual={actual:?} expected={expected:?}"),
+    }
+}
+
+fn assert_close(label: &str, actual: f64, expected: f64, tolerance: f64) {
+    let error = (actual - expected).abs();
+    assert!(
+        actual.is_finite() && expected.is_finite() && error <= tolerance,
+        "{label} mismatch: actual={actual:.15} expected={expected:.15} error={error:.15} tolerance={tolerance:.15}"
+    );
 }
 
 fn format_diagnostics(

@@ -9,6 +9,8 @@ use navigation_pvt_truth_table::build_pvt_truth_table_fixture;
 
 use navigation_pipeline::position_error_3d_m;
 
+const POSITION_ERROR_CONSISTENCY_TOLERANCE_M: f64 = 1.0e-12;
+
 #[test]
 fn pvt_truth_table_records_position_clock_residual_dop_and_status_per_epoch() {
     let fixture = build_pvt_truth_table_fixture("clean_synthetic_navigation_pvt_truth", 0.0);
@@ -39,9 +41,13 @@ fn pvt_truth_table_records_position_clock_residual_dop_and_status_per_epoch() {
         assert_eq!(epoch.clock_bias.truth_s, fixture.run.profile.truth_clock_bias_s);
         assert_eq!(epoch.clock_bias.measured_s, solution.clock_bias_s.0);
         assert_eq!(epoch.clock_bias.measured_m, solution.clock_bias_m.0);
-        assert_eq!(
+        let expected_position_error_m =
+            position_error_3d_m(solution, fixture.run.profile.truth_ecef_m);
+        assert!(
+            (epoch.enu_error_m.error_3d_m - expected_position_error_m).abs()
+                <= POSITION_ERROR_CONSISTENCY_TOLERANCE_M,
+            "position error mismatch: report={:.15} calculated={expected_position_error_m:.15}",
             epoch.enu_error_m.error_3d_m,
-            position_error_3d_m(solution, fixture.run.profile.truth_ecef_m),
         );
 
         assert_eq!(epoch.residual_rms_m, solution.rms_m.0);

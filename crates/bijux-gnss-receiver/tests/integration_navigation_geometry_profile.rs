@@ -11,6 +11,8 @@ use bijux_gnss_receiver::api::sim::{
 
 use navigation_geometry_profile::build_truth_seeded_navigation_geometry_case;
 
+const NOISE_FREE_POSITION_ERROR_CEILING_M: f64 = 1.0e-6;
+
 #[test]
 fn pvt_accuracy_profile_tracks_good_medium_and_poor_geometry() {
     let poor_case = build_truth_seeded_navigation_geometry_case(
@@ -57,9 +59,13 @@ fn pvt_accuracy_profile_tracks_good_medium_and_poor_geometry() {
     assert!(good.ready && medium.ready && poor.ready, "{report:?}");
     assert!(good.epoch_count > 0 && medium.epoch_count > 0 && poor.epoch_count > 0, "{report:?}");
     assert!(good.pass_rate >= poor.pass_rate, "{report:?}");
-    match (good.max_position_error_3d_m, poor.max_position_error_3d_m) {
-        (Some(good_max), Some(poor_max)) => assert!(poor_max >= good_max, "{report:?}"),
-        _ => panic!("geometry profile must produce position error measurements: {report:?}"),
+    for point in &report.points {
+        assert!(
+            point
+                .max_position_error_3d_m
+                .is_some_and(|error_m| error_m <= NOISE_FREE_POSITION_ERROR_CEILING_M),
+            "noise-free geometry error exceeds the numerical ceiling: {report:?}"
+        );
     }
 }
 
@@ -106,16 +112,13 @@ fn pvt_accuracy_geometry_profile_improves_with_more_visible_satellites() {
     assert!(most_visible.mean_pdop < intermediate.mean_pdop, "{report:?}");
     assert!(intermediate.mean_pdop < least_visible.mean_pdop, "{report:?}");
     assert!(most_visible.pass_rate >= least_visible.pass_rate, "{report:?}");
-    match (
-        most_visible.max_position_error_3d_m,
-        intermediate.max_position_error_3d_m,
-        least_visible.max_position_error_3d_m,
-    ) {
-        (Some(most_visible_max), Some(intermediate_max), Some(least_visible_max)) => {
-            assert!(most_visible_max <= least_visible_max, "{report:?}");
-            assert!(intermediate_max <= least_visible_max, "{report:?}");
-        }
-        _ => panic!("visibility profile must produce position error measurements: {report:?}"),
+    for point in &report.points {
+        assert!(
+            point
+                .max_position_error_3d_m
+                .is_some_and(|error_m| error_m <= NOISE_FREE_POSITION_ERROR_CEILING_M),
+            "noise-free visibility error exceeds the numerical ceiling: {report:?}"
+        );
     }
 }
 

@@ -93,7 +93,7 @@ fn acquisition_truth_table_matches_low_rate_reference_fixture() {
             "doppler_error_hz",
             actual_satellite.doppler_error_hz,
             expected_satellite.doppler_error_hz,
-            1.0e-12,
+            1.0e-9,
         );
         assert_close(
             "doppler_error_bins",

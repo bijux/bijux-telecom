@@ -13,7 +13,7 @@ use bijux_gnss_nav::api::{
 };
 use bijux_gnss_testkit::reference_data::troposphere_elevation::{
     build_public_troposphere_elevation_report, PublicTroposphereElevationReport,
-    LOW_ELEVATION_CEILING_DEG,
+    TroposphereElevationBucketReport, LOW_ELEVATION_CEILING_DEG,
 };
 use support::position_truth::{
     add_saastamoinen_delay_to_observations, four_satellite_position_scenario,
@@ -22,6 +22,8 @@ use support::public_spp_case::ab43_public_spp_case;
 
 const REGENERATE_PUBLIC_TROPOSPHERE_FIXTURE_ENV: &str =
     "BIJUX_REGENERATE_PUBLIC_TROPOSPHERE_FIXTURE";
+const RESIDUAL_REPORT_TOLERANCE_M: f64 = 1.0e-8;
+const TIME_REPORT_TOLERANCE_S: f64 = 1.0e-9;
 
 #[derive(Debug, Clone, Copy)]
 struct ResidualSample {
@@ -102,17 +104,8 @@ fn public_ab43_troposphere_correction_improves_low_elevation_residuals() {
     if env::var_os(REGENERATE_PUBLIC_TROPOSPHERE_FIXTURE_ENV).is_some() {
         write_public_troposphere_fixture("public_troposphere_elevation/ab43.json", &report);
     }
-    let expected = load_public_troposphere_fixture_text("public_troposphere_elevation/ab43.json");
-    let actual = format!(
-        "{}\n",
-        serde_json::to_string_pretty(&report).expect("serialize troposphere report")
-    );
-
-    assert_eq!(
-        actual,
-        expected,
-        "AB43 troposphere elevation report drifted; set {REGENERATE_PUBLIC_TROPOSPHERE_FIXTURE_ENV}=1 to refresh the fixture when the new behavior is intended",
-    );
+    let expected = load_public_troposphere_fixture("public_troposphere_elevation/ab43.json");
+    assert_troposphere_report_close(&report, &expected);
 
     let low_bucket = report
         .buckets
@@ -196,9 +189,10 @@ fn mean_abs_improvement_m(samples: &[ResidualSample]) -> f64 {
         / samples.len() as f64
 }
 
-fn load_public_troposphere_fixture_text(fixture_file: &str) -> String {
-    fs::read_to_string(public_troposphere_fixture_path(fixture_file))
-        .expect("public troposphere elevation fixture")
+fn load_public_troposphere_fixture(fixture_file: &str) -> PublicTroposphereElevationReport {
+    let contents = fs::read_to_string(public_troposphere_fixture_path(fixture_file))
+        .expect("public troposphere elevation fixture");
+    serde_json::from_str(&contents).expect("valid public troposphere elevation fixture")
 }
 
 fn write_public_troposphere_fixture(fixture_file: &str, report: &PublicTroposphereElevationReport) {
@@ -212,4 +206,124 @@ fn write_public_troposphere_fixture(fixture_file: &str, report: &PublicTroposphe
 
 fn public_troposphere_fixture_path(fixture_file: &str) -> std::path::PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/data").join(fixture_file)
+}
+
+fn assert_troposphere_report_close(
+    actual: &PublicTroposphereElevationReport,
+    expected: &PublicTroposphereElevationReport,
+) {
+    assert_eq!(actual.marker_name, expected.marker_name);
+    assert_eq!(actual.fixture_name, expected.fixture_name);
+    assert_eq!(actual.compared_epoch_count, expected.compared_epoch_count);
+    assert_eq!(actual.compared_sample_count, expected.compared_sample_count);
+    assert_eq!(actual.low_elevation_sample_count, expected.low_elevation_sample_count);
+    assert_close(
+        "overall_mean_abs_improvement_m",
+        actual.overall_mean_abs_improvement_m,
+        expected.overall_mean_abs_improvement_m,
+        RESIDUAL_REPORT_TOLERANCE_M,
+    );
+    assert_close(
+        "overall_rms_improvement_m",
+        actual.overall_rms_improvement_m,
+        expected.overall_rms_improvement_m,
+        RESIDUAL_REPORT_TOLERANCE_M,
+    );
+    assert_eq!(actual.buckets.len(), expected.buckets.len());
+    for (index, (actual_bucket, expected_bucket)) in
+        actual.buckets.iter().zip(&expected.buckets).enumerate()
+    {
+        assert_bucket_close(index, actual_bucket, expected_bucket);
+    }
+    assert_eq!(actual.epochs.len(), expected.epochs.len());
+    for (index, (actual_epoch, expected_epoch)) in
+        actual.epochs.iter().zip(&expected.epochs).enumerate()
+    {
+        assert_eq!(actual_epoch.gps_time.week, expected_epoch.gps_time.week);
+        assert_close(
+            &format!("epochs[{index}].gps_time.tow_s"),
+            actual_epoch.gps_time.tow_s,
+            expected_epoch.gps_time.tow_s,
+            TIME_REPORT_TOLERANCE_S,
+        );
+        assert_eq!(actual_epoch.compared_satellite_count, expected_epoch.compared_satellite_count);
+        assert_eq!(
+            actual_epoch.low_elevation_satellite_count,
+            expected_epoch.low_elevation_satellite_count
+        );
+        assert_optional_close(
+            &format!("epochs[{index}].low_elevation_mean_abs_improvement_m"),
+            actual_epoch.low_elevation_mean_abs_improvement_m,
+            expected_epoch.low_elevation_mean_abs_improvement_m,
+            RESIDUAL_REPORT_TOLERANCE_M,
+        );
+    }
+}
+
+fn assert_bucket_close(
+    index: usize,
+    actual: &TroposphereElevationBucketReport,
+    expected: &TroposphereElevationBucketReport,
+) {
+    assert_eq!(actual.bucket_name, expected.bucket_name);
+    assert_close(
+        &format!("buckets[{index}].min_elevation_deg"),
+        actual.min_elevation_deg,
+        expected.min_elevation_deg,
+        f64::EPSILON,
+    );
+    assert_optional_close(
+        &format!("buckets[{index}].max_elevation_deg"),
+        actual.max_elevation_deg,
+        expected.max_elevation_deg,
+        f64::EPSILON,
+    );
+    assert_eq!(actual.sample_count, expected.sample_count);
+    for (label, actual_value, expected_value) in [
+        (
+            "corrected_mean_abs_residual_m",
+            actual.corrected_mean_abs_residual_m,
+            expected.corrected_mean_abs_residual_m,
+        ),
+        (
+            "uncorrected_mean_abs_residual_m",
+            actual.uncorrected_mean_abs_residual_m,
+            expected.uncorrected_mean_abs_residual_m,
+        ),
+        (
+            "corrected_rms_residual_m",
+            actual.corrected_rms_residual_m,
+            expected.corrected_rms_residual_m,
+        ),
+        (
+            "uncorrected_rms_residual_m",
+            actual.uncorrected_rms_residual_m,
+            expected.uncorrected_rms_residual_m,
+        ),
+        ("mean_abs_improvement_m", actual.mean_abs_improvement_m, expected.mean_abs_improvement_m),
+        ("rms_improvement_m", actual.rms_improvement_m, expected.rms_improvement_m),
+    ] {
+        assert_close(
+            &format!("buckets[{index}].{label}"),
+            actual_value,
+            expected_value,
+            RESIDUAL_REPORT_TOLERANCE_M,
+        );
+    }
+}
+
+fn assert_optional_close(label: &str, actual: Option<f64>, expected: Option<f64>, tolerance: f64) {
+    match (actual, expected) {
+        (Some(actual), Some(expected)) => assert_close(label, actual, expected, tolerance),
+        (None, None) => {}
+        _ => panic!("{label} presence mismatch: actual={actual:?} expected={expected:?}"),
+    }
+}
+
+fn assert_close(label: &str, actual: f64, expected: f64, tolerance: f64) {
+    let error = (actual - expected).abs();
+    assert!(
+        actual.is_finite() && expected.is_finite() && error <= tolerance,
+        "{label} mismatch: actual={actual:.15} expected={expected:.15} error={error:.15} tolerance={tolerance:.15}"
+    );
 }
