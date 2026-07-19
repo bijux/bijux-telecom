@@ -93,8 +93,6 @@ fn public_single_point_residuals_stay_within_rtklib_tolerance() {
     let rms_delta_m = (squared_delta_sum_m2 / compared_residuals as f64).sqrt();
     assert!(
         rms_delta_m <= RTKLIB_RESIDUAL_RMS_DELTA_TOLERANCE_M,
-        "AB43 residual RMS delta {:.3} m exceeds RTKLIB comparison tolerance across {} residuals",
-        rms_delta_m,
-        compared_residuals
+        "AB43 residual RMS delta {rms_delta_m:.3} m exceeds RTKLIB comparison tolerance across {compared_residuals} residuals"
     );
 }

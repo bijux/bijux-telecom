@@ -115,7 +115,6 @@ fn navigation_pipeline_rejects_bad_satellite_pseudorange_and_preserves_truth() {
     );
     assert!(
         position_errors_m.iter().all(|error_m| *error_m < 10.0),
-        "bad-satellite handling should keep the solution near truth: {:?}",
-        position_errors_m,
+        "bad-satellite handling should keep the solution near truth: {position_errors_m:?}",
     );
 }

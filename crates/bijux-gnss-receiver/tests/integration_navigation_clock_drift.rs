@@ -38,8 +38,7 @@ fn navigation_estimates_injected_receiver_clock_drift() {
     for window in measured_biases_s.windows(2) {
         assert!(
             window[1] >= window[0],
-            "drifting receiver clock should produce nondecreasing solved clock bias: {:?}",
-            measured_biases_s
+            "drifting receiver clock should produce nondecreasing solved clock bias: {measured_biases_s:?}"
         );
     }
 }

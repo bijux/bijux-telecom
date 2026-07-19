@@ -113,13 +113,11 @@ impl PppFilter {
             let upper_bound = self.ekf.health.innovation_consistency_upper_bound.unwrap_or(5.0);
             if nis > upper_bound {
                 self.health.warnings.push(format!(
-                    "NIS high: {:.3} exceeds {:.3}, possible under-confidence",
-                    nis, upper_bound
+                    "NIS high: {nis:.3} exceeds {upper_bound:.3}, possible under-confidence"
                 ));
             } else if nis < lower_bound {
                 self.health.warnings.push(format!(
-                    "NIS low: {:.3} below {:.3}, possible over-confidence",
-                    nis, lower_bound
+                    "NIS low: {nis:.3} below {lower_bound:.3}, possible over-confidence"
                 ));
             }
         }
@@ -323,7 +321,7 @@ impl PppFilter {
         let mut evaluated = Vec::new();
         for (sat, float, var, _el, phase_bias_provenance_complete) in candidates {
             let (ratio, integer_cycles) = ratio_fix(float, var);
-            self.health.ar_events.push(format!("WL float {:?} ratio {:.2}", sat, ratio));
+            self.health.ar_events.push(format!("WL float {sat:?} ratio {ratio:.2}"));
             let mut validation_reasons = Vec::new();
             if !phase_bias_provenance_complete {
                 validation_reasons.push("missing_phase_bias_provenance".to_string());
@@ -457,7 +455,7 @@ impl PppFilter {
                 if index < self.ekf.p.rows() {
                     self.ekf.p[(index, index)] *= 0.05;
                 }
-                self.health.ar_events.push(format!("NL fix {:?} ratio {:.2}", signal, ratio));
+                self.health.ar_events.push(format!("NL fix {signal:?} ratio {ratio:.2}"));
             }
             self.ar_integer_ambiguities.push(PppIntegerAmbiguityCandidate {
                 kind: PppIntegerAmbiguityKind::NarrowLane,

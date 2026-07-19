@@ -198,25 +198,24 @@ impl ValidateConfig for ReceiverConfig {
             };
             if !seen.insert(parsed) {
                 report.errors.push(ConfigError {
-                    message: format!("tracking.per_band has duplicate entry for {:?}", parsed),
+                    message: format!("tracking.per_band has duplicate entry for {parsed:?}"),
                 });
             }
             if band.early_late_spacing_chips <= 0.0 {
                 report.errors.push(ConfigError {
                     message: format!(
-                        "tracking.per_band.{:?}.early_late_spacing_chips must be > 0",
-                        parsed
+                        "tracking.per_band.{parsed:?}.early_late_spacing_chips must be > 0"
                     ),
                 });
             }
             if band.dll_bw_hz <= 0.0 || band.pll_bw_hz <= 0.0 || band.fll_bw_hz <= 0.0 {
                 report.errors.push(ConfigError {
-                    message: format!("tracking.per_band.{:?}.loop bandwidths must be > 0", parsed),
+                    message: format!("tracking.per_band.{parsed:?}.loop bandwidths must be > 0"),
                 });
             }
             if band.integration_ms == 0 {
                 report.errors.push(ConfigError {
-                    message: format!("tracking.per_band.{:?}.integration_ms must be > 0", parsed),
+                    message: format!("tracking.per_band.{parsed:?}.integration_ms must be > 0"),
                 });
             }
         }
@@ -926,16 +925,10 @@ mod tests {
         let report = <ReceiverConfig as ValidateConfig>::validate(&config);
         let messages = report.errors.iter().map(|error| error.message.as_str()).collect::<Vec<_>>();
 
-        assert!(messages.iter().any(|message| *message == "receiver_clock.bias_s must be finite"));
-        assert!(messages
-            .iter()
-            .any(|message| *message == "receiver_clock.frequency_bias_hz must be finite"));
-        assert!(messages
-            .iter()
-            .any(|message| *message == "receiver_clock.bias_sigma_s must be finite and >= 0"));
-        assert!(messages
-            .iter()
-            .any(|message| *message == "receiver_clock.source must not be empty"));
+        assert!(messages.contains(&"receiver_clock.bias_s must be finite"));
+        assert!(messages.contains(&"receiver_clock.frequency_bias_hz must be finite"));
+        assert!(messages.contains(&"receiver_clock.bias_sigma_s must be finite and >= 0"));
+        assert!(messages.contains(&"receiver_clock.source must not be empty"));
     }
 
     #[test]

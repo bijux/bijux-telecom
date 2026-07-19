@@ -6,7 +6,7 @@ pub(crate) fn print_synthetic_iq_export_table(report: &SyntheticIqExportReport) 
     println!("Seed: {}", report.seed);
     println!("Sample rate (Hz): {:.1}", report.sample_rate_hz);
     println!("Samples: {}", report.sample_count);
-    println!("Satellites: {}", sats);
+    println!("Satellites: {sats}");
     println!("IQ: {}", report.output_iq);
     println!("Sidecar: {}", report.output_sidecar);
     println!("Truth: {}", report.output_truth);

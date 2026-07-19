@@ -87,14 +87,14 @@ fn main() {
         let (api_pub, non_api_pub) =
             if src_dir.exists() { pub_item_counts(&src_dir) } else { (0, 0) };
 
-        println!("crate: {}", name);
+        println!("crate: {name}");
         println!("deps: {}", deps.len());
         if heavy_present.is_empty() {
             println!("heavy-deps: none");
         } else {
             println!("heavy-deps: {}", heavy_present.join(","));
         }
-        println!("pub-items: api={} non-api={}", api_pub, non_api_pub);
+        println!("pub-items: api={api_pub} non-api={non_api_pub}");
         if features.is_empty() {
             println!("features: none");
         } else {

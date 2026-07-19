@@ -318,8 +318,7 @@ fn tracking_steers_code_rate_toward_faster_signal_code() {
 
     assert!(
         best_code_rate_hz > config.code_freq_basis_hz,
-        "best_code_rate_hz={} epochs={epochs:?}",
-        best_code_rate_hz,
+        "best_code_rate_hz={best_code_rate_hz} epochs={epochs:?}",
     );
 }
 

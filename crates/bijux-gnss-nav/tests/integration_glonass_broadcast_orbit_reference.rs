@@ -34,8 +34,7 @@ fn glonass_broadcast_position_matches_precise_reference_within_tolerance() {
 
     assert!(
         max_position_error_m <= GLONASS_BROADCAST_POSITION_TOLERANCE_M,
-        "GLONASS slot 14 drifted {:.3} m against the ESA precise orbit over the sampled window",
-        max_position_error_m
+        "GLONASS slot 14 drifted {max_position_error_m:.3} m against the ESA precise orbit over the sampled window"
     );
 }
 

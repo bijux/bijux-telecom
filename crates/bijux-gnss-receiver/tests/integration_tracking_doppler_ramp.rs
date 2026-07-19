@@ -480,7 +480,7 @@ fn adaptive_tracking_shortens_coherent_integration_under_strong_doppler_ramp() {
         .expect("adaptive dynamic profile assumptions");
 
     assert!(
-        adaptive_integration_ms_values.iter().any(|integration_ms| *integration_ms == 1),
+        adaptive_integration_ms_values.contains(&1),
         "adaptive_integration_ms_values={adaptive_integration_ms_values:?} adaptive_epochs={adaptive_epochs:?}"
     );
     assert!(

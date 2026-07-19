@@ -225,7 +225,7 @@ fn adaptive_tracking_lengthens_integration_after_weak_signal_lock() {
         "adaptive_epochs={adaptive_epochs:?}"
     );
     assert!(
-        adaptive_integration_ms.iter().any(|integration_ms| *integration_ms == 5),
+        adaptive_integration_ms.contains(&5),
         "adaptive_integration_ms={adaptive_integration_ms:?} adaptive_epochs={adaptive_epochs:?}"
     );
     assert!(

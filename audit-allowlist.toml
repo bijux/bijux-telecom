@@ -5,13 +5,6 @@ owner = "platform/infra"
 [advisories]
 ignore = []
 
-[[advisory]]
-id = "RUSTSEC-2026-0009"
-why = "the workspace only parses RFC 3339 timestamps and does not exercise the RFC 2822 parsing surface covered by the advisory while the repository remains on rustc 1.86.0"
-expiry = "2026-10-31"
-owner = "platform/infra"
-link = "https://github.com/RustSec/advisory-db/blob/main/crates/time/RUSTSEC-2026-0009.md"
-
 # For each ignored advisory use:
 # [[advisory]]
 # id = "RUSTSEC-YYYY-NNNN"

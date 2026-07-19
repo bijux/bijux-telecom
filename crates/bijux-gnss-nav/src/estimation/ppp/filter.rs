@@ -617,14 +617,14 @@ impl PppFilter {
         let state = match products.sat_state(sat, t_s, &mut diag) {
             Some(state) => state,
             None => {
-                diag.fallback(format!("precise state missing for {:?}, using broadcast", sat));
+                diag.fallback(format!("precise state missing for {sat:?}, using broadcast"));
                 sat_state_gps_l1ca_if_current(eph, sat, t_s, &mut diag)?
             }
         };
         let clock_correction = match products.clock_correction(sat, t_s, &mut diag) {
             Some(clock_correction) => clock_correction,
             None => {
-                diag.fallback(format!("precise clock missing for {:?}, using broadcast", sat));
+                diag.fallback(format!("precise clock missing for {sat:?}, using broadcast"));
                 gps_satellite_clock_correction_if_current(eph, sat, t_s, &mut diag)?
             }
         };

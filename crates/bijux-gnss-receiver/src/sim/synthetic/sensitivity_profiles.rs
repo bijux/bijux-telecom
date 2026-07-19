@@ -68,8 +68,7 @@ pub fn measure_truth_guided_tracking_lock_probability(
                     code_phase_samples: seeded_code_phase_samples,
                     cn0_db_hz: signal.cn0_db_hz,
                     explain_selection_reason: format!(
-                        "synthetic_tracking_seed_doppler_error_{:+.3}_code_phase_error_{}",
-                        seeded_doppler_error_hz, seeded_code_phase_error_samples
+                        "synthetic_tracking_seed_doppler_error_{seeded_doppler_error_hz:+.3}_code_phase_error_{seeded_code_phase_error_samples}"
                     ),
                 })],
             );

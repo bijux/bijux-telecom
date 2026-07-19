@@ -41,8 +41,7 @@ fn annotate_navigation_symbol_sync_provenance(
     bit_confidence: f64,
 ) {
     epoch.tracking_provenance.push_str(&format!(
-        " nav_symbol_sync=confident nav_symbol_start_ms={} nav_symbol_sync_confidence={:.6} nav_symbol_bit_confidence={:.6}",
-        bit_start_ms, sync_confidence, bit_confidence
+        " nav_symbol_sync=confident nav_symbol_start_ms={bit_start_ms} nav_symbol_sync_confidence={sync_confidence:.6} nav_symbol_bit_confidence={bit_confidence:.6}"
     ));
 }
 

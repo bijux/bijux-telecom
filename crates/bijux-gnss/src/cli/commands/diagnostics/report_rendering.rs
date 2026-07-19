@@ -136,7 +136,7 @@ pub(crate) fn print_diagnostics_summary_table(
     entries: Option<&Vec<serde_json::Value>>,
     top: usize,
 ) {
-    println!("Diagnostics summary (top {}):", top);
+    println!("Diagnostics summary (top {top}):");
     if let Some(items) = entries {
         for entry in items.iter().take(top.max(1)) {
             let code = entry.get("code").and_then(|v| v.as_str()).unwrap_or("unknown");

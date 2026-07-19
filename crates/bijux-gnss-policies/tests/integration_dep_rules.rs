@@ -72,14 +72,12 @@ fn dependency_direction_rules() {
 
     for (from, tos) in deps {
         let Some(allowed_tos) = allowed.get(from.as_str()) else {
-            panic!("unexpected workspace crate in dependency graph: {}", from);
+            panic!("unexpected workspace crate in dependency graph: {from}");
         };
         for to in tos {
             assert!(
                 allowed_tos.contains(to.as_str()),
-                "dependency not allowed by DAG: {} -> {}",
-                from,
-                to
+                "dependency not allowed by DAG: {from} -> {to}"
             );
         }
     }
@@ -92,9 +90,7 @@ fn dependency_direction_rules() {
         for to in actual {
             assert!(
                 allowed_tos.contains(to.as_str()),
-                "dependency not allowed by DAG: {} -> {}",
-                from,
-                to
+                "dependency not allowed by DAG: {from} -> {to}"
             );
         }
     }
@@ -201,7 +197,7 @@ fn deps_for(
         .packages
         .iter()
         .find(|pkg| pkg.name == name)
-        .unwrap_or_else(|| panic!("missing package {}", name));
+        .unwrap_or_else(|| panic!("missing package {name}"));
     pkg.dependencies
         .iter()
         .filter(|dep| {
@@ -226,7 +222,7 @@ fn dfs_detect_cycles(
     visited: &mut HashSet<String>,
 ) {
     if visiting.contains(node) {
-        panic!("dependency cycle detected including {}", node);
+        panic!("dependency cycle detected including {node}");
     }
     if visited.contains(node) {
         return;

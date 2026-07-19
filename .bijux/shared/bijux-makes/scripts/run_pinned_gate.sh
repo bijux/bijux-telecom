@@ -38,16 +38,18 @@ fi
 full_sha="$(git -C "${repo_root}" rev-parse "${pinned_ref}^{commit}")"
 short_sha="$(git -C "${repo_root}" rev-parse --short=9 "${full_sha}")"
 artifact_root="${repo_root}/artifacts/${short_sha}"
-pinned_repo_dir="${artifact_root}/frozen-repo"
-lock_dir="${artifact_root}/frozen-repo.lock"
+gate_root="${artifact_root}/gates/${pinned_target}"
+pinned_repo_dir="${gate_root}/frozen-repo"
+lock_dir="${gate_root}/frozen-repo.lock"
 background_dir="${artifact_root}/background"
+gate_artifact_root="${gate_root}/artifacts"
 console_log="${background_dir}/${pinned_target}.console.log"
 pid_file="${background_dir}/${pinned_target}.pid"
 meta_file="${background_dir}/${pinned_target}.meta"
 status_file="${background_dir}/${pinned_target}.exit.status"
 launcher_file="${background_dir}/${pinned_target}.launch.sh"
 
-mkdir -p "${artifact_root}" "${background_dir}"
+mkdir -p "${gate_root}" "${background_dir}"
 
 lock_held=0
 release_lock() {
@@ -111,7 +113,7 @@ else
   git -C "${pinned_repo_dir}" checkout --detach --force "${full_sha}" >/dev/null
 fi
 
-artifact_execution_root="${artifact_root}"
+artifact_execution_root="${gate_artifact_root}"
 pinned_rust_gate="${pinned_repo_dir}/.bijux/shared/bijux-makes-rs/scripts/rust_gate.sh"
 if [[ -f "${pinned_rust_gate}" ]] &&
   ! grep -Fq 'configured_artifact_boundary=' "${pinned_rust_gate}"; then
@@ -126,6 +128,8 @@ commit=${full_sha}
 target=${pinned_target}
 source=${pinned_repo_dir}
 artifact_root=${artifact_root}
+gate_root=${gate_root}
+gate_artifact_root=${gate_artifact_root}
 artifact_execution_root=${artifact_execution_root}
 console_log=${console_log}
 status_file=${status_file}
@@ -164,28 +168,23 @@ make "${pinned_target}"
 status=\$?
 set -e
 
-if [[ "${artifact_execution_root}" != "${artifact_root}" ]]; then
-  shopt -s nullglob
-  for source_path in "${artifact_execution_root}"/*; do
-    artifact_name="\${source_path##*/}"
-    published_path="${artifact_root}/\${artifact_name}"
-    expected_target="frozen-repo/artifacts/\${artifact_name}"
-    if [[ -L "\${published_path}" ]] &&
-      [[ "\$(readlink "\${published_path}")" == "\${expected_target}" ]]; then
-      continue
+if [[ "${artifact_execution_root}" != "${gate_artifact_root}" ]]; then
+  expected_target="frozen-repo/artifacts"
+  if [[ -L "${gate_artifact_root}" ]] &&
+    [[ "\$(readlink "${gate_artifact_root}")" == "\${expected_target}" ]]; then
+    :
+  else
+    if [[ -d "${gate_artifact_root}" ]] &&
+      [[ -z "\$(find "${gate_artifact_root}" -mindepth 1 -print -quit)" ]]; then
+      rmdir "${gate_artifact_root}"
     fi
-    if [[ -d "\${published_path}" ]] &&
-      [[ -z "\$(find "\${published_path}" -mindepth 1 -print -quit)" ]]; then
-      rmdir "\${published_path}"
-    fi
-    if [[ -e "\${published_path}" || -L "\${published_path}" ]]; then
-      printf 'artifact publication conflict: %s\n' "\${published_path}" >&2
+    if [[ -e "${gate_artifact_root}" || -L "${gate_artifact_root}" ]]; then
+      printf 'artifact publication conflict: %s\n' "${gate_artifact_root}" >&2
       status=1
-      continue
+    else
+      ln -s "\${expected_target}" "${gate_artifact_root}"
     fi
-    ln -s "\${expected_target}" "\${published_path}"
-  done
-  shopt -u nullglob
+  fi
 fi
 
 printf '%s\n' "\${status}" >"${status_file}"
@@ -216,7 +215,7 @@ printf '%s\n' "${background_pid}" >"${pid_file}"
 printf '%s\n' \
   "started ${pinned_target} for ${short_sha}" \
   "source: ${pinned_repo_dir}" \
-  "artifacts: ${artifact_root}" \
+  "artifacts: ${gate_artifact_root}" \
   "console: ${console_log}" \
   "status: ${status_file}" \
   "pid: ${background_pid}"

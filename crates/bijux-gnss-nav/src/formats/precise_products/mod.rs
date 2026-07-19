@@ -219,7 +219,7 @@ impl ProductsProvider for Products {
                 status => record_sp3_status(diag, sat, t_s, status),
             }
         } else {
-            diag.fallback(format!("SP3 missing for {:?}, using broadcast", sat));
+            diag.fallback(format!("SP3 missing for {sat:?}, using broadcast"));
         }
         self.broadcast
             .sat_state(sat, t_s, diag)
@@ -245,7 +245,7 @@ impl ProductsProvider for Products {
                 status => record_clk_status(diag, sat, t_s, status),
             }
         } else {
-            diag.fallback(format!("CLK missing for {:?}, using broadcast", sat));
+            diag.fallback(format!("CLK missing for {sat:?}, using broadcast"));
         }
         self.broadcast.clock_correction(sat, t_s, diag)
     }

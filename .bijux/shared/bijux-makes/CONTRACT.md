@@ -71,12 +71,16 @@ and `DOCS_SOURCE_CHECK_TARGETS`.
 
 ## Pinned Gates
 
-`scripts/run_pinned_gate.sh` launches an allowed Make target from an immutable
-commit checkout under `artifacts/<commit>/frozen-repo/`. The launcher records its
-commit, process, log, and exit status under the same artifact root. Repository-relative
-Make and Rust paths are recomputed from the immutable checkout instead of inherited
-from the invoking worktree. Pinned sources whose Rust policy requires workspace-bound
-artifacts execute there and publish stable links under `artifacts/<commit>/`.
+`scripts/run_pinned_gate.sh` launches an allowed Make target from an immutable,
+gate-owned commit checkout under
+`artifacts/<commit>/gates/<target>/frozen-repo/`. Gate outputs are isolated under
+`artifacts/<commit>/gates/<target>/artifacts/`, while launcher process, log, and
+exit status records remain under `artifacts/<commit>/background/`. This ownership
+allows distinct gates for one commit to run concurrently without sharing source,
+Cargo, or generated-output state. Repository-relative Make and Rust paths are
+recomputed from the immutable checkout instead of inherited from the invoking
+worktree. Pinned sources whose Rust policy requires workspace-bound artifacts
+execute there and publish one stable gate-owned artifact link.
 Before reusing an inactive checkout, the launcher restores tracked files changed
 by the previous gate to the pinned commit. It refuses reuse when untracked files
 outside the launcher-owned `artifacts/` boundary are present and never restores

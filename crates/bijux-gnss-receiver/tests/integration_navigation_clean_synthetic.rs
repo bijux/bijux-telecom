@@ -77,8 +77,6 @@ fn clean_synthetic_navigation_meets_reference_position_budget() {
     );
     assert!(
         report.error_3d_m.max <= CLEAN_SYNTHETIC_PVT_POSITION_ERROR_MAX_M,
-        "clean synthetic navigation exceeded {:.3} m: {:?}",
-        CLEAN_SYNTHETIC_PVT_POSITION_ERROR_MAX_M,
-        matched_errors
+        "clean synthetic navigation exceeded {CLEAN_SYNTHETIC_PVT_POSITION_ERROR_MAX_M:.3} m: {matched_errors:?}"
     );
 }

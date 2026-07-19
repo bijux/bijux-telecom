@@ -1243,7 +1243,7 @@ impl PositionRuntime {
             self.record_event(bijux_gnss_core::api::DiagnosticEvent::new(
                 bijux_gnss_core::api::DiagnosticSeverity::Info,
                 "NAV_INNOVATION_RMS",
-                format!("innovation rms {:.3} m", rms),
+                format!("innovation rms {rms:.3} m"),
             ));
         }
 
