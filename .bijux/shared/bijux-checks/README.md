@@ -3,6 +3,10 @@
 This directory owns shared-directory synchronization, checksum validation, and
 standards check execution.
 
+The canonical managed workflow is `.github/workflows/bijux-std.yml`.
+`scripts/validate-shared-contracts.sh` validates synchronized shell, Python, and
+JSON assets in both this repository and downstream consumer layouts.
+
 ## Capability Selection
 
 Repositories may select managed shared libraries with
