@@ -47,7 +47,8 @@ fn beidou_b2_scenario(sat: SatId) -> SyntheticScenario {
 }
 
 #[test]
-fn support_matrix_lists_beidou_b2_with_explicit_tracking_scope() {
+#[expect(non_snake_case, reason = "slow__ is the governed nextest namespace marker")]
+fn slow__support_matrix_lists_beidou_b2_with_explicit_tracking_scope() {
     let config = beidou_b2_config();
     let sat = SatId { constellation: Constellation::Beidou, prn: 11 };
     let scenario = beidou_b2_scenario(sat);

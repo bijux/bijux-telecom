@@ -123,10 +123,10 @@ package guardrail.
 
 For slow-lane changes, the existing
 [suite-selection integration](https://github.com/bijux/bijux-gnss/blob/main/crates/bijux-gnss-dev/tests/integration_nextest_suite_selection.rs)
-checks sorted uniqueness, source-name resolution, the legacy slow-name
-namespace, and the exact relationship between generated fast and slow
-expressions. It does not measure duration or prove the scientific value of a
-listed test.
+checks sorted uniqueness, source-name resolution, explicit roster coverage for
+the slow-name namespace, and the exact relationship between generated fast and
+slow expressions. It does not measure duration or prove the scientific value
+of a listed test.
 
 ## Handle Benchmark Evidence Separately
 

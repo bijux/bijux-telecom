@@ -192,7 +192,8 @@ fn gps_l5i_acquisition_truth_table_matches_capture_truth() {
 }
 
 #[test]
-fn gps_l5i_tracking_truth_table_matches_capture_truth() {
+#[expect(non_snake_case, reason = "slow__ is the governed nextest namespace marker")]
+fn slow__gps_l5i_tracking_truth_table_matches_capture_truth() {
     let fixture = gps_l5i_truth_capture_fixture();
     let budget = truth_guided_receiver_accuracy_budgets().tracking;
     let report = validate_truth_guided_tracking_table(

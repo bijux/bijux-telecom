@@ -385,7 +385,8 @@ fn selected_candidate_reason_reports_low_peak_metric_threshold() {
 }
 
 #[test]
-fn calibrated_thresholds_record_false_alarm_provenance() {
+#[expect(non_snake_case, reason = "slow__ is the governed nextest namespace marker")]
+fn slow__calibrated_thresholds_record_false_alarm_provenance() {
     let sat = SatId { constellation: Constellation::Gps, prn: 7 };
     let mut config = ReceiverPipelineConfig {
         sampling_freq_hz: 4_092_000.0,

@@ -171,7 +171,7 @@ flowchart LR
 ```
 
 `make test` intentionally excludes tests named by the governed slow roster and
-the legacy slow-test namespace. `make test-slow` runs that excluded proof.
+the `slow__` test namespace. `make test-slow` runs that excluded proof.
 `make test-all` runs the complete workspace suite, including ignored tests,
 without retries. A green fast lane therefore does not imply that slow or ignored
 signal consumers passed.

@@ -176,7 +176,8 @@ fn receiver_gps_l5q_acquisition_preserves_component_provenance_on_raw_source() {
 }
 
 #[test]
-fn receiver_gps_l5q_acquisition_reports_shifted_secondary_code_phase() {
+#[expect(non_snake_case, reason = "slow__ is the governed nextest namespace marker")]
+fn slow__receiver_gps_l5q_acquisition_reports_shifted_secondary_code_phase() {
     let mut config = wideband_config();
     config.acquisition_integration_ms = 20;
     config.acquisition_noncoherent = 1;

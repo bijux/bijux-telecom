@@ -333,7 +333,8 @@ fn narrow_correlator_reduces_delayed_path_code_bias() {
 }
 
 #[test]
-fn double_delta_multipath_bias_sweep_quantifies_benefit_and_failure_region() {
+#[expect(non_snake_case, reason = "slow__ is the governed nextest namespace marker")]
+fn slow__double_delta_multipath_bias_sweep_quantifies_benefit_and_failure_region() {
     let config = multipath_tracking_config();
     let sat = SatId { constellation: Constellation::Gps, prn: 7 };
     let tracking = Tracking::new(config.clone(), ReceiverRuntime::default());

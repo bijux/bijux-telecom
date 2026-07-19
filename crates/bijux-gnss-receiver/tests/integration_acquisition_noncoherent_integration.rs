@@ -13,7 +13,8 @@ const LOW_CN0_TRIAL_COUNT: usize = 24;
 const NOISE_ONLY_TRIAL_COUNT: usize = 48;
 
 #[test]
-fn noncoherent_integration_improves_low_cn0_detection_probability() {
+#[expect(non_snake_case, reason = "slow__ is the governed nextest namespace marker")]
+fn slow__noncoherent_integration_improves_low_cn0_detection_probability() {
     let config = acquisition_profile();
     let seeds = trial_seeds(0x2407_1987, LOW_CN0_TRIAL_COUNT);
     let signal = SyntheticSignalParams {

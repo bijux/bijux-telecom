@@ -135,7 +135,8 @@
     }
 
     #[test]
-    fn acquisition_uncertainty_coverage_report_keeps_rate_axis_when_present() {
+    #[expect(non_snake_case, reason = "slow__ is the governed nextest namespace marker")]
+    fn slow__acquisition_uncertainty_coverage_report_keeps_rate_axis_when_present() {
         let config = ReceiverPipelineConfig {
             sampling_freq_hz: 4_092_000.0,
             intermediate_freq_hz: 0.0,

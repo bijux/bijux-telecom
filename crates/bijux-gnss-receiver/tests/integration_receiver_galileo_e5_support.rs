@@ -51,7 +51,8 @@ fn galileo_e5_scenario(
 }
 
 #[test]
-fn support_matrix_lists_galileo_e5_with_explicit_tracking_scope() {
+#[expect(non_snake_case, reason = "slow__ is the governed nextest namespace marker")]
+fn slow__support_matrix_lists_galileo_e5_with_explicit_tracking_scope() {
     let config = galileo_e5_config();
     let sat = SatId { constellation: Constellation::Galileo, prn: 11 };
     let scenario = galileo_e5_scenario(sat, SignalCode::E5a, false);
@@ -107,7 +108,8 @@ fn support_matrix_lists_galileo_e5_with_explicit_tracking_scope() {
 }
 
 #[test]
-fn receiver_runs_explicit_galileo_e5b_signal_through_observations() {
+#[expect(non_snake_case, reason = "slow__ is the governed nextest namespace marker")]
+fn slow__receiver_runs_explicit_galileo_e5b_signal_through_observations() {
     let config = galileo_e5_config();
     let sat = SatId { constellation: Constellation::Galileo, prn: 11 };
     let scenario = galileo_e5_scenario(sat, SignalCode::E5b, true);

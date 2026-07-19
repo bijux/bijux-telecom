@@ -30,11 +30,15 @@ fn slow_roster_is_sorted_unique_and_resolves_to_test_functions() -> anyhow::Resu
         "slow roster entries must resolve to known test functions: {missing:?}"
     );
 
-    let duplicated_named_slow =
-        roster.iter().filter(|entry| entry.contains("slow__")).cloned().collect::<Vec<_>>();
+    let unrostered_named_slow = known_test_functions
+        .iter()
+        .filter(|name| name.starts_with("slow__"))
+        .filter(|name| !roster_contains_test_function(&roster, name))
+        .cloned()
+        .collect::<Vec<_>>();
     assert!(
-        duplicated_named_slow.is_empty(),
-        "slow roster must not duplicate slow__-prefixed tests: {duplicated_named_slow:?}"
+        unrostered_named_slow.is_empty(),
+        "slow__-prefixed tests must be recorded in the slow roster: {unrostered_named_slow:?}"
     );
 
     Ok(())
@@ -55,7 +59,7 @@ fn slow_roster_feeds_nextest_lane_expressions() -> anyhow::Result<()> {
     );
     assert!(
         slow_expr.contains("test(/::slow__/)"),
-        "slow nextest expression must preserve legacy slow__ namespace selection: {slow_expr}"
+        "slow nextest expression must select the slow__ namespace: {slow_expr}"
     );
     assert!(
         fast_expr.contains(&slow_expr),
@@ -172,6 +176,12 @@ fn roster_entry_maps_to_known_test(entry: &str, known_test_functions: &BTreeSet<
         .rsplit("::")
         .next()
         .is_some_and(|function_name| known_test_functions.contains(function_name))
+}
+
+fn roster_contains_test_function(roster: &[String], function_name: &str) -> bool {
+    roster
+        .iter()
+        .any(|entry| entry == function_name || entry.rsplit("::").next() == Some(function_name))
 }
 
 #[test]

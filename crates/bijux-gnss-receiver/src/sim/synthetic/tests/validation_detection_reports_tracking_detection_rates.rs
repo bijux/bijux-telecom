@@ -104,7 +104,8 @@ fn tracking_sensitivity_report_counts_stable_lock_and_refusal_trials() {
 }
 
 #[test]
-fn tracking_lock_rate_report_keeps_cn0_and_seeded_error_axes() {
+#[expect(non_snake_case, reason = "slow__ is the governed nextest namespace marker")]
+fn slow__tracking_lock_rate_report_keeps_cn0_and_seeded_error_axes() {
     let sat = SatId { constellation: Constellation::Gps, prn: 7 };
     let config = ReceiverPipelineConfig {
         sampling_freq_hz: 4_092_000.0,

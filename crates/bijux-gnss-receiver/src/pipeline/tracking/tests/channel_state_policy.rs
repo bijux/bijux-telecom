@@ -158,7 +158,8 @@ fn clean_seeded_tracking_clears_false_lock_once_loops_converge() {
 }
 
 #[test]
-fn low_rate_seeded_tracking_clears_low_resolution_false_lock_when_carrier_is_consistent() {
+#[expect(non_snake_case, reason = "slow__ is the governed nextest namespace marker")]
+fn slow__low_rate_seeded_tracking_clears_low_resolution_false_lock_when_carrier_is_consistent() {
     let config = ReceiverPipelineConfig {
         sampling_freq_hz: 2_046_000.0,
         intermediate_freq_hz: 0.0,

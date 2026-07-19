@@ -174,7 +174,8 @@ fn acquisition_supports_coherent_lengths_with_nav_bit_modulation() {
 }
 
 #[test]
-fn acquisition_supports_gps_l1_twenty_millisecond_integration_across_bit_boundary() {
+#[expect(non_snake_case, reason = "slow__ is the governed nextest namespace marker")]
+fn slow__acquisition_supports_gps_l1_twenty_millisecond_integration_across_bit_boundary() {
     let config = ReceiverPipelineConfig {
         sampling_freq_hz: 4_092_000.0,
         intermediate_freq_hz: 0.0,

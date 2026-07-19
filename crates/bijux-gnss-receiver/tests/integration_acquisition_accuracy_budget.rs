@@ -14,7 +14,8 @@ use bijux_gnss_receiver::api::{
 };
 
 #[test]
-fn acquisition_accuracy_budget_resolves_thresholds_by_signal_family() {
+#[expect(non_snake_case, reason = "slow__ is the governed nextest namespace marker")]
+fn slow__acquisition_accuracy_budget_resolves_thresholds_by_signal_family() {
     let budgets = truth_guided_receiver_accuracy_budgets();
     let cases = vec![
         (

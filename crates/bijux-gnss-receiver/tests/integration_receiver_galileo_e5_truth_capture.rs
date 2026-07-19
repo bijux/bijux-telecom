@@ -209,7 +209,8 @@ fn galileo_e5b_acquisition_truth_table_matches_capture_truth() {
 }
 
 #[test]
-fn galileo_e5b_tracking_truth_table_matches_capture_truth() {
+#[expect(non_snake_case, reason = "slow__ is the governed nextest namespace marker")]
+fn slow__galileo_e5b_tracking_truth_table_matches_capture_truth() {
     let fixture = galileo_e5_truth_capture_fixture(
         "receiver-galileo-e5b-truth-capture",
         SignalCode::E5b,

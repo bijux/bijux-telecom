@@ -66,7 +66,7 @@ support meaningful measurement.
 | Entry point | Direct evidence | Important limitation |
 | --- | --- | --- |
 | package guardrail integration | the private package satisfies configured repository policy | no governance command behavior |
-| nextest suite-selection integration | roster order and uniqueness, mapping to known test functions, legacy slow naming, and fast/slow expression relationship | no test duration or scientific correctness |
+| nextest suite-selection integration | roster order and uniqueness, mapping to known test functions, slow-name roster coverage, and fast/slow expression relationship | no test duration or scientific correctness |
 | allowlist command | the current allowlist exists and its advisory rows satisfy current field, identifier, link, and expiry rules | no malformed fixture matrix or risk acceptance |
 | deviation command | the current deviation file exists and rows satisfy current ownership, reason, expiry, and upstream-review-link rules | no malformed fixture matrix or upstream acceptance |
 | ignore-argument command | current recognized advisory identifiers are sorted, deduplicated, and rendered | absence of the file returns empty output; validation is a separate command |

@@ -51,7 +51,7 @@ benchmark output, and tests the generated test-lane relationship.
 | shared standards review to deviation validator | [local deviation ledger](https://github.com/bijux/bijux-gnss/blob/main/configs/rust/deny.deviations.toml) | every local deviation points to an HTTP(S) review containing the shared-standard identity | shared standards owns durable policy; developer tooling owns local enforcement |
 | product benchmarks to comparison | Cargo bencher-format stdout | selected rows normalize into name/value pairs and compare with a baseline when present | product packages own benchmark meaning; developer tooling owns invocation and comparison mechanics |
 | comparison to maintainer | terminal findings plus raw and normalized evidence | missing baseline, strictness, threshold, and unmatched names remain visible | developer tooling owns evidence semantics |
-| slow-test ledger to lane generator | escaped exact-name regular expression | slow expression includes ledger entries and legacy names; fast expression negates the slow expression | Make tooling owns generation and lane execution |
+| slow-test ledger to lane generator | escaped exact-name regular expression | slow expression includes ledger entries and slow-named tests; fast expression negates the slow expression | Make tooling owns generation and lane execution |
 | lane generator to developer integration test | child-process stdout | expression shape and ledger inclusion remain coherent | developer tooling owns this integration proof, not the generator |
 | policy package to package guardrail | test-only Rust API | private package remains within configured repository structure | policy package owns reusable rule meaning; developer package owns its configuration |
 
@@ -92,8 +92,8 @@ executes that generator and checks:
 
 - sorted, unique ledger entries
 - heuristic resolution to a test function name somewhere in the workspace
-- exclusion of legacy `slow__` names from the explicit ledger
-- inclusion of the legacy namespace in the slow expression
+- explicit ledger coverage for every `slow__`-named test
+- inclusion of the slow-name namespace in the slow expression
 - exact embedding of the slow expression inside the fast negation
 - matching of every ledger entry by the extracted regular expression
 
