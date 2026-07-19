@@ -16,8 +16,8 @@ This project adheres to [Semantic Versioning](https://semver.org) and the
 
 ### Fixed
 
-- Preserved the canonical MkDocs hub registry order in desktop and mobile
-  navigation.
+- Preserved the canonical MkDocs hub registry order, shortened GNSS site-tab
+  labels, and kept the internal badge catalog out of the published site.
 - Excluded both root-level and nested `slow__` tests from the fast nextest lane
   used by pull-request CI.
 

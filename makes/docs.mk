@@ -82,9 +82,19 @@ docs-render-check: ## Verify rendered shell, navigation, and compatibility asset
 	@grep -q 'bijux-hub-strip' "$(DOCS_SITE_DIR)/index.html" || (echo "ERROR: shared Bijux hub strip is missing" && exit 1)
 	@grep -q 'bijux-site-tabs' "$(DOCS_SITE_DIR)/index.html" || (echo "ERROR: GNSS site tabs are missing" && exit 1)
 	@grep -q 'data-bijux-active-repository="bijux-gnss"' "$(DOCS_SITE_DIR)/index.html" || (echo "ERROR: GNSS repository identity is missing" && exit 1)
-	@for label in "GNSS Handbook" "Core Handbook" "Infrastructure Handbook" "Navigation Handbook" "Receiver Handbook" "Signal Handbook" "Maintainer Handbook"; do \
-		grep -q "$$label" "$(DOCS_SITE_DIR)/index.html" || (echo "ERROR: rendered navigation is missing $$label" && exit 1); \
+	@for entry in "GNSS:/bijux-gnss/" "Core:/bijux-gnss-core/" "Infrastructure:/bijux-gnss-infra/" "Navigation:/bijux-gnss-nav/" "Receiver:/bijux-gnss-receiver/" "Signal:/bijux-gnss-signal/" "Maintainer:/bijux-gnss-dev/"; do \
+		label=$${entry%%:*}; path=$${entry#*:}; \
+		grep -A 2 "data-bijux-site-path=\"$$path\"" "$(DOCS_SITE_DIR)/index.html" | grep -q -E "^[[:space:]]+$$label[[:space:]]*$$" || (echo "ERROR: rendered navigation is missing $$label at $$path" && exit 1); \
 	done
+	@if grep -q 'data-bijux-site-path="/badges/"' "$(DOCS_SITE_DIR)/index.html"; then \
+		echo "ERROR: internal badge catalog appears in rendered site navigation"; \
+		exit 1; \
+	fi
+	@test ! -e "$(DOCS_SITE_DIR)/badges" || (echo "ERROR: internal badge catalog was published" && exit 1)
+	@if grep -i -E -q 'badge catalog|docs/badges\.md|badges\.md' README.md crates/*/README.md; then \
+		echo "ERROR: public README refers to the internal badge catalog"; \
+		exit 1; \
+	fi
 	@for icon in $(ROOT_COMPAT_ICONS); do \
 		test -f "$(DOCS_SITE_DIR)/$$icon" || (echo "ERROR: rendered root icon $$icon is missing" && exit 1); \
 	done

@@ -9,6 +9,7 @@ repo_name: bijux/bijux-gnss
 edit_uri: edit/main/docs/
 
 docs_dir: docs
+exclude_docs: badges.md
 site_dir: artifacts/docs/site
 watch:
   - docs
@@ -25,7 +26,7 @@ extra:
     theme_key: bijux:theme
 nav:
   - "Home": index.md
-  - "GNSS Handbook":
+  - "GNSS":
       - "Overview": bijux-gnss/index.md
       - "Command Ownership Boundaries": bijux-gnss/ownership-boundaries.md
       - "Foundation":
@@ -81,7 +82,7 @@ nav:
           - "Review Checklist": bijux-gnss/quality/review-checklist.md
           - "Risk Register": bijux-gnss/quality/risk-register.md
           - "Test Strategy": bijux-gnss/quality/test-strategy.md
-  - "Core Handbook":
+  - "Core":
       - "Overview": bijux-gnss-core/index.md
       - "Shared Contract Ownership Boundaries": bijux-gnss-core/ownership-boundaries.md
       - "Foundation":
@@ -137,7 +138,7 @@ nav:
           - "Review Checklist": bijux-gnss-core/quality/review-checklist.md
           - "Core Evidence Risks": bijux-gnss-core/quality/risk-register.md
           - "Core Contract Test Strategy": bijux-gnss-core/quality/test-strategy.md
-  - "Infrastructure Handbook":
+  - "Infrastructure":
       - "Overview": bijux-gnss-infra/index.md
       - "Infrastructure Ownership Boundaries": bijux-gnss-infra/ownership-boundaries.md
       - "Foundation":
@@ -192,7 +193,7 @@ nav:
           - "Review Checklist": bijux-gnss-infra/quality/review-checklist.md
           - "Infrastructure Evidence Risk Register": bijux-gnss-infra/quality/risk-register.md
           - "Test Strategy": bijux-gnss-infra/quality/test-strategy.md
-  - "Navigation Handbook":
+  - "Navigation":
       - "Overview": bijux-gnss-nav/index.md
       - "Navigation Ownership Boundaries": bijux-gnss-nav/ownership-boundaries.md
       - "Foundation":
@@ -245,7 +246,7 @@ nav:
           - "Review Checklist": bijux-gnss-nav/quality/review-checklist.md
           - "Risk Register": bijux-gnss-nav/quality/risk-register.md
           - "Navigation Test Evidence": bijux-gnss-nav/quality/test-strategy.md
-  - "Receiver Handbook":
+  - "Receiver":
       - "Overview": bijux-gnss-receiver/index.md
       - "Receiver Ownership Boundaries": bijux-gnss-receiver/ownership-boundaries.md
       - "Foundation":
@@ -302,7 +303,7 @@ nav:
           - "Risk Register": bijux-gnss-receiver/quality/risk-register.md
           - "Test Strategy": bijux-gnss-receiver/quality/test-strategy.md
           - "Validation Budgets": bijux-gnss-receiver/quality/validation-budgets.md
-  - "Signal Handbook":
+  - "Signal":
       - "Overview": bijux-gnss-signal/index.md
       - "Signal Ownership Boundaries": bijux-gnss-signal/ownership-boundaries.md
       - "Foundation":
@@ -357,7 +358,7 @@ nav:
           - "Review Checklist": bijux-gnss-signal/quality/review-checklist.md
           - "Signal Evidence Risks": bijux-gnss-signal/quality/risk-register.md
           - "Test Strategy": bijux-gnss-signal/quality/test-strategy.md
-  - "Maintainer Handbook":
+  - "Maintainer":
       - "Overview": bijux-gnss-dev/index.md
       - "Maintainer Workflow Ownership Boundaries": bijux-gnss-dev/ownership-boundaries.md
       - "Foundation":
@@ -413,4 +414,3 @@ nav:
           - "Review Checklist": bijux-gnss-dev/quality/review-checklist.md
           - "Risk Register": bijux-gnss-dev/quality/risk-register.md
           - "Test Strategy": bijux-gnss-dev/quality/test-strategy.md
-  - "Badge Catalog": badges.md
