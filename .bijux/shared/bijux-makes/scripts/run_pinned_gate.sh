@@ -14,7 +14,7 @@ require_tool make
 require_tool python3
 
 repo_root="$(git rev-parse --show-toplevel)"
-pinned_ref="${PINNED_REF:-HEAD}"
+pinned_ref="${PINNED_REF:-${TEST_ALL_FROZEN_REF:-HEAD}}"
 pinned_target="${PINNED_GATE_TARGET:-}"
 allowed_targets="${PINNED_ALLOWED_TARGETS:-}"
 
