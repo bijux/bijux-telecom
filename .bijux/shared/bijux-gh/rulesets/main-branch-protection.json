@@ -36,10 +36,10 @@
         "strict_required_status_checks_policy": true,
         "required_status_checks": [
           {
-            "context": "policy / github"
+            "context": "github governance"
           },
           {
-            "context": "policy / pr approval"
+            "context": "owner approval"
           },
           {
             "context": "std / standard"

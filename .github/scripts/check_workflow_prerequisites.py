@@ -82,7 +82,7 @@ def _required_workflows(event_name: str) -> list[RequiredWorkflow]:
             # Approval failures should stop downstream work immediately.
             # A later label or review update creates a new event and a new run.
             RequiredWorkflow(
-                "policy / pr approval",
+                "pull request approval",
                 allowed_events=("pull_request_target", "pull_request_review"),
             ),
         ]

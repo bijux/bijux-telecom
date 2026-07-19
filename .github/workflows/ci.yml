@@ -2,7 +2,7 @@
 # Source of truth: bijux-std/.github/standards/repo-config.manifest.json and bijux-std/shared/bijux-gh/workflows/.
 # Do not edit this generated copy directly.
 
-name: "repo / ci"
+name: "continuous integration"
 on:
   pull_request:
     branches:
@@ -22,7 +22,7 @@ env:
   CARGO_NEXTEST_VERSION: 0.9.100
 jobs:
   fmt:
-    name: "repo / ci / fmt"
+    name: format
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -39,7 +39,7 @@ jobs:
         run: "make fmt"
     if: "${{ github.event_name != 'pull_request' || github.event.pull_request.user.login != 'dependabot[bot]' }}"
   lint:
-    name: "repo / ci / lint"
+    name: lint
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -58,7 +58,7 @@ jobs:
         run: "make lint"
     if: "${{ github.event_name != 'pull_request' || github.event.pull_request.user.login != 'dependabot[bot]' }}"
   audit:
-    name: "repo / ci / audit"
+    name: "dependency audit"
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -76,7 +76,7 @@ jobs:
         run: "make audit"
     if: "${{ github.event_name != 'pull_request' || github.event.pull_request.user.login != 'dependabot[bot]' }}"
   test:
-    name: "repo / ci / test"
+    name: test
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
