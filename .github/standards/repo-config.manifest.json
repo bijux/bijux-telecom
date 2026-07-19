@@ -1433,7 +1433,7 @@
       },
       "workflow_wrappers": {
         "ci": {
-          "name": "ci",
+          "name": "repo / ci",
           "on": {
             "pull_request": {
               "branches": [
@@ -1460,7 +1460,152 @@
             "group": "${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}",
             "cancel-in-progress": true
           },
+          "permissions": {
+            "contents": "read"
+          },
+          "env": {
+            "RUST_TOOLCHAIN_VERSION": "1.88.0",
+            "CARGO_DENY_VERSION": "0.18.3",
+            "CARGO_AUDIT_VERSION": "0.22.0",
+            "CARGO_NEXTEST_VERSION": "0.9.100",
+            "SCCACHE_GHA_ENABLED": "true",
+            "RUSTC_WRAPPER": "sccache"
+          },
           "jobs": {
+            "fmt": {
+              "name": "repo / ci / fmt",
+              "runs-on": "ubuntu-24.04",
+              "timeout-minutes": 20,
+              "steps": [
+                {
+                  "name": "Check out the repository",
+                  "uses": "actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0"
+                },
+                {
+                  "name": "Set up Rust",
+                  "uses": "dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9",
+                  "with": {
+                    "toolchain": "${{ env.RUST_TOOLCHAIN_VERSION }}",
+                    "components": "rustfmt"
+                  }
+                },
+                {
+                  "name": "Restore the Rust cache",
+                  "uses": "Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4",
+                  "with": {
+                    "shared-key": "ci-fmt"
+                  }
+                },
+                {
+                  "name": "Run repository formatting gate",
+                  "run": "make fmt"
+                }
+              ]
+            },
+            "lint": {
+              "name": "repo / ci / lint",
+              "runs-on": "ubuntu-24.04",
+              "timeout-minutes": 30,
+              "steps": [
+                {
+                  "name": "Check out the repository",
+                  "uses": "actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0"
+                },
+                {
+                  "name": "Install Linux build dependencies",
+                  "run": "sudo apt-get update && sudo apt-get install --yes pkg-config libfontconfig1-dev libfreetype6-dev"
+                },
+                {
+                  "name": "Set up Rust",
+                  "uses": "dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9",
+                  "with": {
+                    "toolchain": "${{ env.RUST_TOOLCHAIN_VERSION }}",
+                    "components": "clippy"
+                  }
+                },
+                {
+                  "name": "Restore the Rust cache",
+                  "uses": "Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4",
+                  "with": {
+                    "shared-key": "ci-lint"
+                  }
+                },
+                {
+                  "name": "Run repository lint gate",
+                  "run": "make lint"
+                }
+              ]
+            },
+            "audit": {
+              "name": "repo / ci / audit",
+              "runs-on": "ubuntu-24.04",
+              "timeout-minutes": 30,
+              "steps": [
+                {
+                  "name": "Check out the repository",
+                  "uses": "actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0"
+                },
+                {
+                  "name": "Set up Rust",
+                  "uses": "dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9",
+                  "with": {
+                    "toolchain": "${{ env.RUST_TOOLCHAIN_VERSION }}"
+                  }
+                },
+                {
+                  "name": "Restore the Rust cache",
+                  "uses": "Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4",
+                  "with": {
+                    "shared-key": "ci-audit"
+                  }
+                },
+                {
+                  "name": "Install Rust audit tools",
+                  "run": "cargo install --locked cargo-deny --version \"${{ env.CARGO_DENY_VERSION }}\" && cargo install --locked cargo-audit --version \"${{ env.CARGO_AUDIT_VERSION }}\""
+                },
+                {
+                  "name": "Run repository audit gate",
+                  "run": "make audit"
+                }
+              ]
+            },
+            "test": {
+              "name": "repo / ci / test",
+              "runs-on": "ubuntu-24.04",
+              "timeout-minutes": 45,
+              "steps": [
+                {
+                  "name": "Check out the repository",
+                  "uses": "actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0"
+                },
+                {
+                  "name": "Install Linux build dependencies",
+                  "run": "sudo apt-get update && sudo apt-get install --yes pkg-config libfontconfig1-dev libfreetype6-dev"
+                },
+                {
+                  "name": "Set up Rust",
+                  "uses": "dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9",
+                  "with": {
+                    "toolchain": "${{ env.RUST_TOOLCHAIN_VERSION }}"
+                  }
+                },
+                {
+                  "name": "Restore the Rust cache",
+                  "uses": "Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4",
+                  "with": {
+                    "shared-key": "ci-test"
+                  }
+                },
+                {
+                  "name": "Install cargo-nextest",
+                  "run": "cargo install --locked cargo-nextest --version \"${{ env.CARGO_NEXTEST_VERSION }}\""
+                },
+                {
+                  "name": "Run repository test gate",
+                  "run": "make test"
+                }
+              ]
+            },
             "ssot_policy": {
               "name": "ssot-policy-fast",
               "if": "${{ github.event_name == 'workflow_dispatch' || github.event_name == 'merge_group' || (github.event_name == 'pull_request' && github.event.pull_request.user.type != 'Bot' && !endsWith(github.event.pull_request.user.login, '[bot]')) }}",
@@ -1721,9 +1866,13 @@
               ]
             },
             "fast-tier": {
-              "if": "${{ always() && (github.event_name == 'workflow_dispatch' || github.event_name == 'merge_group' || (github.event_name == 'pull_request' && github.event.pull_request.user.type != 'Bot' && !endsWith(github.event.pull_request.user.login, '[bot]')))) }}",
+              "if": "${{ always() && (github.event_name == 'workflow_dispatch' || github.event_name == 'merge_group' || (github.event_name == 'pull_request' && github.event.pull_request.user.type != 'Bot' && !endsWith(github.event.pull_request.user.login, '[bot]'))) }}",
               "runs-on": "ubuntu-latest",
               "needs": [
+                "fmt",
+                "lint",
+                "audit",
+                "test",
                 "ssot_policy",
                 "workspace_hygiene",
                 "unit_contract_fast",
@@ -1737,6 +1886,10 @@
                   "name": "Require fast CI lanes to pass",
                   "shell": "bash",
                   "env": {
+                    "FMT_RESULT": "${{ needs.fmt.result }}",
+                    "LINT_RESULT": "${{ needs.lint.result }}",
+                    "AUDIT_RESULT": "${{ needs.audit.result }}",
+                    "TEST_RESULT": "${{ needs.test.result }}",
                     "SSOT_POLICY_RESULT": "${{ needs.ssot_policy.result }}",
                     "WORKSPACE_HYGIENE_RESULT": "${{ needs.workspace_hygiene.result }}",
                     "UNIT_CONTRACT_FAST_RESULT": "${{ needs.unit_contract_fast.result }}",
@@ -1745,7 +1898,7 @@
                     "PROFILE_INVARIANTS_RESULT": "${{ needs.profile_invariants.result }}",
                     "CARGO_POLICY_RESULT": "${{ needs.cargo_policy.result }}"
                   },
-                  "run": "set -euo pipefail\nfor result in \\\n  \"${SSOT_POLICY_RESULT}\" \\\n  \"${WORKSPACE_HYGIENE_RESULT}\" \\\n  \"${UNIT_CONTRACT_FAST_RESULT}\" \\\n  \"${RELEASE_READINESS_RESULT}\" \\\n  \"${FASTQ_CONTAINER_READINESS_RESULT}\" \\\n  \"${PROFILE_INVARIANTS_RESULT}\" \\\n  \"${CARGO_POLICY_RESULT}\"; do\n  [[ \"${result}\" == \"success\" ]]\ndone\n"
+                  "run": "set -euo pipefail\nfor result in \\\n  \"${FMT_RESULT}\" \\\n  \"${LINT_RESULT}\" \\\n  \"${AUDIT_RESULT}\" \\\n  \"${TEST_RESULT}\" \\\n  \"${SSOT_POLICY_RESULT}\" \\\n  \"${WORKSPACE_HYGIENE_RESULT}\" \\\n  \"${UNIT_CONTRACT_FAST_RESULT}\" \\\n  \"${RELEASE_READINESS_RESULT}\" \\\n  \"${FASTQ_CONTAINER_READINESS_RESULT}\" \\\n  \"${PROFILE_INVARIANTS_RESULT}\" \\\n  \"${CARGO_POLICY_RESULT}\"; do\n  [[ \"${result}\" == \"success\" ]]\ndone\n"
                 }
               ]
             },
@@ -3966,7 +4119,7 @@
           },
           "jobs": {
             "fmt": {
-              "name": "Formatting",
+              "name": "repo / ci / fmt",
               "runs-on": "ubuntu-24.04",
               "timeout-minutes": 20,
               "steps": [
@@ -3987,13 +4140,13 @@
                   "uses": "Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4"
                 },
                 {
-                  "name": "Run formatting checks",
-                  "run": "make fmt-rs"
+                  "name": "Run repository formatting gate",
+                  "run": "make fmt"
                 }
               ]
             },
             "lint": {
-              "name": "Lint",
+              "name": "repo / ci / lint",
               "runs-on": "ubuntu-24.04",
               "timeout-minutes": 30,
               "steps": [
@@ -4018,13 +4171,13 @@
                   "uses": "Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4"
                 },
                 {
-                  "name": "Run lint checks",
-                  "run": "make lint-rs"
+                  "name": "Run repository lint gate",
+                  "run": "make lint"
                 }
               ]
             },
-            "security": {
-              "name": "Security",
+            "audit": {
+              "name": "repo / ci / audit",
               "runs-on": "ubuntu-24.04",
               "timeout-minutes": 30,
               "steps": [
@@ -4044,17 +4197,17 @@
                   "uses": "Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4"
                 },
                 {
-                  "name": "Install Rust security tools",
+                  "name": "Install Rust audit tools",
                   "run": "cargo install --locked cargo-deny --version \"${{ env.CARGO_DENY_VERSION }}\" && cargo install --locked cargo-audit --version \"${{ env.CARGO_AUDIT_VERSION }}\""
                 },
                 {
-                  "name": "Run security checks",
-                  "run": "make audit-rs"
+                  "name": "Run repository audit gate",
+                  "run": "make audit"
                 }
               ]
             },
             "test": {
-              "name": "Tests",
+              "name": "repo / ci / test",
               "runs-on": "ubuntu-24.04",
               "timeout-minutes": 45,
               "steps": [
@@ -4082,8 +4235,8 @@
                   "run": "cargo install --locked cargo-nextest --version \"${{ env.CARGO_NEXTEST_VERSION }}\""
                 },
                 {
-                  "name": "Run test suites",
-                  "run": "make test-rs"
+                  "name": "Run repository test gate",
+                  "run": "make test"
                 }
               ]
             }

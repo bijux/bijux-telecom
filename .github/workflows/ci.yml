@@ -22,7 +22,7 @@ env:
   CARGO_NEXTEST_VERSION: 0.9.100
 jobs:
   fmt:
-    name: Formatting
+    name: "repo / ci / fmt"
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -35,11 +35,11 @@ jobs:
           components: rustfmt
       - name: "Restore the Rust cache"
         uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
-      - name: "Run formatting checks"
-        run: "make fmt-rs"
+      - name: "Run repository formatting gate"
+        run: "make fmt"
     if: "${{ github.event_name != 'pull_request' || github.event.pull_request.user.login != 'dependabot[bot]' }}"
   lint:
-    name: Lint
+    name: "repo / ci / lint"
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -54,11 +54,11 @@ jobs:
           components: clippy
       - name: "Restore the Rust cache"
         uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
-      - name: "Run lint checks"
-        run: "make lint-rs"
+      - name: "Run repository lint gate"
+        run: "make lint"
     if: "${{ github.event_name != 'pull_request' || github.event.pull_request.user.login != 'dependabot[bot]' }}"
-  security:
-    name: Security
+  audit:
+    name: "repo / ci / audit"
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -70,13 +70,13 @@ jobs:
           toolchain: "${{ env.RUST_TOOLCHAIN_VERSION }}"
       - name: "Restore the Rust cache"
         uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
-      - name: "Install Rust security tools"
+      - name: "Install Rust audit tools"
         run: "cargo install --locked cargo-deny --version \"${{ env.CARGO_DENY_VERSION }}\" && cargo install --locked cargo-audit --version \"${{ env.CARGO_AUDIT_VERSION }}\""
-      - name: "Run security checks"
-        run: "make audit-rs"
+      - name: "Run repository audit gate"
+        run: "make audit"
     if: "${{ github.event_name != 'pull_request' || github.event.pull_request.user.login != 'dependabot[bot]' }}"
   test:
-    name: Tests
+    name: "repo / ci / test"
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
@@ -92,6 +92,6 @@ jobs:
         uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
       - name: "Install cargo-nextest"
         run: "cargo install --locked cargo-nextest --version \"${{ env.CARGO_NEXTEST_VERSION }}\""
-      - name: "Run test suites"
-        run: "make test-rs"
+      - name: "Run repository test gate"
+        run: "make test"
     if: "${{ github.event_name != 'pull_request' || github.event.pull_request.user.login != 'dependabot[bot]' }}"

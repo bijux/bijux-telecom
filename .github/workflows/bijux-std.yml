@@ -38,7 +38,14 @@ jobs:
               make bijux-std-checks
               ;;
             contracts)
-              make contract-tests
+              if [[ -x ".bijux/shared/bijux-checks/scripts/validate-shared-contracts.sh" ]]; then
+                bash .bijux/shared/bijux-checks/scripts/validate-shared-contracts.sh
+              elif [[ -x "shared/bijux-checks/scripts/validate-shared-contracts.sh" ]]; then
+                make contract-tests
+              else
+                echo "ERROR: unable to locate shared contract validator" >&2
+                exit 1
+              fi
               ;;
             report)
               if [[ -x ".bijux/shared/bijux-checks/scripts/run-bijux-check-suite.sh" ]]; then
