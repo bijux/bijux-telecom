@@ -32,6 +32,23 @@ fn gnss_rust_adapter_delegates_to_the_managed_gate() {
 }
 
 #[test]
+fn managed_gates_preserve_summary_and_frozen_reference_contracts() {
+    let root = repo_root();
+    let pinned_gate =
+        fs::read_to_string(root.join(".bijux/shared/bijux-makes/scripts/run_pinned_gate.sh"))
+            .expect("read managed pinned gate");
+    let rust_gate =
+        fs::read_to_string(root.join(".bijux/shared/bijux-makes-rs/scripts/rust_gate.sh"))
+            .expect("read managed Rust gate");
+    let make_readme = fs::read_to_string(root.join("makes/README.md")).expect("read Make contract");
+
+    assert!(pinned_gate.contains("${PINNED_REF:-${TEST_ALL_FROZEN_REF:-HEAD}}"));
+    assert!(rust_gate.contains("\"nextest-summary:\""));
+    assert!(rust_gate.contains("return \"${status}\""));
+    assert!(make_readme.contains("TEST_ALL_FROZEN_REF=01d26ba9 make test-all-frozen"));
+}
+
+#[test]
 fn superseded_local_make_helpers_are_absent() {
     let root = repo_root();
 

@@ -31,14 +31,15 @@ All other targets are implementation details.
 ## Frozen Gates
 
 Frozen gates run a detached background lane from a pinned repository commit instead of from the
-mutable working tree. The canonical pin variable is `PINNED_REF`.
+mutable working tree. The canonical pin variable is `PINNED_REF`; established
+`TEST_ALL_FROZEN_REF` invocations remain supported for the full test lane.
 
 Examples:
 
 ```bash
 PINNED_REF=HEAD make lint-frozen
 PINNED_REF=01d26ba9 make audit-frozen
-PINNED_REF=01d26ba9 make test-all-frozen
+TEST_ALL_FROZEN_REF=01d26ba9 make test-all-frozen
 ```
 
 The launcher resolves the target commit, clones that exact snapshot under
