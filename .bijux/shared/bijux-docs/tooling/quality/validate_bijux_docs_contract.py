@@ -8,17 +8,6 @@ import yaml
 from pathlib import Path
 import sys
 
-CANONICAL_HUB_KEYS = (
-    "bijux",
-    "bijux-core",
-    "bijux-canon",
-    "bijux-atlas",
-    "bijux-proteomics",
-    "bijux-pollenomics",
-    "bijux-phylogenetics",
-    "bijux-gnss",
-    "bijux-masterclass",
-)
 MERMAID_SCRIPTS = (
     "assets/javascripts/vendor/mermaid-11.6.0.min.js",
     "assets/javascripts/mermaid-init.js",
@@ -65,13 +54,6 @@ def validate_hub_links(hub_links: list[dict], config_name: str) -> None:
         require(bool(link.get("label")), f"{config_name}: hub_links[{idx}].label is required")
         url = link.get("url")
         require(isinstance(url, str) and url.startswith("http"), f"{config_name}: hub_links[{idx}].url must be absolute")
-
-    canonical_positions = [CANONICAL_HUB_KEYS.index(key) for key in keys if key in CANONICAL_HUB_KEYS]
-    require(
-        canonical_positions == sorted(canonical_positions),
-        f"{config_name}: hub_links canonical repositories must appear in Bijux/Core/Canon/Atlas/Proteomics/Pollenomics/Phylogenetics/GNSS/Masterclass order",
-    )
-
 
 def validate_mermaid_contract(config: dict, config_name: str) -> None:
     markdown_extensions = config.get("markdown_extensions") or []
@@ -122,10 +104,6 @@ def load_canonical_hub_links(repo_root: Path) -> list[dict]:
     links = json.loads(path.read_text(encoding="utf-8"))
     require(isinstance(links, list) and links, f"{path}: expected a non-empty list")
     validate_hub_links(links, str(path))
-    require(
-        tuple(link["key"] for link in links) == CANONICAL_HUB_KEYS,
-        f"{path}: hub link keys must exactly match the canonical Bijux repository order",
-    )
     return links
 
 

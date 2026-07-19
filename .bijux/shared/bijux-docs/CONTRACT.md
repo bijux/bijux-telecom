@@ -16,7 +16,7 @@ extra:
 
 Rules:
 - `repository`: active repository key used for hub highlighting.
-- `hub_links`: inherited top-level Bijux network links synchronized from `config/hub-links.json` into `mkdocs.shared.yml`. The canonical order is `Bijux`, `Core`, `Canon`, `Atlas`, `Proteomics`, `Pollenomics`, `Phylogenetics`, `GNSS`, `Masterclass`.
+- `hub_links`: inherited top-level Bijux network links synchronized from `config/hub-links.json` into `mkdocs.shared.yml`. Registry array order is presentation order in every desktop and mobile navigation surface.
 - `nav_mode`: shell navigation mode; `default` is canonical.
 - `theme_key`: shared localStorage key for cross-project theme persistence.
 - `markdown_extensions`: shared config must keep a `pymdownx.superfences` custom fence named `mermaid`.
