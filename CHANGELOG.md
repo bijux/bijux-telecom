@@ -47,3 +47,9 @@ This project adheres to [Semantic Versioning](https://semver.org) and the
   `bijux-telecom` to `bijux-gnss`, then established the canonical
   `bijux.io/bijux-gnss/` handbook with package-owned navigation and synchronized
   Bijux governance.
+
+### Security
+
+- Updated `time` to 0.3.47 across the workspace and fuzz lockfiles to address
+  `RUSTSEC-2026-0009` (`CVE-2026-25727`), which could allow malicious RFC 2822
+  input to exhaust the parser stack.

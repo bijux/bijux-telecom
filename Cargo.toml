@@ -16,7 +16,7 @@ members = [
 edition = "2021"
 version = "0.1.0"
 license = "Apache-2.0"
-rust-version = "1.86.0"
+rust-version = "1.88.0"
 description = "Rust GNSS toolkit for signal modeling, receiver processing, navigation, and reproducible evidence"
 repository = "https://github.com/bijux/bijux-gnss.git"
 homepage = "https://bijux.io/bijux-gnss/"
@@ -42,7 +42,7 @@ proptest = "1.11"
 criterion = { version = "0.8.2", default-features = false, features = ["cargo_bench_support", "rayon"] }
 toml = "1.1"
 eyre = "0.6"
-time = { version = "=0.3.45", features = ["parsing"] }
+time = { version = "=0.3.47", features = ["parsing"] }
 bijux-gnss-core = { path = "crates/bijux-gnss-core", version = "0.1.0" }
 bijux-gnss-infra = { path = "crates/bijux-gnss-infra", version = "0.1.0" }
 bijux-gnss-policies = { path = "crates/bijux-gnss-policies", version = "0.1.0" }

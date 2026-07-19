@@ -49,7 +49,7 @@ only one domain is needed.
 
 ## Run A Reproducible Example
 
-The workspace requires Rust `1.86.0` or newer. Before the first registry
+The workspace requires Rust `1.88.0` or newer. Before the first registry
 release, run the command from this checkout:
 
 ```bash
