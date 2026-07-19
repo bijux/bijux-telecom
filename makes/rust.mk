@@ -1,6 +1,6 @@
 GNSS_RUST_GATE_BIN ?= makes/bin/run_gnss_rust_gate.sh
 RUST_GATE_BIN ?= $(GNSS_RUST_GATE_BIN)
-NEXTEST_SLOW_NAME_EXPR ?= test(/::slow__/)
+NEXTEST_SLOW_NAME_EXPR ?= test(/(^|::)slow__/)
 RUST_AUDIT_PREREQUISITES += audit-policy-rs
 
 .PHONY: audit-policy-rs bench-compare
