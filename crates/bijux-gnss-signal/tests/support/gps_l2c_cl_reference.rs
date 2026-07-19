@@ -111,20 +111,17 @@ pub fn assert_code_matches_reference(catalog: &GpsL2cClReferenceCatalog, prn: u8
     let reference = catalog.code_reference(prn);
     let logical_bits = logical_bits_from_code(code);
 
-    assert_eq!(logical_bits.len(), catalog.chip_length, "GPS L2C CL PRN {} length mismatch", prn);
+    assert_eq!(logical_bits.len(), catalog.chip_length, "GPS L2C CL PRN {prn} length mismatch");
     assert_eq!(
         sha256_hex(&logical_bits),
         reference.bit_sha256,
-        "GPS L2C CL PRN {} fingerprint mismatch",
-        prn
+        "GPS L2C CL PRN {prn} fingerprint mismatch"
     );
     for (offset, expected_bits) in catalog.range_offsets.iter().zip(reference.range_bits.iter()) {
         assert_eq!(
             extract_range_bits(&logical_bits, *offset, catalog.range_length),
             *expected_bits,
-            "GPS L2C CL PRN {} range mismatch at chip {}",
-            prn,
-            offset
+            "GPS L2C CL PRN {prn} range mismatch at chip {offset}"
         );
     }
 }
@@ -139,16 +136,12 @@ pub fn assert_range_matches_reference(
     assert_eq!(
         logical_bits.len(),
         catalog.range_length,
-        "GPS L2C CL PRN {} range length mismatch at chip {}",
-        prn,
-        start_chip
+        "GPS L2C CL PRN {prn} range length mismatch at chip {start_chip}"
     );
     assert_eq!(
         logical_bits,
         catalog.range_bits(prn, start_chip),
-        "GPS L2C CL PRN {} range bits mismatch at chip {}",
-        prn,
-        start_chip
+        "GPS L2C CL PRN {prn} range bits mismatch at chip {start_chip}"
     );
 }
 

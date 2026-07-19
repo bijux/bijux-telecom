@@ -11,18 +11,17 @@ fn no_cross_layer_imports() {
     let receiver_src = root.join("crates/bijux-gnss-receiver/src");
 
     let nav_bad = find_string(&nav_src, "bijux_gnss_receiver");
-    assert!(nav_bad.is_empty(), "nav imports receiver: {:?}", nav_bad);
+    assert!(nav_bad.is_empty(), "nav imports receiver: {nav_bad:?}");
 
     let signal_bad = find_string(&signal_src, "bijux_gnss_nav");
-    assert!(signal_bad.is_empty(), "signal imports nav: {:?}", signal_bad);
+    assert!(signal_bad.is_empty(), "signal imports nav: {signal_bad:?}");
 
     let receiver_bad = find_string(&receiver_src, "bijux_gnss_nav::api::estimation");
-    assert!(receiver_bad.is_empty(), "receiver should not use nav internals: {:?}", receiver_bad);
+    assert!(receiver_bad.is_empty(), "receiver should not use nav internals: {receiver_bad:?}");
     let receiver_formats = find_string(&receiver_src, "bijux_gnss_nav::api::formats");
     assert!(
         receiver_formats.is_empty(),
-        "receiver should not use nav formats internals: {:?}",
-        receiver_formats
+        "receiver should not use nav formats internals: {receiver_formats:?}"
     );
 
     let receiver_obs_writers = find_string(&receiver_src, "ObsEpoch {");
@@ -32,8 +31,7 @@ fn no_cross_layer_imports() {
         .collect::<Vec<_>>();
     assert!(
         receiver_obs_writers.is_empty(),
-        "only observations builder may construct ObsEpoch: {:?}",
-        receiver_obs_writers
+        "only observations builder may construct ObsEpoch: {receiver_obs_writers:?}"
     );
 }
 

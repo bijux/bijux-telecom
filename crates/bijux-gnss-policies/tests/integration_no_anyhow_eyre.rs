@@ -28,5 +28,5 @@ fn no_anyhow_eyre_outside_command_package() {
             offenders.push(name.to_string());
         }
     }
-    assert!(offenders.is_empty(), "anyhow/eyre found outside command package: {:?}", offenders);
+    assert!(offenders.is_empty(), "anyhow/eyre found outside command package: {offenders:?}");
 }

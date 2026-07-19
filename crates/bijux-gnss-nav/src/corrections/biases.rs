@@ -325,7 +325,7 @@ mod tests {
 
         let f1_2 = GPS_L1_CA_CARRIER_HZ.value().powi(2);
         let f2_2 = GPS_L2_PY_CARRIER_HZ.value().powi(2);
-        let expected_m = (f1_2 * 3.0 - f2_2 * -1.0) / (f1_2 - f2_2);
+        let expected_m = (f1_2 * 3.0 - -f2_2) / (f1_2 - f2_2);
         assert!((combined_bias_m - expected_m).abs() < 1.0e-12);
         assert!((combined_bias_m - 3.0).abs() > 1.0e-3);
     }

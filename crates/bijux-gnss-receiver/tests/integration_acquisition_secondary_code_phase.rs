@@ -135,7 +135,7 @@ fn galileo_qpsk_acquisition_frame(
         SignalCode::E5b => {
             ReplicaCodeModel::galileo_e5b_qpsk(sat.prn).expect("Galileo E5b QPSK replica")
         }
-        _ => panic!("unsupported Galileo pilot signal {:?}", signal_code),
+        _ => panic!("unsupported Galileo pilot signal {signal_code:?}"),
     };
     let carrier_hz =
         default_signal_carrier_hz_for_signal(sat, Some(SignalBand::E5), signal_code, None)

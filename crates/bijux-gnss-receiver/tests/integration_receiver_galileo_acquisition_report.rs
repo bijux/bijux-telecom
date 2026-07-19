@@ -83,7 +83,7 @@ fn receiver_run_reports_galileo_e1_acquisition_fields() {
     assert_eq!(sat_result.signal_band, SignalBand::E1, "{sat_result:?}");
     assert_eq!(sat_result.hypothesis.to_string(), "accepted", "{sat_result:?}");
     assert_eq!(sat_result.doppler_hz.0, 0.0, "{sat_result:?}");
-    assert!(sat_result.carrier_hz.0.abs() <= 50.0, "carrier estimate drifted: {:?}", sat_result);
+    assert!(sat_result.carrier_hz.0.abs() <= 50.0, "carrier estimate drifted: {sat_result:?}");
     assert!(sat_result.peak_mean_ratio > 10.0, "{sat_result:?}");
     assert!(sat_result.peak_second_ratio > 1.2, "{sat_result:?}");
     assert!(code_phase_error_samples <= 0.5, "{sat_result:?}");

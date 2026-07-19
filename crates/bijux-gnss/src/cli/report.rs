@@ -475,8 +475,7 @@ mod report_tests {
             gdop: Some(1.0),
             tdop: Some(1.0),
             stability_signature: format!(
-                "navsig:v{}:epoch={epoch_idx}",
-                NAV_OUTPUT_STABILITY_SIGNATURE_VERSION
+                "navsig:v{NAV_OUTPUT_STABILITY_SIGNATURE_VERSION}:epoch={epoch_idx}"
             ),
             stability_signature_version: NAV_OUTPUT_STABILITY_SIGNATURE_VERSION,
         }

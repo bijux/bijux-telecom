@@ -120,17 +120,16 @@ pub fn assert_code_matches_reference(catalog: &GpsL2cCmReferenceCatalog, prn: u8
         &reference.bit_prefix[..catalog.prefix_length / 2]
     );
 
-    assert_eq!(logical_bits.len(), catalog.chip_length, "GPS L2C CM PRN {} length mismatch", prn);
+    assert_eq!(logical_bits.len(), catalog.chip_length, "GPS L2C CM PRN {prn} length mismatch");
     assert_eq!(
         sha256_hex(&logical_bits),
         reference.bit_sha256,
-        "GPS L2C CM PRN {} fingerprint mismatch",
-        prn
+        "GPS L2C CM PRN {prn} fingerprint mismatch"
     );
-    assert_eq!(prefix, reference.bit_prefix, "GPS L2C CM PRN {} prefix mismatch", prn);
-    assert_eq!(middle, reference.bit_middle, "GPS L2C CM PRN {} middle mismatch", prn);
-    assert_eq!(suffix, reference.bit_suffix, "GPS L2C CM PRN {} suffix mismatch", prn);
-    assert_eq!(boundary, expected_boundary, "GPS L2C CM PRN {} boundary mismatch", prn);
+    assert_eq!(prefix, reference.bit_prefix, "GPS L2C CM PRN {prn} prefix mismatch");
+    assert_eq!(middle, reference.bit_middle, "GPS L2C CM PRN {prn} middle mismatch");
+    assert_eq!(suffix, reference.bit_suffix, "GPS L2C CM PRN {prn} suffix mismatch");
+    assert_eq!(boundary, expected_boundary, "GPS L2C CM PRN {prn} boundary mismatch");
 }
 
 pub fn logical_bits_from_code(code: &[i8]) -> String {

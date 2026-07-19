@@ -61,14 +61,11 @@ fn position_solver_excludes_single_bad_pseudorange_and_recovers_truth() {
     assert_eq!(guarded.rejected_sat_count, 1, "{guarded:?}");
     assert!(
         guarded_error_m < 10.0,
-        "guarded solution should stay near truth: error={}m solution={guarded:?}",
-        guarded_error_m,
+        "guarded solution should stay near truth: error={guarded_error_m}m solution={guarded:?}",
     );
     assert!(
         unguarded_error_m > guarded_error_m + 100.0,
-        "outlier handling should materially improve the position: guarded={}m unguarded={}m",
-        guarded_error_m,
-        unguarded_error_m,
+        "outlier handling should materially improve the position: guarded={guarded_error_m}m unguarded={unguarded_error_m}m",
     );
 }
 

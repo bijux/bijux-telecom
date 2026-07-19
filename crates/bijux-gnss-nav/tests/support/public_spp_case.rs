@@ -89,7 +89,7 @@ pub fn public_ab43_epoch(gps_time: GpsTime) -> Result<&'static ObsEpoch, String>
         .epochs
         .iter()
         .find(|epoch| epoch.gps_time() == Some(gps_time))
-        .ok_or_else(|| format!("no AB43 public epoch found at GPS time {:?}", gps_time))
+        .ok_or_else(|| format!("no AB43 public epoch found at GPS time {gps_time:?}"))
 }
 
 pub fn public_ab43_satellite_geometry(
@@ -106,13 +106,13 @@ pub fn public_ab43_satellite_geometry(
                     .sats
                     .iter()
                     .find(|candidate| candidate.signal_id.sat == *sat)
-                    .ok_or_else(|| format!("missing AB43 observation for satellite {:?}", sat))?;
+                    .ok_or_else(|| format!("missing AB43 observation for satellite {sat:?}"))?;
             let ephemeris = case
                 .navigation
                 .ephemerides
                 .iter()
                 .find(|candidate| candidate.sat == *sat)
-                .ok_or_else(|| format!("missing AB43 ephemeris for satellite {:?}", sat))?;
+                .ok_or_else(|| format!("missing AB43 ephemeris for satellite {sat:?}"))?;
             let state = sat_state_gps_l1ca_from_observation(
                 ephemeris,
                 receive_tow_s,

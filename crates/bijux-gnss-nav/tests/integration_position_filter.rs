@@ -1008,8 +1008,7 @@ fn sequential_position_filter_static_profile_reduces_late_position_scatter() {
     assert!(static_late_rms_m < 0.35, "static_late_rms_m={static_late_rms_m}");
     assert!(
         final_static_velocity_norm_mps.expect("final static velocity norm") < 0.5,
-        "final_static_velocity_norm_mps={:?}",
-        final_static_velocity_norm_mps
+        "final_static_velocity_norm_mps={final_static_velocity_norm_mps:?}"
     );
 }
 

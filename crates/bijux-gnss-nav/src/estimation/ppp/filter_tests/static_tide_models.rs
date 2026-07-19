@@ -240,9 +240,7 @@ fn ppp_filter_reduces_static_residuals_when_ocean_tide_loading_is_configured() {
 
     assert!(
         corrected_monument_error_m < uncorrected_monument_error_m,
-        "corrected monument error {:.6} vs uncorrected monument error {:.6}",
-        corrected_monument_error_m,
-        uncorrected_monument_error_m
+        "corrected monument error {corrected_monument_error_m:.6} vs uncorrected monument error {uncorrected_monument_error_m:.6}"
     );
     assert!(
         corrected.innovation_rms < uncorrected.innovation_rms,
@@ -258,9 +256,7 @@ fn ppp_filter_reduces_static_residuals_when_ocean_tide_loading_is_configured() {
     );
     assert!(
         uncorrected_monument_error_m - corrected_monument_error_m > 0.005,
-        "corrected monument error {:.6} vs uncorrected monument error {:.6}",
-        corrected_monument_error_m,
-        uncorrected_monument_error_m
+        "corrected monument error {corrected_monument_error_m:.6} vs uncorrected monument error {uncorrected_monument_error_m:.6}"
     );
 }
 
@@ -372,9 +368,7 @@ fn ppp_filter_reduces_static_residuals_when_solid_earth_tide_is_configured() {
 
     assert!(
         corrected_monument_error_m < uncorrected_monument_error_m,
-        "corrected monument error {:.6} vs uncorrected monument error {:.6}",
-        corrected_monument_error_m,
-        uncorrected_monument_error_m
+        "corrected monument error {corrected_monument_error_m:.6} vs uncorrected monument error {uncorrected_monument_error_m:.6}"
     );
     assert!(
         corrected.innovation_rms < uncorrected.innovation_rms,
@@ -390,8 +384,6 @@ fn ppp_filter_reduces_static_residuals_when_solid_earth_tide_is_configured() {
     );
     assert!(
         uncorrected_monument_error_m - corrected_monument_error_m > 0.005,
-        "corrected monument error {:.6} vs uncorrected monument error {:.6}",
-        corrected_monument_error_m,
-        uncorrected_monument_error_m
+        "corrected monument error {corrected_monument_error_m:.6} vs uncorrected monument error {uncorrected_monument_error_m:.6}"
     );
 }

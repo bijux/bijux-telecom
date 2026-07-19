@@ -19,7 +19,7 @@ use support::navigation_truth::synthetic_pseudorange_m;
 const OBSERVATION_EPOCH_COUNT: usize = 3;
 
 fn has_signal(codes: &[SignalCode], code: SignalCode) -> bool {
-    codes.iter().any(|candidate| *candidate == code)
+    codes.contains(&code)
 }
 
 #[test]

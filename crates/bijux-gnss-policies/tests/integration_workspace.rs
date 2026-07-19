@@ -53,7 +53,7 @@ fn workspace_guardrail_defaults_not_increased() {
         let bad = config.max_depth > defaults.max_depth
             || config.max_pub_items_per_file > defaults.max_pub_items_per_file
             || config.max_pub_use_per_file > defaults.max_pub_use_per_file;
-        assert!(!bad, "guardrails defaults increased for {}: {:?}", name, config);
+        assert!(!bad, "guardrails defaults increased for {name}: {config:?}");
     }
 }
 
@@ -76,8 +76,7 @@ fn workspace_uses_crate_local_fuzz_packages() {
 
     assert!(
         top_level_fuzz_crates.is_empty(),
-        "top-level fuzz wrappers must be absorbed under their owning crates: {:?}",
-        top_level_fuzz_crates
+        "top-level fuzz wrappers must be absorbed under their owning crates: {top_level_fuzz_crates:?}"
     );
 }
 

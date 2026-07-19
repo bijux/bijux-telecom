@@ -33,8 +33,7 @@ pub(super) fn observation_timing_interval_diagnostic(
             DiagnosticSeverity::Error,
             "GNSS_OBS_TIME_INTERVAL_INVALID",
             format!(
-                "observation epoch spacing {} samples ({actual_interval_s:.9}s) does not match configured interval {} samples ({expected_interval_s:.9}s)",
-                actual_sample_interval, expected_sample_interval
+                "observation epoch spacing {actual_sample_interval} samples ({actual_interval_s:.9}s) does not match configured interval {expected_sample_interval} samples ({expected_interval_s:.9}s)"
             ),
         )
         .with_context("epoch", current.epoch_idx.to_string())

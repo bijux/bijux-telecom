@@ -1402,9 +1402,7 @@ fn acquire_config_dc_removal_preserves_or_improves_biased_peak_quality() {
 
     assert!(
         enabled_peak + f64::EPSILON >= disabled_peak,
-        "dc removal reduced CLI acquisition peak quality: before={} after={}",
-        disabled_peak,
-        enabled_peak
+        "dc removal reduced CLI acquisition peak quality: before={disabled_peak} after={enabled_peak}"
     );
 
     fs::remove_dir_all(&temp).expect("remove temp dir");

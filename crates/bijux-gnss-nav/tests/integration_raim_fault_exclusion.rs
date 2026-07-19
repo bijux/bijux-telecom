@@ -64,14 +64,11 @@ fn raim_fault_exclusion_reports_improved_solution_for_single_bad_pseudorange() {
     );
     assert!(
         guarded_error_m < 10.0,
-        "excluded solution should stay near truth: error={}m solution={guarded:?}",
-        guarded_error_m,
+        "excluded solution should stay near truth: error={guarded_error_m}m solution={guarded:?}",
     );
     assert!(
         unguarded_error_m > guarded_error_m + 100.0,
-        "explicit exclusion should materially improve the position: guarded={}m unguarded={}m",
-        guarded_error_m,
-        unguarded_error_m,
+        "explicit exclusion should materially improve the position: guarded={guarded_error_m}m unguarded={unguarded_error_m}m",
     );
 }
 

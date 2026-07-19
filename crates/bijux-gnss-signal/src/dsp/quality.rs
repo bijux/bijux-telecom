@@ -158,14 +158,12 @@ impl IqFrontEndAnalyzer {
             clipping_pct.map(|pct| pct > CLIPPING_PRECISION_REFUSAL_LIMIT_PCT).unwrap_or(false);
         let centered_rms = (i_variance + q_variance).sqrt();
         let zero_signal_detected = centered_rms <= ZERO_SIGNAL_CENTERED_RMS_EPSILON;
-        let zero_signal_reason = zero_signal_detected.then(|| {
-            format!("centered RMS {:.6e} indicates no varying signal energy", centered_rms)
-        });
+        let zero_signal_reason = zero_signal_detected
+            .then(|| format!("centered RMS {centered_rms:.6e} indicates no varying signal energy"));
         let clipping_precision_refusal_reason =
             clipping_pct.filter(|pct| *pct > CLIPPING_PRECISION_REFUSAL_LIMIT_PCT).map(|pct| {
                 format!(
-                    "front-end clipping {:.3}% exceeds the {:.3}% precision threshold",
-                    pct, CLIPPING_PRECISION_REFUSAL_LIMIT_PCT
+                    "front-end clipping {pct:.3}% exceeds the {CLIPPING_PRECISION_REFUSAL_LIMIT_PCT:.3}% precision threshold"
                 )
             });
         let precision_claims_refused_reason =

@@ -573,7 +573,7 @@ impl std::fmt::Display for SyntheticNavigationValidationError {
                 write!(f, "synthetic navigation validation scenario must declare satellites")
             }
             Self::MissingEphemeris { sat } => {
-                write!(f, "missing ephemeris for {:?}", sat)
+                write!(f, "missing ephemeris for {sat:?}")
             }
             Self::InconsistentReceiverEpochBase => write!(
                 f,

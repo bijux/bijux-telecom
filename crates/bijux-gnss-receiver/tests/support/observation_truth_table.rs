@@ -362,7 +362,7 @@ fn signal_code_length(signal_spec: SignalSpec) -> usize {
         SignalBand::L1 => 1023,
         SignalBand::L2 => 10230,
         SignalBand::L5 => 10230,
-        _ => panic!("unsupported observation truth signal {:?}", signal_spec),
+        _ => panic!("unsupported observation truth signal {signal_spec:?}"),
     }
 }
 

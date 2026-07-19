@@ -873,11 +873,7 @@ fn innovation_consistency_anomaly_summary(solutions: &[NavSolutionEpoch]) -> Opt
     peak_anomaly.map(
         |(normalized_innovation_squared, lower_bound, upper_bound, measurement_dimension)| {
             format!(
-                "innovation consistency anomalies: {anomaly_count} event(s), peak NIS {:.3} outside [{:.3}, {:.3}] for measurement dimension {}",
-                normalized_innovation_squared,
-                lower_bound,
-                upper_bound,
-                measurement_dimension
+                "innovation consistency anomalies: {anomaly_count} event(s), peak NIS {normalized_innovation_squared:.3} outside [{lower_bound:.3}, {upper_bound:.3}] for measurement dimension {measurement_dimension}"
             )
         },
     )

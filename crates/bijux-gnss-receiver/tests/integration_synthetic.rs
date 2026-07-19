@@ -211,15 +211,13 @@ fn galileo_e1_acquisition_detects_synthetic_signal() {
         uncertainty.doppler_hz.is_finite()
             && uncertainty.doppler_hz > 0.0
             && uncertainty.doppler_hz < 250.0,
-        "Galileo E1 Doppler uncertainty out of range: {:?}",
-        uncertainty
+        "Galileo E1 Doppler uncertainty out of range: {uncertainty:?}"
     );
     assert!(
         uncertainty.code_phase_samples.is_finite()
             && uncertainty.code_phase_samples > 0.0
             && uncertainty.code_phase_samples < 1.0,
-        "Galileo E1 code-phase uncertainty out of range: {:?}",
-        uncertainty
+        "Galileo E1 code-phase uncertainty out of range: {uncertainty:?}"
     );
 }
 

@@ -41,7 +41,7 @@ fn main() {
         .map(|s| s.trim().to_string())
         .unwrap_or_else(|| "unknown".to_string());
 
-    println!("cargo:rustc-env=BIJUX_BUILD_GIT_SHA={}", git_sha);
-    println!("cargo:rustc-env=BIJUX_BUILD_TIMESTAMP={}", ts);
-    println!("cargo:rustc-env=BIJUX_BUILD_RUSTC={}", rustc_version);
+    println!("cargo:rustc-env=BIJUX_BUILD_GIT_SHA={git_sha}");
+    println!("cargo:rustc-env=BIJUX_BUILD_TIMESTAMP={ts}");
+    println!("cargo:rustc-env=BIJUX_BUILD_RUSTC={rustc_version}");
 }

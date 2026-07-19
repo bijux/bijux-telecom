@@ -218,12 +218,12 @@ fn residual_comparison_samples(
                 candidate.signal_id.sat == *sat
                     && candidate.signal_id.sat.constellation == Constellation::Gps
             })
-            .ok_or_else(|| format!("missing observation for satellite {:?}", sat))?;
+            .ok_or_else(|| format!("missing observation for satellite {sat:?}"))?;
         let ephemeris = navigation
             .ephemerides
             .iter()
             .find(|candidate| candidate.sat == *sat)
-            .ok_or_else(|| format!("missing ephemeris for satellite {:?}", sat))?;
+            .ok_or_else(|| format!("missing ephemeris for satellite {sat:?}"))?;
         let state = satellite_state_from_observation(
             ephemeris,
             receive_tow_s,

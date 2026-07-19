@@ -97,7 +97,7 @@ impl GalileoE5ReferenceCatalog {
             .iter()
             .find(|reference| reference.component == component && reference.prn == prn)
             .unwrap_or_else(|| {
-                panic!("missing Galileo E5 secondary reference for {component} {:?}", prn)
+                panic!("missing Galileo E5 secondary reference for {component} {prn:?}")
             })
     }
 }
@@ -151,7 +151,7 @@ pub fn assert_secondary_code_matches_reference(
         reference.bit_length,
         &reference.bit_sha256,
         &windows,
-        &format!("Galileo E5 secondary {component} {:?}", prn),
+        &format!("Galileo E5 secondary {component} {prn:?}"),
     );
 }
 
