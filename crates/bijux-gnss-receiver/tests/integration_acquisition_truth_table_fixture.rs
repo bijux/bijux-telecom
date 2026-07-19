@@ -15,6 +15,7 @@ use bijux_gnss_receiver::api::{
 
 const REGENERATE_ACQUISITION_TRUTH_FIXTURE_ENV: &str = "BIJUX_REGENERATE_ACQUISITION_TRUTH_FIXTURE";
 const DOPPLER_REFINEMENT_TOLERANCE_HZ: f64 = 5.0e-5;
+const PEAK_MEAN_RATIO_ULP_TOLERANCE: u32 = 4;
 
 #[test]
 fn acquisition_truth_table_matches_low_rate_reference_fixture() {
@@ -110,11 +111,11 @@ fn acquisition_truth_table_matches_low_rate_reference_fixture() {
             expected_satellite.injected_code_phase_chips,
             1.0e-12,
         );
-        assert_close(
+        assert_f32_close(
             "peak_mean_ratio",
-            actual_satellite.peak_mean_ratio as f64,
-            expected_satellite.peak_mean_ratio as f64,
-            1.0e-6,
+            actual_satellite.peak_mean_ratio,
+            expected_satellite.peak_mean_ratio,
+            PEAK_MEAN_RATIO_ULP_TOLERANCE,
         );
     }
 }
@@ -180,4 +181,38 @@ fn assert_close(label: &str, actual: f64, expected: f64, tolerance: f64) {
         error <= tolerance,
         "{label} mismatch: actual={actual:.15} expected={expected:.15} error={error:.15} tolerance={tolerance:.15}"
     );
+}
+
+fn assert_f32_close(label: &str, actual: f32, expected: f32, ulp_tolerance: u32) {
+    assert!(
+        actual.is_finite() && expected.is_finite() && actual >= 0.0 && expected >= 0.0,
+        "{label} requires finite non-negative values: actual={actual} expected={expected}"
+    );
+    let ulp_error = actual.to_bits().abs_diff(expected.to_bits());
+    assert!(
+        ulp_error <= ulp_tolerance,
+        "{label} mismatch: actual={actual:.9} expected={expected:.9} ulp_error={ulp_error} ulp_tolerance={ulp_tolerance}"
+    );
+}
+
+#[test]
+fn peak_mean_ratio_comparison_accepts_bounded_f32_rounding_only() {
+    let reference = 64.0_f32;
+    assert_f32_close(
+        "within_budget",
+        f32::from_bits(reference.to_bits() + PEAK_MEAN_RATIO_ULP_TOLERANCE),
+        reference,
+        PEAK_MEAN_RATIO_ULP_TOLERANCE,
+    );
+
+    let outside_budget = f32::from_bits(reference.to_bits() + PEAK_MEAN_RATIO_ULP_TOLERANCE + 1);
+    let rejection = std::panic::catch_unwind(|| {
+        assert_f32_close(
+            "outside_budget",
+            outside_budget,
+            reference,
+            PEAK_MEAN_RATIO_ULP_TOLERANCE,
+        );
+    });
+    assert!(rejection.is_err(), "comparison must reject drift beyond its ULP budget");
 }
