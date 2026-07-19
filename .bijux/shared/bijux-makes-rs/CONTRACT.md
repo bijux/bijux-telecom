@@ -23,6 +23,11 @@ The generic `format`, `fmt`, `lint`, `test`, `test-slow`, `test-all`, `audit`,
 `security`, and `coverage` targets aggregate these Rust targets through the
 common contract.
 
+Complete Rust test gates run up to eight tests concurrently by default.
+Repositories may set `NEXTEST_THREADS_ALL` when a documented resource limit
+requires a different value. Test groups may still serialize tests that share
+mutable repository state.
+
 ## Required Repository Inputs
 
 - `Cargo.toml`

@@ -77,5 +77,9 @@ commit, process, log, and exit status under the same artifact root. Repository-r
 Make and Rust paths are recomputed from the immutable checkout instead of inherited
 from the invoking worktree. Pinned sources whose Rust policy requires workspace-bound
 artifacts execute there and publish stable links under `artifacts/<commit>/`.
+Before reusing an inactive checkout, the launcher restores tracked files changed
+by the previous gate to the pinned commit. It refuses reuse when untracked files
+outside the launcher-owned `artifacts/` boundary are present and never restores
+a checkout while its recorded gate process is alive.
 `PINNED_REF` is the canonical commit selector;
 `TEST_ALL_FROZEN_REF` remains supported for established full-suite invocations.

@@ -71,14 +71,39 @@ done
 printf '%s\n' "$$" >"${lock_dir}/pid"
 lock_held=1
 
+if [[ -f "${pid_file}" ]]; then
+  existing_pid="$(cat "${pid_file}")"
+  if [[ -n "${existing_pid}" ]] && kill -0 "${existing_pid}" 2>/dev/null; then
+    echo "${pinned_target} is already running for ${short_sha}: pid ${existing_pid}" >&2
+    exit 1
+  fi
+fi
+
 if [[ -d "${pinned_repo_dir}" ]]; then
   existing_sha="$(git -C "${pinned_repo_dir}" rev-parse HEAD 2>/dev/null || true)"
   if [[ "${existing_sha}" != "${full_sha}" ]]; then
     echo "pinned source commit mismatch: ${pinned_repo_dir}" >&2
     exit 1
   fi
-  if [[ -n "$(git -C "${pinned_repo_dir}" status --short)" ]]; then
+  unexpected_untracked=0
+  while IFS= read -r untracked_path; do
+    if [[ -n "${untracked_path}" ]] &&
+      [[ "${untracked_path}" != "artifacts/"* ]]; then
+      unexpected_untracked=1
+      break
+    fi
+  done < <(git -C "${pinned_repo_dir}" ls-files --others --exclude-standard)
+  if [[ "${unexpected_untracked}" -eq 1 ]]; then
     echo "pinned source is dirty: ${pinned_repo_dir}" >&2
+    exit 1
+  fi
+  if ! git -C "${pinned_repo_dir}" diff --quiet ||
+    ! git -C "${pinned_repo_dir}" diff --cached --quiet; then
+    git -C "${pinned_repo_dir}" checkout --detach --force "${full_sha}" >/dev/null
+  fi
+  if ! git -C "${pinned_repo_dir}" diff --quiet ||
+    ! git -C "${pinned_repo_dir}" diff --cached --quiet; then
+    echo "pinned source could not be restored: ${pinned_repo_dir}" >&2
     exit 1
   fi
 else
@@ -94,14 +119,6 @@ if [[ -f "${pinned_rust_gate}" ]] &&
 fi
 
 release_lock
-
-if [[ -f "${pid_file}" ]]; then
-  existing_pid="$(cat "${pid_file}")"
-  if [[ -n "${existing_pid}" ]] && kill -0 "${existing_pid}" 2>/dev/null; then
-    echo "${pinned_target} is already running for ${short_sha}: pid ${existing_pid}" >&2
-    exit 1
-  fi
-fi
 
 cat >"${meta_file}" <<EOF
 ref=${pinned_ref}

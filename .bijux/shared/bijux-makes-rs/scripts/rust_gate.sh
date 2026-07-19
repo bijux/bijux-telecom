@@ -268,7 +268,7 @@ case "${command_name}" in
       "${rs_target_dir}" \
       "" \
       all \
-      "${NEXTEST_THREADS_ALL:-}"
+      "${NEXTEST_THREADS_ALL:-8}"
     ;;
   audit)
     require_tool cargo-deny
