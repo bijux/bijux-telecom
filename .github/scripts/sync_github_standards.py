@@ -77,7 +77,6 @@ BASE_FILE_MAPPINGS: list[tuple[str, str]] = [
     (".github/workflows/bijux-std.yml", ".github/workflows/bijux-std.yml"),
     (".github/workflows/automerge-pr.yml", ".github/workflows/automerge-pr.yml"),
     (".github/bijux-std-shared.sha256", ".github/bijux-std-shared.sha256"),
-    ("shared/shared-dir-sha256.txt", ".bijux/shared/shared-dir-sha256.txt"),
 ]
 
 LEGACY_MANAGED_RUNTIME_PATHS = {
