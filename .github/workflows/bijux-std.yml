@@ -35,7 +35,18 @@ jobs:
               python3 .github/scripts/check_pinned_actions.py \
                 --manifest-managed .github/standards/repo-config.manifest.json \
                 .github/workflows
-              make bijux-std-checks
+              if [[ "${GITHUB_REPOSITORY}" == "bijux/bijux-std" ]]; then
+                make bijux-std-checks
+              else
+                consumer_ref="$(
+                  tr -d '[:space:]' < .github/standards/bijux-std.sha
+                )"
+                if [[ ! "${consumer_ref}" =~ ^[0-9a-f]{40}$ ]]; then
+                  echo "ERROR: .github/standards/bijux-std.sha must contain one full commit SHA" >&2
+                  exit 1
+                fi
+                BIJUX_STD_REF="${consumer_ref}" make bijux-std-checks
+              fi
               ;;
             contracts)
               if [[ -x ".bijux/shared/bijux-checks/scripts/validate-shared-contracts.sh" ]]; then
