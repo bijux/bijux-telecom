@@ -26,7 +26,7 @@ permissions:
 
 jobs:
   pr-approval:
-    name: owner approval
+    name: policy / pr approval
     runs-on: ubuntu-latest
 
     steps:

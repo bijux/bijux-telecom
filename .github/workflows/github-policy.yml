@@ -20,7 +20,7 @@ permissions:
 
 jobs:
   policy:
-    name: github governance
+    name: policy / github
     runs-on: ubuntu-latest
 
     steps:
